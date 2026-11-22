@@ -1,6 +1,6 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { type Editor, EmbedShapeUtil, Tldraw, useEditor, useToasts } from "tldraw";
+import { type Editor, EmbedShapeUtil, Tldraw } from "tldraw";
 
 import "./board.css";
 
@@ -8,9 +8,11 @@ import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 
-import { guardExternalContent } from "./assets";
+import { BoardFiles } from "./assets";
+import { BoardFileHandlers } from "./board-files";
 import { components } from "./chrome";
 import { DiceSheet, rollSentence } from "./dice";
+import { MEDIA_PROPS } from "./file-flows";
 import { Notice } from "./notice";
 import { PeopleSheet } from "./people";
 import { PlacesSheet } from "./places-sheet";
@@ -44,15 +46,6 @@ function warmUpDice(): () => void {
   return () => clearTimeout(handle);
 }
 
-function Guard({ copy }: { copy: Copy }) {
-  const editor = useEditor();
-  const toasts = useToasts();
-  useEffect(() => {
-    guardExternalContent(editor, { comingSoon: copy.imagesComingSoon, toasts });
-  }, [copy, editor, toasts]);
-  return null;
-}
-
 function ConnectionBanner({ copy }: { copy: Copy }) {
   return (
     <p
@@ -80,7 +73,8 @@ export function BoardCanvas({
   const { board, person } = keeper.bootstrap;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
-  const { refusal, store } = useBoardStore({ color, keeper, rolls });
+  const files = useMemo(() => new BoardFiles(keeper), [keeper]);
+  const { refusal, store } = useBoardStore({ color, files, keeper, rolls });
   const usable = store.status === "synced-remote";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
   // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
@@ -105,6 +99,7 @@ export function BoardCanvas({
       copy,
       editor,
       exit,
+      files,
       locale: language,
       naming,
       open: (next) => {
@@ -118,7 +113,7 @@ export function BoardCanvas({
       setNaming,
       setPool,
     }),
-    [board, color, copy, editor, exit, language, naming, panel, person, pool, rolls],
+    [board, color, copy, editor, exit, files, language, naming, panel, person, pool, rolls],
   );
 
   // NOTE: a full board waits and asks again (useBoardStore); the way out
@@ -145,6 +140,7 @@ export function BoardCanvas({
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
         <div className="absolute inset-0 isolate">
           <Tldraw
+            {...MEDIA_PROPS}
             assetUrls={assetUrls}
             components={components}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
@@ -154,7 +150,7 @@ export function BoardCanvas({
             shapeUtils={SHAPE_UTILS}
             store={store}
           >
-            <Guard copy={copy} />
+            <BoardFileHandlers />
           </Tldraw>
         </div>
         {offline && <ConnectionBanner copy={copy} />}

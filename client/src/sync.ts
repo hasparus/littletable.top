@@ -2,10 +2,9 @@ import { TLRemoteSyncError, TLSyncErrorCloseEventReason, useSync } from "@tldraw
 import { useEffect, useMemo, useState } from "react";
 import { atom, createUserId, type TLUserStore, UserRecordType } from "tldraw";
 
+import type { BoardFiles } from "./assets";
 import type { PassKeeper } from "./bootstrap";
 import type { Rolls } from "./rolls";
-
-import { assetStore } from "./assets";
 
 // tldraw's cursor colours, picked by person so a colour stays with them.
 const COLORS = [
@@ -51,10 +50,12 @@ const FULL_RETRY_MS = 15_000;
 // deleted board ends the board for this person; a full one waits.
 export function useBoardStore({
   color,
+  files,
   keeper,
   rolls,
 }: {
   color: string;
+  files: BoardFiles;
   keeper: PassKeeper;
   rolls: Rolls;
 }) {
@@ -71,13 +72,13 @@ export function useBoardStore({
       ),
     };
     return {
-      assets: assetStore,
+      assets: files.store,
       attempt,
       onCustomMessageReceived: rolls.receive,
       uri: async () => keeper.socketUri(),
       users,
     };
-  }, [attempt, color, keeper, person, rolls.receive]);
+  }, [attempt, color, files, keeper, person, rolls.receive]);
   const store = useSync(syncOptions);
   const refusal = store.status === "error" ? refusalOf(store.error) : null;
 

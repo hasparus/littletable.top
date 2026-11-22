@@ -1,5 +1,6 @@
 import {
   ArrowToolbarItem,
+  AssetToolbarItem,
   DefaultActionsMenu,
   DefaultContextMenu,
   DefaultContextMenuContent,
@@ -33,6 +34,7 @@ import {
   useValue,
 } from "tldraw";
 
+import { BoardFileMenuItems } from "./board-files";
 import { Icon, type IconName } from "./icons";
 import { usePresent } from "./people";
 import { placeName, removePlace } from "./places";
@@ -40,8 +42,6 @@ import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
 // The tools a table reaches for, in the order the toolbar shows them until
 // it runs out of room and folds the rest into its overflow menu.
-// NOTE: tldraw's image button is left out until uploads exist: it could
-// only refuse.
 function BoardTools() {
   return (
     <>
@@ -53,6 +53,7 @@ function BoardTools() {
       <TextToolbarItem />
       <ArrowToolbarItem />
       <FrameToolbarItem />
+      <AssetToolbarItem />
       <RectangleToolbarItem />
       <EllipseToolbarItem />
       <TriangleToolbarItem />
@@ -203,6 +204,7 @@ function BoardMainMenu() {
           onSelect={() => location.assign(exit.href)}
         />
       </TldrawUiMenuGroup>
+      <BoardFileMenuItems />
       <DefaultMainMenuContent />
     </DefaultMainMenu>
   );

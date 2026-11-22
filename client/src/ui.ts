@@ -2,6 +2,7 @@ import type { Editor, TLShapeId } from "tldraw";
 
 import { createContext, useContext } from "react";
 
+import type { BoardFiles } from "./assets";
 import type { Person } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { Rolls } from "./rolls";
@@ -16,6 +17,8 @@ export type BoardUi = {
   color: string;
   copy: Copy;
   editor: Editor | null;
+  // The board's images: uploads, their progress, and the asset store.
+  files: BoardFiles;
   // Where the board's menu leads out: their boards, or the board's home for a guest.
   exit: { href: string; label: string };
   locale: string;
