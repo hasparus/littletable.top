@@ -1,0 +1,198 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync, writeFileSync } from "node:fs";
+
+import { png } from "../fixtures/png";
+import { collectCspViolations, expectNoCspViolations, joinAs, phone } from "./helpers";
+import {
+  documentOf,
+  documentOfFile,
+  downloadTldr,
+  dropFile,
+  expectWhole,
+  fixture,
+  loadedImages,
+  openTldr,
+  sha256,
+  toast,
+  uploadImage,
+  zoomToFit,
+} from "./tldr";
+
+// Images and .tldr files, end to end: what one browser brings onto a board,
+// another sees, from the Worker's R2 bucket. The artifacts are the .tldr
+// files the browsers download, written to test-results/, which the
+// assertions compare with the fixtures.
+// NOTE: the file sorts after the other specs, which expect a fresh host
+// (their first board is "Board 1").
+
+const HOSTED = "http://localhost:8000";
+const STANDALONE = "http://localhost:8790";
+const ON_TABLETOP = /^http:\/\/localhost:8788\/b\/(\w+)$/u;
+const ON_BOARD = /^http:\/\/localhost:8790\/b\/(\w+)$/u;
+
+const MAP = readFileSync(fixture("map.png"));
+const PORTRAIT = readFileSync(fixture("portrait.png"));
+// Where the Worker keeps an image: under the board's id and its SHA-256.
+const imageAt = (bytes: Buffer) =>
+  new RegExp(String.raw`^/rooms/[\w-]+/files/${sha256(bytes)}$`, "u");
+const stored = imageAt(MAP);
+
+test("an image one person uploads loads for a guest, and again after a reload", async ({
+  browser,
+  page,
+}) => {
+  await collectCspViolations(page);
+  await page.goto(`${HOSTED}/sign-in?name=Iris`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  const guest = await phone(browser, page.url());
+  await joinAs(guest, "Noor");
+
+  await uploadImage(page, "map.png");
+
+  await expect.poll(() => loadedImages(page)).toEqual([expect.stringMatching(stored)]);
+  // The image lands where the uploader looks; the guest's small screen
+  // zooms to everything on the board.
+  await zoomToFit(guest);
+  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  await guest.reload();
+  await zoomToFit(guest);
+  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+
+  // The address opens nothing without the board's pass.
+  const [address] = await loadedImages(guest);
+  const stranger = await browser.newContext();
+  const refused = await stranger.request.get(`http://localhost:8788${address}`);
+  expect(refused.status()).toBe(403);
+  await stranger.close();
+
+  await expectNoCspViolations(page);
+  await expectNoCspViolations(guest);
+  await guest.context().close();
+});
+
+test("a photo larger than the pixel budget arrives redrawn to it", async ({ page }) => {
+  await collectCspViolations(page);
+  await page.goto(`${HOSTED}/sign-in?name=Lin`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  const photo = png(6000, 4000, [90, 60, 20]);
+
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("main-menu.button").click();
+  await page.getByRole("menuitem", { name: "Upload media…" }).click();
+  const picker = await chooser;
+  await picker.setFiles({ buffer: photo, mimeType: "image/png", name: "photo.png" });
+
+  const canvas = page.getByTestId("canvas");
+  await expect
+    .poll(() =>
+      canvas
+        .locator("img.tl-image")
+        .evaluateAll((images) =>
+          (images as HTMLImageElement[])
+            .filter((image) => image.complete && new URL(image.src).pathname.startsWith("/rooms/"))
+            .map((image) => [image.naturalWidth, image.naturalHeight]),
+        ),
+    )
+    .toEqual([[4096, 2731]]);
+  const [address = ""] = await loadedImages(page);
+  expect(address).not.toMatch(imageAt(photo));
+  await expectNoCspViolations(page);
+});
+
+test("a .tldr file opened on one screen reaches the other whole, and comes back out the same", async ({
+  browser,
+  page,
+}, testInfo) => {
+  await collectCspViolations(page);
+  await page.goto(`${STANDALONE}/`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Grace Hopper");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+  const guest = await phone(browser, page.url());
+  await joinAs(guest, "Noor");
+
+  await openTldr(page, "table.tldr");
+  await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
+
+  // The guest lands on the file's first page and sees its map, from R2.
+  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  const seen = await downloadTldr(guest);
+  writeFileSync(testInfo.outputPath("seen-by-the-guest.tldr"), seen);
+  const original = documentOfFile("table.tldr");
+  expect(documentOf(seen)).toEqual(original);
+  const assets = documentOf(seen).assets.map((asset) => asset.props!.src);
+  expect(assets).toEqual([`sha256:${sha256(MAP)}`, `sha256:${sha256(PORTRAIT)}`]);
+
+  // What came out opens on a fresh board as the same document again.
+  await page.goto(`${STANDALONE}/`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("main-menu.button").click();
+  await page.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  const picker = await chooser;
+  await picker.setFiles({ buffer: Buffer.from(seen), mimeType: "", name: "seen.tldr" });
+  await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
+  const again = await downloadTldr(page);
+  writeFileSync(testInfo.outputPath("round-trip.tldr"), again);
+  expect(documentOf(again)).toEqual(original);
+
+  // Opened again onto a board that has it already, the file's pages come
+  // after the board's own, under new ids that still hold together.
+  await openTldr(page, "table.tldr");
+  await expect(toast(page, "The file's pages were added to the board.").first()).toBeVisible();
+  const doubled = documentOf(await downloadTldr(page));
+  expect(doubled.pages.map((one) => one.name)).toEqual([
+    "The map",
+    "The table",
+    "Notes",
+    "The map",
+    "The table",
+    "Notes",
+  ]);
+  expect(doubled.pages.slice(0, 3)).toEqual(original.pages);
+  expect(new Set(doubled.pages.map((one) => one.id)).size).toBe(6);
+  expect(doubled.shapes).toHaveLength(original.shapes.length * 2);
+  expect(doubled.bindings).toHaveLength(original.bindings.length * 2);
+  expectWhole(doubled);
+
+  await expectNoCspViolations(page);
+  await expectNoCspViolations(guest);
+  await guest.context().close();
+});
+
+test("an older .tldr dropped on the board migrates; a newer one is refused with a reason", async ({
+  page,
+}) => {
+  await collectCspViolations(page);
+  await page.goto(`${HOSTED}/sign-in?name=Cy`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+
+  await openTldr(page, "table-newer.tldr");
+  await expect(
+    toast(
+      page,
+      "This file comes from a newer version of tldraw than the board, so it cannot be opened here yet.",
+    ),
+  ).toBeVisible();
+
+  await dropFile(page, "table-older.tldr", "");
+  await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
+  const opened = documentOf(await downloadTldr(page));
+  const original = documentOfFile("table.tldr");
+  expect(opened.pages).toEqual(original.pages);
+  expect(opened.shapes.map((shape) => shape.id)).toEqual(original.shapes.map((shape) => shape.id));
+  expect(opened.bindings).toEqual(original.bindings.map((binding) => ({ ...binding })));
+  expect(opened.assets.map((asset) => asset.props!.src)).toEqual(
+    original.assets.map((asset) => asset.props!.src),
+  );
+  expectWhole(opened);
+
+  await expectNoCspViolations(page);
+});
