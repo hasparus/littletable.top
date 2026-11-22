@@ -1,3 +1,5 @@
+import type { TLRecord } from "@tldraw/tlschema";
+
 import {
   DurableObjectSqliteSyncWrapper,
   SQLiteSyncStorage,
@@ -7,11 +9,13 @@ import {
 } from "@tldraw/sync-core";
 import { DurableObject } from "cloudflare:workers";
 
+import type { BoardGrant } from "./mcp/grant";
 import type { Pass } from "./pass";
 
 import { type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import { type ApplyOpsRequest, type ApplyOpsResponse, BoardOps } from "./ops/board-ops";
 
 type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
 
@@ -37,9 +41,10 @@ function kind(sub: string): "guest" | "member" {
 }
 
 export class BoardRoom extends DurableObject<Env> {
-  private room!: TLSocketRoom<never, Person>;
+  private room!: TLSocketRoom<TLRecord, Person>;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
+  private ops!: BoardOps;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -56,13 +61,17 @@ export class BoardRoom extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL)",
     );
-    this.room = new TLSocketRoom<never, Person>({
+    this.room = new TLSocketRoom<TLRecord, Person>({
       storage: new SQLiteSyncStorage({
         sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
       }),
     });
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS mcp_grant (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)",
+    );
     this.lastRollAt = new Map();
     this.files = new FileLedger(sql, this.env.Files);
+    this.ops = new BoardOps(sql, () => this.room.storage);
   }
 
   private link(): number {
@@ -172,6 +181,62 @@ export class BoardRoom extends DurableObject<Env> {
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
     return this.admit(pass) ?? this.files.store(pass.board, pass.sub, body);
+  }
+
+  private grantVersion(): number {
+    const [row] = this.ctx.storage.sql.exec("SELECT version FROM mcp_grant").toArray();
+    return row === undefined ? 0 : (row.version as number);
+  }
+
+  private setGrantVersion(version: number) {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO mcp_grant (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
+      version,
+    );
+  }
+
+  // As with links: a grant older than the board's grant version was revoked;
+  // a newer one moves the board on.
+  private admitGrant(grant: BoardGrant): "revoked" | null {
+    const current = this.grantVersion();
+    if (grant.grant < current) return "revoked";
+    if (grant.grant > current) this.setGrantVersion(grant.grant);
+    return null;
+  }
+
+  // The host revokes every assistant grant on this board signed before
+  // `version`, at once, without waiting for those tokens to expire.
+  revokeMcpGrants(board: string, version: number): void {
+    if (version <= this.grantVersion()) return;
+    this.setGrantVersion(version);
+    log("board.mcp_revoked", { board, version });
+  }
+
+  mcpApplyOps(
+    grant: BoardGrant,
+    request: ApplyOpsRequest,
+  ): ApplyOpsResponse | "read-only" | "revoked" {
+    const refusal = this.admitGrant(grant);
+    if (refusal !== null) return refusal;
+    if (grant.access !== "write") return "read-only";
+    const response = this.ops.apply(request);
+    log("board.mcp_ops", {
+      applied: response.kind === "applied" ? response.result.applied : 0,
+      board: grant.board,
+      failed: response.kind === "applied" ? response.result.errors.length : 0,
+      outcome: response.kind,
+      people: this.room.getNumActiveSessions(),
+    });
+    return response;
+  }
+
+  mcpPages(grant: BoardGrant): ReturnType<BoardOps["pages"]> | "revoked" {
+    return this.admitGrant(grant) ?? this.ops.pages();
+  }
+
+  /** For tests and tools that read the document as it is now. */
+  records(): TLRecord[] {
+    return this.room.storage.transaction((txn) => [...txn.values()]).result;
   }
 
   async destroy(board: string) {

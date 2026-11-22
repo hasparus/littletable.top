@@ -31,7 +31,11 @@ const along = (start: number, length: number, size: number, align: Align) =>
 export function idealSpot(
   target: Box,
   size: { h: number; w: number },
-  { align = "center", gap = DEFAULT_GAP, relation }: { align?: Align; gap?: number; relation: Relation },
+  {
+    align = "center",
+    gap = DEFAULT_GAP,
+    relation,
+  }: { align?: Align; gap?: number; relation: Relation },
 ): { x: number; y: number } {
   switch (relation) {
     case "right_of":

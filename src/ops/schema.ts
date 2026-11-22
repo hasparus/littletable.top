@@ -81,7 +81,12 @@ export const refList = z.union([
 
 export const targetOrPoint = z.union([ref, z.strictObject({ point })]);
 
-const style = { color: color.optional(), dash: dash.optional(), fill: fill.optional(), size: size.optional() };
+const style = {
+  color: color.optional(),
+  dash: dash.optional(),
+  fill: fill.optional(),
+  size: size.optional(),
+};
 const placement = {
   align: align.optional(),
   at: point.optional().describe("Top-left corner in page coordinates."),
@@ -141,7 +146,12 @@ const rename = z.strictObject({
   fit: z.enum(["widen", "shrink_text"]).optional(),
 });
 
-const restyle = z.strictObject({ op: z.literal("restyle"), targets: refList, ...style, like: ref.optional() });
+const restyle = z.strictObject({
+  op: z.literal("restyle"),
+  targets: refList,
+  ...style,
+  like: ref.optional(),
+});
 
 const remove = z.strictObject({ op: z.literal("remove"), targets: refList });
 

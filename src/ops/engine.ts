@@ -11,7 +11,6 @@ import {
   type TLShapeId,
   type TLTextShape,
 } from "@tldraw/tlschema";
-
 import { getIndexAbove, getIndexBetween, type IndexKey } from "@tldraw/utils";
 
 import { Doc } from "./doc";
@@ -25,7 +24,14 @@ import {
   toParentSpace,
   type Vec,
 } from "./geometry";
-import { clearSpot, DEFAULT_GAP, excludeFor, idealSpot, obstacles, type Relation } from "./placement";
+import {
+  clearSpot,
+  DEFAULT_GAP,
+  excludeFor,
+  idealSpot,
+  obstacles,
+  type Relation,
+} from "./placement";
 import {
   arrowBindingRecord,
   arrowRecord,
@@ -114,7 +120,10 @@ function pageFor(doc: Doc, page: BatchInput["page"]): TLPage | string {
   if (pages.length === 0) return "This board has no pages.";
   if (page === undefined || page === null) return pages[0]!;
   if (typeof page === "number") {
-    return pages[page] ?? `There is no page ${page}; this board has ${pages.length} (0 to ${pages.length - 1}).`;
+    return (
+      pages[page] ??
+      `There is no page ${page}; this board has ${pages.length} (0 to ${pages.length - 1}).`
+    );
   }
   const id = page.startsWith("page:") ? page : `page:${page}`;
   return pages.find((candidate) => candidate.id === id) ?? `There is no page with the id ${page}.`;
@@ -125,9 +134,15 @@ export function runBatch(records: Iterable<TLRecord>, input: BatchInput): BatchO
   if (!parsed.success) {
     const detail = parsed.error.issues
       .slice(0, 10)
-      .map((issue) => `ops${issue.path.map((part) => `[${JSON.stringify(part)}]`).join("")}: ${issue.message}`)
+      .map(
+        (issue) =>
+          `ops${issue.path.map((part) => `[${JSON.stringify(part)}]`).join("")}: ${issue.message}`,
+      )
       .join("; ");
-    return { kind: "invalid", message: `The batch is invalid and nothing was applied. ${detail}`.slice(0, 1_500) };
+    return {
+      kind: "invalid",
+      message: `The batch is invalid and nothing was applied. ${detail}`.slice(0, 1_500),
+    };
   }
   const doc = new Doc(records);
   const page = pageFor(doc, input.page);
@@ -214,7 +229,9 @@ function resolve(ctx: Context, ref: Ref): TLShape {
     const found = byText(ctx, ref.text);
     if (found.length === 1) return found[0]!;
     if (found.length === 0) {
-      throw new OpError(`No shape on this page has the text ${quote(ref.text)}. Use an id from get_cluster_info.`);
+      throw new OpError(
+        `No shape on this page has the text ${quote(ref.text)}. Use an id from get_cluster_info.`,
+      );
     }
     const listed = found.slice(0, 5).map((shape) => describeShape(ctx, shape));
     throw new OpError(
@@ -252,11 +269,14 @@ function resolveList(ctx: Context, refs: RefList): TLShape[] {
   }
   if ("text" in refs) {
     const found = byText(ctx, refs.text);
-    if (found.length === 0) throw new OpError(`No shape on this page has the text ${quote(refs.text)}.`);
+    if (found.length === 0)
+      throw new OpError(`No shape on this page has the text ${quote(refs.text)}.`);
     return found;
   }
   if ("created" in refs) {
-    const shapes = ctx.created.map((id) => ctx.doc.shape(id)).filter((shape) => shape !== undefined);
+    const shapes = ctx.created
+      .map((id) => ctx.doc.shape(id))
+      .filter((shape) => shape !== undefined);
     if (shapes.length === 0) throw new OpError("This run has made no shapes that still exist.");
     return shapes;
   }
@@ -273,26 +293,40 @@ function topIndex(ctx: Context, parentId: TLParentId): IndexKey {
 function newId(ctx: Context, key: string | undefined): TLShapeId {
   if (key === undefined) return createShapeId();
   const id = toShapeId(key);
-  if (ctx.doc.get(id) !== undefined) throw new OpError(`A shape with the id ${key} already exists; use a new id.`);
+  if (ctx.doc.get(id) !== undefined)
+    throw new OpError(`A shape with the id ${key} already exists; use a new id.`);
   return id;
 }
 
 const agentMeta = (ctx: Context) => ({
-  agent: { at: new Date(ctx.now).toISOString(), batchId: ctx.batchId, ...(ctx.runId === undefined ? {} : { runId: ctx.runId }) },
+  agent: {
+    at: new Date(ctx.now).toISOString(),
+    batchId: ctx.batchId,
+    ...(ctx.runId === undefined ? {} : { runId: ctx.runId }),
+  },
 });
 
 function edited(ctx: Context, shape: TLShape, changes: Partial<TLShape>): TLShape {
   return {
     ...shape,
     ...changes,
-    meta: { ...shape.meta, agentEdit: { at: new Date(ctx.now).toISOString(), batchId: ctx.batchId } },
+    meta: {
+      ...shape.meta,
+      agentEdit: { at: new Date(ctx.now).toISOString(), batchId: ctx.batchId },
+    },
   } as TLShape;
 }
 
 // --- add -------------------------------------------------------------------
 
 type Spec = {
-  build: (base: { id: TLShapeId; index: IndexKey; parentId: TLParentId; x: number; y: number }) => TLShape;
+  build: (base: {
+    id: TLShapeId;
+    index: IndexKey;
+    parentId: TLParentId;
+    x: number;
+    y: number;
+  }) => TLShape;
   h: number;
   noun: string;
   w: number;
@@ -318,7 +352,10 @@ function addSpec(op: Extract<Op, { op: "add" }>): Spec {
     const measured = textShapeSize(richText, { autoSize: !fixed, font, size, w: op.w ?? 0 });
     return {
       build: (base) =>
-        textRecord({ ...base, meta: {} }, { autoSize: !fixed, color, font, richText, size, w: measured.w }),
+        textRecord(
+          { ...base, meta: {} },
+          { autoSize: !fixed, color, font, richText, size, w: measured.w },
+        ),
       h: measured.h,
       noun: "label",
       w: measured.w,
@@ -330,14 +367,22 @@ function addSpec(op: Extract<Op, { op: "add" }>): Spec {
       build: (base) =>
         noteRecord(
           { ...base, meta: {} },
-          { color: op.color ?? "black", font, fontSizeAdjustment: sizing.fontSizeAdjustment, growY: sizing.growY, richText, size },
+          {
+            color: op.color ?? "black",
+            font,
+            fontSizeAdjustment: sizing.fontSizeAdjustment,
+            growY: sizing.growY,
+            richText,
+            size,
+          },
         ),
       h: 200 + sizing.growY,
       noun: "note",
       w: 200,
     };
   }
-  const geo = kind === "ellipse" ? "ellipse" : kind === "shape" ? (op.geo ?? "rectangle") : "rectangle";
+  const geo =
+    kind === "ellipse" ? "ellipse" : kind === "shape" ? (op.geo ?? "rectangle") : "rectangle";
   const fitted = fitBox(richText, font, size, geo === "ellipse");
   const w = op.w ?? fitted.w;
   const h = op.h ?? fitted.h;
@@ -346,7 +391,18 @@ function addSpec(op: Extract<Op, { op: "add" }>): Spec {
     build: (base) =>
       geoRecord(
         { ...base, meta: {} },
-        { color, dash: op.dash ?? "draw", fill: op.fill ?? "none", font, geo, growY, h, richText, size, w },
+        {
+          color,
+          dash: op.dash ?? "draw",
+          fill: op.fill ?? "none",
+          font,
+          geo,
+          growY,
+          h,
+          richText,
+          size,
+          w,
+        },
       ),
     h: h + growY,
     noun: geo === "rectangle" ? "box" : geo,
@@ -359,7 +415,13 @@ type Placed = { adjusted?: string; parentId: TLParentId; x: number; y: number };
 function placeNew(
   ctx: Context,
   size: { h: number; w: number },
-  where: { align?: "center" | "end" | "start"; at?: Vec; gap?: number; relation?: Relation; target?: Ref },
+  where: {
+    align?: "center" | "end" | "start";
+    at?: Vec;
+    gap?: number;
+    relation?: Relation;
+    target?: Ref;
+  },
 ): Placed {
   if (where.at !== undefined) return { parentId: ctx.page.id, ...where.at };
   let target: TLShape | undefined;
@@ -405,7 +467,13 @@ const add: Handler<"add"> = (ctx, op) => {
   const spec = addSpec(op);
   const id = newId(ctx, op.id);
   const placed = placeNew(ctx, spec, op);
-  const shape = spec.build({ id, index: topIndex(ctx, placed.parentId), parentId: placed.parentId, x: round(placed.x), y: round(placed.y) });
+  const shape = spec.build({
+    id,
+    index: topIndex(ctx, placed.parentId),
+    parentId: placed.parentId,
+    x: round(placed.x),
+    y: round(placed.y),
+  });
   ctx.doc.put({ ...shape, meta: agentMeta(ctx) } as TLShape);
   ctx.created.push(id);
   const box = pageBounds(ctx.doc, ctx.doc.shape(id)!);
@@ -423,7 +491,8 @@ type End = { point: Vec; shape?: TLShape };
 function endOf(ctx: Context, end: TargetOrPoint): End {
   if (typeof end === "object" && "point" in end) return { point: end.point };
   const shape = resolve(ctx, end);
-  if (shape.type === "arrow") throw new OpError(`${fromShapeId(shape.id)} is an arrow; arrows join shapes, not arrows.`);
+  if (shape.type === "arrow")
+    throw new OpError(`${fromShapeId(shape.id)} is an arrow; arrows join shapes, not arrows.`);
   return { point: center(pageBounds(ctx.doc, shape)), shape };
 }
 
@@ -435,14 +504,17 @@ function arrowIndex(ctx: Context, parentId: TLParentId, joined: TLShape[]): Inde
   const nearest = joined
     .map((shape) => {
       let current: TLShape | undefined = shape;
-      while (current !== undefined && current.parentId !== parentId) current = ctx.doc.shape(current.parentId);
+      while (current !== undefined && current.parentId !== parentId)
+        current = ctx.doc.shape(current.parentId);
       return current;
     })
     .filter((shape) => shape !== undefined);
   if (nearest.length === 0) return topIndex(ctx, parentId);
   const highest = nearest.reduce((a, b) => (a.index > b.index ? a : b));
   const above = siblings.filter((sibling) => sibling.index > highest.index);
-  return above.length === 0 ? getIndexAbove(highest.index) : getIndexBetween(highest.index, above[0]!.index);
+  return above.length === 0
+    ? getIndexAbove(highest.index)
+    : getIndexBetween(highest.index, above[0]!.index);
 }
 
 function commonParent(ctx: Context, shapes: TLShape[]): TLParentId {
@@ -455,10 +527,19 @@ function commonParent(ctx: Context, shapes: TLShape[]): TLParentId {
 
 function connectArrow(
   ctx: Context,
-  { color, dash, from, id: key, text, to }: { color?: string; dash?: string; from: End; id?: string; text?: string; to: End },
+  {
+    color,
+    dash,
+    from,
+    id: key,
+    text,
+    to,
+  }: { color?: string; dash?: string; from: End; id?: string; text?: string; to: End },
 ): { id: TLShapeId; replaced: boolean } {
   if (from.shape !== undefined && from.shape.id === to.shape?.id) {
-    throw new OpError("An arrow needs two different ends; this one starts and ends on the same shape.");
+    throw new OpError(
+      "An arrow needs two different ends; this one starts and ends on the same shape.",
+    );
   }
   let id: TLShapeId;
   let replaced = false;
@@ -469,7 +550,8 @@ function connectArrow(
     }
     id = existing.id as TLShapeId;
     replaced = true;
-    for (const binding of ctx.doc.bindingsOf(id)) if (binding.fromId === id) ctx.doc.remove(binding.id);
+    for (const binding of ctx.doc.bindingsOf(id))
+      if (binding.fromId === id) ctx.doc.remove(binding.id);
   } else {
     id = newId(ctx, key);
   }
@@ -479,7 +561,14 @@ function connectArrow(
   const origin = apply(toLocal, from.point);
   const tip = apply(toLocal, to.point);
   const arrow = arrowRecord(
-    { id, index: replaced ? (existing as TLShape).index : arrowIndex(ctx, parentId, joined), meta: agentMeta(ctx), parentId, x: round(origin.x), y: round(origin.y) },
+    {
+      id,
+      index: replaced ? (existing as TLShape).index : arrowIndex(ctx, parentId, joined),
+      meta: agentMeta(ctx),
+      parentId,
+      x: round(origin.x),
+      y: round(origin.y),
+    },
     {
       color: color ?? "black",
       dash: dash ?? "draw",
@@ -497,7 +586,9 @@ function connectArrow(
 }
 
 const endName = (ctx: Context, end: End) =>
-  end.shape === undefined ? `(${Math.round(end.point.x)}, ${Math.round(end.point.y)})` : fromShapeId(end.shape.id);
+  end.shape === undefined
+    ? `(${Math.round(end.point.x)}, ${Math.round(end.point.y)})`
+    : fromShapeId(end.shape.id);
 
 const connect: Handler<"connect"> = (ctx, op) => {
   const from = endOf(ctx, op.from);
@@ -511,7 +602,12 @@ const connect: Handler<"connect"> = (ctx, op) => {
 
 // --- rename ------------------------------------------------------------------
 
-function retext(ctx: Context, shape: TLShape, text: string, fit?: "shrink_text" | "widen"): { adjusted?: string; shape: TLShape } {
+function retext(
+  ctx: Context,
+  shape: TLShape,
+  text: string,
+  fit?: "shrink_text" | "widen",
+): { adjusted?: string; shape: TLShape } {
   const richText = toRichText(text);
   switch (shape.type) {
     case "geo": {
@@ -539,27 +635,57 @@ function retext(ctx: Context, shape: TLShape, text: string, fit?: "shrink_text" 
       const h = wasEmpty ? Math.max(geo.props.h, label.h) : geo.props.h;
       w = Math.max(w, label.w);
       const growY = label.h > h ? label.h - h : 0;
-      return { adjusted, shape: edited(ctx, shape, { props: { ...geo.props, growY, h, richText, size, w } } as Partial<TLShape>) };
+      return {
+        adjusted,
+        shape: edited(ctx, shape, {
+          props: { ...geo.props, growY, h, richText, size, w },
+        } as Partial<TLShape>),
+      };
     }
     case "note": {
       const note = shape as TLNoteShape;
-      const sizing = noteSizing(richText, { font: note.props.font as FontFamily, size: note.props.size as SizeStyle });
+      const sizing = noteSizing(richText, {
+        font: note.props.font as FontFamily,
+        size: note.props.size as SizeStyle,
+      });
       return {
         shape: edited(ctx, shape, {
-          props: { ...note.props, fontSizeAdjustment: sizing.fontSizeAdjustment, growY: sizing.growY, richText },
+          props: {
+            ...note.props,
+            fontSizeAdjustment: sizing.fontSizeAdjustment,
+            growY: sizing.growY,
+            richText,
+          },
         } as Partial<TLShape>),
       };
     }
     case "text": {
       const textShape = shape as TLTextShape;
-      const style = { font: textShape.props.font as FontFamily, size: textShape.props.size as SizeStyle };
-      const after = textShapeSize(richText, { ...style, autoSize: textShape.props.autoSize, w: textShape.props.w });
-      return { shape: edited(ctx, shape, { props: { ...textShape.props, richText, w: after.w } } as Partial<TLShape>) };
+      const style = {
+        font: textShape.props.font as FontFamily,
+        size: textShape.props.size as SizeStyle,
+      };
+      const after = textShapeSize(richText, {
+        ...style,
+        autoSize: textShape.props.autoSize,
+        w: textShape.props.w,
+      });
+      return {
+        shape: edited(ctx, shape, {
+          props: { ...textShape.props, richText, w: after.w },
+        } as Partial<TLShape>),
+      };
     }
     case "arrow":
-      return { shape: edited(ctx, shape, { props: { ...(shape as TLArrowShape).props, richText } } as Partial<TLShape>) };
+      return {
+        shape: edited(ctx, shape, {
+          props: { ...(shape as TLArrowShape).props, richText },
+        } as Partial<TLShape>),
+      };
     case "frame":
-      return { shape: edited(ctx, shape, { props: { ...shape.props, name: text } } as Partial<TLShape>) };
+      return {
+        shape: edited(ctx, shape, { props: { ...shape.props, name: text } } as Partial<TLShape>),
+      };
     default:
       throw new OpError(`${fromShapeId(shape.id)} is a ${shape.type}, which holds no text.`);
   }
@@ -594,28 +720,47 @@ const label: Handler<"label"> = (ctx, op) => {
   let placed: Placed;
   let target: TLShape | undefined;
   if (typeof op.target === "object" && "point" in op.target) {
-    placed = { parentId: ctx.page.id, x: op.target.point.x - dims.w / 2, y: op.target.point.y - dims.h / 2 };
+    placed = {
+      parentId: ctx.page.id,
+      x: op.target.point.x - dims.w / 2,
+      y: op.target.point.y - dims.h / 2,
+    };
   } else {
     target = resolve(ctx, op.target);
     const gap = op.gap ?? LABEL_GAP;
     const box = pageBounds(ctx.doc, target);
     const blockers = obstacles(ctx.doc, ctx.page.id, excludeFor(ctx.doc, [target]));
-    const sides = op.side === undefined || op.side === "auto" ? (["right", "below", "left", "above"] as const) : [op.side];
+    const sides =
+      op.side === undefined || op.side === "auto"
+        ? (["right", "below", "left", "above"] as const)
+        : [op.side];
     const options = sides.map((side) => {
       const relation = SIDES[side];
       const ideal = idealSpot(box, dims, { gap, relation });
       const spot = clearSpot(ideal, dims, blockers, relation, box);
       return { ideal, moved: Math.hypot(spot.x - ideal.x, spot.y - ideal.y), side, spot };
     });
-    const best = options.find((option) => option.moved < 0.5) ?? options.reduce((a, b) => (a.moved <= b.moved ? a : b));
+    const best =
+      options.find((option) => option.moved < 0.5) ??
+      options.reduce((a, b) => (a.moved <= b.moved ? a : b));
     placed = {
-      adjusted: best.moved > 0.5 ? `placed ${Math.round(best.moved)} px off the ${best.side} side to keep clear of other shapes` : undefined,
+      adjusted:
+        best.moved > 0.5
+          ? `placed ${Math.round(best.moved)} px off the ${best.side} side to keep clear of other shapes`
+          : undefined,
       parentId: ctx.page.id,
       ...best.spot,
     };
   }
   const shape = textRecord(
-    { id, index: topIndex(ctx, placed.parentId), meta: agentMeta(ctx), parentId: placed.parentId, x: round(placed.x), y: round(placed.y) },
+    {
+      id,
+      index: topIndex(ctx, placed.parentId),
+      meta: agentMeta(ctx),
+      parentId: placed.parentId,
+      x: round(placed.x),
+      y: round(placed.y),
+    },
     { autoSize: true, color: op.color ?? "black", font: "draw", richText, size, w: dims.w },
   );
   ctx.doc.put(shape);
@@ -648,7 +793,14 @@ const remove: Handler<"remove"> = (ctx, op) => {
         // An arrow that outlives the shape it pointed at stays where it was.
         const { point } = terminalOnPage(ctx.doc, arrow, binding.props.terminal, binding);
         const local = apply(pageToLocal(ctx.doc, arrow), point);
-        ctx.doc.put(edited(ctx, arrow, { props: { ...arrow.props, [binding.props.terminal]: { x: round(local.x), y: round(local.y) } } } as Partial<TLShape>));
+        ctx.doc.put(
+          edited(ctx, arrow, {
+            props: {
+              ...arrow.props,
+              [binding.props.terminal]: { x: round(local.x), y: round(local.y) },
+            },
+          } as Partial<TLShape>),
+        );
         freed++;
       }
       ctx.doc.remove(binding.id);
@@ -656,16 +808,18 @@ const remove: Handler<"remove"> = (ctx, op) => {
   }
   for (const id of doomed) ctx.doc.remove(id);
   return {
-    message: `Removed ${doomed.size} shape${doomed.size === 1 ? "" : "s"}${freed > 0 ? `; ${freed} arrow end${freed === 1 ? "" : "s"} now point${freed === 1 ? "s" : ""} at where ${freed === 1 ? "it" : "they"} were` : ""}.`,
+    message: `Removed ${doomed.size} shape${doomed.size === 1 ? "" : "s"}${freed > 0 ? `; ${freed} arrow end${freed === 1 ? " stays" : "s stay"} where the removed shape was` : ""}.`,
     shapeIds: [...doomed].map(fromShapeId),
   };
 };
 
 // --- not yet -----------------------------------------------------------------
 
-const later = <K extends Op["op"]>(name: K): Handler<K> => () => {
-  throw new OpError(`${name} is not supported by this board yet; nothing was changed.`);
-};
+const later =
+  <K extends Op["op"]>(name: K): Handler<K> =>
+  () => {
+    throw new OpError(`${name} is not supported by this board yet; nothing was changed.`);
+  };
 
 const HANDLERS: { [K in Op["op"]]: Handler<K> } = {
   add,
@@ -680,4 +834,3 @@ const HANDLERS: { [K in Op["op"]]: Handler<K> } = {
   restyle: later("restyle"),
   untangle: later("untangle"),
 };
-

@@ -142,7 +142,11 @@ export function noteRecord(
 
 export function textRecord(
   base: Base,
-  p: Pick<Style, "color" | "font" | "size"> & { autoSize: boolean; richText: TLRichText; w: number },
+  p: Pick<Style, "color" | "font" | "size"> & {
+    autoSize: boolean;
+    richText: TLRichText;
+    w: number;
+  },
 ): TLShape {
   return {
     ...shapeBase(base),
