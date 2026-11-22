@@ -1,8 +1,10 @@
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
+import type { BoardRoom } from "../src/board-room";
 import type { Roll } from "../src/dice";
 
-import { rollDie } from "../src/dice";
+import { addSeedColumn, rollDie } from "../src/dice";
 import { call, pass, roll, seat, until } from "./support";
 
 describe("rolling", () => {
@@ -36,6 +38,56 @@ describe("rolling", () => {
     expect(response.status).toBe(400);
     const log = await call("/rooms/bad/rolls", await pass({ board: "bad" }));
     expect(await log.json()).toEqual([]);
+  });
+
+  it("gives each roll its own unsigned 32-bit seed", async () => {
+    const seeds: unknown[] = [];
+    for (let person = 0; person < 6; person++) {
+      const response = await roll(
+        "seeds",
+        await pass({ board: "seeds", sub: `u:${person}` }),
+        [20],
+      );
+      seeds.push(((await response.json()) as Roll).seed);
+    }
+    for (const seed of seeds) {
+      expect(Number.isInteger(seed) && (seed as number) >= 0 && (seed as number) < 2 ** 32).toBe(
+        true,
+      );
+    }
+    expect(new Set(seeds).size).toBeGreaterThan(1);
+  });
+
+  it("still loads the log of a room from before seeds, with null seeds", async () => {
+    const board = "before-seeds";
+    const token = await pass({ board });
+    await roll(board, token, [6]);
+    const namespace = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> })
+      .BoardRoom;
+    const room = namespace.get(namespace.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      const { sql } = state.storage;
+      sql.exec("DELETE FROM rolls");
+      sql.exec("ALTER TABLE rolls DROP COLUMN seed");
+      sql.exec(
+        "INSERT INTO rolls (at, sub, name, dice) VALUES (1, 'u:9', 'Old', '[{\"sides\":6,\"value\":4}]')",
+      );
+      addSeedColumn(sql);
+      addSeedColumn(sql);
+    });
+    const log = await call(`/rooms/${board}/rolls`, token);
+    expect(await log.json()).toEqual([
+      {
+        at: 1,
+        dice: [{ sides: 6, value: 4 }],
+        id: expect.any(Number),
+        name: "Old",
+        seed: null,
+        sub: "u:9",
+      },
+    ]);
+    const next = await roll(board, await pass({ board, sub: "u:2" }), [8]);
+    expect(((await next.json()) as Roll).seed).toEqual(expect.any(Number));
   });
 
   it("refuses a second roll from the same person in the same instant", async () => {
