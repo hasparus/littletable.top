@@ -24,7 +24,7 @@ export type Roll = {
 
 export type Answer =
   | { bootstrap: Bootstrap; kind: "ready" }
-  | { kind: "failed" | "gone" | "throttled" }
+  | { kind: "failed" | "gone" | "link-reset" | "throttled" }
   | { kind: "name-invalid" | "name-required" };
 
 // The pass endpoint for this board.
@@ -51,6 +51,7 @@ export async function knock(door: Door, name?: string): Promise<Answer> {
   if (response.status === 429) return { kind: "throttled" };
   const body: unknown = await response.json().catch(() => null);
   const refusal = body as { error?: string } | null;
+  if (response.status === 403 && refusal?.error === "link-reset") return { kind: "link-reset" };
   if (
     response.status === 422 &&
     (refusal?.error === "name-required" || refusal?.error === "name-invalid")
@@ -121,7 +122,9 @@ export class PassKeeper {
         // NOTE: a person the host no longer lets in (board deleted, or a guest
         // put out by a link reset) gets 404 or a name request back.
         if (answer.kind === "gone") this.end("gone");
-        else if (answer.kind === "name-required") this.end("link-reset");
+        else if (answer.kind === "name-required" || answer.kind === "link-reset") {
+          this.end("link-reset");
+        }
         throw new Error(`board: pass renewal ${answer.kind}`);
       })
       .finally(() => {

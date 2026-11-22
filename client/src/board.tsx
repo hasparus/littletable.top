@@ -60,8 +60,8 @@ function Board({ copy, door, fallbackExit, first, language, licenseKey }: Mount)
       } else if (answer.kind === "name-required" || answer.kind === "name-invalid") {
         const error = answer.kind === "name-invalid" ? copy.nameInvalid : null;
         setStage({ error, kind: "name" });
-      } else if (answer.kind === "gone") {
-        setStage({ ending: "gone", exit: fallbackExit, kind: "ended" });
+      } else if (answer.kind === "gone" || answer.kind === "link-reset") {
+        setStage({ ending: answer.kind, exit: fallbackExit, kind: "ended" });
       } else {
         const text = answer.kind === "throttled" ? copy.tooManyTries : copy.bootstrapFailed;
         setStage({ kind: "failed", text });

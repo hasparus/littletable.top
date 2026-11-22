@@ -134,13 +134,11 @@ describe("the board's other names", () => {
   const withRoot = (rootDomain: string, url: string) =>
     handle(new Request(url, { redirect: "manual" }), {
       ...(env as unknown as Env),
-      ALIAS_HOSTS: ["vtt", "tabletop", "tablica"]
-        .map((label) => `${label}.${rootDomain}`)
-        .join(","),
+      ALIAS_HOSTS: ["vtt", "tabletop", "table"].map((label) => `${label}.${rootDomain}`).join(","),
       PRIMARY_HOST: `board.${rootDomain}`,
     });
 
-  it.each(["vtt", "tabletop", "tablica"])(
+  it.each(["vtt", "tabletop", "table"])(
     "%s moves to the board's own host, path and query kept",
     async (label) => {
       const response = await withRoot(

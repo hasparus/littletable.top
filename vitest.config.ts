@@ -26,4 +26,6 @@ export default defineConfig({
       wrangler: { configPath: "./wrangler.json" },
     }),
   ],
+  // e2e/ holds Playwright's specs, which run in Node, not workerd.
+  test: { include: ["test/**/*.test.ts"] },
 });
