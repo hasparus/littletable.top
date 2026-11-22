@@ -4,11 +4,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// The dev pair the app signs passes with on laptops; Parley commits it.
-const devSigningKey = readFileSync(
-  new URL("../parley/dev-signing-key.pem", import.meta.url),
-  "utf8",
-);
+// The committed dev pair, which signs passes on laptops and in the tests.
+const devSigningKey = readFileSync(new URL("dev/dev-signing-key.pem", import.meta.url), "utf8");
 
 export default defineConfig({
   plugins: [

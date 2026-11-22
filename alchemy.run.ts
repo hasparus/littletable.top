@@ -41,7 +41,7 @@ const observability = {
 // dev pair's private half is public, so a Worker that trusts its public half
 // would accept passes anyone can sign.
 const devPublicKey = createPublicKey(
-  readFileSync(new URL("../parley/dev-signing-key.pem", import.meta.url), "utf8"),
+  readFileSync(new URL("./dev/dev-signing-key.pem", import.meta.url), "utf8"),
 ).export({ format: "der", type: "spki" });
 
 function refuseDevKey(pem: string): string {
