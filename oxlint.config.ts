@@ -8,6 +8,11 @@ export default defineConfig({
   extends: [baseConfig, { options: { typeAware: false } }],
   ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report"],
   overrides: [
+    // The Worker logs one JSON line per event to the console, which is what
+    // Workers Logs collects; its entry module's default export is the
+    // Workers module format.
+    { files: ["src/**/*.ts"], rules: { "no-console": "off" } },
+    { files: ["src/index.ts"], rules: { "import/no-default-export": "off" } },
     {
       files: ["client/src/**/*.ts"],
       rules: {

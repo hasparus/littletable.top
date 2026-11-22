@@ -26,18 +26,18 @@ export type Exit = { href: string; label: string };
 type Mount = {
   copy: Copy;
   door: Door;
-  // Where a person goes before Django has said whose board this is.
+  // Where a person goes before the host has said whose board this is.
   fallbackExit: Exit;
   first: Promise<Answer>;
   language: string;
   licenseKey: string;
 };
 
-// Where a person goes from the board: "My boards" on its sphere for a
-// member, the sphere itself for a guest.
-function exitOf(copy: Copy, { boardsUrl, sphere }: Bootstrap): Exit {
+// Where a person goes from the board: their boards for a member, the place
+// the board belongs to for a guest.
+function exitOf(copy: Copy, { boardsUrl, home }: Bootstrap): Exit {
   return boardsUrl === null
-    ? { href: sphere.url, label: fill(copy.backTo, { sphere: sphere.name }) }
+    ? { href: home.url, label: fill(copy.backTo, { home: home.name }) }
     : { href: boardsUrl, label: copy.myBoards };
 }
 

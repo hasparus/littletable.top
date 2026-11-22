@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PassKeeper, Roll } from "./bootstrap";
 
-// The Worker keeps the latest 50 (workers/board/src/limits.ts).
+// The Worker keeps the latest 50 (src/limits.ts).
 const LOG_LENGTH = 50;
 
 export type RollRefusal = "failed" | "too-fast";

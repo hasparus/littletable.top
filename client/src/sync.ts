@@ -32,7 +32,7 @@ export function colorFor(id: string): string {
 export type Refusal = "full" | "gone" | "link-reset";
 
 // The Worker accepts a socket it must turn away and closes it at once with
-// tldraw's final close code and one of these reasons (workers/board README,
+// tldraw's final close code and one of these reasons (README,
 // "Refusals").
 const REFUSALS: Partial<Record<string, Refusal>> = {
   [TLSyncErrorCloseEventReason.FORBIDDEN]: "link-reset",

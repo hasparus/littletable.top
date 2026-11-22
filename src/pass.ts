@@ -2,13 +2,15 @@ import { importSPKI, jwtVerify } from "jose";
 
 import { MAX_NAME_LENGTH } from "./limits";
 
-export type PassEnv = {
-  BOARD_PUBLIC_KEY: string;
-  JWT_AUDIENCE: string;
-  JWT_ISSUER: string;
+// Who may vouch for a pass: one key, one issuer, one audience. Hosted mode
+// trusts the host's public key; standalone mode the Worker's own.
+export type Verifier = {
+  audience: string;
+  issuer: string;
+  key: CryptoKey;
 };
 
-// What the app vouches for: this person may be on this board while the
+// What the issuer vouches for: this person may be on this board while the
 // board's link is at this version.
 export type Pass = {
   board: string;
@@ -18,12 +20,22 @@ export type Pass = {
   sub: string;
 };
 
-export async function verifyPass(token: string, env: PassEnv): Promise<Pass> {
-  const publicKey = await importSPKI(env.BOARD_PUBLIC_KEY.replaceAll("\\n", "\n"), "RS256");
-  const { payload } = await jwtVerify(token, publicKey, {
+const imported = new Map<string, Promise<CryptoKey>>();
+
+export function publicKeyFrom(pem: string): Promise<CryptoKey> {
+  let key = imported.get(pem);
+  if (key === undefined) {
+    key = importSPKI(pem, "RS256");
+    imported.set(pem, key);
+  }
+  return key;
+}
+
+export async function verifyPass(token: string, verifier: Verifier): Promise<Pass> {
+  const { payload } = await jwtVerify(token, verifier.key, {
     algorithms: ["RS256"],
-    audience: env.JWT_AUDIENCE,
-    issuer: env.JWT_ISSUER,
+    audience: verifier.audience,
+    issuer: verifier.issuer,
     requiredClaims: ["exp", "iat", "sub"],
   });
   const { board, link, name, owner, sub } = payload;
@@ -42,16 +54,13 @@ export async function verifyPass(token: string, env: PassEnv): Promise<Pass> {
   return { board, link: link as number, name, owner, sub };
 }
 
-export const DELETION_AUDIENCE = "board-deletion";
-
 // NOTE: its own audience keeps the two kinds apart: a pass cannot delete a
 // board, and a deletion token cannot open a socket or roll.
-export async function verifyDeletion(token: string, env: PassEnv): Promise<string> {
-  const publicKey = await importSPKI(env.BOARD_PUBLIC_KEY.replaceAll("\\n", "\n"), "RS256");
-  const { payload } = await jwtVerify(token, publicKey, {
+export async function verifyDeletion(token: string, verifier: Verifier): Promise<string> {
+  const { payload } = await jwtVerify(token, verifier.key, {
     algorithms: ["RS256"],
-    audience: DELETION_AUDIENCE,
-    issuer: env.JWT_ISSUER,
+    audience: verifier.audience,
+    issuer: verifier.issuer,
     requiredClaims: ["exp"],
   });
   if (typeof payload.board !== "string") throw new Error("Invalid deletion token");

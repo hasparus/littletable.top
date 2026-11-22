@@ -12,7 +12,7 @@ describe("a pass", () => {
 
   it.each([
     ["for another board", () => pass({ board: "b2" })],
-    ["for Parley", () => pass({ audience: "parley" })],
+    ["for another service", () => pass({ audience: "chat" })],
     ["that expired", () => pass({ issuedAt: now() - 3_600 })],
     ["that is not a token", async () => "nonsense"],
   ])("%s is refused", async (_label, token) => {

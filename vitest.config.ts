@@ -17,7 +17,7 @@ export default defineConfig({
           directory: fileURLToPath(new URL("test/assets", import.meta.url)),
         },
         bindings: {
-          BOARD_PUBLIC_KEY: createPublicKey(devSigningKey)
+          ISSUER_PUBLIC_KEY: createPublicKey(devSigningKey)
             .export({ format: "pem", type: "spki" })
             .toString(),
           TEST_SIGNING_KEY: devSigningKey,

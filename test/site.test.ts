@@ -1,10 +1,10 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
-import board from "../src/index";
+import { type Env, handle } from "../src/index";
 
 const worker = (exports as unknown as { default: { fetch: typeof fetch } }).default;
-const testEnv = env as unknown as { ROOT_DOMAIN: string };
+const testEnv = env as unknown as { PRIMARY_HOST?: string };
 
 const get = (url: string, init: RequestInit = {}) =>
   worker.fetch(new Request(url, { redirect: "manual", ...init }));
@@ -89,10 +89,19 @@ describe("the board shell", () => {
     expect(response.status).toBe(405);
   });
 
-  it("sends a person at the bare name to their boards on the app", async () => {
+  it("sends a person at the bare name to the host", async () => {
     const response = await get("https://board.test/");
 
     expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("http://localhost:8000/");
+  });
+
+  it("sends them to the host's own page for it when one is configured", async () => {
+    const response = await handle(new Request("https://board.test/", { redirect: "manual" }), {
+      ...(env as unknown as Env),
+      HOME_URL: "http://localhost:8000/boards/",
+    });
+
     expect(response.headers.get("Location")).toBe("http://localhost:8000/boards/");
   });
 });
@@ -121,11 +130,14 @@ describe("the built files", () => {
 });
 
 describe("the board's other names", () => {
-  // The module's own handler, called with an env whose root domain is set.
+  // The module's own handler, called with an env that names its hosts.
   const withRoot = (rootDomain: string, url: string) =>
-    board.fetch(new Request(url, { redirect: "manual" }), {
-      ...(env as unknown as Parameters<typeof board.fetch>[1]),
-      ROOT_DOMAIN: rootDomain,
+    handle(new Request(url, { redirect: "manual" }), {
+      ...(env as unknown as Env),
+      ALIAS_HOSTS: ["vtt", "tabletop", "tablica"]
+        .map((label) => `${label}.${rootDomain}`)
+        .join(","),
+      PRIMARY_HOST: `board.${rootDomain}`,
     });
 
   it.each(["vtt", "tabletop", "tablica"])(
@@ -159,14 +171,14 @@ describe("the board's other names", () => {
   it("serves an unknown host as it is, as on a workers.dev preview", async () => {
     const response = await withRoot(
       "example.org",
-      "https://ludamus-board-pr-7.example.workers.dev/b/AbC123xyz789",
+      "https://tabletop-pr-7.example.workers.dev/b/AbC123xyz789",
     );
 
     expect(response.status).toBe(200);
   });
 
-  it("moves nothing without a root domain", async () => {
-    expect(testEnv.ROOT_DOMAIN).toBe("");
+  it("moves nothing without a primary host", async () => {
+    expect(testEnv.PRIMARY_HOST).toBeUndefined();
     const response = await get("https://vtt.example.org/b/AbC123xyz789");
 
     expect(response.status).toBe(200);

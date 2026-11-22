@@ -1,5 +1,4 @@
-// Heroicons 20/solid ("mini"), the set the templates' {% icon %} tag and
-// Parley draw from, plus one die face of our own.
+// Heroicons 20/solid ("mini"), plus one die face of our own.
 const paths = {
   Close: (
     <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ludamus-board",
+  "name": "tabletop",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-06",
   "compatibility_flags": ["nodejs_compat"],
@@ -26,12 +26,11 @@
     }
   },
   "vars": {
-    "JWT_ISSUER": "ludamus",
-    "JWT_AUDIENCE": "board",
-    "APP_ORIGIN": "http://localhost:8000",
-    "ROOT_DOMAIN": ""
+    "TABLETOP_MODE": "hosted",
+    "ISSUER": "dev-host",
+    "HOST_ORIGIN": "http://localhost:8000"
   },
   "secrets": {
-    "required": ["BOARD_PUBLIC_KEY"]
+    "required": ["ISSUER_PUBLIC_KEY"]
   }
 }

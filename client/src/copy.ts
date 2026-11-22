@@ -1,11 +1,13 @@
-// Every string the board shows, in English and Polish. The Polish follows the
-// site's glossary (src/ludamus/locale/CLAUDE.md): the board is "tablica", a
-// place is "miejsce", a die is "k6", and the copy stays gender-neutral.
+import type { Language } from "../settings";
+
+// Every string the board shows, in English and Polish. In Polish the board is
+// "tablica", a place is "miejsce", a die is "k6", and the copy stays
+// gender-neutral.
 // `%(name)s`-style placeholders are filled in by `fill`.
 const EN = {
   addDie: "Add %(die)s",
   addToPlaces: "Add to places",
-  backTo: "Back to %(sphere)s",
+  backTo: "Back to %(home)s",
   backToMain: "Back to the main page",
   boardFull: "This board is full. You will join as soon as someone leaves.",
   boardGone: "This board no longer exists.",
@@ -53,7 +55,7 @@ export type Copy = Record<keyof typeof EN, string>;
 const PL: Copy = {
   addDie: "Dodaj %(die)s",
   addToPlaces: "Dodaj do miejsc",
-  backTo: "Wróć na stronę %(sphere)s",
+  backTo: "Wróć na stronę %(home)s",
   backToMain: "Wróć na stronę główną",
   boardFull: "Tablica jest pełna. Dołączysz, gdy tylko ktoś wyjdzie.",
   boardGone: "Ta tablica już nie istnieje.",
@@ -62,8 +64,7 @@ const PL: Copy = {
   clearPool: "Wyczyść",
   close: "Zamknij",
   connectionLost: "Utracono połączenie. Łączymy ponownie…",
-  // NOTE: the site's catalog shared this msgid with Parley's single die
-  // ("Kość do gry"); the board's tray holds several, so it reads "Kości".
+  // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   die: "k%(sides)s",
   guest: "Gość",
@@ -97,8 +98,6 @@ const PL: Copy = {
   you: "ty",
   yourName: "Twoje imię",
 };
-
-export type Language = "en" | "pl";
 
 export const COPY: Record<Language, Copy> = { en: EN, pl: PL };
 

@@ -1,18 +1,19 @@
 export type Person = { id: string; name: string; owner: boolean };
 
-// What Django's pass endpoint answers (gates/web/django/whiteboard/views.py).
+// What the pass endpoint answers (README, "The host contract").
 export type Bootstrap = {
   // The board's id: its room is /rooms/<board> on this origin.
   board: string;
-  // "My boards" on the board's sphere, for a member; null for a guest.
+  // Where a member finds their boards; null for a guest.
   boardsUrl: string | null;
   pass: string;
   person: Person;
-  sphere: { name: string; url: string };
+  // The place on the host the board belongs to, where a guest leaves to.
+  home: { name: string; url: string };
   title: string;
 };
 
-// The roll as the Worker records it (workers/board/src/dice.ts).
+// The roll as the Worker records it (src/dice.ts).
 export type Roll = {
   at: number;
   dice: { sides: number; value: number }[];
@@ -26,12 +27,13 @@ export type Answer =
   | { kind: "failed" | "gone" | "throttled" }
   | { kind: "name-invalid" | "name-required" };
 
-// Django's pass endpoint for this board, on the app's own origin.
+// The pass endpoint for this board.
 export type Door = { bootstrapUrl: string };
 
-// NOTE: the request crosses origins with the session cookie, which the board
-// host and the app share as one site. Django answers only this origin, and
-// the JSON content type makes the browser ask it first (a CORS preflight).
+// NOTE: in hosted mode the request crosses origins with the host's session
+// cookie, which the two hosts share as one site. The host answers only this
+// origin, and the JSON content type makes the browser ask it first (a CORS
+// preflight).
 export async function knock(door: Door, name?: string): Promise<Answer> {
   let response: Response;
   try {
@@ -116,7 +118,7 @@ export class PassKeeper {
           this.issuedAt = Date.now();
           return answer.bootstrap;
         }
-        // NOTE: a person Django no longer lets in (board deleted, or a guest
+        // NOTE: a person the host no longer lets in (board deleted, or a guest
         // put out by a link reset) gets 404 or a name request back.
         if (answer.kind === "gone") this.end("gone");
         else if (answer.kind === "name-required") this.end("link-reset");

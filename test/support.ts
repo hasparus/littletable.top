@@ -8,6 +8,9 @@ const TLSYNC_PROTOCOL_VERSION = 8;
 
 const testEnv = env as unknown as { TEST_SIGNING_KEY: string };
 
+// wrangler.json's issuer, which a local hosted Worker trusts.
+const DEV_ISSUER = "dev-host";
+
 export const now = () => Math.floor(Date.now() / 1_000);
 
 type Claims = {
@@ -32,7 +35,7 @@ export async function pass({
   return new SignJWT({ board, link, name, owner, sub })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
-    .setIssuer("ludamus")
+    .setIssuer(DEV_ISSUER)
     .setIssuedAt(issuedAt)
     .setExpirationTime(issuedAt + 300)
     .sign(await importPKCS8(testEnv.TEST_SIGNING_KEY, "RS256"));
@@ -48,7 +51,7 @@ export async function deletion({
   return new SignJWT({ board })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
-    .setIssuer("ludamus")
+    .setIssuer(DEV_ISSUER)
     .setExpirationTime(issuedAt + 300)
     .sign(await importPKCS8(testEnv.TEST_SIGNING_KEY, "RS256"));
 }

@@ -9,7 +9,7 @@ import { Icon } from "./icons";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-// The Worker's limits (workers/board/src/limits.ts).
+// The Worker's limits (src/limits.ts).
 export const DIE_SIDES = [4, 6, 8, 10, 12, 20, 100] as const;
 const MAX_DICE = 20;
 

@@ -30,7 +30,7 @@
     "deploy:prod": "alchemy deploy --stage prod",
     "plan:staging": "alchemy plan --stage staging",
     "deploy:staging": "alchemy deploy --stage staging",
-    "lint": "oxlint -c oxlint.config.ts --max-warnings 0 client",
+    "lint": "oxlint -c oxlint.config.ts --max-warnings 0 client src alchemy",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test": "vitest run",

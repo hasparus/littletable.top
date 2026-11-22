@@ -7,14 +7,14 @@ import {
 } from "@tldraw/sync-core";
 import { DurableObject } from "cloudflare:workers";
 
-import type { Pass, PassEnv } from "./pass";
+import type { Pass } from "./pass";
 
-import { rollDie, type Roll } from "./dice";
+import { type Roll, rollDie } from "./dice";
 import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 
-export type Env = PassEnv & { BoardRoom: DurableObjectNamespace<BoardRoom> };
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom> };
 
-export type Refusal = "link-reset" | "full" | "too-fast";
+export type Refusal = "full" | "link-reset" | "too-fast";
 
 // NOTE: the tldraw client reads close code 4099 as final and hands the
 // reason to useSync as a TLRemoteSyncError, instead of retrying.
@@ -47,7 +47,7 @@ export class BoardRoom extends DurableObject<Env> {
   // NOTE: deleteAll drops the tables and leaves the old room holding rows
   // that no longer exist, so deleting starts over from here.
   private open() {
-    const sql = this.ctx.storage.sql;
+    const { sql } = this.ctx.storage;
     sql.exec(
       "CREATE TABLE IF NOT EXISTS board (id INTEGER PRIMARY KEY CHECK (id = 1), link INTEGER NOT NULL)",
     );
