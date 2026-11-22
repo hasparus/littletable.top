@@ -10,7 +10,7 @@ import {
 
 // The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
 // and is checked here: two screens show different placements; the overlay
-// swallows taps meant for the board; the dice outlive their card; a logged
+// swallows taps meant for the board; the dice outlive their result strip; a logged
 // roll animates on load; reduced motion or a missing WebGL2 leaves someone
 // without their result; a lost context or a resize leaves a blank tray; the
 // page's Content-Security-Policy is broken by the dice code.
@@ -23,11 +23,12 @@ const HOST = "http://localhost:8000";
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
-// The result card; it joins the accessibility tree once the dice settle.
-const card = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
+// The result strip; it joins the accessibility tree once the dice settle.
+const strip = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
 
-// NOTE: without animations, so the card's entrance (its shadow reaches into
-// the tray) cannot make two shots of the same dice differ.
+// NOTE: without animations, so tldraw's top corner, which steps down into the
+// tray's box while the strip shows, cannot make two shots of the same dice
+// differ.
 const shoot = async (target: Locator): Promise<Buffer> =>
   target.screenshot({ animations: "disabled" });
 
@@ -75,7 +76,7 @@ async function roll(page: Page, pool: number[]): Promise<void> {
   await closeSheet(page, "Dice");
 }
 
-test("a roll lands the same on two screens and leaves with its card", async ({
+test("a roll lands the same on two screens and leaves with its strip", async ({
   browser,
   page,
 }, testInfo) => {
@@ -89,8 +90,8 @@ test("a roll lands the same on two screens and leaves with its card", async ({
     ["watcher", guest],
   ] as const) {
     await expect(diceCanvas(screen)).toBeVisible();
-    await expect(card(screen)).toBeVisible();
-    await expect(card(screen)).toContainText("Ada");
+    await expect(strip(screen)).toBeVisible();
+    await expect(strip(screen)).toContainText("Ada");
     // Only the dice: the board under them shows each person the other's cursor.
     await setVisibility(screen.locator(".tl-container"), "hidden");
     const shot = await shoot(tray(screen));
@@ -113,9 +114,9 @@ test("a roll lands the same on two screens and leaves with its card", async ({
   });
   expect(reachesBoard).toBe(true);
 
-  await card(page).click();
+  await strip(page).click();
   await expect(tray(page)).toHaveCount(0);
-  await expect(card(page)).toHaveCount(0);
+  await expect(strip(page)).toHaveCount(0);
 
   // The log does not throw again on load.
   await page.reload();
@@ -124,11 +125,35 @@ test("a roll lands the same on two screens and leaves with its card", async ({
   await expect(log.getByRole("listitem")).toHaveCount(1);
   await closeSheet(page, "Dice");
   await expect(tray(page)).toHaveCount(0);
-  await expect(card(page)).toHaveCount(0);
+  await expect(strip(page)).toHaveCount(0);
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);
   await guest.context().close();
+});
+
+test("the strip spans the top of a phone, above tldraw's menu, on one line", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 360 });
+  await startBoard(page);
+  const menu = page.getByTestId("main-menu.button");
+  const atRest = (await menu.boundingBox())!;
+  await roll(page, [20, 20, 20, 20, 6, 6, 6, 6, 8, 8, 8, 8, 10, 10, 12, 12, 4, 4, 100, 100]);
+  await expect(strip(page)).toBeVisible();
+
+  // Once its entrance is over.
+  await expect.poll(async () => (await strip(page).boundingBox())!.y).toBe(0);
+  const box = (await strip(page).boundingBox())!;
+  expect(box).toMatchObject({ width: 360, x: 0 });
+  expect(box.height).toBeLessThan(40);
+  await expect.poll(async () => (await menu.boundingBox())!.y).toBeGreaterThanOrEqual(box.height);
+  const rows = await strip(page)
+    .getByRole("img")
+    .evaluateAll((dice) => new Set(dice.map((die) => die.getBoundingClientRect().top)).size);
+  expect(rows).toBe(1);
+
+  await strip(page).click();
+  await expect(strip(page)).toHaveCount(0);
+  await expect.poll(async () => (await menu.boundingBox())!.y).toBe(atRest.y);
 });
 
 test("a new roll takes the tray over from the one before", async ({ browser, page }) => {
@@ -139,13 +164,13 @@ test("a new roll takes the tray over from the one before", async ({ browser, pag
   await roll(page, [20, 20, 20]);
   await ready.getByRole("button", { name: /^Roll/u }).click();
 
-  await expect(card(page)).toContainText("Bea");
+  await expect(strip(page)).toContainText("Bea");
   await expect(diceCanvas(page)).toHaveCount(1);
   await expectNoCspViolations(page);
   await guest.context().close();
 });
 
-test("with reduced motion the card shows at once and no 3D code is fetched", async ({
+test("with reduced motion the strip shows at once and no 3D code is fetched", async ({
   browser,
   page,
 }) => {
@@ -157,14 +182,14 @@ test("with reduced motion the card shows at once and no 3D code is fetched", asy
   await guest.waitForTimeout(6000);
 
   await roll(page, [6, 6]);
-  await expect(card(guest)).toBeVisible();
-  await expect(card(guest)).toContainText("Ada");
+  await expect(strip(guest)).toBeVisible();
+  await expect(strip(guest)).toContainText("Ada");
   await expect(tray(guest)).toHaveCount(0);
   expect(fetched.filter((url) => url.includes("dice-scene"))).toEqual([]);
   await guest.context().close();
 });
 
-test("without WebGL2 the card carries the result, and says so once", async ({ browser, page }) => {
+test("without WebGL2 the strip carries the result, and says so once", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const context = await browser.newContext();
   await context.addInitScript(() => {
@@ -186,10 +211,10 @@ test("without WebGL2 the card carries the result, and says so once", async ({ br
   await joinAs(guest, "Bea");
 
   await roll(page, [20]);
-  await expect(card(guest)).toContainText("Ada");
-  await card(guest).click();
+  await expect(strip(guest)).toContainText("Ada");
+  await strip(guest).click();
   await roll(page, [8]);
-  await expect(card(guest)).toContainText("Ada");
+  await expect(strip(guest)).toContainText("Ada");
   await expect(tray(guest)).toHaveCount(0);
   expect(errors.filter((text) => text.includes("3D dice unavailable"))).toHaveLength(1);
   await context.close();
@@ -198,7 +223,7 @@ test("without WebGL2 the card carries the result, and says so once", async ({ br
 test("the tray comes back after a lost context and follows a resize", async ({ page }) => {
   await startBoard(page);
   await roll(page, [6, 20]);
-  await expect(card(page)).toBeVisible();
+  await expect(strip(page)).toBeVisible();
   const settled = await shoot(tray(page));
 
   await diceCanvas(page).evaluate(async (canvas: HTMLCanvasElement) => {

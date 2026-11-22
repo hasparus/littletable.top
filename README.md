@@ -287,12 +287,12 @@ frames.
 
 **The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
 renderer fits that rectangle, aspect kept, into the area between the result
-card and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),
+strip and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),
 so a die lands on the same spot of the tray on every screen, whatever its
 size.
 
 A device that asks for reduced motion never loads the 3D code and gets the
-result card at once; so does one without WebGL2, or after any error in the
+result strip at once; so does one without WebGL2, or after any error in the
 dice, which is logged once. Software rendering or a weak device gets a
 cheaper drawing of the same throw; `localStorage["tabletop.dice-tier"]` set
 to `low` or `full` forces one. The dice take `--brand-primary`; `LOOK` in

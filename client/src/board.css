@@ -2,3 +2,24 @@
    unlayered, it would beat every utility class placed on tldraw's parts
    (the toolbar's width, the board's controls inside it). */
 @import "tldraw/tldraw.css" layer(components);
+
+/* The dice result strip's row, below the top safe-area inset. While the
+   strip shows, tldraw's top corner (main menu, page menu) steps below it
+   instead of hiding under it. */
+:root {
+  --dice-strip: 2.25rem;
+}
+
+.tlui-layout__top {
+  transition: translate 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+body:has([data-dice-strip]) .tlui-layout__top {
+  translate: 0 calc(var(--dice-strip) + env(safe-area-inset-top) + 1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tlui-layout__top {
+    transition: none;
+  }
+}
