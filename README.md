@@ -24,15 +24,15 @@ beside it); tldraw is an ordinary npm dependency under its own licence.
 
 ## Layout
 
-| Path                      | What                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------ |
-| `src/`                    | The Worker: routes, configuration, passes, the `BoardRoom` room                      |
-| `client/`                 | The React client, its theme and icons; `client/settings.ts` holds its build settings |
-| `alchemy/`                | `Tabletop(...)`, the Alchemy helper a host deploys the tabletop with                 |
-| `alchemy.run.ts`          | This repository's own standalone deployment                                          |
-| `test/`                   | The Vitest suite, run in workerd by the Workers pool                                 |
-| `e2e/`                    | Playwright specs; `e2e/fake-host.ts` is a reference host                             |
-| `dev/dev-signing-key.pem` | A committed, throwaway key pair for laptops and tests; deploys refuse it             |
+| Path                      | What                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `src/`                    | The Worker: routes, configuration, passes, the `BoardRoom` room                       |
+| `client/`                 | The React client, its theme and icons; `client/settings.ts` holds its build settings  |
+| `alchemy/`                | `Tabletop(...)`, the Alchemy helper a host deploys the tabletop with                  |
+| `alchemy.run.ts`          | This repository's own standalone deployment                                           |
+| `test/`                   | The Vitest suite, run in workerd by the Workers pool                                  |
+| `e2e/`                    | Playwright specs; `e2e/fake-host.ts` is a reference host; `e2e/fixtures/` .tldr files |
+| `dev/dev-signing-key.pem` | A committed, throwaway key pair for laptops and tests; deploys refuse it              |
 
 ## The host contract (hosted mode)
 
@@ -131,7 +131,9 @@ A pass is an RS256 JWT the host signs for one person on one board:
 | `iat`, `exp` | Required. The reference host gives five minutes                |
 
 The pass travels in the request (`?pass=` on the socket, `Authorization:
-Bearer` elsewhere), never in a cookie. A pass with a higher `link` than the
+Bearer` elsewhere). The one exception is reading a board's images, which
+an `<img>` does with the pass in a cookie scoped to that board's files
+(see "Images"). A pass with a higher `link` than the
 board has seen moves the board on and closes every connection that came in
 with a lower one; a pass with a lower `link` is refused. A host resets a
 board's link by giving it a new share code and signing later passes with
@@ -142,20 +144,23 @@ and issuer, and the claims `board` and `exp`. The host sends it server to
 server: `POST /rooms/<board>/delete` with `Authorization: Bearer <token>`,
 answered 204, repeatable. A pass cannot delete, and a deletion token cannot
 open a socket or roll. Deleting closes the board's connections, then removes
-the tldraw document, the roll log and the link version; the same id starts
-again from link version 0.
+the tldraw document, the roll log, the link version and the board's images;
+the same id starts again from link version 0.
 
 ### Routes
 
-| Route                        | Does                                                      |
-| ---------------------------- | --------------------------------------------------------- |
-| `GET /b/<share code>`        | The client's shell                                        |
-| `GET /`                      | 302 to `HOME_URL`                                         |
-| `GET /<file>`                | The built client: scripts, styles, fonts, manifest, icons |
-| `GET /rooms/<board>/connect` | The tldraw sync socket (`?sessionId=&pass=`)              |
-| `POST /rooms/<board>/roll`   | Rolls `{"dice": [6, 6]}` for everyone                     |
-| `GET /rooms/<board>/rolls`   | The latest 50 rolls                                       |
-| `POST /rooms/<board>/delete` | Deletes the board's data (deletion token)                 |
+| Route                               | Does                                                      |
+| ----------------------------------- | --------------------------------------------------------- |
+| `GET /b/<share code>`               | The client's shell                                        |
+| `GET /`                             | 302 to `HOME_URL`                                         |
+| `GET /<file>`                       | The built client: scripts, styles, fonts, manifest, icons |
+| `GET /rooms/<board>/connect`        | The tldraw sync socket (`?sessionId=&pass=`)              |
+| `POST /rooms/<board>/roll`          | Rolls `{"dice": [6, 6]}` for everyone                     |
+| `GET /rooms/<board>/rolls`          | The latest 50 rolls                                       |
+| `POST /rooms/<board>/delete`        | Deletes the board's data (deletion token)                 |
+| `POST /rooms/<board>/files`         | Uploads an image (the bytes as the body); see "Images"    |
+| `POST /rooms/<board>/files/access`  | Sets the cookie the board's `<img>`s read images with     |
+| `GET /rooms/<board>/files/<sha256>` | An image of the board                                     |
 
 The rooms API is same-origin with the client and sends no CORS headers. The
 room draws every die (d4 d6 d8 d10 d12 d20 d100, up to 20 at once, one roll
@@ -176,8 +181,104 @@ A missing, invalid or wrong-board pass is a plain 403. `roll` and `rolls`
 answer 403 for a reset link and 429 for a roll that comes too fast.
 
 Every page and file leaves with the tabletop's Content-Security-Policy
-(`default-src 'none'`; scripts, styles and fonts from itself; the rooms
-socket; the host's origin) and the usual hardening headers.
+(`default-src 'none'`; scripts, styles, fonts and images from itself; the
+rooms socket; the host's origin) and the usual hardening headers.
+
+## Images
+
+A board's images live in one R2 bucket per deployment (`Files`; the Alchemy
+helper makes it, `wrangler.json` binds a local one), under
+`boards/<board>/<sha256>`. Both modes treat them the same way, behind the
+same pass that opens the board.
+
+- **Upload.** `POST /rooms/<board>/files` with `Authorization: Bearer
+<pass>` and the bytes as the body. The Worker reads the type from the
+  bytes, never from the name or the declared type: PNG (and APNG), JPEG,
+  WebP, GIF, AVIF and SVG. It hashes the bytes itself, so the same image is
+  stored once per board and sending it again answers the same address
+  (`201` the first time, `200` after; `{"src", "hash", "type", "bytes"}`).
+  The hash stays the image's name in the document, for anything that wants
+  to key on the content later.
+- **Refusals**, as `{"error"}`: `403` without a valid pass for this board
+  or after a link reset, `400` empty, `413` over 10 MiB, `415` not one of
+  those types, `429` a person's 61st upload in a minute, `507` the board's
+  256 MiB of images is full (each distinct image counted once). The limits
+  are in `src/limits.ts`. The board's Durable Object keeps the ledger
+  (what it stores, and each person's recent uploads), so quota and rate
+  hold however many Workers take uploads at once.
+- **Reading.** An `<img>` cannot send an Authorization header, so the
+  client trades its pass for a cookie: `POST /rooms/<board>/files/access`
+  (Bearer pass) answers `Set-Cookie: tabletop-files=<the pass>;
+Path=/rooms/<board>/files; Max-Age=<the pass's remaining life>; Secure;
+HttpOnly; SameSite=Strict`. The client does this again whenever its pass
+  is renewed, and tldraw asks the asset store before it shows an image, so
+  a tab that slept past the pass's five minutes gets a fresh cookie before
+  its next image loads. The cookie is read only on `GET`/`HEAD` of the
+  board's own files path: an upload still needs the header, so a page
+  elsewhere cannot spend it, and a cookie for one board says nothing on
+  another's path. Guests have passes like anyone else; iOS Safari keeps a
+  first-party, server-set cookie like this one. Each read still asks the
+  board's Durable Object, so a reset link stops the old passes at once.
+  A signed URL would have put the pass in every image's address, changing
+  every four minutes, which defeats the browser's cache; the cookie keeps
+  one stable address per image.
+- **Serving.** The type the bytes were sniffed as, `X-Content-Type-Options:
+nosniff`, `Cache-Control: private, max-age=31536000, immutable` (the
+  address is the content), `ETag`, range requests (`206`), the board's
+  hardening headers, and `Content-Security-Policy: default-src 'none';
+style-src 'unsafe-inline'; sandbox` with `Cross-Origin-Resource-Policy:
+same-origin`. An image opened on its own therefore runs nothing and loads
+  nothing; an SVG is also sent with `Content-Disposition: attachment`, and
+  tldraw sanitises SVGs before they are uploaded.
+- **Deleting.** Deleting a board (the host's `delete` or a standalone
+  owner's) removes every object under its prefix before the rest of its
+  data. Deleting an image's shape on the canvas removes nothing: tldraw
+  keeps the asset record, undo brings the shape back, and the same image
+  may sit in several shapes or in a .tldr someone exported.
+  TODO: a sweep that deletes an object once no asset record in the board's
+  document has pointed at its hash for 30 days.
+- **Logs.** One `board.file_upload` event per upload or refusal: board id,
+  person kind (`member` or `guest`), bytes, sniffed type, outcome. No names.
+
+The client (`client/src/assets.ts`, `images.ts`, `file-flows.ts`) takes
+images from tldraw's picker (on a phone: the photo library or the camera),
+drops, pastes, several at once. A still JPEG, PNG or WebP whose long side
+is over 4096 px, or that weighs over 10 MiB, is redrawn to fit (JPEG at
+quality 0.9, or WebP where transparency must stay; lower qualities and
+then smaller sizes only if still too heavy), with the phone's orientation
+applied. 4096 px keeps a page scanned at 300 dpi (A4 is 2480 × 3508)
+untouched and a 12 MP photo at full size. Uploads show their progress,
+retry a dropped connection three times (1, 3, 8 s) and a busy Worker five
+times (15 s), and say why when refused. The page's policy allows images
+from `'self'` (and `blob:`, for tldraw's preview while one uploads).
+
+## .tldr files
+
+The board's menu downloads the whole board as tldraw's own file: every
+page in order, every shape with its styles, ids and `meta` (places too),
+bindings, and every image embedded as a `data:` URL, so the file opens on
+tldraw.com or any tldraw app without this server. It opens such a file
+too, from the menu or dropped onto the board:
+
+- The file's pages are added after the board's own, never in its place.
+  On a board nobody has drawn on (one empty page), the file's pages take
+  the empty page's place, so the board reads exactly as the file.
+- An id the board already uses gets a new one; parents, bindings and image
+  references follow it, so opening the same file twice gives two whole
+  copies.
+- Embedded images are uploaded first, with their exact bytes, and the
+  document only ever points at their R2 addresses. If one cannot be
+  uploaded, nothing is added.
+- A file from an older tldraw is migrated by tldraw's own migrations; one
+  from a newer schema than this board's is refused with a message saying
+  so. Files are capped at 400 MiB.
+- The file's document record (its name and grid size) and its camera and
+  selection are not taken: the board keeps its own.
+
+The end-to-end tests open fixtures that `node e2e/fixtures/make-fixtures.ts`
+writes with this repository's tldraw schema (no file exported from
+tldraw.com is checked in), and compare what a second browser downloads with
+them record for record, images by their SHA-256.
 
 ## Deploying it from a host's stack
 
@@ -214,7 +315,10 @@ export default Alchemy.Stack(
 
 `Tabletop(id, props)` builds the client into `.alchemy/tabletop/<id>/` with
 these settings and declares the Worker (this package's `src/index.ts`,
-bundled by Alchemy), the `BoardRoom` Durable Object and the custom domains.
+bundled by Alchemy), the `BoardRoom` Durable Object, the R2 bucket of the
+boards' images (`<app>-<stage>-<id>Files`, returned as `files`; a bucket
+with images in it is never destroyed with the stack) and the custom
+domains.
 It refuses the committed dev key. `alchemy`, `@alchemy.run/cloudflare` and
 `effect` are peer dependencies, so the host's stack and the helper share one
 copy of each. The helper is plain JavaScript (`alchemy/index.js` with a
@@ -282,6 +386,7 @@ opens a board in the other, even when both trust the same key.
 | `DISPLAY_NAME`                | `displayName`        | Where a guest is sent back to ("Back to Tabletop")                    |
 | `PRIMARY_HOST`, `ALIAS_HOSTS` | `domain`             | As in hosted mode                                                     |
 | `DB`                          | (made by the helper) | D1 database, schema in `migrations/`                                  |
+| `Files`                       | (made by the helper) | R2 bucket of the boards' images; in hosted mode too                   |
 | `Limiter`                     | (made by the helper) | Durable Object counting requests per client address                   |
 
 `alchemy.run.ts` deploys this repository's copy: stages `prod` (on
