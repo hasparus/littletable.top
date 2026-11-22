@@ -249,6 +249,55 @@ A laptop's build is a hosted client of `TABLETOP_HOST_ORIGIN` (default
 `http://localhost:8000`, where `node e2e/fake-host.ts` runs a reference
 host), and `wrangler dev` trusts the dev key from `.dev.vars`.
 
+## Dice
+
+The server draws every value (`src/dice.ts`) and gives each roll an unsigned
+32-bit `seed`. The seed shapes only the animation: every client simulates
+the same throw from it and then turns each die's numbering so the server's
+value is on top. Values never come from the physics.
+
+The throw is the tabletop's own code: a small rigid-body simulation
+(`client/src/dice-math.ts`, `dice-solids.ts`, `dice-physics.ts`,
+`dice-throw.ts`) and a WebGL2 renderer (`dice-mesh.ts`, `dice-atlas.ts`,
+`dice-renderer.ts`, `dice-scene.ts`). A physics engine in WebAssembly or a
+worker would need a wider Content-Security-Policy, and general engines do
+not promise the same floats in every browser; this one is under a tenth of
+the size of the three.js dice it replaced and loads as one lazy chunk.
+
+**The determinism rule.** From the seed to the last frame, the simulation
+may use only `+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`,
+`Math.floor` and `Math.imul`, with a fixed step (1/240 s), a fixed number of
+solver iterations and a fixed body order. Those are exact in every
+JavaScript engine; `Math.sin`, `cos`, `atan2`, `pow`, `exp`, `hypot` and
+the rest are not, so shape constants are closed forms in square roots and
+random rotations are normalised random quaternions. Three checks keep it:
+
+- `test/dice-exact.test.ts` runs a throw with every other `Math` function
+  stubbed to throw;
+- `e2e/tests/dice-determinism.spec.ts` runs 200 seeded throws in Chromium,
+  Firefox and WebKit and compares each frame hash with Node's;
+- `test/dice-throw.test.ts` pins the hashes of two throws. That tripwire
+  changes only when the simulation is changed on purpose: run the
+  cross-engine spec first, then paste the hashes the failing test prints.
+  Clients on the old and the new build would see different throws until
+  they reload.
+
+The renderer is free of the rule: nothing it computes feeds back into the
+frames.
+
+**The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
+renderer fits that rectangle, aspect kept, into the area between the result
+card and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),
+so a die lands on the same spot of the tray on every screen, whatever its
+size.
+
+A device that asks for reduced motion never loads the 3D code and gets the
+result card at once; so does one without WebGL2, or after any error in the
+dice, which is logged once. Software rendering or a weak device gets a
+cheaper drawing of the same throw; `localStorage["tabletop.dice-tier"]` set
+to `low` or `full` forces one. The dice take `--brand-primary`; `LOOK` in
+`dice-scene.ts` switches to ivory with dark ink.
+
 ## Standalone mode
 
 Being built: accounts through a sign-in provider, a "My boards" list of
