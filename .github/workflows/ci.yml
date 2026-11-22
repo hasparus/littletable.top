@@ -1,10 +1,9 @@
 name: CI
 
+# A push to main runs these checks through deploy.yml, which calls this
+# workflow before it deploys, so they do not run twice.
 on:
-  push:
-    branches: [main]
   pull_request:
-  # deploy.yml runs these checks before it deploys.
   workflow_call:
 
 permissions:
