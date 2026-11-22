@@ -48,8 +48,12 @@ export type HostedProps = Shared & {
 
 export type StandaloneProps = Shared & {
   mode: "standalone";
-  // The private key (PKCS#8 PEM) the Worker signs its own passes with.
+  // The private key (PKCS#8 PEM) the Worker signs its own passes with. The
+  // committed dev key is refused.
   signingKey: Redacted.Redacted<string> | string;
+  // The WorkOS application people sign in through: its client id and API
+  // key. Its redirect URI is https://<domain.primary>/auth/callback.
+  workOs: { apiKey: Redacted.Redacted<string> | string; clientId: string };
 };
 
 export type TabletopProps = HostedProps | StandaloneProps;

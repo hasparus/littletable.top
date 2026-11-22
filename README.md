@@ -15,7 +15,8 @@ The tabletop runs in one of two modes, chosen by configuration:
   short-lived passes; the tabletop trusts one configured issuer. The host
   contract below is everything a host implements.
 - **Standalone.** The tabletop runs on a domain of its own, with its own
-  accounts, and signs its own passes. _In progress; see "Standalone mode"._
+  accounts (signed in through WorkOS AuthKit) and boards, and signs its
+  own passes; guests join by link with a name. See "Standalone mode".
 
 No licence has been chosen for this repository yet. The Outfit font in
 `client/src/theme/fonts/` is under the SIL Open Font License (`OFL.txt`
@@ -247,12 +248,115 @@ Tools come from `mise.toml` (Node and aube): `mise install`, then
 
 A laptop's build is a hosted client of `TABLETOP_HOST_ORIGIN` (default
 `http://localhost:8000`, where `node e2e/fake-host.ts` runs a reference
-host), and `wrangler dev` trusts the dev key from `.dev.vars`.
+host), and `wrangler dev` trusts the dev key from `.dev.vars`. For
+standalone mode, build with `TABLETOP_MODE=standalone`, run
+`node e2e/fake-workos.ts`, apply `wrangler d1 migrations apply DB --local`,
+and start `wrangler dev --env-file e2e/standalone.env`; the e2e config does
+exactly this on :8790.
 
 ## Standalone mode
 
-Being built: accounts through a sign-in provider, a "My boards" list of
-created and visited boards, and guests who join by link with a display
-name, as in hosted mode. `alchemy.run.ts` deploys this repository's own
-standalone copy (stages `prod` and `staging`, any other stage a workers.dev
-preview) on `TABLETOP_DOMAIN`.
+The tabletop is its own host. Owners sign in and keep a list of their
+boards; anyone with a board's link joins as a guest with a display name,
+exactly as in hosted mode, and never touches the sign-in provider. A
+signed-in person who opens someone else's board joins under their account
+name, and the board appears in their list as joined.
+
+The Worker answers the host contract itself: the client asks
+`POST /api/b/<share code>/bootstrap` on its own origin, gets the same
+answers as from a host, and the Worker signs the pass with its own key
+(`iss` `tabletop`, `aud` `tabletop-standalone`), which the rooms verify
+through the same code path. A hosted configuration may not use those names
+and a standalone one may not set a host's key, so a pass from one mode never
+opens a board in the other, even when both trust the same key.
+
+### Configuration
+
+| Variable                      | Helper prop          | Meaning                                                               |
+| ----------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `TABLETOP_MODE`               | `mode`               | `standalone`                                                          |
+| `SIGNING_KEY`                 | `signingKey`         | Secret. RSA private key, PKCS#8 PEM. The committed dev key is refused |
+| `WORKOS_CLIENT_ID`            | `workOs.clientId`    | The WorkOS application's client id                                    |
+| `WORKOS_API_KEY`              | `workOs.apiKey`      | Secret. The WorkOS API key (`sk_...`)                                 |
+| `WORKOS_API_BASE`             |                      | The WorkOS API's origin; only tests set it, to a fake                 |
+| `DISPLAY_NAME`                | `displayName`        | Where a guest is sent back to ("Back to Tabletop")                    |
+| `PRIMARY_HOST`, `ALIAS_HOSTS` | `domain`             | As in hosted mode                                                     |
+| `DB`                          | (made by the helper) | D1 database, schema in `migrations/`                                  |
+| `Limiter`                     | (made by the helper) | Durable Object counting requests per client address                   |
+
+`alchemy.run.ts` deploys this repository's copy: stages `prod` (on
+`TABLETOP_DOMAIN`) and `staging` (on `staging.<TABLETOP_DOMAIN>`), any other
+stage a workers.dev preview. It reads `TABLETOP_DOMAIN`,
+`TABLETOP_SIGNING_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` and
+`TLDRAW_LICENSE_KEY` from the environment; none is committed.
+
+### Data
+
+Live board state (the tldraw document, the roll log, the link version)
+stays in the board's Durable Object. D1 keeps what has to be listed or
+looked up across boards:
+
+| Table      | Holds                                                                               |
+| ---------- | ----------------------------------------------------------------------------------- |
+| `accounts` | id (the provider's user id), name and avatar from the last sign-in                  |
+| `sessions` | SHA-256 of the cookie token, account, the provider's session id, CSRF token, expiry |
+| `boards`   | id, owner, title, share code (unique), link version                                 |
+| `visits`   | account, board, the share code they came by, when                                   |
+
+A Durable Object per account could hold a list of boards, but a link names
+a board by its share code, and finding a board from a code then needs an
+index across all accounts anyway; D1 gives both with two indexes.
+
+### Sessions and CSRF
+
+- Sign-in is a redirect: `GET /auth/sign-in?return=/path` sets a short-lived
+  sealed cookie with a `state` and a PKCE verifier and sends the browser to
+  the provider; `GET /auth/callback` checks the state, trades the code
+  (with the verifier) for the person, and opens a session. A `return` that
+  is not a path on this origin becomes `/`.
+- The session cookie is `__Host-tabletop-session`: Secure, HttpOnly,
+  SameSite=Lax, Path=/, 30 days. Only a SHA-256 of its random token is
+  stored.
+- Every state-changing route needs `Origin` equal to the tabletop's own and
+  a JSON body (which no other origin sends without a preflight). Owner
+  actions and sign-out also need `X-CSRF-Token` equal to the session's
+  token, which `GET /api/me` gives to the page.
+- A guest's id and name live in `__Host-tabletop-guest`, signed by the
+  Worker's key under its own audience.
+- Board actions name the account in their queries, so a board that is not
+  the account's answers 404 and nothing changes.
+
+### Routes
+
+| Route                                     | Does                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET /`                                   | The front page: sign in, then the account's boards                                                  |
+| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                                |
+| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                                   |
+| `GET /api/me`                             | `{"account": {"id", "name"}, "csrf"}`; both null when signed out                                    |
+| `GET /api/boards`                         | `{"owned": [...], "visited": [...]}`; a visited board's `shareCode` is null once its link was reset |
+| `POST /api/boards`                        | `{"title"}`: makes a board (201). 100 per account, 20 an hour                                       |
+| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                             |
+| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only                      |
+| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                                              |
+| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract. 30 a minute per address                                      |
+
+The client IP for the limits comes from `CF-Connecting-IP` only; the
+limiter stores a hash of it.
+
+### The sign-in provider
+
+`src/standalone/provider.ts` is the one seam: a provider builds the
+authorization URL (with `state` and a PKCE challenge), trades a code for
+`{subject, name, avatarUrl, providerSession}`, and optionally builds a
+sign-out URL. `src/standalone/workos.ts` implements it for WorkOS AuthKit's
+hosted page with plain `fetch` (no SDK): `GET /user_management/authorize`
+with `provider=authkit`, `POST /user_management/authenticate` with the code,
+the API key and the PKCE verifier, and `/user_management/sessions/logout`
+with the `sid` from the access token. The Worker keeps no WorkOS tokens:
+the access and refresh tokens are dropped after sign-in, and the
+tabletop's own session decides who is signed in.
+
+Tests never call WorkOS: `e2e/fake-workos.ts` answers those three endpoints
+(checking the client id, secret, single-use codes and PKCE), as the
+Worker's outbound fetch in Vitest and as a server in Playwright.

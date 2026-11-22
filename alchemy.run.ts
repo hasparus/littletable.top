@@ -7,7 +7,8 @@ import { Tabletop } from "./alchemy/index.js";
 
 // The tabletop's own standalone copy, on a domain of its own. Stages prod
 // and staging get custom domains (TABLETOP_DOMAIN, and staging.<it>); any
-// other stage is a preview on workers.dev.
+// other stage is a preview on workers.dev. Each stage's WorkOS application
+// must list https://<its host>/auth/callback as a redirect URI.
 export default Alchemy.Stack(
   "Tabletop",
   { providers: Cloudflare.providers(), state: Cloudflare.state() },
@@ -21,6 +22,10 @@ export default Alchemy.Stack(
       mode: "standalone",
       signingKey: yield* Config.Redacted("TABLETOP_SIGNING_KEY"),
       workerName: { prod: "tabletop", staging: "tabletop-staging" }[stage],
+      workOs: {
+        apiKey: yield* Config.Redacted("WORKOS_API_KEY"),
+        clientId: yield* Config.String("WORKOS_CLIENT_ID"),
+      },
     });
     return { url: tabletop.url };
   }),

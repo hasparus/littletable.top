@@ -45,6 +45,9 @@ const observability = {
   logs: { enabled: true, invocationLogs: false },
 };
 
+/** @param {string | Redacted.Redacted<string>} value */
+const secret = (value) => (Redacted.isRedacted(value) ? value : Redacted.make(value));
+
 /**
  * @param {import("./index.js").TabletopProps} props
  * @returns {{ client: import("../client/settings.ts").ClientSettings, env: Record<string, unknown> }}
@@ -88,13 +91,18 @@ function configure(props) {
       },
     };
   }
-  const signingKey = Redacted.isRedacted(props.signingKey)
-    ? Redacted.value(props.signingKey)
-    : props.signingKey;
-  refuseDevKey(createPrivateKey(pem(signingKey)), "signingKey");
+  const signingKey = secret(props.signingKey);
+  refuseDevKey(createPrivateKey(pem(Redacted.value(signingKey))), "signingKey");
   return {
     client,
-    env: { ...hosts, SIGNING_KEY: Redacted.make(signingKey), TABLETOP_MODE: "standalone" },
+    env: {
+      ...hosts,
+      DISPLAY_NAME: client.name,
+      SIGNING_KEY: signingKey,
+      TABLETOP_MODE: "standalone",
+      WORKOS_API_KEY: secret(props.workOs.apiKey),
+      WORKOS_CLIENT_ID: props.workOs.clientId,
+    },
   };
 }
 
@@ -127,6 +135,17 @@ export const Tabletop = (id, props) =>
   Effect.gen(function* () {
     const { client, env } = configure(props);
     const assets = yield* buildClient(id, client, props.iconsDir);
+    // Standalone mode's accounts, sessions, boards and visits, and the
+    // per-address rate limiter.
+    const standalone =
+      props.mode === "standalone"
+        ? {
+            DB: yield* Cloudflare.D1.Database(`${id}Accounts`, {
+              migrations: packageFile("migrations"),
+            }),
+            Limiter: Cloudflare.DurableObject("Limiter"),
+          }
+        : {};
     const worker = yield* Cloudflare.Worker(id, {
       assets: {
         directory: assets,
@@ -149,7 +168,7 @@ export const Tabletop = (id, props) =>
         props.domain === undefined
           ? undefined
           : { aliases: props.domain.aliases ?? [], name: props.domain.primary },
-      env: { ...env, BoardRoom: Cloudflare.DurableObject("BoardRoom") },
+      env: { ...env, ...standalone, BoardRoom: Cloudflare.DurableObject("BoardRoom") },
       main: packageFile("src/index.ts"),
       name: props.workerName,
       observability,
