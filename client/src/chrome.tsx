@@ -218,8 +218,9 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
 }
 
 // What stays of tldraw's own interface, and why the rest goes:
-// - PageMenu: one board is one page; places are how people move around it,
-//   and a second page would hide its places and cursors from the others.
+// - The page menu stays beside the main menu in the top corner, on a phone
+//   too: the bottom bar is the table's, and pages are switched far less
+//   often than tools.
 // - SharePanel: the people sheet replaces it; tldraw's own lets each person
 //   rename or recolour themselves, but the name comes from the pass.
 // - TopPanel: its offline badge is replaced by the board's own, in the
@@ -230,7 +231,6 @@ export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,
   MainMenu: BoardMainMenu,
-  PageMenu: null,
   QuickActions: BoardQuickActions,
   SharePanel: null,
   Toolbar: BoardToolbar,
