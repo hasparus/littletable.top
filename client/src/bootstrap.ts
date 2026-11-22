@@ -28,7 +28,7 @@ export type Answer =
   | { kind: "name-invalid" | "name-required" };
 
 // The pass endpoint for this board.
-export type Door = { bootstrapUrl: string };
+export type Door = { bootstrapUrl: string; credentials: RequestCredentials };
 
 // NOTE: in hosted mode the request crosses origins with the host's session
 // cookie, which the two hosts share as one site. The host answers only this
@@ -39,7 +39,7 @@ export async function knock(door: Door, name?: string): Promise<Answer> {
   try {
     response = await fetch(door.bootstrapUrl, {
       body: JSON.stringify(name === undefined ? {} : { name }),
-      credentials: "include",
+      credentials: door.credentials,
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });

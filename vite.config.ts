@@ -17,14 +17,17 @@ import {
 
 const WORKER_DEV_PORT = 8789;
 
-// A laptop's build: a hosted client of TABLETOP_HOST_ORIGIN. Alchemy builds
-// pass the whole value instead (alchemy/index.js).
+// A laptop's build: TABLETOP_MODE=standalone, or a hosted client of
+// TABLETOP_HOST_ORIGIN. Alchemy builds pass the whole value instead
+// (alchemy/index.js).
 function settingsFromEnv(): ClientSettings {
+  const licenseKey = process.env.TLDRAW_LICENSE_KEY ?? "";
+  if (process.env.TABLETOP_MODE === "standalone") return { ...DEFAULT_SETTINGS, licenseKey };
   const hostOrigin = process.env.TABLETOP_HOST_ORIGIN ?? "http://localhost:8000";
   return {
     ...DEFAULT_SETTINGS,
     hosted: { bootstrapUrl: `${hostOrigin}/b/{code}/bootstrap/`, exitUrl: `${hostOrigin}/` },
-    licenseKey: process.env.TLDRAW_LICENSE_KEY ?? "",
+    licenseKey,
     mode: "hosted",
   };
 }

@@ -38,9 +38,6 @@
     "ISSUER": "dev-host",
     "HOST_ORIGIN": "http://localhost:8000"
   },
-  "secrets": {
-    "required": ["ISSUER_PUBLIC_KEY"]
-  },
   "d1_databases": [
     {
       "binding": "DB",

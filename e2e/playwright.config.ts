@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
 // Each mode runs against the real Worker in workerd (wrangler dev) serving a
-// client built for that mode. Hosted mode's host is e2e/fake-host.ts.
+// client built for that mode: hosted on :8788 with e2e/fake-host.ts on :8000,
+// standalone on :8790 with e2e/fake-workos.ts on :8001.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const isCI = process.env.CI !== undefined;
@@ -14,11 +15,13 @@ const proxyServer = process.env.HTTPS_PROXY ?? process.env.https_proxy;
 
 const env = { ...process.env, WRANGLER_SEND_METRICS: "false" } as Record<string, string>;
 
-// A fresh room store every run: board ids restart with the fake host.
-const tabletop = (mode: string, port: number, extra: string) =>
+// A fresh store every run: board ids restart with the fake host, and the
+// standalone database starts empty.
+const tabletop = (mode: string, port: number, extra: string, setUp: string[] = []) =>
   [
     `rm -rf .wrangler/e2e-${mode} dist-e2e/${mode}`,
     `vite build --logLevel warn --outDir "$PWD/dist-e2e/${mode}"`,
+    ...setUp,
     `exec wrangler dev --port ${port} --assets dist-e2e/${mode} --persist-to .wrangler/e2e-${mode} ${extra}`,
   ].join(" && ");
 
@@ -57,6 +60,23 @@ export default defineConfig({
       timeout: 120_000,
       // A room without a pass answers 403, which counts as up.
       url: "http://localhost:8788/rooms/e2e/rolls",
+    },
+    {
+      command: "node e2e/fake-workos.ts",
+      cwd: root,
+      env,
+      reuseExistingServer: !isCI,
+      url: "http://localhost:8001/user_management/authorize?client_id=client_fake",
+    },
+    {
+      command: tabletop("standalone", 8790, "--env-file e2e/standalone.env", [
+        "wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone",
+      ]),
+      cwd: root,
+      env: { ...env, TABLETOP_MODE: "standalone" },
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      url: "http://localhost:8790/api/me",
     },
   ],
   workers: 1,
