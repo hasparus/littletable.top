@@ -475,8 +475,17 @@ CI checks (`ci.yml`, called as a reusable workflow) pass:
 - every push to `main` deploys stage `staging`;
 - "Run workflow" on the Deploy workflow deploys the stage it is given:
   `staging`, `prod` (only from `main`), or a preview name (lowercase
-  letters, digits and hyphens), which gets Workers and a D1 database of its
-  own on workers.dev.
+  letters, digits and hyphens), which gets a Worker, a D1 database and an
+  R2 bucket of its own on workers.dev.
+
+Each stage is what `Tabletop(...)` (`alchemy/index.js`) declares for
+standalone mode: the Worker with the built client as its static assets,
+the `BoardRoom` and `Limiter` Durable Objects, the D1 database with
+`migrations/` applied, the R2 bucket of the boards' images
+(`<app>-<stage>-TabletopFiles`), and the custom domain when there is one.
+A bucket with images in it is never destroyed with its stage, so a preview
+stage that someone uploaded to leaves its bucket behind until it is
+emptied by hand.
 
 One deploy per stage runs at a time; a later one waits. The job summary
 and the Environment's deployment show the URL. Until an Environment has
@@ -491,9 +500,9 @@ for the account the tabletop deploys to:
 
 | Scope                           | Permission               | For                                                                                       |
 | ------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
-| Account                         | Workers Scripts: Edit    | The Worker, its Durable Objects, workers.dev, the state store's Worker                    |
+| Account                         | Workers Scripts: Edit    | The Worker, its assets, `BoardRoom` and `Limiter`, workers.dev, the state store's Worker  |
 | Account                         | D1: Edit                 | The database, and its migrations, which Alchemy applies on each deploy                    |
-| Account                         | Workers R2 Storage: Edit | R2 buckets                                                                                |
+| Account                         | Workers R2 Storage: Edit | The bucket of the boards' images, made on the first deploy and bound to the Worker        |
 | Account                         | Secrets Store: Edit      | The state store's token and encryption key (read alone is not enough: Alchemy binds them) |
 | Zone: the `TABLETOP_DOMAIN` one | Zone: Read               | Finding the zone of a custom domain                                                       |
 | Zone: the `TABLETOP_DOMAIN` one | Workers Routes: Edit     | Attaching the custom domain                                                               |
