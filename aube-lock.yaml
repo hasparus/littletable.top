@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@drdreo/dice-box-threejs':
-        specifier: 1.1.0
-        version: 1.1.0(cannon-es@0.20.0)(three@0.176.0)
       '@tailwindcss/vite':
         specifier: 4.2.4
         version: 4.2.4(vite@8.1.6(@types/node@24.10.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
@@ -358,12 +355,6 @@ packages:
     resolution: {integrity: sha512-XjUJ/vEOylhIZbAm85O9H6YqXKWGfVROT5BE9BGA/RXvo0bLK2+sUcjC6BoN77a99lImJkrXJuvbHBhNebObEA==}
     peerDependencies:
       effect: ^4.0.5
-
-  '@drdreo/dice-box-threejs@1.1.0':
-    resolution: {integrity: sha512-BKQlSKLnNVlqvUQ9GUPah7QXoRiu+NkU75OG6Y4IuyLd1dd00pxjcz20mBbIXA9WITXIc1Y/zHuQ661hugXCdQ==}
-    peerDependencies:
-      cannon-es: ^0.20.0
-      three: ^0.176.0
 
   '@effect/platform-node-shared@4.1.2':
     resolution: {integrity: sha512-wSwl9A/G1hcVvF8nLI+YfB3EyOIDvWS6+lsTZBkmgDnPBL7m8YWZF+1HD+mdEsb52SUGfukip46Q3gRwSdk3QA==}
@@ -2956,9 +2947,6 @@ packages:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
     engines: {node: '>=6'}
 
-  cannon-es@0.20.0:
-    resolution: {integrity: sha512-eZhWTZIkFOnMAJOgfXJa9+b3kVlvG+FX4mdkpePev/w/rP5V8NRquGyEozcjPfEoXUlb+p7d9SUcmDSn14prOA==}
-
   capnp-es@0.0.16:
     resolution: {integrity: sha512-pqhhnRqGfDdgHa+rz4JVO9j1jnkyqsHRYrD4RBtIwxCknYSRG7Mjs+x3IRfd20u+ZGS0IhW2L7cDv9ZcIkCYhQ==}
     hasBin: true
@@ -3912,9 +3900,6 @@ packages:
     resolution: {integrity: sha512-NHFiWnAbMJxNNpBwiO7jJVGDuqMxT9/oV8v57RR+fgBQShkJil5inGD8/xWy0hjLyHQyX1tu27QANhlz3KBqCg==}
     engines: {node: '>=6'}
 
-  three@0.176.0:
-    resolution: {integrity: sha512-PWRKYWQo23ojf9oZSlRGH8K09q7nRSWx6LY/HF/UUrMdYgN9i1e2OwJYHoQjwc6HF/4lvvYLC5YC1X8UJL2ZpA==}
-
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
 
@@ -4430,11 +4415,6 @@ snapshots:
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.18(effect@4.1.2)
       effect: 4.1.2
-
-  '@drdreo/dice-box-threejs@1.1.0(cannon-es@0.20.0)(three@0.176.0)':
-    dependencies:
-      cannon-es: 0.20.0
-      three: 0.176.0
 
   '@effect/platform-node-shared@4.1.2(effect@4.1.2)':
     dependencies:
@@ -6700,8 +6680,6 @@ snapshots:
 
   callsites@3.1.0: {}
 
-  cannon-es@0.20.0: {}
-
   capnp-es@0.0.16(typescript@5.9.3):
     optionalDependencies:
       typescript: 5.9.3
@@ -7809,8 +7787,6 @@ snapshots:
   tailwindcss@4.2.4: {}
 
   tapable@2.3.4: {}
-
-  three@0.176.0: {}
 
   tinybench@2.9.0: {}
 

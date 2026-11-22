@@ -19,6 +19,8 @@ export type Roll = {
   dice: { sides: number; value: number }[];
   id: number;
   name: string;
+  // Shapes the throw's animation; null on rolls logged before seeds existed.
+  seed: number | null;
   sub: string;
 };
 
