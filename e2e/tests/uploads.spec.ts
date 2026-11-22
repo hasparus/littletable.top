@@ -22,8 +22,6 @@ import {
 // another sees, from the Worker's R2 bucket. The artifacts are the .tldr
 // files the browsers download, written to test-results/, which the
 // assertions compare with the fixtures.
-// NOTE: the file sorts after the other specs, which expect a fresh host
-// (their first board is "Board 1").
 
 const HOSTED = "http://localhost:8000";
 const STANDALONE = "http://localhost:8790";

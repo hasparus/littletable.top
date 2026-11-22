@@ -28,7 +28,10 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   await expectOwnPolicy(page, `'self' ws://localhost:8788 ${HOST}`);
-  await expect(page).toHaveTitle("Board 1");
+  // The fake host numbers boards across the run; this one is whichever
+  // number it was given.
+  await expect(page).toHaveTitle(/^Board \d+$/u);
+  const title = await page.title();
 
   // A guest on a phone opens the link and names themself once.
   const guest = await phone(browser, boardUrl);
@@ -41,9 +44,9 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   // The host resets the link: the guest, who has only the old one, is out.
   const host = await page.context().newPage();
   await host.goto(`${HOST}/boards/`);
-  await host.getByRole("button", { name: "Reset link of Board 1" }).click();
+  await host.getByRole("button", { exact: true, name: `Reset link of ${title}` }).click();
   await page.goto(
-    await host.getByRole("link", { name: "Board 1" }).getAttribute("href").then(String),
+    await host.getByRole("link", { exact: true, name: title }).getAttribute("href").then(String),
   );
   await expect(page).not.toHaveURL(boardUrl);
   await expect(onBoard(page, "Hello table")).toBeVisible();
@@ -53,7 +56,7 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(guest.getByRole("link", { name: "Back to Fake host" })).toBeVisible();
 
   // The host deletes the board: the member is put out and the room is wiped.
-  await host.getByRole("button", { name: "Delete Board 1" }).click();
+  await host.getByRole("button", { exact: true, name: `Delete ${title}` }).click();
   await expect(page.getByText("This board no longer exists.")).toBeVisible();
 
   await expectNoCspViolations(page);
