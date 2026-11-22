@@ -1,0 +1,141 @@
+name: Deploy
+
+# Deploys this repository's standalone tabletop with Alchemy (alchemy.run.ts)
+# after the CI checks pass: stage `staging` on every push to main, and any
+# stage by hand. `prod` is only ever a manual run from main.
+#
+# `vars` and `secrets` come from the GitHub Environment the stage maps to:
+# `production` for `prod`, `staging` for `staging` and every preview stage.
+# Until that Environment has its required inputs, the deploy job ends green
+# with a notice and deploys nothing. README.md, "Deploying from GitHub",
+# lists what to create.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Alchemy stage: staging, prod, or a preview name (lowercase letters, digits, hyphens)"
+        required: true
+        default: staging
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy ${{ inputs.stage || 'staging' }}
+    needs: ci
+    # A fork's copy of this workflow has neither the Environments nor the
+    # secrets; its pushes run CI only.
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ (inputs.stage || 'staging') == 'prod' && 'production' || 'staging' }}
+      url: ${{ steps.deploy.outputs.url }}
+    concurrency:
+      group: deploy-${{ inputs.stage || 'staging' }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    env:
+      STAGE: ${{ inputs.stage || 'staging' }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
+      TABLETOP_DOMAIN: ${{ vars.TABLETOP_DOMAIN }}
+      # Public by design: tldraw ties the key to the domain.
+      TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
+    steps:
+      - name: Check the stage and the Environment's inputs
+        id: configured
+        env:
+          HAS_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY != '' }}
+          HAS_TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY != '' }}
+          ENVIRONMENT: ${{ (inputs.stage || 'staging') == 'prod' && 'production' || 'staging' }}
+        run: |
+          if ! [[ "$STAGE" =~ ^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$ ]]; then
+            echo "::error::Stage '$STAGE' is not valid: use 1-40 lowercase letters, digits and hyphens."
+            exit 1
+          fi
+          if [ "$STAGE" = prod ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Stage prod deploys only from main, not $GITHUB_REF."
+            exit 1
+          fi
+          missing=()
+          [ "$HAS_CLOUDFLARE_API_TOKEN" = true ] || missing+=("secret CLOUDFLARE_API_TOKEN")
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing+=("variable CLOUDFLARE_ACCOUNT_ID")
+          [ "$HAS_WORKOS_API_KEY" = true ] || missing+=("secret WORKOS_API_KEY")
+          [ "$HAS_TABLETOP_SIGNING_KEY" = true ] || missing+=("secret TABLETOP_SIGNING_KEY")
+          [ -n "$WORKOS_CLIENT_ID" ] || missing+=("variable WORKOS_CLIENT_ID")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            list=$(printf '%s, ' "${missing[@]}")
+            echo "::notice title=Deploy skipped::The $ENVIRONMENT Environment lacks ${list%, };" \
+              "nothing was deployed. See README.md, \"Deploying from GitHub\"."
+            {
+              echo "### Deploy of \`$STAGE\` skipped"
+              echo
+              echo "The \`$ENVIRONMENT\` Environment lacks:"
+              printf -- '- %s\n' "${missing[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$TLDRAW_LICENSE_KEY" ]; then
+            echo "::warning::TLDRAW_LICENSE_KEY is not set for $ENVIRONMENT;" \
+              "tldraw will not run on the deployed address without it."
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.configured.outputs.ready == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v2
+        if: steps.configured.outputs.ready == 'true'
+
+      - if: steps.configured.outputs.ready == 'true'
+        run: aube install
+
+      - name: Deploy
+        id: deploy
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          # NOTE: with CI set, Alchemy takes Cloudflare credentials only from
+          # CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN. --yes also lets it
+          # create (or upgrade) the account's state store on the first deploy.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+          TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY }}
+        run: |
+          log="$RUNNER_TEMP/alchemy-deploy.log"
+          aube exec -- alchemy deploy --stage "$STAGE" --yes 2>&1 | tee "$log"
+          # The stack's output prints as `{ url: 'https://...' }`.
+          url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://[^']+)'.*#\1#p" | tail -n 1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: steps.deploy.outcome == 'success'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          {
+            echo "### Deployed \`$STAGE\` at \`${GITHUB_SHA:0:7}\`"
+            echo
+            if [ -n "$URL" ]; then
+              echo "URL: $URL"
+              echo
+              echo "Its WorkOS application must list \`$URL/auth/callback\` as a redirect URI."
+            else
+              echo "Alchemy printed no URL; see the Deploy step's log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -465,3 +465,85 @@ tabletop's own session decides who is signed in.
 Tests never call WorkOS: `e2e/fake-workos.ts` answers those three endpoints
 (checking the client id, secret, single-use codes and PKCE), as the
 Worker's outbound fetch in Vitest and as a server in Playwright.
+
+## Deploying from GitHub
+
+`.github/workflows/deploy.yml` deploys this repository's standalone copy
+(`alchemy.run.ts`) with `alchemy deploy --stage <stage> --yes`, after the
+CI checks (`ci.yml`, called as a reusable workflow) pass:
+
+- every push to `main` deploys stage `staging`;
+- "Run workflow" on the Deploy workflow deploys the stage it is given:
+  `staging`, `prod` (only from `main`), or a preview name (lowercase
+  letters, digits and hyphens), which gets Workers and a D1 database of its
+  own on workers.dev.
+
+One deploy per stage runs at a time; a later one waits. The job summary
+and the Environment's deployment show the URL. Until an Environment has
+every required input, its deploys end green with a notice listing what is
+missing, and nothing is deployed; once they are there, a failed deploy fails
+the run.
+
+### What to create
+
+**A Cloudflare API token** (My Profile, API Tokens, Create Custom Token),
+for the account the tabletop deploys to:
+
+| Scope                           | Permission               | For                                                                                       |
+| ------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| Account                         | Workers Scripts: Edit    | The Worker, its Durable Objects, workers.dev, the state store's Worker                    |
+| Account                         | D1: Edit                 | The database, and its migrations, which Alchemy applies on each deploy                    |
+| Account                         | Workers R2 Storage: Edit | R2 buckets                                                                                |
+| Account                         | Secrets Store: Edit      | The state store's token and encryption key (read alone is not enough: Alchemy binds them) |
+| Zone: the `TABLETOP_DOMAIN` one | Zone: Read               | Finding the zone of a custom domain                                                       |
+| Zone: the `TABLETOP_DOMAIN` one | Workers Routes: Edit     | Attaching the custom domain                                                               |
+| Zone: the `TABLETOP_DOMAIN` one | DNS: Edit                | The DNS record the custom domain gets                                                     |
+
+The zone rows matter only once `TABLETOP_DOMAIN` is set, and that zone must
+be in the same account. Alchemy keeps its deploy state in the account's
+state store, a Worker named `alchemy-state-store` with a Durable Object; the
+first deploy creates it (and the account's Secrets Store, if there is none),
+so the state store needs no secret of its own here. An account whose store
+already exists, from another project, reuses it.
+
+**Two GitHub Environments** (Settings, Environments): `staging`, used by
+`staging` and every preview stage, and `production`, used by `prod`. Give
+`production` a deployment branch rule for `main` and, if you like, required
+reviewers.
+
+| Kind     | Name                    | Value                                                                                           |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| secret   | `CLOUDFLARE_API_TOKEN`  | The token above                                                                                 |
+| variable | `CLOUDFLARE_ACCOUNT_ID` | The account's id (the dashboard's URL, or Workers & Pages, Account details)                     |
+| secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                     |
+| variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                    |
+| secret   | `TABLETOP_SIGNING_KEY`  | A key of this Environment's own: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` |
+| variable | `TABLETOP_DOMAIN`       | Optional. The apex the tabletop serves: `prod` on it, `staging` on `staging.<it>`               |
+| variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but see below. Public by design                                             |
+
+All but the two optional ones are required. Use WorkOS's staging environment
+for `staging` and its production one for `production`.
+
+### The first deploy, on workers.dev
+
+The custom domain can come later. Without `TABLETOP_DOMAIN`, `staging`
+serves `https://tabletop-staging.<account subdomain>.workers.dev` and `prod`
+`https://tabletop.<account subdomain>.workers.dev`. WorkOS needs that
+address, which you only learn from the first deploy:
+
+1. Set the Environment's inputs and deploy (push to `main`, or run the
+   workflow).
+2. Read the URL from the run's summary.
+3. In WorkOS, add `https://<that host>/auth/callback` as a redirect URI and
+   `https://<that host>/` as a sign-out redirect. Sign-in works from then
+   on; nothing needs redeploying.
+
+Setting `TABLETOP_DOMAIN` later moves `prod` and `staging` to their custom
+domains on the next deploy; register those hosts the same way. A preview
+stage has its own workers.dev host, which needs registering too before
+anyone signs in there.
+
+tldraw's SDK runs without a licence key only on local addresses
+(`localhost`), so a deploy without `TLDRAW_LICENSE_KEY` succeeds, with a
+warning, but its boards do not work. tldraw ties a key to its domains: get
+one that covers every host the Environment deploys to.
