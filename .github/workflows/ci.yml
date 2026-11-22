@@ -33,6 +33,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@v2
       - run: aube install
-      # The browser build that matches the pinned @playwright/test.
-      - run: aube exec playwright install --with-deps chromium
+      # The browser builds that match the pinned @playwright/test; the dice
+      # determinism spec runs the shared throw in all three engines.
+      - run: aube exec playwright install --with-deps chromium firefox webkit
       - run: aube run e2e
