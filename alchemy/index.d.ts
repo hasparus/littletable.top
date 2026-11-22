@@ -59,6 +59,8 @@ export type StandaloneProps = Shared & {
 export type TabletopProps = HostedProps | StandaloneProps;
 
 export type Tabletop = {
+  // The R2 bucket that keeps the boards' images.
+  files: Cloudflare.R2.Bucket;
   url: Cloudflare.Worker["url"];
   worker: Cloudflare.Worker;
 };

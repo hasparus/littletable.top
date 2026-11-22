@@ -1,6 +1,7 @@
 // @ts-check
 // The tabletop as one piece of a Cloudflare stack: its Worker, the board
-// rooms' Durable Object, and the client built for this deployment. A host
+// rooms' Durable Object, the boards' image bucket, and the client built for
+// this deployment. A host
 // writes `yield* Tabletop("Board", { mode: "hosted", ... })` inside its own
 // Alchemy.Stack. Plain JavaScript on purpose: Alchemy's loader transpiles a
 // stack's own TypeScript but leaves everything under node_modules to Node.
@@ -146,6 +147,10 @@ export const Tabletop = (id, props) =>
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};
+    // The boards' images, one bucket per deployment and stage (Alchemy
+    // names it app-stage-id). NOTE: a bucket with objects in it is never
+    // destroyed with the stack; the boards' images are not disposable.
+    const files = yield* Cloudflare.R2.Bucket(`${id}Files`);
     const worker = yield* Cloudflare.Worker(id, {
       assets: {
         directory: assets,
@@ -168,10 +173,15 @@ export const Tabletop = (id, props) =>
         props.domain === undefined
           ? undefined
           : { aliases: props.domain.aliases ?? [], name: props.domain.primary },
-      env: { ...env, ...standalone, BoardRoom: Cloudflare.DurableObject("BoardRoom") },
+      env: {
+        ...env,
+        ...standalone,
+        BoardRoom: Cloudflare.DurableObject("BoardRoom"),
+        Files: files,
+      },
       main: packageFile("src/index.ts"),
       name: props.workerName,
       observability,
     });
-    return { url: worker.url, worker };
+    return { files, url: worker.url, worker };
   });

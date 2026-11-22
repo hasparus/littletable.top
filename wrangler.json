@@ -38,6 +38,12 @@
     "ISSUER": "dev-host",
     "HOST_ORIGIN": "http://localhost:8000"
   },
+  "r2_buckets": [
+    {
+      "binding": "Files",
+      "bucket_name": "tabletop-files"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
