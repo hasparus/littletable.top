@@ -32,7 +32,8 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "font-src": ["'self'"],
     "form-action": ["'none'"],
     "frame-ancestors": ["'none'"],
-    // Uploaded images will come from this Worker's own /assets route.
+    // A board's images come from its /rooms/<board>/files route on this
+    // origin; tldraw previews an image from a blob: URL while it uploads.
     "img-src": ["'self'", "data:", "blob:"],
     "manifest-src": ["'self'"],
     "object-src": ["'none'"],

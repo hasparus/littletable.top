@@ -11,3 +11,10 @@ export const MAX_BOARDS_PER_ACCOUNT = 100;
 export const MAX_BOARDS_PER_HOUR = 20;
 export const MAX_PASSES_PER_MINUTE = 30;
 export const MAX_SIGN_INS_PER_MINUTE = 10;
+// Images on a board: the largest file the Worker stores (what a phone's
+// photo is re-encoded to fit, see client/src/images.ts), the bytes one board
+// may keep in all (each distinct image counted once), and uploads a person
+// may start per minute, which a .tldr import with many images also spends.
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_BOARD_FILE_BYTES = 256 * 1024 * 1024;
+export const MAX_UPLOADS_PER_MINUTE = 60;

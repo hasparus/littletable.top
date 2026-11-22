@@ -1,6 +1,7 @@
 import { type BoardRoom, PASS_HEADER, type Refusal } from "./board-room";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
+import { serveFiles } from "./files";
 import { type Pass, publicKeyFrom, type Verifier, verifyDeletion, verifyPass } from "./pass";
 import { aliasRedirect, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
@@ -14,6 +15,7 @@ export type Env = ConfigEnv &
   Partial<Pick<StandaloneEnv, "DB" | "Limiter">> & {
     ASSETS: Fetcher;
     BoardRoom: DurableObjectNamespace<BoardRoom>;
+    Files: R2Bucket;
   };
 
 // NOTE: the pass travels in the request itself, never in a cookie. The
@@ -51,7 +53,14 @@ const bearer = (request: Request) =>
   request.headers.get("Authorization")?.replace(/^Bearer /u, "") ?? null;
 
 async function passFor(request: Request, verifier: Verifier, board: string) {
-  const token = bearer(request) ?? new URL(request.url).searchParams.get("pass");
+  return verifiedPass(
+    bearer(request) ?? new URL(request.url).searchParams.get("pass"),
+    verifier,
+    board,
+  );
+}
+
+async function verifiedPass(token: string | null, verifier: Verifier, board: string) {
   if (token === null) return null;
   try {
     const pass: Pass = await verifyPass(token, verifier);
@@ -72,9 +81,29 @@ async function mayDelete(request: Request, verifier: Verifier | null, board: str
 }
 
 const ROOMS = /^\/rooms\//u;
+const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/([\w-]{1,64}))?$/u;
 
-async function rooms(request: Request, env: Env, verifiers: Verifiers): Promise<Response> {
+async function rooms(
+  request: Request,
+  env: Env,
+  config: Config,
+  verifiers: Verifiers,
+): Promise<Response> {
   const url = new URL(request.url);
+  const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
+  if (filesOf !== undefined) {
+    return serveFiles(
+      request,
+      {
+        board: filesOf,
+        bucket: env.Files,
+        config,
+        passOf: (token) => verifiedPass(token, verifiers.pass, filesOf),
+        room: env.BoardRoom.get(env.BoardRoom.idFromName(filesOf)),
+      },
+      file,
+    );
+  }
   const [, board, action] =
     /^\/rooms\/([\w-]{1,64})\/(connect|delete|rolls?)$/u.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
@@ -120,7 +149,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
   const moved = aliasRedirect(request, config.hosts);
   if (moved !== null) return moved;
-  if (ROOMS.test(new URL(request.url).pathname)) return rooms(request, env, verifiers);
+  if (ROOMS.test(new URL(request.url).pathname)) return rooms(request, env, config, verifiers);
   if (config.mode === "standalone") {
     if (env.DB === undefined || env.Limiter === undefined) {
       console.error(

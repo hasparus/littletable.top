@@ -10,9 +10,10 @@ import { DurableObject } from "cloudflare:workers";
 import type { Pass } from "./pass";
 
 import { type Roll, rollDie } from "./dice";
+import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom> };
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -38,6 +39,7 @@ function kind(sub: string): "guest" | "member" {
 export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<never, Person>;
   private lastRollAt = new Map<string, number>();
+  private files!: FileLedger;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -60,6 +62,7 @@ export class BoardRoom extends DurableObject<Env> {
       }),
     });
     this.lastRollAt = new Map();
+    this.files = new FileLedger(sql, this.env.Files);
   }
 
   private link(): number {
@@ -162,13 +165,31 @@ export class BoardRoom extends DurableObject<Env> {
       }));
   }
 
+  // Whether this pass may read the board's images.
+  fileAccess(pass: Pass): "link-reset" | null {
+    return this.admit(pass);
+  }
+
+  async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
+    return this.admit(pass) ?? this.files.store(pass.board, pass.sub, body);
+  }
+
   async destroy(board: string) {
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }
     this.room.close();
+    // NOTE: the images go first: if that fails the board's document is
+    // still there, the room opens again, and deleting again finishes.
+    let files: number;
+    try {
+      files = await this.files.wipe(board);
+    } catch (error) {
+      this.open();
+      throw error;
+    }
     await this.ctx.storage.deleteAll();
     this.open();
-    log("board.deleted", { board });
+    log("board.deleted", { board, files });
   }
 }
