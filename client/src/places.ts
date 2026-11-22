@@ -1,13 +1,15 @@
-import type { Editor, TLShape, TLShapeId } from "tldraw";
+import type { Editor, IndexKey, TLPageId, TLShape, TLShapeId } from "tldraw";
 
 import { useCallback, useState } from "react";
 
 // A place is a shape whose meta carries a name, so tldraw sync shares it
-// like any other property, it follows the shape, and it goes with it.
+// like any other property, it follows the shape (to another page too: tldraw
+// moves a shape there under its own id), and it goes with the shape or its
+// page.
 const PLACE_KEY = "place";
 export const MAX_PLACE_NAME = 60;
 
-export type Place = { id: TLShapeId; name: string };
+export type Place = { id: TLShapeId; name: string; page: TLPageId; pageIndex: IndexKey };
 
 export const placeName = (shape: TLShape): string | null => {
   const name = shape.meta[PLACE_KEY];
@@ -15,10 +17,13 @@ export const placeName = (shape: TLShape): string | null => {
 };
 
 export function placesOn(editor: Editor): Place[] {
-  return editor.getCurrentPageShapes().flatMap((shape) => {
-    const name = placeName(shape);
-    return name === null ? [] : [{ id: shape.id, name }];
-  });
+  return editor.getPages().flatMap((page) =>
+    [...editor.getPageShapeIds(page)].flatMap((id) => {
+      const shape = editor.getShape(id);
+      const name = shape === undefined ? null : placeName(shape);
+      return name === null ? [] : [{ id, name, page: page.id, pageIndex: page.index }];
+    }),
+  );
 }
 
 // What a new place is called before anyone types: a frame's own name, else
@@ -52,10 +57,21 @@ export const nameAsPlace = (editor: Editor, id: TLShapeId, name: string) =>
 export const removePlace = (editor: Editor, id: TLShapeId) => setMeta(editor, id, null);
 
 export function goTo(editor: Editor, id: TLShapeId): void {
+  const shape = editor.getShape(id);
+  if (shape === undefined) return;
+  const page = editor.getAncestorPageId(shape);
+  const away = page !== undefined && page !== editor.getCurrentPageId();
+  if (editor.getInstanceState().followingUserId !== null) editor.stopFollowingUser();
+  if (away) {
+    editor.markHistoryStoppingPoint("change-page");
+    editor.setCurrentPage(page);
+  }
   const bounds = editor.getShapePageBounds(id);
   if (bounds === undefined) return;
   editor.zoomToBounds(bounds, {
-    animation: { duration: editor.options.animationMediumMs },
+    // NOTE: the other page's camera starts wherever it was left; gliding
+    // from there would only show unrelated parts of that page.
+    animation: away ? undefined : { duration: editor.options.animationMediumMs },
     inset: 32,
     // NOTE: caps the zoom, so a small note lands at its real size rather
     // than blown up to fill the screen.
@@ -89,8 +105,15 @@ export function useMyPlace(board: string): [TLShapeId | null, (id: TLShapeId | n
   return [mine, choose];
 }
 
+const byPage = (a: Place, b: Place) =>
+  a.pageIndex < b.pageIndex ? -1 : a.pageIndex > b.pageIndex ? 1 : 0;
+
+// Their own place first, then page by page in the board's order, by name.
 export function ordered(places: Place[], mine: TLShapeId | null, locale: string): Place[] {
   return places.toSorted(
-    (a, b) => Number(b.id === mine) - Number(a.id === mine) || a.name.localeCompare(b.name, locale),
+    (a, b) =>
+      Number(b.id === mine) - Number(a.id === mine) ||
+      byPage(a, b) ||
+      a.name.localeCompare(b.name, locale),
   );
 }
