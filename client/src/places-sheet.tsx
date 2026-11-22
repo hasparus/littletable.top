@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type Editor, type TLShapeId, useValue } from "tldraw";
 
 import { Icon } from "./icons";
+import { usePageNames } from "./pages";
 import {
   goTo,
   MAX_PLACE_NAME,
@@ -81,6 +82,7 @@ export function PlacesSheet() {
     },
     [editor],
   );
+  const pages = usePageNames(editor);
   const list = ordered(places, mine, locale);
 
   return (
@@ -114,7 +116,14 @@ export function PlacesSheet() {
                   type="button"
                 >
                   <Icon className="size-5 shrink-0 text-primary" name="PinIcon" />
-                  <span className="truncate text-base">{place.name}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-base">{place.name}</span>
+                    {pages !== null && (
+                      <span className="truncate text-sm text-foreground-muted">
+                        {pages.get(place.page)}
+                      </span>
+                    )}
+                  </span>
                   {starred && (
                     <span className="shrink-0 rounded-full bg-primary-light px-2 py-0.5 text-xs font-medium text-primary-strong">
                       {copy.myPlace}

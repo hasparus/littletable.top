@@ -14,6 +14,7 @@ import { components } from "./chrome";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
 import { Notice } from "./notice";
+import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
 import { PlacesSheet } from "./places-sheet";
 import { useRolls } from "./rolls";
@@ -145,12 +146,17 @@ export function BoardCanvas({
             components={components}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
-            onMount={setEditor}
-            options={OPTIONS}
+            onMount={(mounted) => {
+              // NOTE: tldraw's own menus (the page menu's among them) take
+              // their language from the person's preferences, not this prop.
+              mounted.user.updateUserPreferences({ locale: language });
+              setEditor(mounted);
+            }}
             shapeUtils={SHAPE_UTILS}
             store={store}
           >
             <BoardFileHandlers />
+            <PageKeeper board={board} copy={copy} />
           </Tldraw>
         </div>
         {offline && <ConnectionBanner copy={copy} />}
@@ -171,9 +177,6 @@ export function BoardCanvas({
 }
 
 const STALLED_AFTER_MS = 8000;
-
-// NOTE: one page per board (see chrome.tsx).
-const OPTIONS = { maxPages: 1 };
 
 // A pasted YouTube or Figma link would become a frame onto that site, which
 // the Content-Security-Policy refuses; it stays a plain link instead.

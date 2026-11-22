@@ -1,8 +1,8 @@
 import type { Language } from "../settings";
 
 // Every string the board shows, in English and Polish. In Polish the board is
-// "tablica", a place is "miejsce", a die is "k6", and the copy stays
-// gender-neutral.
+// "tablica", a page is "strona", a place is "miejsce", a die is "k6", and the
+// copy stays gender-neutral.
 // `%(name)s`-style placeholders are filled in by `fill`.
 const EN = {
   addDie: "Add %(die)s",
@@ -29,6 +29,7 @@ const EN = {
   connectionLost: "Connection lost. Reconnecting…",
   dice: "Dice",
   die: "d%(sides)s",
+  follow: "Follow",
   guest: "Guest",
   imageFailed: "The image did not upload. Check your connection and try again.",
   imagesOverQuota: "This board has no room for more images.",
@@ -45,6 +46,7 @@ const EN = {
   nameInvalid: "This name cannot be used. Try another one.",
   noPlacesYet: "No places yet. Select something on the board and add it to places.",
   noRollsYet: "Nobody has rolled yet.",
+  pageDeleted: "“%(gone)s” was deleted. You are now on “%(page)s”.",
   people: "People",
   placeName: "Place name",
   places: "Places",
@@ -60,6 +62,7 @@ const EN = {
   rollLog: "Roll log",
   rollTooFast: "Wait a moment before rolling again.",
   save: "Save",
+  stopFollowing: "Stop following",
   tooManyTries: "Too many tries. Wait a minute, then try again.",
   total: "Total",
   you: "you",
@@ -95,6 +98,8 @@ const PL: Copy = {
   // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   die: "k%(sides)s",
+  // NOTE: tldraw's own Polish says "Obserwuj" for following someone.
+  follow: "Obserwuj",
   guest: "Gość",
   imageFailed: "Nie udało się wysłać obrazu. Sprawdź połączenie i spróbuj ponownie.",
   imagesOverQuota: "Na tej tablicy nie ma już miejsca na obrazy.",
@@ -111,6 +116,7 @@ const PL: Copy = {
   nameInvalid: "Tego imienia nie można użyć. Wpisz inne.",
   noPlacesYet: "Nie ma jeszcze miejsc. Zaznacz coś na tablicy i dodaj to do miejsc.",
   noRollsYet: "Nikt jeszcze nie rzucał.",
+  pageDeleted: "Usunięto stronę „%(gone)s”. Jesteś teraz na stronie „%(page)s”.",
   people: "Osoby",
   placeName: "Nazwa miejsca",
   places: "Miejsca",
@@ -126,6 +132,7 @@ const PL: Copy = {
   rollLog: "Historia rzutów",
   rollTooFast: "Zaczekaj chwilę przed kolejnym rzutem.",
   save: "Zapisz",
+  stopFollowing: "Przestań obserwować",
   tooManyTries: "Za dużo prób. Zaczekaj minutę i spróbuj ponownie.",
   total: "Suma",
   you: "ty",
