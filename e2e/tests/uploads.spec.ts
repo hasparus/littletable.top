@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { png } from "../fixtures/png";
+import { boardAt, HOST, HOSTED, STANDALONE } from "../ports";
 import { collectCspViolations, expectNoCspViolations, joinAs, phone } from "./helpers";
 import {
   documentOf,
@@ -23,10 +24,8 @@ import {
 // files the browsers download, written to test-results/, which the
 // assertions compare with the fixtures.
 
-const HOSTED = "http://localhost:8000";
-const STANDALONE = "http://localhost:8790";
-const ON_TABLETOP = /^http:\/\/localhost:8788\/b\/(\w+)$/u;
-const ON_BOARD = /^http:\/\/localhost:8790\/b\/(\w+)$/u;
+const ON_TABLETOP = boardAt(HOSTED);
+const ON_BOARD = boardAt(STANDALONE);
 
 const MAP = readFileSync(fixture("map.png"));
 const PORTRAIT = readFileSync(fixture("portrait.png"));
@@ -40,7 +39,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   page,
 }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Iris`);
+  await page.goto(`${HOST}/sign-in?name=Iris`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   const guest = await phone(browser, page.url());
@@ -60,7 +59,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   // The address opens nothing without the board's pass.
   const [address] = await loadedImages(guest);
   const stranger = await browser.newContext();
-  const refused = await stranger.request.get(`http://localhost:8788${address}`);
+  const refused = await stranger.request.get(`${HOSTED}${address}`);
   expect(refused.status()).toBe(403);
   await stranger.close();
 
@@ -71,7 +70,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
 
 test("a photo larger than the pixel budget arrives redrawn to it", async ({ page }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Lin`);
+  await page.goto(`${HOST}/sign-in?name=Lin`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   const photo = png(6000, 4000, [90, 60, 20]);
@@ -167,7 +166,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
   page,
 }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Cy`);
+  await page.goto(`${HOST}/sign-in?name=Cy`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();

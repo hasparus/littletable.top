@@ -1,5 +1,6 @@
 import { type Browser, expect, type Locator, type Page, test } from "@playwright/test";
 
+import { HOST } from "../ports";
 import {
   closeSheet,
   collectCspViolations,
@@ -15,11 +16,6 @@ import {
 // without their result; a lost context or a resize leaves a blank tray; the
 // page's Content-Security-Policy is broken by the dice code.
 // The artifacts are the attached tray screenshots.
-//
-// NOTE: named to sort after hosted.spec.ts, which expects to make the fake
-// host's first board.
-
-const HOST = "http://localhost:8000";
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");

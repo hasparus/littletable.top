@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { boardAt, HOST, HOSTED, socketOf } from "../ports";
 import {
   collectCspViolations,
   expectNoCspViolations,
@@ -11,12 +12,11 @@ import {
   rollTwoD6,
 } from "./helpers";
 
-// Hosted mode against e2e/fake-host.ts on :8000: the host owns accounts and
-// boards and signs passes; the tabletop on :8788 trusts it. The artifact is
+// Hosted mode against e2e/fake-host.ts (HOST): the host owns accounts and
+// boards and signs passes; the tabletop (HOSTED) trusts it. The artifact is
 // the run's trace (test-results/) when it fails, and the assertions below.
 
-const HOST = "http://localhost:8000";
-const ON_TABLETOP = /^http:\/\/localhost:8788\/b\/(\w+)$/u;
+const ON_TABLETOP = boardAt(HOSTED);
 
 test("a member and a guest share a board the host signed them onto", async ({ browser, page }) => {
   await collectCspViolations(page);
@@ -27,7 +27,7 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(page).toHaveURL(ON_TABLETOP);
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-  await expectOwnPolicy(page, `'self' ws://localhost:8788 ${HOST}`);
+  await expectOwnPolicy(page, `'self' ${socketOf(HOSTED)} ${HOST}`);
   // The fake host numbers boards across the run; this one is whichever
   // number it was given.
   await expect(page).toHaveTitle(/^Board \d+$/u);

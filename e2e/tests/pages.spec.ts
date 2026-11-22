@@ -1,6 +1,7 @@
 import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
 import { mkdirSync, readFileSync } from "node:fs";
 
+import { HOST } from "../ports";
 import {
   closeSheet,
   collectCspViolations,
@@ -13,12 +14,11 @@ import {
 } from "./helpers";
 import { documentOf, downloadTldr, fixture, openTldr, toast } from "./tldr";
 
-// A board with more than one page, against the hosted Worker on :8788: a
+// A board with more than one page, against the hosted Worker: a
 // member at a desktop and a guest on a phone manage pages together, find
 // each other's places and each other across pages, and survive a page being
 // deleted under them. The artifacts are the assertions and the screenshots.
 
-const HOST = "http://localhost:8000";
 const SHOTS = "/home/user/ludamus/screenshots/board";
 
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };
