@@ -72,19 +72,25 @@ export class BoardRoom extends DurableObject<Env> {
   private admit(pass: Pass): "link-reset" | null {
     const current = this.link();
     if (pass.link < current) return "link-reset";
-    if (pass.link > current) {
-      this.ctx.storage.sql.exec(
-        "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
-        pass.link,
-      );
-      for (const session of this.room.getSessions()) {
-        if (session.meta.link < pass.link) {
-          this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-        }
-      }
-      log("board.link_reset", { board: pass.board, link: pass.link });
-    }
+    if (pass.link > current) this.moveLink(pass.board, pass.link);
     return null;
+  }
+
+  // Moves the board to a newer link version and puts out everyone who came
+  // in by an older one. Standalone mode calls it as the owner resets the
+  // link; a host's newer pass does the same on arrival.
+  moveLink(board: string, link: number): void {
+    if (link <= this.link()) return;
+    this.ctx.storage.sql.exec(
+      "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
+      link,
+    );
+    for (const session of this.room.getSessions()) {
+      if (session.meta.link < link) {
+        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
+      }
+    }
+    log("board.link_reset", { board, link });
   }
 
   // NOTE: a socket cannot cross an RPC call, so the Worker forwards the

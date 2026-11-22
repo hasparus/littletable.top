@@ -16,8 +16,15 @@ export type ConfigEnv = {
   // person typing the tabletop's bare name goes.
   HOME_URL?: string;
   HOST_ORIGIN?: string;
+  // Standalone: the deployment's name, where a guest is sent back to.
+  DISPLAY_NAME?: string;
   // Standalone: the private key (PKCS#8 PEM) the Worker signs passes with.
   SIGNING_KEY?: string;
+  // Standalone: the WorkOS application people sign in through, its API
+  // key (a secret), and the API's address (tests point it at a fake).
+  WORKOS_API_BASE?: string;
+  WORKOS_API_KEY?: string;
+  WORKOS_CLIENT_ID?: string;
   // The host the tabletop answers on, and the hosts that 308 to it, comma
   // separated. Without a primary host nothing redirects.
   ALIAS_HOSTS?: string;
@@ -43,9 +50,11 @@ export type HostedConfig = {
 };
 
 export type StandaloneConfig = {
+  displayName: string;
   hosts: Hosts;
   mode: "standalone";
   signingKey: string;
+  workOs: { apiBase: string; apiKey: string; clientId: string };
 };
 
 export type Config = HostedConfig | StandaloneConfig;
@@ -99,7 +108,13 @@ function require(env: ConfigEnv, mode: string, names: (keyof ConfigEnv)[]) {
 
 function hosted(env: ConfigEnv): HostedConfig {
   require(env, "hosted", ["ISSUER_PUBLIC_KEY", "ISSUER", "HOST_ORIGIN"]);
-  forbid(env, "hosted", ["SIGNING_KEY"]);
+  forbid(env, "hosted", [
+    "SIGNING_KEY",
+    "DISPLAY_NAME",
+    "WORKOS_API_KEY",
+    "WORKOS_CLIENT_ID",
+    "WORKOS_API_BASE",
+  ]);
   const passAudience = present(env.PASS_AUDIENCE) ? env.PASS_AUDIENCE : "board";
   const deletionAudience = present(env.DELETION_AUDIENCE)
     ? env.DELETION_AUDIENCE
@@ -127,7 +142,7 @@ function hosted(env: ConfigEnv): HostedConfig {
 }
 
 function standalone(env: ConfigEnv): StandaloneConfig {
-  require(env, "standalone", ["SIGNING_KEY"]);
+  require(env, "standalone", ["SIGNING_KEY", "WORKOS_CLIENT_ID", "WORKOS_API_KEY"]);
   forbid(env, "standalone", [
     "ISSUER_PUBLIC_KEY",
     "ISSUER",
@@ -136,7 +151,19 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     "HOST_ORIGIN",
     "HOME_URL",
   ]);
-  return { hosts: hostsOf(env), mode: "standalone", signingKey: pem(env.SIGNING_KEY!) };
+  return {
+    displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
+    hosts: hostsOf(env),
+    mode: "standalone",
+    signingKey: pem(env.SIGNING_KEY!),
+    workOs: {
+      apiBase: present(env.WORKOS_API_BASE)
+        ? origin(env.WORKOS_API_BASE, "WORKOS_API_BASE")
+        : "https://api.workos.com",
+      apiKey: env.WORKOS_API_KEY!,
+      clientId: env.WORKOS_CLIENT_ID!,
+    },
+  };
 }
 
 export function readConfig(env: ConfigEnv): Config {

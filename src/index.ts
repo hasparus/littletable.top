@@ -3,13 +3,18 @@ import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
 import { type Pass, publicKeyFrom, type Verifier, verifyDeletion, verifyPass } from "./pass";
 import { aliasRedirect, serveSite } from "./site";
+import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
+import { Standalone, type StandaloneEnv } from "./standalone/routes";
 
 export { BoardRoom } from "./board-room";
+export { Limiter } from "./limiter";
 
-export type Env = ConfigEnv & {
-  ASSETS: Fetcher;
-  BoardRoom: DurableObjectNamespace<BoardRoom>;
-};
+// DB and Limiter are bound in standalone mode only.
+export type Env = ConfigEnv &
+  Partial<Pick<StandaloneEnv, "DB" | "Limiter">> & {
+    ASSETS: Fetcher;
+    BoardRoom: DurableObjectNamespace<BoardRoom>;
+  };
 
 // NOTE: the pass travels in the request itself, never in a cookie. The
 // client is served from this origin, so the rooms API needs no CORS:
@@ -22,15 +27,22 @@ function answer(result: Refusal | object): Response {
     : Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
-type Verifiers = { deletion: Verifier | null; pass: Verifier };
+type Verifiers = { deletion: Verifier | null; keys: Keys | null; pass: Verifier };
 
 async function verifiersFor(config: Config): Promise<Verifiers> {
-  if (config.mode !== "hosted") throw new ConfigError("standalone mode is not built yet");
+  if (config.mode === "standalone") {
+    const keys = await keysFrom(config.signingKey).catch(() => {
+      throw new ConfigError("SIGNING_KEY is not an RSA private key in PKCS#8 PEM form");
+    });
+    // NOTE: standalone mode deletes boards itself; no token can.
+    return { deletion: null, keys, pass: passVerifier(keys) };
+  }
   const key = await publicKeyFrom(config.publicKey).catch(() => {
     throw new ConfigError("ISSUER_PUBLIC_KEY is not a public key in SPKI PEM form");
   });
   return {
     deletion: { audience: config.deletionAudience, issuer: config.issuer, key },
+    keys: null,
     pass: { audience: config.passAudience, issuer: config.issuer, key },
   };
 }
@@ -109,6 +121,20 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const moved = aliasRedirect(request, config.hosts);
   if (moved !== null) return moved;
   if (ROOMS.test(new URL(request.url).pathname)) return rooms(request, env, verifiers);
+  if (config.mode === "standalone") {
+    if (env.DB === undefined || env.Limiter === undefined) {
+      console.error(
+        JSON.stringify({ event: "tabletop.misconfigured", problem: "no DB or Limiter" }),
+      );
+      return new Response("This tabletop is not configured", { status: 500 });
+    }
+    const own = new Standalone(
+      { BoardRoom: env.BoardRoom, DB: env.DB, Limiter: env.Limiter },
+      config,
+      verifiers.keys!,
+    ).route(request);
+    if (own !== null) return own;
+  }
   return serveSite(request, env.ASSETS, config);
 }
 
