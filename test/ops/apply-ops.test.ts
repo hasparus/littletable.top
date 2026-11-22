@@ -18,11 +18,21 @@ import { pass, seat, until } from "../support";
 
 const rooms = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> }).BoardRoom;
 
+// NOTE: the stub's own types recurse through every record type and give up.
+type Promised<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => infer R
+    ? (...args: A) => Promise<Awaited<R>>
+    : never;
+};
+type RoomCalls = Promised<
+  Pick<BoardRoom, "mcpApplyOps" | "mcpPages" | "records" | "revokeMcpGrants">
+>;
+
 let boards = 0;
 function board() {
   const id = `ops-${++boards}-${crypto.randomUUID().slice(0, 8)}`;
   const grant: BoardGrant = { access: "write", board: id, grant: 0, title: null };
-  const room = rooms.get(rooms.idFromName(id));
+  const room = rooms.get(rooms.idFromName(id)) as unknown as RoomCalls;
   return {
     apply: async (ops: unknown[], extra: { page?: number | string; runId?: string } = {}) =>
       (await room.mcpApplyOps(grant, { ops, ...extra })) as ApplyOpsResponse,
@@ -235,6 +245,6 @@ describe("apply_ops on a board nobody has open", () => {
         .filter((message) => message.type === "patch");
     await until(() => patches().length > 0);
     expect(patches()).toHaveLength(1);
-    expect(Object.keys((patches()[0] as { diff: object }).diff)).toHaveLength(5);
+    expect(Object.keys((patches()[0] as unknown as { diff: object }).diff)).toHaveLength(5);
   });
 });

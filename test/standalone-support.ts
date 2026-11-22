@@ -15,6 +15,7 @@ export const standaloneEnv: Env = {
   HOST_ORIGIN: undefined,
   ISSUER: undefined,
   ISSUER_PUBLIC_KEY: undefined,
+  MCP_AUTHORIZATION_SERVER: undefined,
   SIGNING_KEY: testEnv.STANDALONE_SIGNING_KEY,
   TABLETOP_MODE: "standalone",
   WORKOS_API_BASE: "https://workos.test",
