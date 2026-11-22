@@ -1,4 +1,5 @@
-import { type Browser, expect, type Locator, type Page, test } from "@playwright/test";
+import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
 import {
@@ -7,6 +8,7 @@ import {
   expectNoCspViolations,
   joinAs,
   openSheet,
+  PHONE,
 } from "./helpers";
 
 // The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
@@ -256,4 +258,51 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
     .toBe(true);
   expect(await shows(tray(page), settled)).toBe(false);
   await expectNoCspViolations(page);
+});
+
+const SHOTS = "/home/user/ludamus/screenshots/board";
+
+// tldraw's page menu shares the top row with the main menu; the strip steps
+// the whole row down, so neither hides under it or leaves the screen.
+test("the strip steps the page menu down with the main menu, on phones and a desktop", async ({
+  browser,
+  page,
+}) => {
+  const boardUrl = await startBoard(page);
+  mkdirSync(SHOTS, { recursive: true });
+  const screens = [
+    ["phone-360", { ...PHONE, viewport: { height: 740, width: 360 } }],
+    ["phone-390", { ...PHONE, viewport: { height: 844, width: 390 } }],
+    ["phone-430", { ...PHONE, viewport: { height: 932, width: 430 } }],
+    ["desktop", devices["Desktop Chrome"]],
+  ] as const;
+  for (const [name, device] of screens) {
+    // NOTE: reduced motion puts the strip up at once, so the shots are still.
+    const screen = await guestOn(browser, boardUrl, {
+      ...device,
+      deviceScaleFactor: 2,
+      reducedMotion: "reduce",
+    });
+    const { width } = screen.viewportSize()!;
+    const pageMenu = screen.getByTestId("page-menu.button");
+    await expect(pageMenu).toBeVisible();
+    await roll(screen, [20, 6]);
+    await expect(strip(screen)).toBeVisible();
+    const bar = (await strip(screen).boundingBox())!;
+    for (const control of [pageMenu, screen.getByTestId("main-menu.button")]) {
+      await expect
+        .poll(async () => (await control.boundingBox())!.y)
+        .toBeGreaterThanOrEqual(bar.y + bar.height);
+      const box = (await control.boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+    await screen.screenshot({ path: `${SHOTS}/merged-strip-pages-${name}.png` });
+    await pageMenu.click();
+    const list = screen.getByTestId("page-menu.list");
+    await expect(list).toBeVisible();
+    expect((await list.boundingBox())!.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    await screen.screenshot({ path: `${SHOTS}/merged-strip-pages-${name}-menu.png` });
+    await expectNoCspViolations(screen);
+    await screen.context().close();
+  }
 });
