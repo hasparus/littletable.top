@@ -30,12 +30,12 @@
     "deploy:prod": "alchemy deploy --stage prod",
     "plan:staging": "alchemy plan --stage staging",
     "deploy:staging": "alchemy deploy --stage staging",
-    "lint": "oxlint -c oxlint.config.ts --max-warnings 0 client src alchemy",
+    "lint": "oxlint -c oxlint.config.ts --max-warnings 0 client src alchemy e2e",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "e2e": "playwright test -c e2e/playwright.config.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p client"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p client && tsc --noEmit -p e2e"
   },
   "dependencies": {
     "@drdreo/dice-box-threejs": "1.1.0",

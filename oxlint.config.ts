@@ -9,9 +9,9 @@ export default defineConfig({
   ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report"],
   overrides: [
     // The Worker logs one JSON line per event to the console, which is what
-    // Workers Logs collects; its entry module's default export is the
-    // Workers module format.
-    { files: ["src/**/*.ts"], rules: { "no-console": "off" } },
+    // Workers Logs collects, and the fake host is a server process; the
+    // Worker entry's default export is the Workers module format.
+    { files: ["src/**/*.ts", "e2e/fake-host.ts"], rules: { "no-console": "off" } },
     { files: ["src/index.ts"], rules: { "import/no-default-export": "off" } },
     {
       files: ["client/src/**/*.ts"],

@@ -23,3 +23,16 @@ jobs:
       - run: aube run format:check
       - run: aube run build
       - run: aube run test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v2
+      - run: aube install
+      # The browser build that matches the pinned @playwright/test.
+      - run: aube exec playwright install --with-deps chromium
+      - run: aube run e2e
