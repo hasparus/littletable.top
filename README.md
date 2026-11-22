@@ -260,6 +260,9 @@ bindings, and every image embedded as a `data:` URL, so the file opens on
 tldraw.com or any tldraw app without this server. It opens such a file
 too, from the menu or dropped onto the board:
 
+- A board holds at most 40 pages, tldraw's own cap, which its page menu
+  keeps too. A file whose pages would pass it is refused whole, before any
+  of its images is uploaded, with a message saying how many more fit.
 - The file's pages are added after the board's own, never in its place.
   On a board nobody has drawn on (one empty page), the file's pages take
   the empty page's place, so the board reads exactly as the file.
