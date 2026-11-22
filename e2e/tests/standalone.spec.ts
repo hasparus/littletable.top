@@ -80,8 +80,10 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(
     guest.getByText("The board's link was reset. Ask its creator for the new one."),
   ).toBeVisible();
-  const newLink = await front.getByRole("link", { name: "Mörk Borg night" }).getAttribute("href");
-  expect(newLink).not.toBe(new URL(boardUrl).pathname);
+  const link = front.getByRole("link", { name: "Mörk Borg night" });
+  // NOTE: the list shows the new link once the reset's answer is in.
+  await expect(link).not.toHaveAttribute("href", new URL(boardUrl).pathname);
+  const newLink = await link.getAttribute("href");
 
   await page.goto(`${TABLETOP}${newLink}`);
   await expect(onBoard(page, "Hello table")).toBeVisible();
