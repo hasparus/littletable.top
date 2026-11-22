@@ -159,12 +159,21 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await expect.poll(async () => pagesListed(bea)).toEqual(["Town", "Vault"]);
   // NOTE: tldraw closes an open page menu when a page record arrives, so
   // both menus are open first and both choices land in the same instant.
-  await openPageItemMenu(ada, "Vault");
-  await openPageItemMenu(bea, "Town");
-  await Promise.all([
-    ada.getByRole("menuitem", { name: "Move up" }).dispatchEvent("click"),
-    bea.getByRole("menuitem", { name: "Move down" }).dispatchEvent("click"),
-  ]);
+  // A late sync can still close one of them first, so they open again
+  // until both stay open.
+  const moveUp = ada.getByRole("menuitem", { name: "Move up" });
+  const moveDown = bea.getByRole("menuitem", { name: "Move down" });
+  await expect(async () => {
+    for (const screen of [ada, bea]) {
+      await screen.keyboard.press("Escape");
+      await screen.keyboard.press("Escape");
+    }
+    await openPageItemMenu(ada, "Vault");
+    await openPageItemMenu(bea, "Town");
+    await expect(moveUp).toBeVisible({ timeout: 1000 });
+    await expect(moveDown).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await Promise.all([moveUp.dispatchEvent("click"), moveDown.dispatchEvent("click")]);
   await expect.poll(async () => pagesListed(ada)).toEqual(["Vault", "Town"]);
   await expect.poll(async () => pagesListed(bea)).toEqual(["Vault", "Town"]);
   await closePages(bea);
