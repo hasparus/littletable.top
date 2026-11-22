@@ -42,7 +42,7 @@ export function Sheet({
     <>
       <div
         aria-hidden="true"
-        className="fixed inset-x-0 top-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 bg-warm-900/20 sm:hidden"
+        className="fixed inset-x-0 top-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 bg-ink/20 sm:hidden"
         onClick={() => open(null)}
       />
       <section

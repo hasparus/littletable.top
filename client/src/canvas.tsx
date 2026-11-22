@@ -56,7 +56,7 @@ function Guard({ copy }: { copy: Copy }) {
 function ConnectionBanner({ copy }: { copy: Copy }) {
   return (
     <p
-      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-warm-900 px-4 py-2 text-center text-sm text-white shadow-lg"
+      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-ink px-4 py-2 text-center text-sm text-white shadow-lg"
       role="status"
     >
       {copy.connectionLost}

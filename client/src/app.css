@@ -1,8 +1,7 @@
-/* The board app's Tailwind entry. Tokens, the font and the buttons are the
-   site's own, imported from where the site keeps them (theme.css says why). */
+/* The tabletop's Tailwind entry: its tokens, font and buttons (theme/). */
 @import "tailwindcss" source(none);
-@import "../../../../src/ludamus/client/src/theme.css";
-@import "../../../../src/ludamus/client/src/buttons.css";
+@import "./theme/theme.css";
+@import "./theme/buttons.css";
 
 @source "./";
 

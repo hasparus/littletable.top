@@ -116,7 +116,7 @@ export function PlacesSheet() {
                   <Icon className="size-5 shrink-0 text-primary" name="PinIcon" />
                   <span className="truncate text-base">{place.name}</span>
                   {starred && (
-                    <span className="shrink-0 rounded-full bg-primary-light px-2 py-0.5 text-xs font-medium text-coral-800">
+                    <span className="shrink-0 rounded-full bg-primary-light px-2 py-0.5 text-xs font-medium text-primary-strong">
                       {copy.myPlace}
                     </span>
                   )}

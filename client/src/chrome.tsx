@@ -85,7 +85,7 @@ function PanelButton({
         panel === "dice"
           ? "bg-primary text-white hover:bg-primary-hover"
           : expanded
-            ? "bg-primary-light text-coral-800"
+            ? "bg-primary-light text-primary-strong"
             : "text-foreground hover:bg-bg-tertiary"
       }`}
       onClick={() => ui.open(expanded ? null : panel)}

@@ -1,0 +1,96 @@
+/* The tabletop's tokens, its font and its light and dark palettes. Import it
+   after `@import "tailwindcss"`.
+
+   The brand is six custom properties a deployer may set (the build writes
+   them from its `brand` option, see vite.config.ts); everything coloured
+   "primary" follows them. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Outfit, self-hosted (fonts/OFL.txt): Google Fonts' variable-font subsets,
+   split by unicode-range so a Latin-1 page skips the latin-ext file. The
+   Content-Security-Policy allows fonts from this origin only. */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/outfit-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/outfit-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --brand-primary: #2f6fdf;
+  --brand-primary-hover: #1f57c0;
+  --brand-primary-light: #eef3fd;
+  --brand-primary-strong: #1a428f;
+  --brand-primary-light-dark: #1c2333;
+  --brand-primary-strong-dark: #a9c3f5;
+}
+
+@theme {
+  --font-sans: "Outfit", system-ui, sans-serif;
+
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-ink: #252220;
+
+  --color-background: #f0f1f3;
+  --color-border: #e4ddd6;
+  --color-border-focus: var(--brand-primary);
+
+  --color-foreground: #252220;
+  --color-foreground-secondary: #5c534a;
+  /* The palest grey that still clears 4.5:1 on every surface it sits on. */
+  --color-foreground-muted: #6b6b6b;
+
+  --color-bg-secondary: #fdfcfb;
+  --color-bg-tertiary: #f7f5f3;
+
+  --color-primary: var(--brand-primary);
+  --color-primary-hover: var(--brand-primary-hover);
+  --color-primary-light: var(--brand-primary-light);
+  /* Text and marks on primary-light. */
+  --color-primary-strong: var(--brand-primary-strong);
+
+  --color-secondary: #14b89b;
+  --color-warning: #f59e0b;
+  --color-danger-text: #991b1b;
+}
+
+@utility text-box-trim-both {
+  text-box: trim-both cap alphabetic;
+}
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-background: #0a0a0a;
+  --color-bg-secondary: #171717;
+  --color-bg-tertiary: #262626;
+  --color-foreground: #fafafa;
+  --color-foreground-secondary: #d4d4d4;
+  --color-foreground-muted: #8c8c8c;
+  --color-border: #404040;
+  --color-primary-light: var(--brand-primary-light-dark);
+  --color-primary-strong: var(--brand-primary-strong-dark);
+  --color-secondary: #2dd4b3;
+  --color-warning: #fbbf24;
+  --color-danger-text: #fca5a5;
+}

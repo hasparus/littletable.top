@@ -53,7 +53,7 @@ const TONES: Record<Tone, { shape: string; text: string; tick: string }> = {
   },
   soft: {
     shape: "fill-primary-light stroke-primary",
-    text: "fill-coral-800",
+    text: "fill-primary-strong",
     tick: "stroke-primary",
   },
   solid: {
