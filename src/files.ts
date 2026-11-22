@@ -3,11 +3,12 @@
 
 import { decodeJwt } from "jose";
 
-import type { BoardRoom } from "./board-room";
+import type { AvatarSource, BoardRoom } from "./board-room";
 import type { Config } from "./config";
 import type { Pass } from "./pass";
 
-import { fileKey } from "./file-store";
+import { avatarKey } from "./avatars";
+import { fileKey, readCapped } from "./file-store";
 import { MAX_FILE_BYTES } from "./limits";
 import { harden } from "./site";
 
@@ -20,6 +21,7 @@ const HASH = /^[0-9a-f]{64}$/u;
 export const filesPath = (board: string) => `/rooms/${board}/files`;
 
 type FileRoute = {
+  avatars: AvatarSource;
   board: string;
   bucket: R2Bucket;
   config: Config;
@@ -66,34 +68,6 @@ function cookie(request: Request, name: string): string | null {
 const bearer = (request: Request) =>
   request.headers.get("Authorization")?.replace(/^Bearer /u, "") ?? null;
 
-// The body, up to the cap: a larger one is cut off as soon as it shows,
-// whatever its Content-Length said.
-async function readCapped(request: Request): Promise<"too-large" | ArrayBuffer> {
-  const declared = Number(request.headers.get("Content-Length") ?? "0");
-  if (declared > MAX_FILE_BYTES) return "too-large";
-  if (request.body === null) return new ArrayBuffer(0);
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  const reader = request.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    length += value.byteLength;
-    if (length > MAX_FILE_BYTES) {
-      await reader.cancel();
-      return "too-large";
-    }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(length);
-  let at = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return body.buffer;
-}
-
 async function upload(request: Request, route: FileRoute): Promise<Response> {
   const { board, room } = route;
   const pass = await route.passOf(bearer(request));
@@ -101,7 +75,10 @@ async function upload(request: Request, route: FileRoute): Promise<Response> {
     logUpload({ board, bytes: null, outcome: "forbidden", pass, type: null });
     return refuse(403, "forbidden");
   }
-  const body = await readCapped(request);
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length") ?? "0"),
+    max: MAX_FILE_BYTES,
+  });
   if (body === "too-large") {
     logUpload({ board, bytes: null, outcome: body, pass, type: null });
     return refuse(UPLOAD_STATUS[body], body);
@@ -120,21 +97,25 @@ async function upload(request: Request, route: FileRoute): Promise<Response> {
 }
 
 // Trades the pass in the header for the same pass in a cookie on the
-// board's files path, for as long as the pass lives.
+// board's files path, for as long as the pass lives, and answers where the
+// person's own picture is (the room copies a host's on the way).
 async function access(request: Request, route: FileRoute): Promise<Response> {
   const token = bearer(request);
   const pass = await route.passOf(token);
   if (token === null || pass === null) return refuse(403, "forbidden");
   if ((await route.room.fileAccess(pass)) !== null) return refuse(403, "link-reset");
+  const avatar = await route.room.personAvatar(pass, route.avatars);
   // NOTE: verified, a pass always carries exp.
   const lifetime = Math.max(0, decodeJwt(token).exp! - Math.floor(Date.now() / 1000));
-  return new Response(null, {
-    headers: {
-      "Cache-Control": "no-store",
-      "Set-Cookie": `${FILE_COOKIE}=${token}; Max-Age=${lifetime}; Path=${filesPath(route.board)}; Secure; HttpOnly; SameSite=Strict`,
+  return Response.json(
+    { avatar: avatar === null ? null : `${filesPath(route.board)}/avatars/${avatar}` },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "Set-Cookie": `${FILE_COOKIE}=${token}; Max-Age=${lifetime}; Path=${filesPath(route.board)}; Secure; HttpOnly; SameSite=Strict`,
+      },
     },
-    status: 204,
-  });
+  );
 }
 
 // NOTE: an image opened on its own is a document of this origin. It runs
@@ -156,19 +137,20 @@ function contentRange(range: R2Range | undefined, size: number): string | null {
   return `bytes ${offset}-${offset + length - 1}/${size}`;
 }
 
-async function read(request: Request, route: FileRoute, hash: string): Promise<Response> {
-  const pass = await route.passOf(bearer(request) ?? cookie(request, FILE_COOKIE));
-  if (pass === null) return new Response("Forbidden", { status: 403 });
-  if ((await route.room.fileAccess(pass)) !== null) {
-    return new Response("Forbidden", { status: 403 });
-  }
-  const key = fileKey(route.board, hash);
+// One stored image of R2, as the board serves it: the type it was sniffed
+// as, cached for good (the key is the content), ranges, and a policy under
+// which it runs and loads nothing when opened on its own. Avatars are
+// served through it too.
+export async function serveStored(
+  request: Request,
+  { bucket, config, key, name }: { bucket: R2Bucket; config: Config; key: string; name: string },
+): Promise<Response> {
   let object: R2Object | R2ObjectBody | null;
   try {
     object =
       request.method === "HEAD"
-        ? await route.bucket.head(key)
-        : await route.bucket.get(key, { onlyIf: request.headers, range: request.headers });
+        ? await bucket.head(key)
+        : await bucket.get(key, { onlyIf: request.headers, range: request.headers });
   } catch {
     return new Response("Range not satisfiable", { status: 416 });
   }
@@ -183,7 +165,7 @@ async function read(request: Request, route: FileRoute, hash: string): Promise<R
   const type = object.httpMetadata?.contentType ?? "application/octet-stream";
   headers.set(
     "Content-Disposition",
-    type === "image/svg+xml" ? `attachment; filename="${hash}.svg"` : "inline",
+    type === "image/svg+xml" ? `attachment; filename="${name}.svg"` : "inline",
   );
   let response: Response;
   if ("body" in object) {
@@ -199,9 +181,39 @@ async function read(request: Request, route: FileRoute, hash: string): Promise<R
     if (!unchanged) headers.set("Content-Length", String(object.size));
     response = new Response(null, { headers, status: unchanged ? 304 : 200 });
   }
-  const hardened = harden(response, request, route.config);
+  const hardened = harden(response, request, config);
   hardened.headers.set("Content-Security-Policy", FILE_POLICY);
   return hardened;
+}
+
+// The pass a read of the board's files comes with, from the header or the
+// cookie, if it is good for the board now.
+async function reader(request: Request, route: FileRoute): Promise<Pass | null> {
+  const pass = await route.passOf(bearer(request) ?? cookie(request, FILE_COOKIE));
+  if (pass === null) return null;
+  return (await route.room.fileAccess(pass)) === null ? pass : null;
+}
+
+async function read(request: Request, route: FileRoute, hash: string): Promise<Response> {
+  if ((await reader(request, route)) === null) return new Response("Forbidden", { status: 403 });
+  return serveStored(request, {
+    bucket: route.bucket,
+    config: route.config,
+    key: fileKey(route.board, hash),
+    name: hash,
+  });
+}
+
+// A picture of someone who has been on this board, to anyone on it now.
+async function readAvatar(request: Request, route: FileRoute, hash: string): Promise<Response> {
+  if ((await reader(request, route)) === null) return new Response("Forbidden", { status: 403 });
+  if (!(await route.room.hasAvatar(hash))) return new Response("Not found", { status: 404 });
+  return serveStored(request, {
+    bucket: route.bucket,
+    config: route.config,
+    key: avatarKey(hash),
+    name: hash,
+  });
 }
 
 export function serveFiles(
@@ -212,6 +224,10 @@ export function serveFiles(
   const { method } = request;
   if (file === undefined && method === "POST") return upload(request, route);
   if (file === "access" && method === "POST") return access(request, route);
+  const avatar = /^avatars\/([0-9a-f]{64})$/u.exec(file ?? "");
+  if (avatar !== null && (method === "GET" || method === "HEAD")) {
+    return readAvatar(request, route, avatar[1]!);
+  }
   if (file !== undefined && HASH.test(file) && (method === "GET" || method === "HEAD")) {
     return read(request, route, file);
   }

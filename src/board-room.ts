@@ -9,9 +9,11 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
 
+import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { addSeedColumn, drawSeed, type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
-import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import { stampPresence } from "./presence";
 
 type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
 
@@ -25,8 +27,15 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 };
 
 export const PASS_HEADER = "X-Board-Pass";
+// The person's picture as personAvatar settled it, beside the pass.
+export const AVATAR_HEADER = "X-Board-Avatar";
 
-type Person = Pick<Pass, "link" | "name" | "owner" | "sub">;
+// Where a pass's picture comes from: in hosted mode a URL on the host's
+// origin, which the room copies; in standalone mode the hash of the copy
+// the Worker made at sign-in.
+export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
+
+type Person = Pick<Pass, "link" | "name" | "owner" | "sub"> & { avatar: string | null };
 
 function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -57,7 +66,18 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL)",
     );
     addSeedColumn(sql);
+    // Everyone who has been on the board with a picture, so the board shows
+    // those pictures and no others: source is what their pass named,
+    // avatar the hash of the copy (null if it could not be copied).
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
+    );
     this.room = new TLSocketRoom<never, Person>({
+      // NOTE: tldraw leaves the parsed message out of this hook's public
+      // type; it is the object the room then applies.
+      onAfterReceiveMessage: (received) => {
+        stampPresence((received as { message?: unknown }).message, received.meta);
+      },
       storage: new SQLiteSyncStorage({
         sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
       }),
@@ -101,6 +121,7 @@ export class BoardRoom extends DurableObject<Env> {
   // upgrade as a request and names the verified pass in PASS_HEADER.
   override fetch(request: Request): Response {
     const pass: Pass = JSON.parse(request.headers.get(PASS_HEADER)!);
+    const avatar = request.headers.get(AVATAR_HEADER) || null;
     const sessionId = new URL(request.url).searchParams.get("sessionId")!;
     const refusal =
       this.admit(pass) ?? (this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null);
@@ -114,7 +135,7 @@ export class BoardRoom extends DurableObject<Env> {
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
     this.room.handleSocketConnect({
-      meta: { link: pass.link, name: pass.name, owner: pass.owner, sub: pass.sub },
+      meta: { avatar, link: pass.link, name: pass.name, owner: pass.owner, sub: pass.sub },
       sessionId,
       socket: server,
     });
@@ -167,6 +188,54 @@ export class BoardRoom extends DurableObject<Env> {
         seed: row.seed as number | null,
         sub: row.sub as string,
       }));
+  }
+
+  // The picture the board shows for this pass's person: the hash of its
+  // copy in R2, or null. A host's picture is copied the first time a pass
+  // names it, again when the pass names another, and, after a failure,
+  // no sooner than AVATAR_RETRY_MS later; only a host-signed pass can make
+  // the room fetch, and only from the host's origin.
+  async personAvatar(pass: Pass, source: AvatarSource): Promise<string | null> {
+    if (this.admit(pass) !== null) return null;
+    const { sql } = this.ctx.storage;
+    const [known] = sql
+      .exec("SELECT source, avatar, checked_at FROM people WHERE sub = ?", pass.sub)
+      .toArray();
+    const now = Date.now();
+    let avatar: string | null = null;
+    if (pass.avatar === null) {
+      if (known === undefined) return null;
+    } else if (source.mode === "standalone") {
+      avatar = AVATAR.test(pass.avatar) ? pass.avatar : null;
+    } else if (
+      known?.source === pass.avatar &&
+      (known.avatar !== null || now - (known.checked_at as number) < AVATAR_RETRY_MS)
+    ) {
+      return known.avatar as string | null;
+    } else {
+      const copy = await copyAvatar({
+        bucket: this.env.Files,
+        rule: hostRule(source.hostOrigin),
+        url: pass.avatar,
+      });
+      logAvatar({ copy, mode: "hosted", person: kind(pass.sub) });
+      avatar = "hash" in copy ? copy.hash : null;
+    }
+    sql.exec(
+      "INSERT INTO people (sub, source, avatar, checked_at) VALUES (?, ?, ?, ?) ON CONFLICT (sub) DO UPDATE SET source = excluded.source, avatar = excluded.avatar, checked_at = excluded.checked_at",
+      pass.sub,
+      pass.avatar,
+      avatar,
+      now,
+    );
+    return avatar;
+  }
+
+  // Whether someone on this board has this picture.
+  hasAvatar(hash: string): boolean {
+    return (
+      this.ctx.storage.sql.exec("SELECT 1 FROM people WHERE avatar = ?", hash).toArray().length > 0
+    );
   }
 
   // Whether this pass may read the board's images.

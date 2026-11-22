@@ -71,12 +71,16 @@ export class Browser {
 
   // The redirect sign-in, start to finish: out to the provider, which knows
   // this person by name, and back to the callback.
-  async signIn(name: string): Promise<void> {
+  async signIn(
+    name: string,
+    { picture = "" }: { picture?: "" | "broken" | "none" } = {},
+  ): Promise<void> {
     const started = await this.fetch("/auth/sign-in?return=/");
     expect(started.status).toBe(302);
     const authorize = new URL(started.headers.get("Location")!);
     authorize.searchParams.set("fake_user", name);
     authorize.searchParams.set("fake_id", this.address);
+    if (picture !== "") authorize.searchParams.set("fake_picture", picture);
     const granted = await fetch(authorize, { redirect: "manual" });
     const callback = new URL(granted.headers.get("Location")!);
     const back = await this.fetch(callback.pathname + callback.search);

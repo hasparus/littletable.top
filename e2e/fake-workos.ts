@@ -2,15 +2,21 @@
 // the whole sign-in runs offline: in Vitest as the Worker's outbound fetch
 // handler (vitest.config.ts) and in Playwright as a server (this file run
 // with node). Test-only. It checks what WorkOS would check: the client id
-// and secret, the redirect URI, the code's single use, and PKCE.
+// and secret, the redirect URI, the code's single use, and PKCE. Each
+// person has a picture at /avatars/<user id>.png on the fake's own origin,
+// as WorkOS names a picture its users' sign-in method gave it.
 
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 
+import { png } from "./fixtures/png.ts";
+
 export const FAKE_CLIENT_ID = "client_fake";
 export const FAKE_API_KEY = "sk_test_fake";
 
-type Grant = { challenge: string; id: string; name: string; redirectUri: string };
+// fake_picture: "none" for a person without one, "broken" for one whose
+// address fails; anything else, a picture of their own.
+type Grant = { challenge: string; id: string; name: string; picture: string; redirectUri: string };
 
 const grants = new Map<string, Grant>();
 
@@ -36,6 +42,7 @@ function grant(url: URL, name: string, id: string): Response {
     challenge: url.searchParams.get("code_challenge") ?? "",
     id,
     name,
+    picture: url.searchParams.get("fake_picture") ?? "",
     redirectUri,
   });
   const back = new URL(redirectUri);
@@ -44,8 +51,26 @@ function grant(url: URL, name: string, id: string): Response {
   return Response.redirect(back.toString(), 302);
 }
 
+// A small picture, the same for the same person, different for another.
+export function pictureOf(id: string): Buffer {
+  const [r = 0, g = 0, b = 0] = createHash("sha256").update(id).digest();
+  return png(48, 48, [r, g, b]);
+}
+
+function pictureUrl(url: URL, held: Grant): string | null {
+  if (held.picture === "none") return null;
+  if (held.picture === "broken") return `${url.origin}/avatars/broken.png`;
+  return `${url.origin}/avatars/${userId(held.id)}.png`;
+}
+
 export async function fakeWorkOs(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  const picture = /^\/avatars\/(user_[0-9a-f]{20})\.png$/u.exec(url.pathname);
+  if (picture !== null && request.method === "GET") {
+    return new Response(new Uint8Array(pictureOf(picture[1]!)), {
+      headers: { "Content-Type": "image/png" },
+    });
+  }
   if (url.pathname === "/user_management/authorize") {
     if (url.searchParams.get("client_id") !== FAKE_CLIENT_ID) {
       return new Response("unknown client", { status: 400 });
@@ -90,7 +115,7 @@ export async function fakeWorkOs(request: Request): Promise<Response> {
         id: userId(held.id),
         last_name: rest.join(" ") || null,
         object: "user",
-        profile_picture_url: null,
+        profile_picture_url: pictureUrl(url, held),
       },
     });
   }

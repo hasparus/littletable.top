@@ -4,7 +4,9 @@
 
 import type { Identity } from "./provider";
 
-export type Account = { avatarUrl: string | null; id: string; name: string };
+// avatar is the SHA-256 of the account's picture as the Worker copied it
+// (src/avatars.ts); avatarUrl is the provider's address it came from.
+export type Account = { avatar: string | null; avatarUrl: string | null; id: string; name: string };
 
 export type Board = {
   createdAt: number;
@@ -42,15 +44,25 @@ const board = (row: BoardRow): Board => ({
 export class Store {
   constructor(private readonly db: D1Database) {}
 
-  async signIn(identity: Identity, now: number): Promise<Account> {
+  // The picture an account has now, before a sign-in decides whether to
+  // copy the provider's again.
+  async avatarOf(id: string): Promise<{ avatar: string | null; avatarUrl: string | null }> {
+    const row = await this.db
+      .prepare("SELECT avatar_url, avatar_hash FROM accounts WHERE id = ?")
+      .bind(id)
+      .first<{ avatar_hash: string | null; avatar_url: string | null }>();
+    return { avatar: row?.avatar_hash ?? null, avatarUrl: row?.avatar_url ?? null };
+  }
+
+  async signIn(identity: Identity, avatar: string | null, now: number): Promise<Account> {
     await this.db
       .prepare(
-        `INSERT INTO accounts (id, name, avatar_url, created_at, signed_in_at) VALUES (?1, ?2, ?3, ?4, ?4)
-         ON CONFLICT (id) DO UPDATE SET name = ?2, avatar_url = ?3, signed_in_at = ?4`,
+        `INSERT INTO accounts (id, name, avatar_url, avatar_hash, created_at, signed_in_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+         ON CONFLICT (id) DO UPDATE SET name = ?2, avatar_url = ?3, avatar_hash = ?4, signed_in_at = ?5`,
       )
-      .bind(identity.subject, identity.name, identity.avatarUrl, now)
+      .bind(identity.subject, identity.name, identity.avatarUrl, avatar, now)
       .run();
-    return { avatarUrl: identity.avatarUrl, id: identity.subject, name: identity.name };
+    return { avatar, avatarUrl: identity.avatarUrl, id: identity.subject, name: identity.name };
   }
 
   async openSession(input: {
@@ -79,11 +91,12 @@ export class Store {
   async session(tokenHash: string, now: number): Promise<Session | null> {
     const row = await this.db
       .prepare(
-        `SELECT a.id, a.name, a.avatar_url, s.csrf, s.provider_session FROM sessions s
+        `SELECT a.id, a.name, a.avatar_url, a.avatar_hash, s.csrf, s.provider_session FROM sessions s
          JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?`,
       )
       .bind(tokenHash, now)
       .first<{
+        avatar_hash: string | null;
         avatar_url: string | null;
         csrf: string;
         id: string;
@@ -92,7 +105,7 @@ export class Store {
       }>();
     if (row === null) return null;
     return {
-      account: { avatarUrl: row.avatar_url, id: row.id, name: row.name },
+      account: { avatar: row.avatar_hash, avatarUrl: row.avatar_url, id: row.id, name: row.name },
       csrf: row.csrf,
       providerSession: row.provider_session,
     };
