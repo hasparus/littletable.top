@@ -88,15 +88,14 @@ function covered(font: Font, grapheme: string): boolean {
   return true;
 }
 
-// The advance of each grapheme of a run the font covers, shaped as one
-// piece so that kerning and contextual alternates apply across letters.
-function shape(font: Font, pieces: string[], scale: number): number[] {
+// The advance of each grapheme of a run the font covers, in font units,
+// shaped as one piece so that kerning and contextual alternates apply.
+function shape(font: Font, pieces: string[]): number[] {
   const { glyphs, positions } = font.layout(pieces.join(""));
   const perCodePoint: number[] = [];
   glyphs.forEach((glyph, index) => {
-    const advance = positions[index]!.xAdvance * scale;
-    const count = Math.max(1, glyph.codePoints.length);
-    perCodePoint.push(advance, ...Array.from({ length: count - 1 }, () => 0));
+    perCodePoint.push(positions[index]!.xAdvance);
+    for (let extra = 1; extra < glyph.codePoints.length; extra++) perCodePoint.push(0);
   });
   const widths: number[] = [];
   let at = 0;
@@ -110,19 +109,54 @@ function shape(font: Font, pieces: string[], scale: number): number[] {
   return widths;
 }
 
+// Boards repeat their words, so each word is shaped once per font. Shaping
+// word by word loses kerning against the space around it, which tldraw's
+// fonts do not have.
+const SHAPED_WORDS_KEPT = 20_000;
+const shapedWords = new Map<string, number[]>();
+
+function shapeWords(face: string, font: Font, pieces: string[]): number[] {
+  const out: number[] = [];
+  let word: string[] = [];
+  const flush = () => {
+    if (word.length === 0) return;
+    const key = `${face}\u0000${word.join("")}`;
+    let widths = shapedWords.get(key);
+    if (widths === undefined) {
+      widths = shape(font, word);
+      if (shapedWords.size >= SHAPED_WORDS_KEPT) shapedWords.clear();
+      shapedWords.set(key, widths);
+    }
+    out.push(...widths);
+    word = [];
+  };
+  for (const piece of pieces) {
+    if (piece === " ") {
+      flush();
+      word = [piece];
+      flush();
+    } else {
+      word.push(piece);
+    }
+  }
+  flush();
+  return out;
+}
+
 function layoutParagraph(paragraph: Paragraph, options: MeasureOptions) {
   const out: (Grapheme & { text: string })[] = [];
   let approximate = false;
   for (const run of paragraph) {
+    const face = `${options.family}/${run.bold ? "bold" : "normal"}`;
     const font = fontFor(options.family, run.bold);
     const scale = options.fontSize / font.unitsPerEm;
     const pieces = [...graphemes.segment(run.text)].map(({ segment }) => segment);
     let pending: string[] = [];
     const flush = () => {
       if (pending.length === 0) return;
-      const widths = shape(font, pending, scale);
+      const widths = shapeWords(face, font, pending);
       pending.forEach((text, index) =>
-        out.push({ breakBefore: false, space: text === " ", text, width: widths[index]! }),
+        out.push({ breakBefore: false, space: text === " ", text, width: widths[index]! * scale }),
       );
       pending = [];
     };
@@ -147,7 +181,7 @@ function layoutParagraph(paragraph: Paragraph, options: MeasureOptions) {
   }
   // NOTE: tab stops are every two spaces wide (tldraw's --tl-tab-size).
   const regular = fontFor(options.family, false);
-  const spaceWidth = shape(regular, [" "], options.fontSize / regular.unitsPerEm)[0]!;
+  const spaceWidth = (shape(regular, [" "])[0]! * options.fontSize) / regular.unitsPerEm;
   let x = 0;
   for (const g of out) {
     if (g.text === "\t") {
