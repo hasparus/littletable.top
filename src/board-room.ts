@@ -9,7 +9,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
 
-import { type Roll, rollDie } from "./dice";
+import { addSeedColumn, drawSeed, type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 
@@ -56,6 +56,7 @@ export class BoardRoom extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL)",
     );
+    addSeedColumn(sql);
     this.room = new TLSocketRoom<never, Person>({
       storage: new SQLiteSyncStorage({
         sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
@@ -132,16 +133,18 @@ export class BoardRoom extends DurableObject<Env> {
     if (at - (this.lastRollAt.get(pass.sub) ?? 0) < MIN_ROLL_INTERVAL_MS) return "too-fast";
     this.lastRollAt.set(pass.sub, at);
     const dice = pool.map((sides) => ({ sides, value: rollDie(sides) }));
+    const seed = drawSeed();
     const [row] = this.ctx.storage.sql
       .exec(
-        "INSERT INTO rolls (at, sub, name, dice) VALUES (?, ?, ?, ?) RETURNING id",
+        "INSERT INTO rolls (at, sub, name, dice, seed) VALUES (?, ?, ?, ?, ?) RETURNING id",
         at,
         pass.sub,
         pass.name,
         JSON.stringify(dice),
+        seed,
       )
       .toArray();
-    const roll: Roll = { at, dice, id: row!.id as number, name: pass.name, sub: pass.sub };
+    const roll: Roll = { at, dice, id: row!.id as number, name: pass.name, seed, sub: pass.sub };
     this.ctx.storage.sql.exec("DELETE FROM rolls WHERE id <= ?", roll.id - ROLL_LOG_LENGTH);
     for (const session of this.room.getSessions()) {
       this.room.sendCustomMessage(session.sessionId, { roll, type: "roll" });
@@ -154,13 +157,14 @@ export class BoardRoom extends DurableObject<Env> {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
     return this.ctx.storage.sql
-      .exec("SELECT id, at, sub, name, dice FROM rolls ORDER BY id")
+      .exec("SELECT id, at, sub, name, dice, seed FROM rolls ORDER BY id")
       .toArray()
       .map((row) => ({
         at: row.at as number,
         dice: JSON.parse(row.dice as string),
         id: row.id as number,
         name: row.name as string,
+        seed: row.seed as number | null,
         sub: row.sub as string,
       }));
   }

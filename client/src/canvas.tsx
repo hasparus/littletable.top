@@ -31,9 +31,13 @@ const DiceStage = lazy(async () => {
   return { default: Stage };
 });
 
+// NOTE: someone who asked for reduced motion never throws 3D dice, so their
+// device does not fetch them either.
 const loadDice = () => {
   void import("./dice-stage");
-  void import("./dice-3d");
+  if (!globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    void import("./dice-scene");
+  }
 };
 
 // Fetches the dice code while the page is idle, so the first roll does not

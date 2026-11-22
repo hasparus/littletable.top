@@ -13,8 +13,9 @@ export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
   return Response.redirect(url.toString(), 308);
 }
 
-// NOTE: the dice draw with three.js on a plain canvas today. Physics in
-// WebAssembly would need "'wasm-unsafe-eval'" here, and nowhere else.
+// NOTE: the dice are plain scripts on a WebGL2 canvas (README, "Dice").
+// Physics in WebAssembly would need "'wasm-unsafe-eval'" here, and nowhere
+// else.
 const SCRIPT_SRC = ["'self'"];
 
 // The shell's Content-Security-Policy: its own scripts, fonts and tldraw's

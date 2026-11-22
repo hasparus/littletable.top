@@ -3,7 +3,7 @@ import type { Copy } from "./copy";
 import { dieLabel } from "./copy";
 
 type Tone = "quiet" | "soft" | "solid";
-type Size = "lg" | "md" | "sm";
+type Size = "lg" | "md" | "sm" | "xs";
 
 export type DieShapeProps = {
   copy: Copy;
@@ -43,7 +43,7 @@ const OUTLINES: Record<number, Outline> = {
 
 const FALLBACK = OUTLINES[20] as Outline;
 
-const SIZES: Record<Size, string> = { lg: "h-9", md: "h-8", sm: "h-7" };
+const SIZES: Record<Size, string> = { lg: "h-9", md: "h-8", sm: "h-7", xs: "h-6" };
 
 const TONES: Record<Tone, { shape: string; text: string; tick: string }> = {
   quiet: {
