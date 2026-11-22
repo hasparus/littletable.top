@@ -29,16 +29,25 @@ export const MAX_TLDR_BYTES = 400 * 1024 * 1024;
 
 const TLDR_TYPE = "application/vnd.tldraw+json";
 
-export type ImportProblem = "damaged" | "images" | "not-tldraw" | "too-large" | "too-new";
+export type ImportProblem =
+  | "damaged"
+  | "images"
+  | "not-tldraw"
+  | "too-large"
+  | "too-many-pages"
+  | "too-new";
 
 export class ImportRefused extends Error {
   override name = "ImportRefused";
+  // How many more pages the board had room for, for "too-many-pages".
+  readonly room: number;
 
   constructor(
     readonly problem: ImportProblem,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { room?: number },
   ) {
     super(`board: .tldr import refused (${problem})`, options);
+    this.room = options?.room ?? 0;
   }
 }
 
@@ -183,6 +192,12 @@ export async function importTldr(
     .filter((record): record is TLPage => record.typeName === "page")
     .sort(sortByIndex);
   if (pages.length === 0) throw new ImportRefused("damaged");
+  // NOTE: tldraw's own page cap holds for pages made in its menu; a file
+  // that would pass it is refused whole, before any image is uploaded,
+  // rather than added in part.
+  const replacing = isUntouched(editor) ? editor.getPages()[0]! : null;
+  const room = editor.options.maxPages - editor.getPages().length + (replacing === null ? 0 : 1);
+  if (pages.length > room) throw new ImportRefused("too-many-pages", { room });
   const assets = records.filter((record): record is TLAsset => record.typeName === "asset");
 
   const uploaded = new Map<string, string>();
@@ -195,7 +210,6 @@ export async function importTldr(
     throw new ImportRefused("images", { cause: error });
   }
 
-  const replacing = isUntouched(editor) ? editor.getPages()[0]! : null;
   const plan = planIds(
     editor,
     {

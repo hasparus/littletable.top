@@ -5,14 +5,7 @@ import type { Copy } from "./copy";
 import { type BoardFiles, keepLinksPlain, type UploadRefusal } from "./assets";
 import { fill } from "./copy";
 import { fitForUpload, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from "./images";
-import {
-  exportTldr,
-  type ImportProblem,
-  ImportRefused,
-  importTldr,
-  isTldrFile,
-  MAX_TLDR_BYTES,
-} from "./tldr";
+import { exportTldr, ImportRefused, importTldr, isTldrFile, MAX_TLDR_BYTES } from "./tldr";
 
 // What tldraw takes in: still and animated images and SVG (which tldraw
 // sanitises before it uploads), no video. tldraw sizes an image's shape to
@@ -49,8 +42,8 @@ function refusalText(copy: Copy, reason: UploadRefusal): string {
   }
 }
 
-function problemText(copy: Copy, problem: ImportProblem): string {
-  switch (problem) {
+function problemText(copy: Copy, refused: ImportRefused, max: number): string {
+  switch (refused.problem) {
     case "damaged":
       return copy.boardFileDamaged;
     case "images":
@@ -59,6 +52,8 @@ function problemText(copy: Copy, problem: ImportProblem): string {
       return copy.boardFileNotTldraw;
     case "too-large":
       return fill(copy.boardFileTooLarge, { size: megabytes(MAX_TLDR_BYTES) });
+    case "too-many-pages":
+      return fill(copy.boardFileTooManyPages, { max, room: refused.room });
     case "too-new":
       return copy.boardFileTooNew;
   }
@@ -83,8 +78,11 @@ export async function openTldr(
     toasts.addToast({ severity: "success", title: copy.boardFileAdded });
   } catch (error) {
     console.error("board: could not open the file", error);
-    const problem = error instanceof ImportRefused ? error.problem : "damaged";
-    toasts.addToast({ severity: "error", title: problemText(copy, problem) });
+    const refused = error instanceof ImportRefused ? error : new ImportRefused("damaged");
+    toasts.addToast({
+      severity: "error",
+      title: problemText(copy, refused, editor.options.maxPages),
+    });
   } finally {
     toasts.removeToast(opening);
   }

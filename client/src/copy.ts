@@ -18,6 +18,8 @@ const EN = {
   boardFileOpen: "Open a .tldr file…",
   boardFileOpening: "Opening the file…",
   boardFileTooLarge: "This file is too large to open. Files can be up to %(size)s.",
+  boardFileTooManyPages:
+    "This file has too many pages. The board has room for %(room)s more, up to %(max)s in all.",
   boardFileTooNew:
     "This file comes from a newer version of tldraw than the board, so it cannot be opened here yet.",
   boardFull: "This board is full. You will join as soon as someone leaves.",
@@ -86,6 +88,8 @@ const PL: Copy = {
   boardFileOpen: "Otwórz plik .tldr…",
   boardFileOpening: "Otwieramy plik…",
   boardFileTooLarge: "Ten plik jest za duży. Plik może mieć do %(size)s.",
+  boardFileTooManyPages:
+    "Ten plik ma za dużo stron. Na tablicy zmieści się jeszcze %(room)s, w sumie najwyżej %(max)s.",
   boardFileTooNew:
     "Ten plik pochodzi z nowszej wersji tldraw niż tablica, więc nie da się go tu jeszcze otworzyć.",
   boardFull: "Tablica jest pełna. Dołączysz, gdy tylko ktoś wyjdzie.",

@@ -1,5 +1,5 @@
 import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 
 import {
   closeSheet,
@@ -11,6 +11,7 @@ import {
   PHONE,
   putNote,
 } from "./helpers";
+import { documentOf, downloadTldr, fixture, openTldr, toast } from "./tldr";
 
 // A board with more than one page, against the hosted Worker on :8788: a
 // member at a desktop and a guest on a phone manage pages together, find
@@ -268,4 +269,83 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await expectNoCspViolations(bea);
   await bea.context().close();
   await desk.close();
+});
+
+// table.tldr (three pages) with `extra` more empty pages after its own.
+function withExtraPages(extra: number): Buffer {
+  const file = JSON.parse(readFileSync(fixture("table.tldr"), "utf8")) as { records: object[] };
+  const digits = "456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  for (let at = 0; at < extra; at++) {
+    file.records.push({
+      id: `page:extra-${at}`,
+      index: `a${digits[at]}`,
+      meta: {},
+      name: `Extra ${at + 1}`,
+      typeName: "page",
+    });
+  }
+  return Buffer.from(JSON.stringify(file));
+}
+
+async function openTldrBytes(page: Page, buffer: Buffer): Promise<void> {
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("main-menu.button").click();
+  await page.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  const picker = await chooser;
+  await picker.setFiles({ buffer, mimeType: "", name: "many.tldr" });
+}
+
+test("a .tldr's pages join the page menu and the places list, up to the page cap", async ({
+  page,
+}) => {
+  await collectCspViolations(page);
+  await page.goto(`${HOST}/sign-in?name=Ivo`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+  await putNote(page, { at: { x: 300, y: 300 }, text: "Ours" });
+
+  await openTldr(page, "table.tldr");
+  await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
+  await expect(pageButton(page)).toHaveText("The map");
+  expect(await pagesListed(page)).toEqual(["Page 1", "The map", "The table", "Notes"]);
+  await closePages(page);
+  const places = await openSheet(page, "Places");
+  await expect(
+    places.getByRole("button", { exact: true, name: "The hall The table" }),
+  ).toBeVisible();
+  await expect(places.getByRole("button", { exact: true, name: "The map The map" })).toBeVisible();
+  await places.getByRole("button", { exact: true, name: "The hall The table" }).click();
+  await expect(places).toBeHidden();
+  await expect(pageButton(page)).toHaveText("The table");
+
+  // The download carries the board's own page as well as the file's.
+  const exported = documentOf(await downloadTldr(page));
+  expect(exported.pages.map((one) => one.name)).toEqual([
+    "Page 1",
+    "The map",
+    "The table",
+    "Notes",
+  ]);
+
+  // 4 pages + 37 would pass tldraw's 40: the whole file is refused, and no
+  // image of it is uploaded.
+  const uploads: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/files"))
+      uploads.push(request.url());
+  });
+  await openTldrBytes(page, withExtraPages(34));
+  await expect(
+    toast(page, "This file has too many pages. The board has room for 36 more, up to 40 in all."),
+  ).toBeVisible();
+  expect(uploads).toEqual([]);
+  expect(await pagesListed(page)).toHaveLength(4);
+  await closePages(page);
+
+  // 36 fill the board to the cap exactly.
+  await openTldrBytes(page, withExtraPages(33));
+  await expect(toast(page, "The file's pages were added to the board.").first()).toBeVisible();
+  await expect.poll(async () => pagesListed(page)).toHaveLength(40);
+  await closePages(page);
+  await expectNoCspViolations(page);
 });
