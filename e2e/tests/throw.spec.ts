@@ -178,7 +178,7 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
     .evaluateAll((dice) => new Set(dice.map((die) => die.getBoundingClientRect().top)).size);
   expect(rows).toBe(1);
   // The total stays in view at the end of a row of dice that scrolls.
-  const sum = toast(page).getByText(/^\d+$/u);
+  const sum = toast(page).getByText(/^\d+$/u).last();
   const end = await boxOf(sum);
   expect(end.x + end.width).toBeLessThanOrEqual(box.x + box.width);
 
