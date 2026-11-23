@@ -278,7 +278,9 @@ export function useMeasurer(measurer: Measurer | null): void {
 }
 
 export function measureParagraphs(paragraphs: Paragraph[], options: MeasureOptions): Measured {
-  return replacement === null ? measureWithFonts(paragraphs, options) : replacement(paragraphs, options);
+  return replacement === null
+    ? measureWithFonts(paragraphs, options)
+    : replacement(paragraphs, options);
 }
 
 function measureWithFonts(paragraphs: Paragraph[], options: MeasureOptions): Measured {

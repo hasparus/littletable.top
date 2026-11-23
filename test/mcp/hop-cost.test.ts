@@ -2,7 +2,7 @@ import type { TLRecord } from "@tldraw/tlschema";
 
 import { expect, it } from "vitest";
 
-import { runBatch } from "../../src/ops/engine";
+import { computeOps } from "../../src/mcp/board";
 import { freshBoard } from "./support";
 
 // What the hop between the two Workers costs on a large board. Not a
@@ -58,24 +58,12 @@ it.skipIf(asked === undefined)(
     ];
     let records = pages;
     for (const [index, page] of ["page:page", "page:two"].entries()) {
-      const outcome = runBatch(records, {
-        batchId: "seed",
-        now: 0,
-        ops: ops(index).slice(0, 1_000),
-        page,
-        run: { created: [] },
-      });
-      if (outcome.kind !== "applied") throw new Error(outcome.message);
+      const outcome = computeOps(records, { ops: ops(index).slice(0, 1_000), page }, []);
+      if (outcome.kind !== "computed") throw new Error(outcome.message);
       let puts = outcome.puts;
       for (const from of [1_000, 2_000]) {
-        const more = runBatch(pages, {
-          batchId: "seed",
-          now: 0,
-          ops: ops(index).slice(from, from + 1_000),
-          page,
-          run: { created: [] },
-        });
-        if (more.kind !== "applied") throw new Error(more.message);
+        const more = computeOps(pages, { ops: ops(index).slice(from, from + 1_000), page }, []);
+        if (more.kind !== "computed") throw new Error(more.message);
         puts = [...puts, ...more.puts];
       }
       records = [...records, ...puts];

@@ -84,7 +84,7 @@ describe("a batch computed while people edit the board", () => {
     expect(response.attempts).toBe(1);
     const records = await b.records();
     expect(shape(records, "far")).toMatchObject({ x: 2_500, y: 2_500 });
-    expect(shape(records, "stable")).toMatchObject({ x: 240 });
+    expect(shape(records, "stable")).toMatchObject({ x: 224 });
   });
 
   it("is computed again when the shape it was placed beside has moved", async () => {
@@ -97,7 +97,7 @@ describe("a batch computed while people edit the board", () => {
     const doc = new Doc(await b.records());
     const inn = pageBounds(doc, doc.shape("shape:inn")!);
     const stable = pageBounds(doc, doc.shape("shape:stable")!);
-    expect(stable.x).toBe(inn.x + inn.w + 40);
+    expect(stable.x).toBe(inn.x + inn.w + 24);
     expect(shape(await b.records(), "inn")).toMatchObject({ x: 1_000, y: 500 });
   });
 
@@ -130,7 +130,7 @@ describe("a batch computed while people edit the board", () => {
       }),
     );
     expect(response.attempts).toBe(2);
-    expect(response.result.errors).toEqual(["Op 0 (add): No shape on this page has the id inn."]);
+    expect(response.result.errors).toEqual(['Op 0 (add): Unknown shape "inn"']);
     const records = await b.records();
     expect(shape(records, "stable")).toBeUndefined();
     expect(shape(records, "kept")).toBeDefined();

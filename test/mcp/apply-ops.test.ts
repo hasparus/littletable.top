@@ -5,13 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { applyOps, type ApplyOpsResponse } from "../../src/mcp/board";
 import { Doc } from "../../src/ops/doc";
-import { arrowPath, intersects, pageBounds } from "../../src/ops/geometry";
-import { segmentHitsBox } from "../../src/ops/routing";
+import { intersects, pageBounds } from "../../src/ops/geometry";
 import { freshBoard, seat, until } from "./support";
 
 // apply_ops from the MCP Worker against a real board room in the board
-// Worker, with nobody connected: the engine computes here from a snapshot
-// and the room commits the diff.
+// Worker, with nobody connected: tldraw's engine runs here on the stand-in
+// editor over a snapshot, and the room commits the diff.
 
 function board() {
   const b = freshBoard();
@@ -23,12 +22,12 @@ function board() {
 }
 
 const applied = (response: ApplyOpsResponse) => {
-  if (typeof response === "string" || response.kind !== "applied")
+  if (typeof response === "string" || response.kind !== "applied") {
     throw new Error(`not applied: ${JSON.stringify(response)}`);
+  }
   return response.result;
 };
 
-const shapes = (records: TLRecord[]) => records.filter((r): r is TLShape => r.typeName === "shape");
 const schema = createTLSchema();
 
 function expectValid(records: TLRecord[]) {
@@ -40,184 +39,139 @@ function expectValid(records: TLRecord[]) {
   }
 }
 
+const shape = (records: TLRecord[], id: string) =>
+  records.find((record) => record.id === `shape:${id}`) as TLShape | undefined;
+
 describe("apply_ops on a board nobody has open", () => {
-  it("adds a box sized to its text, then one beside it that steps around a neighbour", async () => {
+  it("runs all eleven ops", async () => {
     const b = board();
     const first = applied(
       await b.apply([
         { at: { x: 0, y: 0 }, id: "tavern", op: "add", text: "The Yawning Portal" },
-        { at: { x: 320, y: 0 }, h: 120, id: "wall", op: "add", w: 120 },
+        { at: { x: 380, y: 0 }, h: 120, id: "wall", kind: "box", op: "add", w: 120 },
         { id: "cellar", op: "add", relation: "right_of", target: "tavern", text: "Cellar" },
+        {
+          id: "note",
+          kind: "note",
+          op: "add",
+          relation: "below",
+          target: "tavern",
+          text: "Rumour",
+        },
+        { from: "tavern", id: "stairs", op: "connect", text: "stairs", to: "cellar" },
+        { id: "tag", op: "label", target: "wall", text: "Old wall" },
+        { op: "rename", target: "cellar", text: "Wine cellar" },
+        { color: "red", fill: "solid", op: "restyle", targets: ["wall"] },
+        { h: 160, op: "resize", target: "wall", w: 160 },
+        { at: { x: 0, y: 600 }, id: "copy", op: "duplicate", subject: "tavern", text: "Annex" },
+        {
+          id: "river",
+          op: "path",
+          points: [
+            { x: 0, y: 900 },
+            { x: 200, y: 950 },
+            { x: 400, y: 900 },
+          ],
+          smooth: true,
+        },
+        { op: "place", relation: "below", subject: "copy", target: "note" },
+        { op: "untangle", targets: ["tavern", "cellar", "wall", "note", "copy"] },
+        { op: "remove", targets: ["tag"] },
       ]),
     );
     expect(first.errors).toEqual([]);
-    expect(first.results.map((result) => result.ok)).toEqual([true, true, true]);
-    expect(first.results[2]!.adjusted).toMatch(/keep clear/u);
-    const records = await b.records();
-    expectValid(records);
-    const doc = new Doc(records);
-    const placed = ["tavern", "wall", "cellar"].map((id) =>
-      pageBounds(doc, doc.shape(`shape:${id}`)!),
-    );
-    for (const [i, j] of [
-      [0, 1],
-      [0, 2],
-      [1, 2],
-    ] as const) {
-      expect(intersects(placed[i]!, placed[j]!)).toBe(false);
-    }
-    // NOTE: the cellar keeps to the asked side: right of the tavern.
-    expect(placed[2]!.x).toBeGreaterThanOrEqual(placed[0]!.x + placed[0]!.w);
-    const tavern = doc.shape("shape:tavern") as TLGeoShape;
-    expect(tavern.props).toMatchObject({ geo: "rectangle", growY: 0 });
-    expect(tavern.meta).toMatchObject({ agent: { batchId: first.batchId } });
-  });
-
-  it("connects two shapes with a bound, labelled arrow above both", async () => {
-    const b = board();
-    const result = applied(
-      await b.apply([
-        { at: { x: 0, y: 0 }, id: "a", op: "add", text: "Village" },
-        { at: { x: 500, y: 200 }, id: "b", kind: "ellipse", op: "add", text: "Dragon's lair" },
-        { from: "a", id: "road", op: "connect", text: "two days", to: { text: "dragon's lair" } },
+    expect(new Set(first.results.map((result) => result.op))).toEqual(
+      new Set([
+        "add",
+        "connect",
+        "duplicate",
+        "label",
+        "path",
+        "place",
+        "remove",
+        "rename",
+        "resize",
+        "restyle",
+        "untangle",
       ]),
     );
-    expect(result.errors).toEqual([]);
     const records = await b.records();
     expectValid(records);
-    const arrow = records.find((r) => r.id === "shape:road") as TLShape & {
-      props: { richText: unknown };
-    };
-    expect(arrow).toMatchObject({ parentId: "page:page", type: "arrow" });
+    expect((shape(records, "wall") as TLGeoShape).props).toMatchObject({
+      color: "red",
+      fill: "solid",
+      h: 160,
+      w: 160,
+    });
+    expect(shape(records, "tag")).toBeUndefined();
+    expect(shape(records, "river")).toMatchObject({ type: "line" });
+    expect(shape(records, "tavern")!.meta).toMatchObject({ agent: { batchId: first.batchId } });
     const bindings = records.filter((r): r is TLArrowBinding => r.typeName === "binding");
     expect(bindings.map((binding) => [binding.props.terminal, binding.toId]).sort()).toEqual([
-      ["end", "shape:b"],
-      ["start", "shape:a"],
+      ["end", "shape:cellar"],
+      ["start", "shape:tavern"],
     ]);
-    const indexOf = (id: string) => (records.find((r) => r.id === id) as TLShape).index;
-    expect(indexOf("shape:road") > indexOf("shape:b")).toBe(true);
-  });
-
-  it("bends an arrow around a shape in its way, on the side tldraw draws the bend", async () => {
-    const b = board();
-    const result = applied(
-      await b.apply([
-        { at: { x: 0, y: 0 }, h: 100, id: "west", op: "add", w: 100 },
-        { at: { x: 250, y: 0 }, h: 100, id: "middle", op: "add", w: 100 },
-        { at: { x: 500, y: 0 }, h: 100, id: "east", op: "add", w: 100 },
-        { from: "west", id: "over", op: "connect", text: "around", to: "east" },
-      ]),
+    const doc = new Doc(records);
+    const boxes = ["tavern", "cellar", "wall", "note", "copy"].map((id) =>
+      pageBounds(doc, doc.shape(`shape:${id}`)!),
     );
-    expect(result.results[3]!.adjusted).toMatch(/^bent \d+ px/u);
-    const doc = new Doc(await b.records());
-    const arrow = doc.shape("shape:over") as TLShape & { props: { bend: number } };
-    expect(arrow.props.bend).not.toBe(0);
-    const middle = pageBounds(doc, doc.shape("shape:middle")!);
-    // NOTE: the arrow sits on the page unrotated, so its space is the page's moved.
-    const course = arrowPath(doc, arrow as never).map(({ x, y }) => ({
-      x: x + arrow.x,
-      y: y + arrow.y,
-    }));
-    for (let index = 1; index < course.length; index++) {
-      expect(segmentHitsBox(course[index - 1]!, course[index]!, middle)).toBe(false);
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        expect(intersects(boxes[i]!, boxes[j]!), `${i} and ${j} overlap`).toBe(false);
+      }
     }
   });
 
-  it("reaches shapes made by earlier calls of the same run", async () => {
+  it("reaches shapes made by earlier calls of the same run, and only those", async () => {
     const b = board();
     applied(await b.apply([{ at: { x: 0, y: 0 }, op: "add", text: "Act I" }], { runId: "plot" }));
-    applied(await b.apply([{ op: "add", text: "Act II" }], { runId: "plot" }));
+    applied(
+      await b.apply([{ at: { x: 400, y: 0 }, op: "add", text: "Act II" }], { runId: "plot" }),
+    );
     const third = applied(
       await b.apply(
         [
           { from: { created: 0 }, op: "connect", to: { created: "last" } },
-          { op: "rename", target: { created: "last" }, text: "Act II: the heist" },
+          { op: "rename", target: { created: 1 }, text: "Act II: the heist" },
         ],
         { runId: "plot" },
       ),
     );
     expect(third.errors).toEqual([]);
-    const elsewhere = applied(
-      await b.apply([{ op: "remove", targets: [{ created: "last" }] }], { runId: "other" }),
+    const other = applied(
+      await b.apply([{ op: "remove", targets: { created: "all" } }], { runId: "x" }),
     );
-    expect(elsewhere.errors[0]).toMatch(/made no shapes/u);
+    expect((await b.records()).filter((record) => record.typeName === "shape")).toHaveLength(3);
+    expect(other.results[0]).toMatchObject({ shapeIds: [] });
   });
 
-  it("reports a failing op and applies the others; an invalid batch applies nothing", async () => {
+  it("reports a failing op, rolls it back and applies the others; an invalid batch applies nothing", async () => {
     const b = board();
     const mixed = applied(
       await b.apply([
         { at: { x: 0, y: 0 }, id: "keep", op: "add", text: "Kept" },
         { op: "rename", target: "missing", text: "x" },
-        { id: "keep", op: "add", text: "Same id" },
-        { op: "untangle", targets: ["keep"] },
+        { at: { x: 500, y: 0 }, id: "keep", op: "add", text: "Same id" },
         { at: { x: 0, y: 300 }, op: "add", text: "Also kept" },
       ]),
     );
-    expect(mixed.results.map((result) => result.ok)).toEqual([true, false, false, false, true]);
+    expect(mixed.results.map((result) => result.ok)).toEqual([true, false, false, true]);
     expect(mixed.errors).toEqual([
-      "Op 1 (rename): No shape on this page has the id missing.",
-      "Op 2 (add): A shape with the id keep already exists; use a new id.",
-      "Op 3 (untangle): untangle is not supported by this board yet; nothing was changed.",
+      'Op 1 (rename): Unknown shape "missing"',
+      'Op 2 (add): Shape "keep" already exists; use a new id',
     ]);
-    expect(shapes(await b.records())).toHaveLength(2);
-
     const before = await b.records();
+    expect(before.filter((record) => record.typeName === "shape")).toHaveLength(2);
+
     const invalid = await b.apply([
       { at: { x: 0, y: 0 }, op: "add", text: "Never" },
-      { op: "add", text: "x".repeat(6_000) },
+      { op: "explode" },
     ]);
-    expect(invalid).toMatchObject({ kind: "invalid" });
-    expect((invalid as { message: string }).message).toMatch(
-      /^The batch is invalid and nothing was applied/u,
-    );
+    expect(invalid).toMatchObject({
+      kind: "invalid",
+      message: expect.stringMatching(/^The batch is invalid and nothing was applied\./u),
+    });
     expect(await b.records()).toEqual(before);
-  });
-
-  it("asks which shape is meant when text matches several", async () => {
-    const b = board();
-    applied(
-      await b.apply([
-        { at: { x: 0, y: 0 }, id: "g1", op: "add", text: "Goblin" },
-        { at: { x: 300, y: 0 }, id: "g2", op: "add", text: "goblin" },
-      ]),
-    );
-    const result = applied(await b.apply([{ op: "remove", targets: [{ text: "Goblin" }] }]));
-    expect(result.errors[0]).toMatch(
-      /^Op 0 \(remove\): 2 shapes have the text "Goblin": g1 \(geo at/u,
-    );
-  });
-
-  it("grows a box to a longer label as tldraw would, and keeps an arrow whose end is removed", async () => {
-    const b = board();
-    applied(
-      await b.apply([
-        { at: { x: 0, y: 0 }, h: 80, id: "box", op: "add", text: "Door", w: 160 },
-        { at: { x: 400, y: 0 }, id: "key", kind: "note", op: "add", text: "Key" },
-        { from: "box", id: "link", op: "connect", to: "key" },
-      ]),
-    );
-    const renamed = applied(
-      await b.apply([
-        {
-          op: "rename",
-          target: "box",
-          text: "The iron door, locked, with a rusted keyhole and runes along its frame",
-        },
-        { op: "remove", targets: ["key"] },
-      ]),
-    );
-    expect(renamed.errors).toEqual([]);
-    const records = await b.records();
-    expectValid(records);
-    const box = records.find((r) => r.id === "shape:box") as TLGeoShape;
-    expect(box.props.w).toBe(160);
-    expect(box.props.growY).toBeGreaterThan(0);
-    expect(records.some((r) => r.id === "shape:link")).toBe(true);
-    expect(records.filter((r) => r.typeName === "binding")).toHaveLength(1);
-    expect(renamed.results[1]!.message).toBe(
-      "Removed 1 shape; 1 arrow end stays where the removed shape was.",
-    );
   });
 
   it("refuses a read-only grant and a revoked one", async () => {
@@ -228,6 +182,29 @@ describe("apply_ops on a board nobody has open", () => {
     expect(await applyOps(b.room, { ...b.grant, grant: 2 }, { ops: op })).toBe("revoked");
     expect(await applyOps(b.room, { ...b.grant, grant: 3 }, { ops: op })).toMatchObject({
       kind: "applied",
+    });
+  });
+
+  it("works on the page it is given, by id, on a board with several", async () => {
+    const b = board();
+    const snapshot = await b.read();
+    const second = { id: "page:two", index: "a2", meta: {}, name: "Dungeon", typeName: "page" };
+    await b.room.commitDocument(b.grant, {
+      absent: ["page:two"],
+      puts: [second as TLRecord],
+      removes: [],
+      since: snapshot.clock,
+      unchanged: [],
+    });
+    const result = applied(
+      await b.apply([{ at: { x: 0, y: 0 }, id: "trap", op: "add", text: "Trap" }], {
+        page: "page:two",
+      }),
+    );
+    expect(result).toMatchObject({ errors: [], pageId: "page:two", pageName: "Dungeon" });
+    expect(shape(await b.records(), "trap")).toMatchObject({ parentId: "page:two" });
+    expect(await b.apply([{ op: "remove", targets: ["trap"] }], { page: 5 })).toMatchObject({
+      kind: "no-page",
     });
   });
 

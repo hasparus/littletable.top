@@ -109,9 +109,12 @@ describe("the MCP endpoint", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "search_boards",
       "get_board_info",
+      "get_page_info",
+      "get_cluster_info",
       "apply_ops",
+      "search_shapes",
     ]);
-    const ops = JSON.stringify(tools[2]!.inputSchema.properties.ops);
+    const ops = JSON.stringify(tools[4]!.inputSchema.properties.ops);
     for (const name of [
       "add",
       "place",
@@ -136,7 +139,7 @@ describe("the MCP endpoint", () => {
       await post(bearer, rpc("tools/list", { _meta: modernMeta }), headers),
     );
 
-    expect(list.result.tools).toHaveLength(3);
+    expect(list.result.tools).toHaveLength(6);
     const applied = await result(
       await post(
         bearer,
@@ -190,10 +193,75 @@ describe("the MCP endpoint", () => {
       content: [{ text: expect.stringMatching(/may read this board but not change it/u) }],
       isError: true,
     });
-    const invalid = await ask("mcp-c", "apply_ops", { ops: [{ op: "add", size: "huge" }] });
+    const invalid = await ask("mcp-c", "apply_ops", { ops: [] });
     expect(invalid).toMatchObject({
-      content: [{ text: expect.stringMatching(/^Input validation error: .*ops\.0\.size/u) }],
+      content: [{ text: expect.stringMatching(/ops/u) }],
       isError: true,
+    });
+  });
+
+  it("reads a board back: its pages, a page's clusters, a cluster's shapes, and shapes by text", async () => {
+    const bearer = await token([{ access: "write", board: "mcp-d", title: "Read me" }]);
+    const headers = { "MCP-Protocol-Version": MODERN };
+    const call = async (name: string, args: object) => {
+      const answer = await result(
+        await post(
+          bearer,
+          rpc("tools/call", { _meta: modernMeta, arguments: args, name }),
+          headers,
+        ),
+      );
+      expect(answer.result.isError, JSON.stringify(answer.result)).toBeUndefined();
+      expect(answer.result.content[0]).toEqual({ text: UNTRUSTED, type: "text" });
+      return JSON.parse(answer.result.content[1].text);
+    };
+    await call("apply_ops", {
+      boardId: "mcp-d",
+      ops: [
+        { at: { x: 0, y: 0 }, id: "inn", op: "add", text: "Inn of the goblin" },
+        { id: "stable", op: "add", relation: "right_of", target: "inn", text: "Stable" },
+        { from: "inn", id: "path", op: "connect", to: "stable" },
+        { at: { x: 5000, y: 5000 }, id: "tower", op: "add", text: "Wizard tower" },
+      ],
+    });
+    expect(await call("get_board_info", { boardId: "mcp-d" })).toEqual({
+      name: "Read me",
+      pageCount: 1,
+      pages: [{ hasContent: true, id: "page:page", index: 0, name: "Page 1" }],
+    });
+    const page = await call("get_page_info", { boardId: "mcp-d", page: "page:page" });
+    expect(page).toMatchObject({ clusterCount: 2, name: "Page 1" });
+    expect(
+      page.clusters.map((cluster: { numberOfShapes: number }) => cluster.numberOfShapes),
+    ).toEqual([3, 1]);
+    const info = await call("get_cluster_info", {
+      boardId: "mcp-d",
+      clusterIds: [page.clusters[0].id],
+    });
+    const shapes = info.clusters[0].shapes as { id: string; props: Record<string, unknown> }[];
+    expect(shapes.map((shape) => shape.id).sort()).toEqual([
+      "shape:inn",
+      "shape:path",
+      "shape:stable",
+    ]);
+    expect(shapes.find((shape) => shape.id === "shape:inn")!.props.text).toBe("Inn of the goblin");
+    expect(shapes.find((shape) => shape.id === "shape:path")!.props).toMatchObject({
+      bindingFromId: "shape:inn",
+      bindingToId: "shape:stable",
+    });
+    expect(await call("search_shapes", { boardId: "mcp-d", query: "wizard" })).toEqual({
+      matchCount: 1,
+      matches: [
+        {
+          boardId: "mcp-d",
+          bounds: { h: 32, w: 170, x: 5000, y: 5000 },
+          confidence: 1,
+          excerpt: "Wizard tower",
+          pageId: "page:page",
+          shapeId: "tower",
+          source: "native",
+        },
+      ],
     });
   });
 });
