@@ -169,7 +169,7 @@ export class ImageText {
 
   // What the room has read and is reading, for when a notice was missed
   // (a socket that dropped, a lease that ran out).
-  async #refresh(): Promise<void> {
+  async #refresh(thenRead = true): Promise<void> {
     try {
       const response = await this.#request("/text");
       if (!response.ok) throw new Error(`status ${response.status}`);
@@ -182,7 +182,7 @@ export class ImageText {
     }
     for (const hash of this.#images) this.#fetchStored(hash);
     this.#count();
-    this.#schedule(0);
+    if (thenRead) this.#schedule(0);
   }
 
   // Fetches each stored reading of the image this browser does not have.
@@ -231,13 +231,11 @@ export class ImageText {
     return this.#listing[list].has(pair(hash, key));
   }
 
-  // The engines of this device that still have something to do on it.
-  #missing(hash: string, { busyToo }: { busyToo: boolean }): EngineKey[] {
+  // The engines of this device that have not read the image yet and have
+  // not given up on it (someone may be reading it now).
+  #missing(hash: string): EngineKey[] {
     return this.#engines.filter(
-      (key) =>
-        !this.#has(hash, key, "stored") &&
-        !this.#has(hash, key, "failed") &&
-        (busyToo || !this.#has(hash, key, "reading")),
+      (key) => !this.#has(hash, key, "stored") && !this.#has(hash, key, "failed"),
     );
   }
 
@@ -247,7 +245,7 @@ export class ImageText {
     for (const hash of this.#images) {
       const reading = hash === this.#reading || keys.some((key) => this.#has(hash, key, "reading"));
       const unread = !keys.some((key) => this.#has(hash, key, "stored"));
-      if (reading || (unread && this.#missing(hash, { busyToo: true }).length > 0)) pending++;
+      if (reading || (unread && this.#missing(hash).length > 0)) pending++;
     }
     this.pending.set(pending);
   }
@@ -264,8 +262,10 @@ export class ImageText {
   async #tick(): Promise<void> {
     if (this.#disposed || this.#reading !== null || this.#engines.length === 0) return;
     if (document.visibilityState === "hidden") return;
+    // NOTE: an image someone else reads counts too: only the room knows
+    // when their lease ran out, which no notice says.
     const candidates = [...new Set([...this.#images, ...this.#own])].filter(
-      (hash) => this.#missing(hash, { busyToo: false }).length > 0,
+      (hash) => this.#missing(hash).length > 0,
     );
     if (candidates.length === 0) return;
     const prefer = candidates.find((hash) => this.#own.has(hash)) ?? null;
@@ -290,7 +290,10 @@ export class ImageText {
       this.#backOff();
       return this.#schedule(this.#notBefore - performance.now());
     }
-    if (claim === null) return this.#schedule(POLL_MS);
+    if (claim === null) {
+      void this.#refresh(false);
+      return this.#schedule(POLL_MS);
+    }
     await this.#read(claim);
     this.#schedule(0);
   }

@@ -270,3 +270,31 @@ test("text one person's images carry is found by others, there and tilted", asyn
   );
   for (const each of [ada, bea, cy]) await each.page.context().close();
 });
+
+test("when the uploader leaves mid-read, another browser reads the image once the lease runs out", async ({
+  browser,
+}) => {
+  test.setTimeout(300_000);
+  const ada = await member(browser, "Ada");
+  await ada.page.getByRole("button", { name: "New board" }).click();
+  await expect(ada.page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+  const bea = await guest(browser, ada.page.url(), "Bea", DESKTOP);
+  await openSheet(bea.page, "Search");
+
+  await uploadImage(ada.page, MAP);
+  // Bea is told the map is being read; Ada's browser holds it.
+  await expect(reading(bea.page)).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => ada.network.engineFiles().length, { timeout: 30_000 }).toBeGreaterThan(0);
+  const left = Date.now();
+  await ada.page.context().close();
+
+  await field(bea.page).fill("sledziowa");
+  await expect(options(bea.page).filter({ hasText: "Śledziowa" }).first()).toBeVisible({
+    timeout: 150_000,
+  });
+  // Bea's own browser read it: it fetched the engines, after the lease ran out.
+  expect(bea.network.engineFiles().length).toBeGreaterThan(0);
+  expect(Date.now() - left).toBeGreaterThan(25_000);
+  await expectNoCspViolations(bea.page);
+  await bea.page.context().close();
+});

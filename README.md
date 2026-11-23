@@ -25,7 +25,8 @@ The tabletop runs in one of two modes, chosen by configuration:
 
 No licence has been chosen for this repository's own code yet, and there is
 no `LICENSE` file. The Outfit font in `client/src/theme/fonts/` is under the
-SIL Open Font License (`OFL.txt` beside it).
+SIL Open Font License (`OFL.txt` beside it). The text engines and their
+models (see "Text in images") are under Apache-2.0 and MIT.
 
 The board is built on the [tldraw SDK](https://tldraw.dev), an ordinary npm
 dependency under tldraw's own licence, not this repository's. Off
@@ -210,8 +211,9 @@ A missing, invalid or wrong-board pass is a plain 403. `roll` and `rolls`
 answer 403 for a reset link and 429 for a roll that comes too fast.
 
 Every page and file leaves with the tabletop's Content-Security-Policy
-(`default-src 'none'`; scripts, styles, fonts and images from itself; the
-rooms socket; the host's origin) and the usual hardening headers.
+(`default-src 'none'`; scripts, workers, styles, fonts and images from
+itself, WebAssembly compiled from them; the rooms socket; the host's
+origin) and the usual hardening headers.
 
 ## Images
 
@@ -367,16 +369,139 @@ query nor the flash is synced or sent anywhere.
   never waits for it. Rich text is read straight from its JSON, not
   through TipTap. The browser's performance timeline has each
   `board-search:update`.
-- **Text in images, later.** Every index document has an id, a kind
-  (`native`, `place`, or `ocr` for a line read off an image), its shape
-  and page, its text and, for `ocr`, a `region`: the line's corners in
-  the source image's pixels. `BoardIndex.setImageText(shape, lines)`
-  replaces one image's lines as a whole, so a better reading can replace
-  an older one. `imageQuadToPage` (`client/src/image-quad.ts`) maps a
-  region to page coordinates for the image as it lies now, flipped,
-  cropped or rotated, and the flash takes any page-space polygon, so such
-  a result flashes only its line. The results list already shows an `ocr`
-  result with an "In image" label.
+- **Text in images.** An image's text is indexed too, one document per
+  line read (kind `ocr`), shown with an "In image" label; see "Text in
+  images" below.
+
+## Text in images
+
+Text printed in a board's images (maps, character sheets, rules pages,
+handouts) is read in people's browsers and joins the search. Nothing is
+read on a server or by an outside service.
+
+- **Who reads.** The browser that uploads an image reads it right after
+  (a pasted image or a .tldr's images too). Any other browser on the board
+  fills in images that still have no reading: once the tab is in view and
+  the person has left the board alone for 4 s, it claims one image from
+  the board's Durable Object under a 30 s lease it renews every 10 s, so
+  two browsers never read the same image and a browser that leaves gives
+  it up. A browser saving data (or on a cellular connection, where the
+  browser says so) reads only what its person uploaded. A failed reading
+  backs off from 30 s to 10 min; after three failures of an image with one
+  engine version the board stops handing it out. An image an assistant
+  adds stays unread until a person opens the board.
+- **Engines** (`client/src/text-worker.ts`, one module worker of this
+  origin, started only when there is something to read and let go after a
+  minute idle): Tesseract through tesseract.js 6 (`tessdata_fast`
+  `pol+eng`, sparse-text page segmentation, images at most 2048 px on the
+  long side), and an own PP-OCRv6 tiny pipeline on onnxruntime-web
+  (`client/src/ppocr.ts`: detector at 960 px, rotated boxes read upright,
+  each word's quad from the recogniser's time steps). Both are indexed,
+  side by side. A device without WebAssembly SIMD, with under 4 GB of
+  memory or saving data runs Tesseract alone. Each engine gets a time
+  limit (2 min the first time, then 1 min), past which the worker is
+  ended: a WebAssembly start that fails can hang rather than fail.
+- **What is kept** (`client/src/text-filter.ts`). Engines read a map's
+  mountains and trees as short words. A word is indexed when it has a
+  letter or digit (and is mostly made of them, with no Han or kana), its
+  engine is at least 0.5 sure, a Tesseract word under 0.8 is backed by
+  PP-OCR in the same place or by sure words on its line, its box fits its
+  letters, and it is not a lone letter, a lone short unsure word or a
+  ring (`0`, `o`, `8`: trees). The same word in the same place from both
+  engines is indexed once; differing readings both stay. On the 14
+  evaluation fixtures this keeps 93% of the names people search for
+  (77% before filtering on maps, 74% after) and cuts junk words from 379
+  to 81.
+- **Finding.** A hit zooms to the words it matched, mapped through the
+  image's current transform and crop, and flashes them, tilted with a
+  tilted label. Words the crop hides lead to the whole image, with a note
+  saying so. Lines read off the same place of an image are one result.
+  Readings belong to the image's content, so a copy of the image anywhere
+  on the board is searchable at once; deleting an image's shape takes its
+  lines out of the index, while the stored reading stays for undo.
+- **Progress.** While anything on the board is being read, the Search
+  sheet says "Reading the text in 3 images…", and nothing otherwise.
+
+### The stored result
+
+One JSON object per image and engine version, in R2 beside the image as
+`boards/<board>/<sha256>.ocr.<engine>-<version>.json`, format `ocr/1`:
+
+```json
+{
+  "format": "ocr/1",
+  "image": { "sha256": "…", "width": 2048, "height": 1536 },
+  "engine": { "name": "ppocr", "version": "v6tiny.1", "model": "…", "params": { "detMaxSide": 960 } },
+  "source": "uploader",
+  "createdAt": "2026-11-23T10:00:00.000Z",
+  "lines": [{ "box": [x0, y0, x1, y1], "quad": [8 numbers], "words": [{ "t": "Zatoka", "c": 0.92, "b": [x0, y0, x1, y1], "q": [8 numbers] }] }]
+}
+```
+
+Pixels are the source image's, lines in reading order, `q` a word's
+corners clockwise from its top left as it reads (PP-OCR only); `source`
+is `uploader` or `peer`. The allowed engine keys are in
+`src/text-result.ts` (`tesseract-6.0.1`, `ppocr-v6tiny.1`); a new model or
+new parameters get a new key, read beside the old.
+
+| Route                                          | Does                                                                 |
+| ---------------------------------------------- | -------------------------------------------------------------------- |
+| `GET /rooms/<board>/files/text`                | `{"stored", "reading", "failed"}`: `{hash, engine}` pairs            |
+| `POST /rooms/<board>/files/text/claim`         | `{"candidates", "engines", "prefer"}` → a lease on one image, or 204 |
+| `POST /rooms/<board>/files/text/renew`         | `{"lease"}` → 204, or 409 once it ran out                            |
+| `POST /rooms/<board>/files/text/release`       | `{"lease", "failed"}` → 204                                          |
+| `PUT /rooms/<board>/files/<sha256>/text/<key>` | Stores a reading: 201, or 200 with the one already stored            |
+| `GET /rooms/<board>/files/<sha256>/text/<key>` | A stored reading, cached for good as an image is                     |
+
+Reads take the pass or the files cookie, writes the pass. The Worker
+treats a result as untrusted text: the image must be one of the board's
+files and not an SVG; the stated size must be the stored image's, either
+way up (its header is read once by `src/image-size.ts`); boxes and quads
+lie inside it with an area; confidences are in [0, 1]; the engine must be
+the allowed one its key names; words are NFC-normalised with control and
+format characters and spaces removed, 64 characters at most; at most
+512 KB, 20,000 words, and one word per 64 pixels of image. It stores its
+own rebuilt copy with its own timestamp. The first valid reading of an
+image by an engine wins. A person may store 60 readings and claim 60
+images a minute. Readings count against the board's 256 MiB, and go with
+the board. The room announces each claim, release and stored reading to
+every connection as a sync custom message (`{"type": "image-text"}`), as
+it does rolls. One `board.text_stored` log line per write: board, person
+kind, engine, words, outcome. The text is only ever shown as text.
+
+### Self-hosted files
+
+Under `/assets/ocr/`, each with its content's hash in its name (the
+language data in a hashed folder, as Tesseract fixes the names), cached
+for good, fetched only when this browser reads an image. The page's
+policy adds `'wasm-unsafe-eval'` to `script-src` and `worker-src 'self'`,
+nothing more: tesseract.js starts its own worker from its file here,
+never a blob: URL, and runs single-threaded without cross-origin
+isolation. The first reading downloads about 15 MB (gzip; the uploader's
+browser, both engines).
+
+| File                                       | From                                                        | Licence    |
+| ------------------------------------------ | ----------------------------------------------------------- | ---------- |
+| tesseract.js 6.0.1 worker                  | npm `tesseract.js`                                          | Apache-2.0 |
+| Tesseract core, SIMD and plain (LSTM only) | npm `tesseract.js-core` 6.1.2                               | Apache-2.0 |
+| `pol`, `eng` traineddata (`client/ocr/`)   | tesseract-ocr/tessdata_fast 4.1.0, gzipped                  | Apache-2.0 |
+| onnxruntime-web 1.31.1 WebAssembly         | npm `onnxruntime-web`                                       | MIT        |
+| PP-OCRv6 tiny detector and recogniser      | PaddleOCR's `PP-OCRv6_tiny_{det,rec}` ONNX inference models | Apache-2.0 |
+| The recogniser's dictionary                | that model's `inference.yml`, as JSON                       | Apache-2.0 |
+
+SHA-256 of the vendored files: `pol.traineddata`
+`c4476cdbc0e33d898d32345122b7be1cbf85ace15f920f06c7714756e1ef79b2`,
+`eng.traineddata`
+`7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`
+(before gzip), `ppocr-v6-tiny-det.onnx`
+`193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8`,
+`ppocr-v6-tiny-rec.onnx`
+`9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6`.
+
+The tests: `e2e/fixtures/text/` keeps six of the evaluation's generated
+images (`generate.py`), their ground truth and both engines' readings;
+`test/text-filter.test.ts` checks the filter against them, and
+`e2e/tests/image-text.spec.ts` runs the real engines between browsers.
 
 ## .tldr files
 
