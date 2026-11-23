@@ -7,13 +7,19 @@ named.
 
 ## 1. Decision
 
-**Go: a pure, server-side operations engine inside the board's Durable
-Object.** It reads the room's records, computes with our own geometry and
-text measurer, validates every record against `@tldraw/tlschema`, and writes
-one storage transaction, which the sync room sends to connected browsers as
-one patch. No browser tab is involved, so a board nobody has open behaves
-exactly like an open one. Upstream's hosted tools relay to the user's tab
-and refuse without one; we do not copy that architecture.
+**Go: a pure, server-side operations engine, in a Worker of its own.** The
+MCP Worker reads a snapshot of the board's records from the board's Durable
+Object, computes with our own geometry and text measurer, and commits a
+diff; the room validates it, checks that nothing it rested on has changed,
+writes one storage transaction, and the sync room sends that to connected
+browsers as one patch. No browser tab is involved, so a board nobody has
+open behaves exactly like an open one. Upstream's hosted tools relay to
+the user's tab and refuse without one; we do not copy that architecture.
+
+The first version of this spike ran the engine inside the Durable Object
+and I wrote that it had to stay there. That was wrong: what has to stay in
+the room is the atomic check-and-write, not the computing. §1a is the
+split the maintainer asked for, built and measured.
 
 The risky part was text. It is solved to the pixel for tldraw's own fonts
 (§3): 100% of line counts, heights, geo `growY`, note `growY` and note font
@@ -24,18 +30,234 @@ those are estimated and flagged.
 
 What runs where:
 
-| Concern                                   | Where                                                             |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| MCP transport, token check, tool schemas  | The Worker (`src/mcp/`), stateless, a fresh server per request    |
-| Ops engine, clustering, run memory, audit | The board's Durable Object (`src/ops/`, `BoardRoom.mcpApplyOps`)  |
-| Text measurement                          | The Durable Object: fontkit + tldraw's woff2 files, in the bundle |
-| Delivery to open tabs                     | tldraw sync, unchanged (a storage transaction is broadcast)       |
-| Screenshots (later)                       | A connected tab when one exists, else Browser Run (§7)            |
-| Selection and viewport (`get_user_state`) | Presence records of the account's own session, when connected     |
+| Concern                                                     | Where                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------ |
+| Sync rooms, dice, images, accounts: everything players load | The board Worker (`src/index.ts`, `BoardRoom`)               |
+| Snapshot, check-and-commit, run memory, grant version       | `BoardRoom`, through `src/room-document.ts` (196 lines)      |
+| MCP transport, token check, tool schemas                    | The MCP Worker (`src/mcp/worker.ts`), stateless              |
+| Ops engine, text measurer and fonts, clustering             | The MCP Worker (`src/ops/`)                                  |
+| Delivery to open tabs                                       | tldraw sync, unchanged                                       |
+| Screenshots, search (later)                                 | The MCP Worker; Browser Run for pictures (§7)                |
+| Selection and viewport (`get_user_state`)                   | Presence of the account's own session, read through the room |
+
+## 1a. Two Workers
+
+### The split
+
+```
+assistant ──HTTPS──▶ MCP Worker (tabletop-mcp)                board Worker (tabletop)
+                     token, MCP SDK, engine, fonts            routes, sync, dice, images
+                        │  Durable Object binding               │
+                        │  (class BoardRoom, script tabletop)   │
+                        └──── readDocument / commitDocument ───▶ BoardRoom ◀──sync── browsers
+```
+
+The dependency runs one way: the MCP Worker binds to the board Worker's
+`BoardRoom` class by script name and calls its RPC methods. The board
+Worker does not know the MCP Worker exists and deploys without it.
+
+| Bundle                                    | Raw           | gzip          | Startup (local, median of 5) |
+| ----------------------------------------- | ------------- | ------------- | ---------------------------- |
+| Board Worker before the spike (`f6896cf`) | 602.0 KiB     | 122.0 KiB     | 122 ms                       |
+| One Worker with the spike (`87c6020`)     | 3206.8 KiB    | 1151.6 KiB    | 494 ms                       |
+| **Board Worker after the split**          | **608.1 KiB** | **123.6 KiB** | 159 ms                       |
+| MCP Worker after the split                | 2990.5 KiB    | 1099.2 KiB    | 107 ms                       |
+
+The board Worker gained 6.1 KiB raw, 1.5 KiB gzip: `src/room-document.ts`
+and 70 lines in `src/board-room.ts`; `src/index.ts` and `src/config.ts`
+are as they were before the spike. Startup is from `wrangler check
+startup` (a CPU profile of module evaluation in local workerd; runs ranged
+89-204 ms for the small bundles, so 122 and 159 are the same within noise).
+The single-Worker build took 364-554 ms, against a platform limit that is
+of that order, which alone justifies the split. Why the MCP Worker by
+itself evaluates faster than the combined build was not investigated.
+
+### The room's document interface (the contract)
+
+RPC methods on `BoardRoom`, callable only by a Worker bound to the class.
+There is no HTTP route. Types in `src/room-document.ts`, shared by a
+type-only import (`RoomDocumentCalls` is written out by hand because the
+stub's inferred types recurse through every tldraw record type until
+TypeScript gives up).
+
+```ts
+readDocument(grant, { scope: "document" | { page }, runId? })
+  → { clock, records, created } | "revoked"
+
+commitDocument(grant, { since, puts, removes, unchanged, absent, run? })
+  → { kind: "committed", clock }
+  | { kind: "conflict", why: "changed" | "exists" | "referenced" | "stale", records }
+  | { kind: "invalid", message }
+  | "read-only" | "revoked"
+
+revokeMcpGrants(board, version)
+```
+
+- `grant` is the board's entry from a token the caller verified
+  (`{board, access, grant, title}`). The room refuses a grant version below
+  its own and a write under read access. It trusts the caller for the
+  signature: only our own Workers can hold the binding.
+- `readDocument` returns records and the document clock from one storage
+  transaction. A page scope returns every page record, that page's shapes
+  at any depth and their bindings. `created` is the run's memory.
+- `commitDocument` validates every put against the tldraw schema, then in
+  **one synchronous storage transaction** checks the preconditions and
+  writes. A Durable Object runs nothing else in between, so check and write
+  are atomic, and the transaction is one patch to browsers.
+- The room knows nothing about ops. The same two calls serve the read
+  tools, and later screenshots and search.
+
+NOTE: the brief said "through `updateStore`". `TLSocketRoom.updateStore`
+is deprecated in sync-core 5.6 in favour of `storage.transaction`, copies
+every record with `structuredClone` on each call (54 ms for 8,000 records)
+and gives no access to the clock. The room uses `storage.transaction` and
+validates with the same record validators `updateStore` uses.
+
+### The conflict model
+
+A whole-document clock check would fail every batch on a busy board.
+sync-core stamps each record with the clock of its last change and keeps
+tombstones for deletions; `txn.getChangesSince(clock)` returns exactly the
+ids put or deleted since a clock. So the check is per record, by version,
+with no values compared:
+
+| Precondition                                                                                                   | Sent as                                       | Conflict                |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ----------------------- |
+| Every record the batch relied on or overwrites is as it was at the snapshot                                    | `unchanged`                                   | `changed`, with the ids |
+| Every id the batch creates is still free                                                                       | `absent`                                      | `exists`                |
+| Nothing written meanwhile points at a record the batch removes (an arrow bound to it, a child dropped into it) | derived from `removes` by scanning references | `referenced`            |
+| The room still has history back to the snapshot's clock                                                        | `since`                                       | `stale`                 |
+
+What a batch "relies on" is tracked by the engine's document view
+(`Doc.depend`): every shape an op resolved by reference (id, `{text}`,
+`{created}`, the implicit previous shape), with its ancestors, since a
+parent's transform moves it; plus the page. Overwritten and removed
+records are added from the diff itself.
+
+**Deliberately not a dependency: the neighbours.** Placement and arrow
+routing look at every shape on the page as an obstacle. Treating those as
+dependencies would be the whole-document check again. If someone drops a
+shape into the spot the batch chose while it was computing (tens of
+milliseconds), the two overlap, exactly as if they had drawn it a moment
+later. Likewise a second shape gaining the same text as a `{text}`
+reference just resolved. These are soft; everything that could corrupt the
+document or silently undo a person's edit is hard.
+
+On a conflict the MCP Worker reads again and recomputes the whole batch,
+at most `MAX_ATTEMPTS = 3` times in all; then it answers "People kept
+changing the shapes this batch touches (3 attempts); nothing was applied".
+A retry after an `exists` conflict reads the whole document, because an id
+taken on another page is invisible in one page's records. Recomputing can
+change the outcome, and should: a target that was deleted meanwhile makes
+that op fail on its own while the rest apply.
+
+Tests, in the Workers pool with both Workers running
+(`test/mcp/concurrency.test.ts`), an edit injected between the snapshot and
+the commit:
+
+| Meanwhile                                               | Result                                                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| An unrelated shape moves                                | applied, 1 attempt; both changes stand                                                           |
+| The shape the batch places beside moves                 | conflict, recomputed, 2 attempts; placed beside the new position                                 |
+| The shape being renamed is recoloured                   | 2 attempts; the new colour and the new text both stand                                           |
+| The target is deleted                                   | 2 attempts; that op reports "No shape on this page has the id inn", the batch's other op applies |
+| An arrow is bound to a shape the batch removes          | `referenced` conflict; 2 attempts; the shape and the new binding go, the arrow stays             |
+| The target moves on every read                          | "busy" after 3 attempts; nothing applied                                                         |
+| A diff naming a taken id; a diff with an invalid record | `exists`; `invalid`; the document is untouched                                                   |
+
+The earlier semantics hold across the two Workers (`test/mcp/apply-ops`,
+`test/mcp/mcp`): per-op failure, a schema failure applying nothing, the
+offline board, one patch to a connected session, and the Playwright check.
+
+### Cost of the hop
+
+Local miniflare, both Workers in one workerd, a board of 5,003 records on
+two pages (`VITE_HOP_COST=1`, `test/mcp/hop-cost.test.ts`):
+
+| Call                                           | Payload (as JSON)      | Time, median (range) |
+| ---------------------------------------------- | ---------------------- | -------------------- |
+| Read the whole document                        | 5,003 records, 2.79 MB | 97 ms (77-107)       |
+| Read one page of two                           | 2,503 records, 1.39 MB | 57 ms (46-83)        |
+| Read a page with nothing on it                 | 2 records              | about 45 ms          |
+| Commit a 100-record diff                       | 55 KB                  | 8 ms (4-24)          |
+| Commit that removes a shape (scans references) | under 1 KB             | 44 ms (28-57)        |
+
+About half of a read is the room decoding its rows (the empty-page read
+still costs 45 ms because the page filter runs after everything is
+loaded); the other half is moving the records. Production adds real
+network between the Worker and the object when they are in different
+places. Compared with one `add` computed in 32-99 ms on such a board, the
+hop roughly doubles a small call. RPC values are capped at 32 MiB, which
+is about 55,000 shapes at this density.
+
+Partial reads: the page scope halves the time when the page is half the
+board and is used when the caller names a page id. Worth doing next, in
+this order: (1) filter by page in SQL instead of after decoding; (2) keep
+the last snapshot per board in the MCP isolate and ask the room only for
+`getChangesSince(clock)`, which turns a repeat read into a few KB;
+(3) a "pages only" scope for `get_board_info`. None is needed below a few
+thousand shapes.
+
+### Binding: Durable Object namespace, not a service entrypoint
+
+|                                              | Durable Object binding with `script_name`                                                                       | Service binding to a `WorkerEntrypoint` that forwards to the object  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Hops                                         | MCP Worker → object                                                                                             | MCP Worker → board Worker → object; the snapshot is serialised twice |
+| Board Worker code                            | none beyond the object's methods                                                                                | an entrypoint class repeating each method                            |
+| Vitest Workers pool                          | works: the board Worker is an auxiliary Worker built from `wrangler.json` (`vitest.config.ts`)                  | works                                                                |
+| One `wrangler dev` session with both configs | works                                                                                                           | works                                                                |
+| Two `wrangler dev` processes                 | bound and "[connected]", but every call failed with "Network connection lost" (wrangler 4.145, in this sandbox) | failed the same way                                                  |
+| Alchemy                                      | `Cloudflare.DurableObject("BoardRoom", { scriptName })`                                                         | a service binding                                                    |
+
+Both fail across dev processes here, so that is no reason to pay the extra
+hop: the Durable Object binding stays. Local development and the e2e run
+use one `wrangler dev` session with three configs, where a 20-line
+dev-only Worker (`dev/both.ts`) takes the port and hands `/mcp` and the
+metadata path to the MCP Worker and everything else to the board Worker
+(`aube run serve:mcp`).
+
+### Where it is served: its own hostname
+
+`https://mcp.<domain>/mcp`, a custom domain on the MCP Worker.
+
+- The resource URL is the token's audience context and what the
+  protected-resource metadata names; the Worker derives it from the
+  request's origin, so a workers.dev preview (`…-mcp.<account>.workers.dev`)
+  works with no configuration, and the shape is the same in every stage.
+- A path on the board's host would need either zone routes by pattern
+  (which workers.dev previews do not have, and which silently depend on
+  route precedence against the board Worker's catch-all domain), or the
+  board Worker forwarding `/mcp` through a service binding, which makes the
+  two Workers depend on each other in a circle (neither can be deployed
+  first) and puts MCP traffic back through the board Worker.
+- RFC 9728 lets the metadata live at
+  `/.well-known/oauth-protected-resource/mcp` on the resource's own host,
+  which is where it is. MCP clients take whatever URL the user pastes.
+- CORS does not arise: assistants call from servers. A request carrying a
+  foreign `Origin` is refused; the metadata document alone is
+  `Access-Control-Allow-Origin: *`.
+- The standalone authorization server (§9) will want `/authorize`,
+  `/token` and a consent page; they fit on this host without touching the
+  board's Content-Security-Policy.
+
+### Repository layout
+
+| Path                                     | What                                                                                                                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wrangler.json`, `src/index.ts`          | The board Worker                                                                                                                                                                            |
+| `wrangler.mcp.json`, `src/mcp/worker.ts` | The MCP Worker (`BoardRoom` bound with `script_name: "tabletop"`)                                                                                                                           |
+| `src/room-document.ts`                   | The contract and the room's side of it; the only module both import code or types from, besides `src/pass.ts` (key import)                                                                  |
+| `src/ops/`, `src/mcp/`                   | MCP Worker only                                                                                                                                                                             |
+| `wrangler.dev.json`, `dev/both.ts`       | Local development and e2e: one port for both                                                                                                                                                |
+| `alchemy/index.js`                       | `Tabletop(id, { …, mcp: { authorizationServer, audience?, domain?, workerName? } })` deploys the second Worker; without `mcp` the board deploys alone. Type-checked, not deployed from here |
+| `vitest.config.ts`                       | Two projects: `board` (the board Worker's suite) and `mcp` (the MCP Worker with the board Worker beside it)                                                                                 |
+
+Standalone mode gets no MCP Worker yet (§9); the helper ignores `mcp`
+there.
 
 ## 2. What the slice proves, and what it does not
 
-**Built and tested** (`aube run test`: 142 tests; `aube run e2e`):
+**Built and tested** (`aube run test`: 149 tests in two projects; `aube run e2e`: 7 specs):
 
 - `apply_ops` with `add` (label, note, box, ellipse, any geo; fitted to its
   text; `at`, or `relation`/`gap`/`align` beside a target with collision
@@ -46,8 +268,9 @@ What runs where:
   works across calls with nobody connected.
 - The full op vocabulary as our own zod schema (`src/ops/schema.ts`): the
   other six ops validate and answer "not supported yet" per op.
-- Executed against a real `BoardRoom` in the Workers pool with no session
-  (`test/ops/apply-ops.test.ts`), and through the MCP endpoint
+- Executed from the MCP Worker against a real `BoardRoom` in the board
+  Worker, in the Workers pool, with no session
+  (`test/mcp/apply-ops.test.ts`), and through the MCP endpoint
   (`test/mcp/mcp.test.ts`).
 - Playwright (`e2e/tests/ops.spec.ts`): a member's open tab shows the shapes
   without a reload; every label fits inside its shape in the real browser;
@@ -123,7 +346,7 @@ size.
 
 `e2e/measure` runs the real tldraw editor (`editor.textMeasure.measureHtml`
 and the bounds and props of shapes it creates) over 92 labels x 4 families
-x 4 sizes = 368 cases in four browsers. `test/ops/text-measure.test.ts`
+x 4 sizes = 368 cases in four browsers. `test/mcp/text-measure.test.ts`
 compares in workerd and fails if the reference drifts.
 
 Reference: Chromium with font hinting off, which is how Chrome lays text
@@ -179,14 +402,13 @@ client.
 
 ### Cost
 
-| Item                                                                    | Number                                               |
-| ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| Worker bundle before the spike                                          | 602 KiB, 122 KiB gzip                                |
-| With measurer (fontkit + 8 faces) and MCP SDK + zod + engine            | 3207 KiB, 1152 KiB gzip                              |
-| of which fontkit + fonts                                                | about 1.4 MiB raw, 720 KiB gzip                      |
-| First measurement per family (woff2 decode and parse), once per isolate | draw 140-200 ms; sans 36-56; serif 21-33; mono 18-22 |
-| A label whose words were seen before                                    | 0.13 ms                                              |
-| A label of three unseen words                                           | 2.3 ms                                               |
+| Item                                                                    | Number                                                     |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Bundles                                                                 | see §1a: the measurer and fonts are in the MCP Worker only |
+| fontkit + 8 font faces                                                  | about 1.4 MiB raw, 720 KiB gzip                            |
+| First measurement per family (woff2 decode and parse), once per isolate | draw 140-200 ms; sans 36-56; serif 21-33; mono 18-22       |
+| A label whose words were seen before                                    | 0.13 ms                                                    |
+| A label of three unseen words                                           | 2.3 ms                                                     |
 
 Workers accept 10 MB gzip on the paid plan and 3 MB on the free plan.
 Words are shaped once per font and cached (20,000 entries per isolate).
@@ -266,16 +488,17 @@ tldraw's `middle = mid + per(u) * -bend`).
 - Order: fractional index keys from `@tldraw/utils` (`getIndexAbove`,
   `getIndexBetween`).
 - Rich text: `toRichText` from tlschema (one paragraph per line).
-- NOTE: `TLSocketRoom.updateStore` is deprecated in 5.6 and copies every
-  record on each call (54 ms for 8,000 records). The engine uses
-  `room.storage.transaction` and validates itself.
+- The room validates again on commit (§1a), so a caller's mistake cannot
+  reach storage.
 
 ### Concurrency and failure
 
-- A Durable Object runs one event at a time and the engine is synchronous,
-  so a batch reads and writes with nothing in between. One storage
-  transaction is one broadcast: the test shows a connected session
-  receiving a 3-op batch (5 records) as a single patch.
+- The batch is computed outside the room, from a snapshot, so people can
+  edit in between. The room's commit checks per record that nothing the
+  batch rested on changed and writes atomically; on a conflict the batch is
+  recomputed, at most three times (§1a, with its tests). One storage
+  transaction is one broadcast: a connected session receives a 3-op batch
+  (5 records) as a single patch.
 - Contract, tested: an op that fails is rolled back to the mark taken
   before it, and the rest apply; a batch that fails the schema applies
   nothing. Through MCP the SDK rejects a schema failure before the board is
@@ -415,11 +638,11 @@ anything. A token for one board says nothing about another.
 
 ### Hosted mode (built: the resource side)
 
-The host is the OAuth 2.1 authorization server. The tabletop Worker is a
+The host is the OAuth 2.1 authorization server. The MCP Worker is a
 protected resource.
 
 ```
-Assistant client            Tabletop Worker (resource)        Host (authorization server)     Board DO
+Assistant client            MCP Worker (resource)             Host (authorization server)     Board DO
       |  POST /mcp (no token)        |                                  |                         |
       |----------------------------->|                                  |                         |
       |  401 WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp"
@@ -464,7 +687,7 @@ their next refresh.
 >
 > | Variable                   | Meaning                                                                                                  |
 > | -------------------------- | -------------------------------------------------------------------------------------------------------- |
-> | `MCP_AUTHORIZATION_SERVER` | The host's authorization server (issuer origin). Setting it serves `/mcp`                                |
+> | `MCP_AUTHORIZATION_SERVER` | On the MCP Worker: the host's authorization server (issuer origin)                                       |
 > | `MCP_AUDIENCE`             | The `aud` of MCP access tokens. Default `tabletop-mcp`; must differ from the pass and deletion audiences |
 >
 > The host runs an OAuth 2.1 authorization server (authorization code with
@@ -488,7 +711,8 @@ their next refresh.
 > `MCP_REVOCATION_AUDIENCE` and the claims `board`, `grant`, `exp`
 > (answered 204, repeatable). Deleting a board ends its grants.
 
-Built: the two variables, token verification, `/.well-known` metadata, the
+Built (on the MCP Worker, which also takes `ISSUER` and
+`ISSUER_PUBLIC_KEY`): the two variables, token verification, `/.well-known` metadata, the
 grant version check and `BoardRoom.revokeMcpGrants`. Not built: the
 `/mcp/revoke` route and anything on a host.
 
@@ -572,18 +796,22 @@ user-supplied).
 
 ## 11. Plan
 
-| Phase | What                                                                                                                                                                               | Days                     |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| 0     | Bring the branch onto current `main`: multi-page (page ids in ops and tools), configurable e2e ports, `BoardRoom` and `index.ts` merges, the project's new name in the server info | 2                        |
-| 1     | Read tools: `get_page_info`, `get_cluster_info`, `search_boards` paging, `get_board_users`; backdrop rule; caps and cursors                                                        | 4                        |
-| 2     | Hosted authorization end to end with the first host: consent page, tokens, `/mcp/revoke`, e2e against the reference host; try with Claude and ChatGPT                              | 5 (plus the host's side) |
-| 3     | Remaining ops and references (§5)                                                                                                                                                  | 15                       |
-| 4     | Screenshots through Browser Run with an internal render token; then the connected-tab fast path                                                                                    | 6 + 4                    |
-| 5     | Standalone authorization server (`workers-oauth-provider`, consent page, grants in D1/KV), `create_board`, `rename_board`                                                          | 7                        |
-| 6     | `get_user_state`, undo-a-batch, "Assistant" in the People sheet, rate limits per account and board                                                                                 | 4                        |
-| 7     | `search_shapes` native, then OCR when the index exists                                                                                                                             | 2 + OCR work             |
+| Phase | What                                                                                                                                                                                               | Days                       |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 0     | Bring the branch onto current `main` (§14)                                                                                                                                                         | 3                          |
+| 1     | Read tools: `get_page_info`, `get_cluster_info`, `search_boards` paging, `get_board_users`; backdrop rule; caps and cursors; page filter in SQL                                                    | 4.5                        |
+| 2     | Hosted authorization end to end with the first host: consent page, tokens, the revocation call, e2e against the reference host; deploy the MCP Worker on its hostname; try with Claude and ChatGPT | 5.5 (plus the host's side) |
+| 3     | Remaining ops and references (§5)                                                                                                                                                                  | 15                         |
+| 4     | Screenshots through Browser Run with an internal render token; then the connected-tab fast path                                                                                                    | 6 + 4                      |
+| 5     | Standalone authorization server on the MCP host (`workers-oauth-provider`, consent page, grants in D1/KV), `create_board`, `rename_board`                                                          | 7                          |
+| 6     | `get_user_state` (presence through the room), undo-a-batch, "Assistant" in the People sheet, rate limits per account and board                                                                     | 4.5                        |
+| 7     | `search_shapes` native, then OCR when the index exists                                                                                                                                             | 2 + OCR work               |
+| -     | Snapshot cache with `getChangesSince` deltas, if boards grow past a few thousand shapes                                                                                                            | 2                          |
 
-Order: 0, 1, 2 give a useful read-and-annotate assistant on the first
+About 52 days in all, 2 more than before the split: a day for the merge
+with two Workers, half days where a tool needs a new room call. The ops
+estimate (§5) is unchanged; ops are pure functions of a snapshot either
+way. Order: 0, 1, 2 give a useful read-and-annotate assistant on the first
 host; 3 can run in parallel with 2.
 
 ## 12. Risks and unknowns
@@ -595,10 +823,17 @@ host; 3 can run in parallel with 2.
 - **fontkit vs HarfBuzz** agree on this corpus; a text that hits a shaping
   difference would be off by a line. HarfBuzz as WASM is the exact
   alternative if it ever matters.
-- **Bundle size** grew 9x gzip (122 KiB to 1.15 MiB); cold starts of the
-  Worker and of each Durable Object pay for parsing it. Splitting MCP into
-  its own Worker with a service binding is possible; the engine must stay
-  with the room.
+- **Two deploys that must agree**: the MCP Worker calls the room's
+  document methods, so the board Worker must be deployed first when the
+  contract grows, and a contract change must stay compatible for one
+  deploy. The contract is two calls; keep it that way.
+- **Soft dependencies** (§1a): a batch can overlap a shape that appeared
+  while it was computed. Accepted; `untangle` and the result's `adjusted`
+  notes are the remedy if it shows.
+- **Snapshot size**: every call moves the page's records (2.8 MB for 5,000
+  shapes). Fine at that size; the delta read is the plan beyond it.
+- **Local development** needs one `wrangler dev` session for both Workers;
+  separate processes could not call each other here (wrangler 4.145).
 - **Font licences**: the embedded fonts are OFL (Shantell Sans, IBM Plex);
   embedding in a bundle is allowed, the notice must ship.
 - **Client conflict on deleted records**, not exercised (§2).
@@ -613,8 +848,8 @@ host; 3 can run in parallel with 2.
 
 ## 13. Decisions needed
 
-1. Accept the bundle and cold-start cost of server-side text measurement
-   (1.15 MiB gzip), or split MCP transport into a second Worker.
+1. Decided: MCP in a second Worker (§1a). Open within it: the hostname
+   (`mcp.<domain>` assumed) and whether three attempts is the right bound.
 2. Screenshots: Browser Run as the offline renderer (a paid-plan feature
    with a small monthly cost), with the connected tab as a fast path.
 3. Standalone authorization: our own authorization server in the Worker
@@ -626,3 +861,51 @@ host; 3 can run in parallel with 2.
 6. Italic faces (+700 KB) and the "sized approximately" flag: ship now or
    when someone notices.
 7. Undo for assistant batches: a tool, a button on the board, or both.
+
+## 14. Bringing it onto current `main`
+
+`main` has moved (multi-page boards, custom dice, deploy workflow, image
+storage, configurable e2e ports, the rename away from the `tl` prefix).
+Nothing was rebased. What to expect:
+
+- **`src/board-room.ts`**: the only file of the board Worker the spike
+  still changes. It adds an import, the `document` field, the `mcp_grant`
+  table and `RoomDocument` in `open()`, and five methods at the end
+  (`grantVersion`, `setGrantVersion`, `admitGrant`, `revokeMcpGrants`,
+  `readDocument`, `commitDocument`). It also changes
+  `TLSocketRoom<never, Person>` to `TLSocketRoom<TLRecord, Person>`; if
+  main's room has custom record types, use its type. `destroy()` already
+  drops the new tables with `deleteAll`.
+- **`src/index.ts`, `src/config.ts`, `wrangler.json`,
+  `e2e/standalone.env`, `test/standalone-support.ts`**: no longer touched;
+  no conflict.
+- **`package.json`, `aube-lock.yaml`**: new dependencies (`fontkit`,
+  `@modelcontextprotocol/server`, `zod`, `@tldraw/utils`,
+  `@types/fontkit`) and scripts (`e2e:measure`, `serve:mcp`); `dev` added
+  to `lint`. Re-resolve the lockfile.
+- **`vitest.config.ts`**: rewritten as two projects; main's changes to the
+  board project's miniflare options go into the `board` plugin, and any new
+  binding the board Worker needs to start goes into the auxiliary Worker
+  in the `mcp` plugin too.
+- **`e2e/playwright.config.ts`**: the hosted server command now runs three
+  configs and writes `wrangler.e2e.json`; main's `E2E_PORT_OFFSET`
+  (`e2e/ports.ts`) must be applied to it, to `e2e/tests/ops.spec.ts`
+  (8788 and 8000 are written out) and to `e2e/measure.config.ts` (8797).
+- **Multi-page**: the engine takes `page` as an index or id and defaults
+  to the first page; with real multi-page boards the tools should require
+  a page id, and `readDocument`'s page scope is already there. Ops that
+  move shapes between pages do not exist.
+- **Custom dice shapes**: if dice are now records of a custom shape type,
+  `src/room-document.ts` must validate with the room's schema instead of
+  `createTLSchema()`, and `src/ops/geometry.ts` needs their box (it falls
+  back to `w` x `h` props, else 1 x 1).
+- **Names**: nothing new contains the old prefix. The Worker names
+  `tabletop` and `tabletop-mcp` in the wrangler configs (and the
+  `script_name` binding, and `name: "tabletop"` in `vitest.config.ts`)
+  must follow whatever main calls the board Worker.
+- **`alchemy/index.js`**, **`README.md`**, **`.gitignore`**,
+  **`oxlint.config.ts`**, **`tsconfig.json`**: small additions; merge by
+  hand.
+- **Deploy workflow**: add the MCP Worker (optional) after the board
+  Worker; it needs `ISSUER`, `ISSUER_PUBLIC_KEY`, `MCP_AUTHORIZATION_SERVER`
+  and optionally `MCP_AUDIENCE`.

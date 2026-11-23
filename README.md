@@ -186,15 +186,23 @@ rooms socket; the host's origin) and the usual hardening headers.
 
 ## Assistants (MCP), a spike
 
-Setting `MCP_AUTHORIZATION_SERVER` in hosted mode serves an MCP endpoint at
-`/mcp` (tools `search_boards`, `get_board_info`, `apply_ops`) behind
-board-scoped access tokens the host signs. `apply_ops` edits a board on the
-server, whether or not anyone has it open. What is built, what is planned,
-the measurements behind it and the host's side are in
+A second Worker, `tabletop-mcp` (`wrangler.mcp.json`, `src/mcp/worker.ts`),
+serves an MCP endpoint at `/mcp` on a hostname of its own (tools
+`search_boards`, `get_board_info`, `apply_ops`) behind board-scoped access
+tokens the host signs. It holds the ops engine, the text measurer and its
+fonts, so the board Worker stays small; it reaches a board through a
+binding to this Worker's `BoardRoom` class and two calls on it,
+`readDocument` and `commitDocument` (`src/room-document.ts`). `apply_ops`
+edits a board whether or not anyone has it open. A host that does not want
+assistants deploys the board Worker alone.
+
+`aube run serve:mcp` runs both Workers on :8788 (one `wrangler dev`
+session; `dev/both.ts` gives them one address). `aube run test` runs two
+Vitest projects, the second with both Workers in workerd. `aube run
+e2e:measure` refreshes the text-measurement fixtures from real browsers.
+What is built and planned, the measurements and the host's side are in
 [docs/mcp-design.md](docs/mcp-design.md); where tldraw's own code was read,
 in [docs/upstream-provenance.md](docs/upstream-provenance.md).
-`aube run e2e:measure` refreshes the text-measurement fixtures from real
-browsers.
 
 ## Images
 
