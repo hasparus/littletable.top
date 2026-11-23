@@ -11,7 +11,9 @@ import { type DieKind, solid, type Solid } from "./dice-solids";
 // does not wait for a font and would draw the fallback for good.
 export const NUMERAL_FONT = '700 64px "Outfit"';
 
+// A face's cell in the atlas, in pixels; the ball has a hundred small faces.
 const CELL_PX = 192;
+const BALL_CELL_PX = 96;
 
 // A digit's height and a numeral's greatest width, as shares of the radius
 // of the circle inscribed in its face; every numeral of a die is the size of
@@ -57,13 +59,26 @@ function toLine(p: Vec, from: Vec, to: Vec): number {
 
 // The middle and radius of the circle inscribed in a face of the rounded
 // die. A regular face has it at its centre; a kite has it on its axis where
-// an edge at the pole and an edge at the blunt end are equally far.
+// an edge at the pole and an edge at the blunt end are equally far; a ball's
+// faces are uneven, and theirs is searched for from the face's middle.
 function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radius: number } {
   const face = shape.faces[index]!;
   const corner = (v: number) => add(shape.core[v]!, scale(face.normal, shape.r));
-  const { center } = layout.cells[index]!;
-  if (shape.kind !== "d10" && shape.kind !== "d100") {
-    return { at: center, radius: toLine(center, corner(face.verts[0]!), corner(face.verts[1]!)) };
+  if (shape.kind !== "d10") {
+    const corners = face.verts.map(corner);
+    const room = (p: Vec) =>
+      Math.min(...corners.map((from, k) => toLine(p, from, corners[(k + 1) % corners.length]!)));
+    const { center, right, up } = layout.cells[index]!;
+    let at = center;
+    for (let step = shape.ball ? room(at) / 2 : 0; step > 1e-4; ) {
+      const ways = [right, up, add(right, up), sub(right, up)];
+      const better = [...ways, ...ways.map((way) => scale(way, -1))]
+        .map((way) => add(at, scale(way, step * 0.7)))
+        .find((p) => room(p) > room(at));
+      if (better === undefined) step /= 2;
+      else at = better;
+    }
+    return { at, radius: room(at) };
   }
   const byHeight = face.verts.toSorted(
     (a, b) => Math.abs(shape.verts[b]![1]) - Math.abs(shape.verts[a]![1]),
@@ -81,7 +96,12 @@ function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radi
   return { at: add(pole, scale(sub(blunt, pole), share)), radius: fromPole * share };
 }
 
-type Pen = { context: CanvasRenderingContext2D; layout: Layout; lined: Set<string> };
+type Pen = {
+  cellPx: number;
+  context: CanvasRenderingContext2D;
+  layout: Layout;
+  lined: Set<string>;
+};
 
 // Where the ink of `text` is at 100px, around the point the text is centred
 // on. Across, a numeral is placed by its ink's centre of mass (a 1 is heavy
@@ -117,7 +137,7 @@ function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) 
 
 // Writes `text` with the centre of its ink on `at`.
 function write(
-  { context, layout, lined }: Pen,
+  { cellPx, context, layout, lined }: Pen,
   { at, face, size, text, up }: { at: Vec; face: number; size: number; text: string; up: Vec },
 ) {
   const cell = layout.cells[face]!;
@@ -125,7 +145,7 @@ function write(
   const ink = inkOf(context, text, lined.has(text));
   const unit = size / 100;
   context.save();
-  context.translate(x * CELL_PX, y * CELL_PX);
+  context.translate(x * cellPx, y * cellPx);
   context.rotate(Math.atan2(dot(up, cell.right), dot(up, cell.up)));
   context.translate(-ink.centre * unit, ((ink.height - ink.lineDrop) / 2) * unit);
   context.font = `700 ${size}px "Outfit"`;
@@ -142,8 +162,8 @@ function write(
   context.restore();
 }
 
-// The font size at which no numeral of `texts` outgrows a face whose
-// inscribed circle has `radius` pixels.
+// The font size, in the units of `radius`, at which no numeral of `texts`
+// outgrows a face whose inscribed circle has that radius.
 function sizeFor(context: CanvasRenderingContext2D, texts: string[], radius: number, tall: number) {
   return Math.min(
     ...texts.map((text) => {
@@ -156,28 +176,50 @@ function sizeFor(context: CanvasRenderingContext2D, texts: string[], radius: num
   );
 }
 
+// Where in its cell a d10's numeral is centred, in cells; the same on every
+// face. The renderer turns the numerals half round on it when the one on top
+// would otherwise read upside down. No other die needs it: their numbering
+// can be turned upright.
+export function numeralSpot(kind: DieKind): { columns: number; x: number; y: number } | null {
+  if (kind !== "d10") return null;
+  const shape = solid(kind);
+  const layout = layoutOf(shape);
+  const [x, y] = cellPoint(layout, 0, inscribed(shape, 0, layout).at);
+  return { columns: layout.columns, x, y };
+}
+
 export function drawAtlas(kind: DieKind): HTMLCanvasElement {
   const shape = solid(kind);
   const layout = layoutOf(shape);
+  const cellPx = shape.ball ? BALL_CELL_PX : CELL_PX;
   const canvas = document.createElement("canvas");
-  canvas.width = layout.columns * CELL_PX;
-  canvas.height = layout.columns * CELL_PX;
+  canvas.width = layout.columns * cellPx;
+  canvas.height = layout.columns * cellPx;
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas for the dice numerals");
   context.fillStyle = "#fff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#000";
   context.textAlign = "center";
-  const pen: Pen = { context, layout, lined: linedOf(shape.features.map(({ text }) => text)) };
-  const size = sizeFor(
-    context,
-    shape.features.map(({ text }) => text),
-    (inscribed(shape, 0, layout).radius / layout.cells[0]!.span) * CELL_PX,
-    kind === "d4" ? D4_DIGIT_HEIGHT : DIGIT_HEIGHT,
-  );
+  const texts = shape.features.map(({ text }) => text);
+  const pen: Pen = { cellPx, context, layout, lined: linedOf(texts) };
+  const circles = shape.faces.map((_, index) => inscribed(shape, index, layout));
+  // In die units; every numeral of a die is one size, but a ball's 100,
+  // which would make the other ninety-nine small.
+  const sizeOf = (some: string[]) =>
+    sizeFor(
+      context,
+      some,
+      Math.min(...circles.map(({ radius }) => radius)),
+      kind === "d4" ? D4_DIGIT_HEIGHT : DIGIT_HEIGHT,
+    );
+  const height = sizeOf(texts.filter((text) => text.length < 3));
+  const longHeight = sizeOf(texts);
 
   for (const [index, face] of shape.faces.entries()) {
     const cell = layout.cells[index]!;
+    const { text } = shape.features[index] ?? { text: "" };
+    const size = ((text.length < 3 ? height : longHeight) / cell.span) * cellPx;
     if (kind === "d4") {
       // Each corner's number on all three faces around it: the one on top is
       // read off any side.
@@ -194,10 +236,10 @@ export function drawAtlas(kind: DieKind): HTMLCanvasElement {
       continue;
     }
     write(pen, {
-      at: inscribed(shape, index, layout).at,
+      at: circles[index]!.at,
       face: index,
       size,
-      text: shape.features[index]!.text,
+      text,
       up: cell.up,
     });
   }

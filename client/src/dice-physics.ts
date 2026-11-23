@@ -5,7 +5,9 @@
 // Dice are rounded hulls. The floor takes each core vertex as an exact
 // contact, with friction. Walls and other dice meet a die as a frictionless
 // sphere: they bounce it away and it slides off them, so no die comes to rest
-// leaning on a wall or on another die.
+// leaning on a wall or on another die. The d100 is a sphere to the floor
+// too: it touches at one point, rolls, and is slowed by a rolling resistance
+// that does not weaken with speed, so it stops instead of creeping.
 
 import {
   add,
@@ -50,6 +52,9 @@ const BAUMGARTE = 0.25;
 const LINEAR_DAMPING = 0.9992;
 const ANGULAR_DAMPING = 0.9985;
 const ROLLING_DAMPING = 0.998;
+// What the floor takes off a rolling ball's spin, in radians per second each
+// second; a ball has no face to come to rest on.
+const BALL_DRAG = 14;
 const SLEEP_SPEED2 = 0.04;
 const SLEEP_SPIN2 = 0.04;
 const SLEEP_SECONDS = 0.2;
@@ -61,6 +66,7 @@ const FLAT = 0.9994;
 type Body = {
   angular: Vec;
   asleep: boolean;
+  ball: boolean;
   invInertia: number;
   position: Vec;
   rotation: Quat;
@@ -100,6 +106,12 @@ export type Throw = {
   snapped: number;
 };
 
+// What walls and other dice take a die for.
+function sphereOf(shape: Solid): number {
+  if (shape.ball) return shape.inradius;
+  return shape.kind === "d4" ? shape.radius * 0.72 : shape.radius * 0.93;
+}
+
 // Thrown from the lower right, where the roll button sits, up and to the left.
 function spawn(kinds: DieKind[], seed: number): Body[] {
   const random = generator(seed);
@@ -121,19 +133,28 @@ function spawn(kinds: DieKind[], seed: number): Body[] {
     return {
       angular,
       asleep: false,
+      ball: shape.ball,
       invInertia: 1 / (0.4 * mean * mean),
       position,
       rotation: randomRotation(random),
       solid: shape,
-      sphere: kind === "d4" ? shape.radius * 0.72 : shape.radius * 0.93,
+      sphere: sphereOf(shape),
       still: 0,
       velocity,
     };
   });
 }
 
-// The face most nearly down, and the pose that lays it exactly flat.
+// The face most nearly down, and the pose that lays it exactly flat. A ball
+// lies as it is.
 function flatPose(body: Body): { dot: number; position: Vec; rotation: Quat } {
+  if (body.ball) {
+    return {
+      dot: 1,
+      position: [body.position[0], body.solid.inradius, body.position[2]],
+      rotation: body.rotation,
+    };
+  }
   let best = -2;
   let down: Vec = [0, -1, 0];
   for (const face of body.solid.faces) {
@@ -148,6 +169,22 @@ function flatPose(body: Body): { dot: number; position: Vec; rotation: Quat } {
 }
 
 function floorContacts(body: Body, index: number, contacts: Contact[]) {
+  if (body.ball) {
+    const distance = body.position[1] - body.sphere;
+    if (distance > SLOP) return;
+    const speed = body.velocity[1];
+    contacts.push({
+      arm: [0, -body.sphere, 0],
+      body: index,
+      depth: -distance,
+      floor: true,
+      friction: [0, 0, 0],
+      impulse: 0,
+      normal: UP,
+      target: speed < -BOUNCE_MIN ? -RESTITUTION * speed : 0,
+    });
+    return;
+  }
   for (const corner of body.solid.core) {
     const arm = rotate(body.rotation, corner);
     const point = add(body.position, arm);
@@ -299,6 +336,11 @@ function step(bodies: Body[]) {
       body.angular,
       onFloor.has(index) ? ANGULAR_DAMPING * ROLLING_DAMPING : ANGULAR_DAMPING,
     );
+    if (body.ball && onFloor.has(index)) {
+      const spin = length(body.angular);
+      body.angular =
+        spin > BALL_DRAG * DT ? scale(body.angular, 1 - (BALL_DRAG * DT) / spin) : [0, 0, 0];
+    }
     // Only a die lying on a face may sleep; one balanced on an edge must tip.
     const calm =
       dot(body.velocity, body.velocity) < SLEEP_SPEED2 &&

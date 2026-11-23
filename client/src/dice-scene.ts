@@ -4,12 +4,23 @@
 
 import type { DieKind } from "./dice-solids";
 
-import { drawAtlas, NUMERAL_FONT } from "./dice-atlas";
-import { blend, lerp, multiply, type Quat, type Vec } from "./dice-math";
+import { drawAtlas, NUMERAL_FONT, numeralSpot } from "./dice-atlas";
+import {
+  blend,
+  lerp,
+  multiply,
+  normalize,
+  type Quat,
+  rotate,
+  rotationBetween,
+  sub,
+  type Vec,
+} from "./dice-math";
 import { meshOf } from "./dice-mesh";
 import { FPS, FRAME_STRIDE } from "./dice-physics";
 import {
   createRenderer,
+  EYE,
   type Look,
   type Model,
   type Pose,
@@ -17,7 +28,7 @@ import {
   type Tier,
 } from "./dice-renderer";
 import { solid } from "./dice-solids";
-import { type Die, type Planned, throwDice } from "./dice-throw";
+import { type Die, finalRotation, type Planned, throwDice } from "./dice-throw";
 
 export type DiceThrow = {
   dispose: () => void;
@@ -69,14 +80,60 @@ const models = new Map<DieKind, Model>();
 function modelOf(kind: DieKind): Model {
   const known = models.get(kind);
   if (known !== undefined) return known;
-  const { core, r } = solid(kind);
-  const made = { atlas: drawAtlas(kind), core, mesh: meshOf(kind), rounding: r };
+  const { ball, core, r } = solid(kind);
+  // NOTE: the clearcoat's highlight is a point on a rounded edge, but a
+  // whole face of a ball when that face mirrors the light, and it whites the
+  // number out; the ball goes without.
+  const coat = ball ? 0 : 1;
+  const made = {
+    atlas: drawAtlas(kind),
+    coat,
+    core,
+    mesh: meshOf(kind),
+    rounding: r,
+    spot: numeralSpot(kind),
+  };
   models.set(kind, made);
   return made;
 }
 
+// Per die, a turn of the whole die that is kept through the throw. A ball's
+// value ends straight up, which from a camera over the tray's middle is off
+// the middle of a ball near the tray's edge, where a neighbouring number
+// would look like the result; the ball is tipped to face the camera from
+// where it comes to rest.
+function facingOf({ bodies, thrown }: Planned): (Quat | null)[] {
+  return bodies.map((body, index) => {
+    if (!solid(body.kind).ball) return null;
+    const frames = thrown.frames[index]!;
+    const at = frames.length - FRAME_STRIDE;
+    const rest: Vec = [frames[at]!, frames[at + 1]!, frames[at + 2]!];
+    return rotationBetween([0, 1, 0], normalize(sub(EYE, rest)));
+  });
+}
+
+// Per die, whether its numerals are drawn upside down: a d10's numbering can
+// be turned only one way, which leaves the number on top reading any way
+// round; drawn either way up, it reads within a quarter turn of upright.
+function upsideDownOf({ bodies, numbering, thrown }: Planned): boolean[] {
+  return bodies.map((body, index) => {
+    const shape = solid(body.kind);
+    const top = shape.features.find((feature) => feature.value === body.value);
+    if (numeralSpot(body.kind) === null || top === undefined || top.up === null) return false;
+    const shown = multiply(finalRotation(thrown, index), numbering[index]!);
+    // NOTE: z runs down the screen.
+    return rotate(shown, top.up)[2] > 0;
+  });
+}
+
+type Presented = { facing: (Quat | null)[]; upsideDown: boolean[] };
+
 // The dice between two recorded frames, each with its numbering turned.
-function posesAt({ bodies, numbering, thrown }: Planned, frame: number): Pose[] {
+function posesAt(
+  { bodies, numbering, thrown }: Planned,
+  { facing, upsideDown }: Presented,
+  frame: number,
+): Pose[] {
   return bodies.map((body, index) => {
     const frames = thrown.frames[index]!;
     const last = frames.length / FRAME_STRIDE - 1;
@@ -90,10 +147,13 @@ function posesAt({ bodies, numbering, thrown }: Planned, frame: number): Pose[] 
       frames[at + 5]!,
       frames[at + 6]!,
     ];
+    const turned = multiply(blend(rotation(from), rotation(to), share), numbering[index]!);
+    const toCamera = facing[index] ?? null;
     return {
       model: modelOf(body.kind),
       position: lerp(position(from), position(to), share),
-      rotation: multiply(blend(rotation(from), rotation(to), share), numbering[index]!),
+      rotation: toCamera === null ? turned : multiply(toCamera, turned),
+      upsideDown: upsideDown[index]!,
     };
   });
 }
@@ -149,6 +209,7 @@ export async function createDiceThrow(
         cancelAnimationFrame(frameRequest);
         const run = throwDice(dice, seed);
         let planned: Planned | null = null;
+        let presented: Presented = { facing: [], upsideDown: [] };
         let startedAt = 0;
         let length = 0;
         const tick = (now: number) => {
@@ -160,11 +221,12 @@ export async function createDiceThrow(
                 return;
               }
               planned = run.planned();
+              presented = { facing: facingOf(planned), upsideDown: upsideDownOf(planned) };
               startedAt = now;
               length = planned.thrown.frames[0]!.length / FRAME_STRIDE - 1;
             }
             const frame = Math.min(((now - startedAt) / 1000) * FPS, length);
-            shown = posesAt(planned, frame);
+            shown = posesAt(planned, presented, frame);
             redraw();
             if (frame < length) frameRequest = requestAnimationFrame(tick);
             else resolve();

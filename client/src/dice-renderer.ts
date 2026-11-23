@@ -22,8 +22,20 @@ export type Tier = "full" | "low";
 export type Rgb = [number, number, number];
 export type Look = { body: Rgb; ink: Rgb };
 // `core` and `rounding`: the die is its core's corners swept by a ball.
-export type Model = { atlas: HTMLCanvasElement; core: Vec[]; mesh: DieMesh; rounding: number };
-export type Pose = { model: Model; position: Vec; rotation: Quat };
+// `coat`: its share of the clearcoat. `spot`: for a die whose numerals may
+// be drawn upside down, the atlas's columns and where in its cell a numeral
+// is centred.
+export type Model = {
+  atlas: HTMLCanvasElement;
+  coat: number;
+  core: Vec[];
+  mesh: DieMesh;
+  rounding: number;
+  spot: { columns: number; x: number; y: number } | null;
+};
+// `upsideDown`: every numeral of the die is drawn turned half round on its
+// spot.
+export type Pose = { model: Model; position: Vec; rotation: Quat; upsideDown: boolean };
 
 export type Renderer = {
   dispose: () => void;
@@ -86,6 +98,7 @@ in vec3 vPos; in vec3 vNor; in vec2 vUv;
 uniform sampler2D uAtlas;
 uniform vec3 uCam, uLight, uBody, uInk;
 uniform float uRough, uCoat, uCoatRough, uBump;
+uniform vec4 uSpot;
 out vec4 frag;
 const float PI = 3.14159265;
 // A soft studio: a bright panel up and to the left, warm walls, a grey floor.
@@ -100,7 +113,11 @@ vec3 env(vec3 r, float rough) {
 float ggx(float nh, float a) { float a2 = a * a; float d = nh * nh * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 float schlick(float c) { return 0.04 + 0.96 * pow(1.0 - c, 5.0); }
 void main() {
-  float paper = texture(uAtlas, vUv).r;
+  // In cells from the atlas's top left; uSpot.w turns the cell half round
+  // on the numeral's spot.
+  vec2 at = vec2(vUv.x, 1.0 - vUv.y) * uSpot.x;
+  vec2 turned = 2.0 * (floor(at) + uSpot.yz) - at;
+  float paper = texture(uAtlas, uSpot.w > 0.5 ? vec2(turned.x, uSpot.x - turned.y) / uSpot.x : vUv).r;
   vec3 base = pow(mix(uInk, uBody, paper), vec3(2.2));
   vec3 n = normalize(vNor);
   // Engraved numerals: the normal leans along the ink's edge on screen.
@@ -234,13 +251,16 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
   };
 }
 
+const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
+// Where the tray is seen from.
+export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
+
 // A camera above the tray, tilted a little toward the viewer, as one
 // column-major view-projection matrix. `across` and `down` are the shares of
 // the canvas the tray's rectangle takes, so the whole canvas is drawn on and
 // a die in flight is not cut off at the tray's edge.
 function camera(across: number, down: number, aspect: number) {
-  const distance = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
-  const eye: Vec = [0, distance, distance * CAMERA_TILT];
+  const eye = EYE;
   const size = Math.hypot(...eye);
   const forward: Vec = [0, -eye[1] / size, -eye[2] / size];
   // With "up" along -z: right is +x, and the camera's own up follows.
@@ -484,7 +504,6 @@ export function createRenderer(
     gl.uniform3fv(uniform("uBody"), look.body);
     gl.uniform3fv(uniform("uInk"), look.ink);
     gl.uniform1f(uniform("uRough"), MATERIAL.roughness);
-    gl.uniform1f(uniform("uCoat"), MATERIAL.coat);
     gl.uniform1f(uniform("uCoatRough"), MATERIAL.coatRoughness);
     gl.uniform1f(uniform("uBump"), MATERIAL.bump);
     gl.uniform1i(uniform("uAtlas"), 0);
@@ -494,6 +513,11 @@ export function createRenderer(
       gl.bindTexture(gl.TEXTURE_2D, model.atlas);
       gl.uniform4fv(uniform("uQ"), pose.rotation);
       gl.uniform3fv(uniform("uP"), pose.position);
+      gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
+      const { spot } = pose.model;
+      if (spot !== null && pose.upsideDown)
+        gl.uniform4f(uniform("uSpot"), spot.columns, spot.x, spot.y, 1);
+      else gl.uniform4f(uniform("uSpot"), 1, 0, 0, 0);
       gl.drawArrays(gl.TRIANGLES, 0, model.count);
     }
     gl.disable(gl.CULL_FACE);

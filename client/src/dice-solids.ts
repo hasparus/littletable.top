@@ -1,7 +1,9 @@
 // The dice as plain data: each a convex polyhedron with rounded edges (its
 // shrunk "core" swept by a ball of radius r), its faces, and which value each
 // face (a d4: each corner) shows. Coordinates are closed forms in square
-// roots, so every engine builds the same numbers (see dice-math.ts).
+// roots, so every engine builds the same numbers (see dice-math.ts). The
+// d100 is a ball of a hundred small faces: it rolls as a sphere and may show
+// any face on top.
 
 import { add, cross, dot, length, normalize, scale, sub, type Vec } from "./dice-math";
 
@@ -14,6 +16,8 @@ export type Face = { center: Vec; normal: Vec; verts: number[] };
 export type Feature = { dir: Vec; ring: Vec[]; text: string; up: Vec | null; value: number };
 
 export type Solid = {
+  // Rolls as a sphere of radius `inradius`; any rotation shows a face on top.
+  ball: boolean;
   core: Vec[];
   faces: Face[];
   // The numeral's "up" on each face, in the face plane.
@@ -51,30 +55,34 @@ const RING: [number, number][] = [
 const D10_RING_HEIGHT = 0.105;
 
 // Circumradius of the sharp solid, and the rounding as a share of it.
-const SIZE: Record<DieKind, number> = {
+type Polyhedron = Exclude<DieKind, "d100">;
+const SIZE: Record<Polyhedron, number> = {
   d4: 1.05,
   d6: 0.92,
   d8: 0.98,
   d10: 0.98,
   d12: 0.98,
   d20: 1,
-  d100: 0.98,
 };
-const ROUNDING: Record<DieKind, number> = {
+const ROUNDING: Record<Polyhedron, number> = {
   d4: 0.13,
   d6: 0.17,
   d8: 0.11,
   d10: 0.09,
   d12: 0.08,
   d20: 0.07,
-  d100: 0.09,
 };
+// The d100: the radius of the sphere its faces touch, and its rounding.
+const BALL = { faces: 100, r: 0.035, size: 1.2 };
+// NOTE: cos and sin of the golden angle, π(3 - √5), as literals: Math.cos
+// and Math.sin may differ between engines.
+const GOLDEN: [number, number] = [-0.737_368_878_078_319_7, 0.675_490_294_261_523_8];
 
 const SIGNS = [1, -1];
 const cube = (): Vec[] =>
   SIGNS.flatMap((x) => SIGNS.flatMap((y) => SIGNS.map((z): Vec => [x, y, z])));
 
-function sharpVerts(kind: DieKind): Vec[] {
+function sharpVerts(kind: Polyhedron): Vec[] {
   switch (kind) {
     case "d4": {
       return [
@@ -97,8 +105,7 @@ function sharpVerts(kind: DieKind): Vec[] {
         [0, 0, -1],
       ];
     }
-    case "d10":
-    case "d100": {
+    case "d10": {
       const apex = (D10_RING_HEIGHT * (1 + COS36)) / (1 - COS36);
       return [
         [0, apex, 0],
@@ -185,11 +192,6 @@ function faceLabels(kind: DieKind, faces: Face[]): Label[] {
         { text: String(k), value: k === 0 ? 10 : k },
         { text: String(9 - k), value: 9 - k === 0 ? 10 : 9 - k },
       ];
-    if (kind === "d100")
-      return [
-        { text: `${k}0`, value: k === 0 ? 100 : k * 10 },
-        { text: `${9 - k}0`, value: 9 - k === 0 ? 100 : (9 - k) * 10 },
-      ];
     return [
       { text: String(k + 1), value: k + 1 },
       { text: String(faces.length - k), value: faces.length - k },
@@ -211,11 +213,99 @@ function numeralUp(kind: DieKind, verts: Vec[], face: Face): Vec {
   let toward = first;
   // A d6 numeral sits square to an edge, a d10's points to the pole.
   if (kind === "d6") toward = scale(add(first, verts[face.verts[1]!]!), 0.5);
-  if (kind === "d10" || kind === "d100")
+  if (kind === "d10")
     for (const index of face.verts)
       if (Math.abs(verts[index]![1]) > Math.abs(toward[1])) toward = verts[index]!;
   const up = sub(toward, face.center);
   return normalize(sub(up, scale(face.normal, dot(up, face.normal))));
+}
+
+// A hundred directions spread evenly over the sphere, along a spiral from
+// pole to pole that turns by the golden angle each step.
+function spiral(): Vec[] {
+  let [c, s] = [1, 0];
+  return Array.from({ length: BALL.faces }, (_, i): Vec => {
+    const y = 1 - (2 * i + 1) / BALL.faces;
+    const ring = Math.sqrt(1 - y * y);
+    const at: Vec = [ring * c, y, ring * s];
+    // The next turn, kept a unit vector against drift.
+    const turned = normalize([c * GOLDEN[0] - s * GOLDEN[1], 0, c * GOLDEN[1] + s * GOLDEN[0]]);
+    [c, s] = [turned[0], turned[2]];
+    return at;
+  });
+}
+
+// The ball's faces: the planes that touch the unit sphere at `normals`. Each
+// corner is where the planes of three neighbouring normals meet, and three
+// normals are neighbours when all the others lie on one side of their plane.
+function ballFaces(normals: Vec[]): { faces: Face[]; verts: Vec[] } {
+  const count = normals.length;
+  const verts: Vec[] = [];
+  const around: number[][] = normals.map(() => []);
+  for (let i = 0; i < count; i += 1)
+    for (let j = i + 1; j < count; j += 1)
+      for (let k = j + 1; k < count; k += 1) {
+        const across = cross(sub(normals[j]!, normals[i]!), sub(normals[k]!, normals[i]!));
+        const offset = dot(across, normals[i]!);
+        let above = false;
+        let below = false;
+        for (let other = 0; other < count && !(above && below); other += 1) {
+          if (other === i || other === j || other === k) continue;
+          if (dot(across, normals[other]!) > offset) above = true;
+          else below = true;
+        }
+        if (above && below) continue;
+        for (const face of [i, j, k]) around[face]!.push(verts.length);
+        verts.push(scale(across, 1 / offset));
+      }
+  const faces = normals.map((normal, index): Face => {
+    const on = around[index]!;
+    let sum: Vec = [0, 0, 0];
+    for (const v of on) sum = add(sum, verts[v]!);
+    const center = scale(sum, 1 / on.length);
+    const ref = normalize(sub(verts[on[0]!]!, center));
+    const side = cross(normal, ref);
+    const angle = (v: number) => {
+      const d = sub(verts[v]!, center);
+      return pseudoAngle(dot(d, ref), dot(d, side));
+    };
+    const ordered = [...on];
+    ordered.sort((a, b) => angle(a) - angle(b));
+    return { center, normal, verts: ordered };
+  });
+  return { faces, verts };
+}
+
+// The ball: numbers scattered so that neighbours are far apart in value,
+// each read with its top toward the spiral's first pole.
+function ball(): Solid {
+  const unit = ballFaces(spiral());
+  const verts = unit.verts.map((v) => scale(v, BALL.size));
+  const faces = unit.faces.map((face) => ({ ...face, center: scale(face.center, BALL.size) }));
+  const r = BALL.r * BALL.size;
+  const core = verts.map((v) => scale(v, (BALL.size - r) / BALL.size));
+  const faceUp = faces.map(({ normal }) => normalize(sub([0, 1, 0], scale(normal, normal[1]))));
+  return {
+    ball: true,
+    core,
+    faces,
+    faceUp,
+    features: faces.map((face, i) => {
+      const value = ((i * 37) % BALL.faces) + 1;
+      return {
+        dir: face.normal,
+        ring: face.verts.map((v) => verts[v]!),
+        text: String(value),
+        up: faceUp[i]!,
+        value,
+      };
+    }),
+    inradius: BALL.size,
+    kind: "d100",
+    r,
+    radius: Math.max(...core.map(length)) + r,
+    verts,
+  };
 }
 
 const solids = new Map<DieKind, Solid>();
@@ -223,6 +313,11 @@ const solids = new Map<DieKind, Solid>();
 export function solid(kind: DieKind): Solid {
   const known = solids.get(kind);
   if (known !== undefined) return known;
+  if (kind === "d100") {
+    const made = ball();
+    solids.set(kind, made);
+    return made;
+  }
   const raw = sharpVerts(kind);
   const reach = Math.max(...raw.map(length));
   const verts = raw.map((v) => scale(v, SIZE[kind] / reach));
@@ -248,6 +343,7 @@ export function solid(kind: DieKind): Solid {
           up: faceUp[i]!,
         }));
   const made: Solid = {
+    ball: false,
     core,
     faces,
     faceUp,

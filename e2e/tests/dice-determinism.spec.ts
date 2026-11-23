@@ -18,7 +18,7 @@ const THROWS = 200;
 // seed the server draws.
 const seeds = Uint32Array.from({ length: THROWS }, (_, i) => Math.imul(i + 1, 2_654_435_761));
 
-// Mixed pools of 1 to 20 dice, d100s thrown as two.
+// Mixed pools of 1 to 20 dice, d100s among them.
 const cases = Array.from(seeds, (seed, i) => ({
   kinds: bodiesOf(
     Array.from({ length: 1 + (i % 20) }, (_, k) => ({
