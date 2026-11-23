@@ -1,5 +1,5 @@
 {
-  "name": "tltabletop",
+  "name": "littletable-top",
   "version": "0.1.0",
   "private": true,
   "description": "A shared tldraw whiteboard with dice, as a Cloudflare Worker a host can deploy or run on its own",

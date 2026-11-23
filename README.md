@@ -1,4 +1,4 @@
-# tltabletop
+# littletable-top
 
 A shared whiteboard with dice for tabletop games: a [tldraw](https://tldraw.dev)
 canvas that everyone at the table draws on, a dice tray whose rolls the
@@ -354,7 +354,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
-import { Tabletop } from "tltabletop/alchemy";
+import { Tabletop } from "littletable-top/alchemy";
 
 export default Alchemy.Stack(
   "Host",
@@ -392,10 +392,10 @@ TypeScript under `node_modules`.
 
 ### As a dependency
 
-The package is `tltabletop`; nothing is published yet.
+The package is `littletable-top`; nothing is published yet.
 
 - **Git dependency**, which works today:
-  `"tltabletop": "github:hasparus/tltabletop#<commit>"`. The repository is
+  `"littletable-top": "github:hasparus/littletable-top#<commit>"`. The repository is
   private, so the host's install needs a token that can read it. No build
   runs at install; the helper builds the client at deploy time.
 - **Registry package**: drop `"private": true`, choose a licence (and a
