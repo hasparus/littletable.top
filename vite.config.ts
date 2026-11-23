@@ -1,4 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 
@@ -115,6 +118,105 @@ function tabletop(): Plugin {
   };
 }
 
+const require = createRequire(import.meta.url);
+const ocr = (name: string) => fileURLToPath(new URL(`client/ocr/${name}`, import.meta.url));
+
+// The files the text engines load at run time, by what the worker calls
+// them (client/src/text-worker.ts); ONNX Runtime's WebAssembly is not
+// among them, as Vite emits it from the runtime's own reference. They stay files, fetched only when an
+// image is read: each under /assets/ocr/ with its content's hash in its
+// name, or, for Tesseract's language data, whose names it fixes, in its
+// folder's. README, "Text in images", says where each comes from.
+const ENGINE_FILES = {
+  detector: { from: ocr("ppocr-v6-tiny-det.onnx"), name: "ppocr-v6-tiny-det.onnx" },
+  recogniser: { from: ocr("ppocr-v6-tiny-rec.onnx"), name: "ppocr-v6-tiny-rec.onnx" },
+  tesseractCore: {
+    from: require.resolve("tesseract.js-core/tesseract-core-simd-lstm.wasm.js"),
+    name: "tesseract-core-simd-lstm.wasm.js",
+  },
+  tesseractCoreNoSimd: {
+    from: require.resolve("tesseract.js-core/tesseract-core-lstm.wasm.js"),
+    name: "tesseract-core-lstm.wasm.js",
+  },
+  tesseractWorker: {
+    from: require.resolve("tesseract.js/dist/worker.min.js"),
+    name: "tesseract-worker.min.js",
+  },
+} as const;
+const LANGUAGES = ["eng", "pol"].map((language) => ({
+  from: ocr(`tessdata/${language}.traineddata.gz`),
+  name: `${language}.traineddata.gz`,
+}));
+
+const hashOf = (...sources: Buffer[]) => {
+  const hash = createHash("sha256");
+  for (const source of sources) hash.update(source);
+  return hash.digest("hex").slice(0, 10);
+};
+
+const ENGINE_MODULE = "virtual:text-engine-files";
+const SERVED_AS: Record<string, string> = {
+  ".gz": "application/gzip",
+  ".js": "text/javascript",
+  ".onnx": "application/octet-stream",
+  ".wasm": "application/wasm",
+};
+
+function textEngineFiles(): Plugin {
+  let serving = false;
+  const served = new Map<string, string>();
+  // Where each file is published, with its bytes.
+  const layout = () => {
+    const files = Object.entries(ENGINE_FILES).map(([key, { from, name }]) => {
+      const source = readFileSync(from);
+      const dot = name.indexOf(".");
+      return {
+        key,
+        path: `assets/ocr/${name.slice(0, dot)}-${hashOf(source)}${name.slice(dot)}`,
+        source,
+      };
+    });
+    const languages = LANGUAGES.map(({ from, name }) => ({ name, source: readFileSync(from) }));
+    const folder = `assets/ocr/tessdata-${hashOf(...languages.map(({ source }) => source))}`;
+    return { files, folder, languages };
+  };
+  return {
+    configResolved(config) {
+      serving = config.command === "serve";
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const from = served.get(request.url?.split("?")[0] ?? "");
+        if (from === undefined) return next();
+        response.setHeader(
+          "Content-Type",
+          SERVED_AS[from.slice(from.lastIndexOf("."))] ?? "application/octet-stream",
+        );
+        response.end(readFileSync(from));
+      });
+    },
+    load(id) {
+      if (id !== `\0${ENGINE_MODULE}`) return null;
+      const { files, folder, languages } = layout();
+      const urls: Record<string, string> = { tessdata: `/${folder}` };
+      for (const { key, path, source } of files) {
+        urls[key] = `/${path}`;
+        if (serving) served.set(`/${path}`, ENGINE_FILES[key as keyof typeof ENGINE_FILES].from);
+        else this.emitFile({ fileName: path, source, type: "asset" });
+      }
+      for (const [at, { name, source }] of languages.entries()) {
+        if (serving) served.set(`/${folder}/${name}`, LANGUAGES[at]!.from);
+        else this.emitFile({ fileName: `${folder}/${name}`, source, type: "asset" });
+      }
+      return `export default ${JSON.stringify(urls)};`;
+    },
+    name: "text-engine-files",
+    resolveId(id) {
+      return id === ENGINE_MODULE ? `\0${ENGINE_MODULE}` : null;
+    },
+  };
+}
+
 export default defineConfig({
   build: {
     // NOTE: tldraw's fonts and translations stay files: the tabletop's
@@ -128,8 +230,11 @@ export default defineConfig({
   // NOTE: the dependency pre-bundler cannot follow @tldraw/assets' `?url`
   // imports; Vite serves the package as it is instead.
   optimizeDeps: { exclude: ["@tldraw/assets"] },
-  plugins: [tailwindcss(), tabletop()],
+  plugins: [tailwindcss(), tabletop(), textEngineFiles()],
   publicDir: fileURLToPath(new URL("client/public", import.meta.url)),
+  // NOTE: the text worker is a module worker (client/src/text-worker.ts),
+  // built with the plugin that hands it the engines' files.
+  worker: { format: "es", plugins: () => [textEngineFiles()] },
   root: fileURLToPath(new URL("client", import.meta.url)),
   server: {
     port: 8788,
