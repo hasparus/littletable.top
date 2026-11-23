@@ -4,10 +4,10 @@
 // its shadow is the convex outline of its corners as the light throws them
 // on the floor, grown by its rounding. That outline is drawn as a mesh whose
 // vertices carry how far through the penumbra they are: the penumbra is as
-// wide as the corner that casts it is high, so a shadow is crisp where the
-// die touches the floor and soft at its far end. A second, narrow shade
-// around the die's outline seen from above seats it on the floor. The output
-// is transparent and premultiplied, so the board shows through.
+// wide as the corner that casts it is high, and the shadow as dark as that
+// corner is low: crisp and darkest where the die touches the floor, soft and
+// paler at its far end. One light, one shadow: nothing else shades the floor.
+// The output is transparent and premultiplied, so the board shows through.
 //
 // NOTE: nothing here feeds back into the throw, so trigonometry and pow are
 // fine in the shaders; the frames come from dice-physics.ts alone.
@@ -39,16 +39,15 @@ const CAMERA_TILT = 0.12;
 const MAX_PIXEL_RATIO = 2;
 // 64° up, from the far left.
 const LIGHT: Vec = [-0.269, 0.8988, -0.3458];
-// Shadow colours, not premultiplied: ink on a light board, black on a dark one.
-const SHADOW_TINT = { dark: [0, 0, 0, 0.75], light: [0.07, 0.08, 0.17, 0.34] } as const;
+// Shadow colours where a die touches the floor, not premultiplied: ink on a
+// light board, black on a dark one.
+const SHADOW_TINT = { dark: [0, 0, 0, 0.85], light: [0.07, 0.08, 0.17, 0.5] } as const;
 // Penumbra width in floor units: at the floor, and more per unit of height.
 const PENUMBRA = { atFloor: 0.05, perHeight: 0.22 };
-// How quickly a die's cast shadow pales as it leaves the floor.
-const CAST_FADE = 0.35;
-// The shade that seats a die: how far it reaches past the outline, its
-// strength next to the cast shadow's, how quickly it pales with height, and
-// how far under the die it starts, as a share of the outline.
-const SEAT = { fade: 4, reach: 0.24, strength: 0.7, under: 0.7 };
+// How quickly a shadow pales with the height of the corner that casts it
+// above the die's lowest point, and with the height of the die off the floor.
+const PALING = { lifted: 0.35, within: 0.5 };
+
 const MATERIAL = { bump: 1.3, coat: 0.8, coatRoughness: 0.12, roughness: 0.42 };
 
 // The tray's rectangle in a host of `width` by `height` CSS pixels: as large
@@ -132,9 +131,9 @@ void main() {
   frag = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
 }`;
 
-// The shades of all dice as one mesh on the floor: x, z, how far through the
-// fade from full shade (0) to none (1) the vertex is, and the shade's
-// strength.
+// The shadows of all dice as one mesh on the floor: x, z, how far through the
+// fade from full shade (0) to none (1) the vertex is, and the shadow's
+// strength there.
 const SHADE_VS = `#version 300 es
 in vec4 aPos; uniform mat4 uViewProj;
 out vec2 vShade;
@@ -159,8 +158,9 @@ const SUN = (() => {
   return { lean: flat / LIGHT[1], squash: LIGHT[1], x: -LIGHT[0] / flat, z: -LIGHT[2] / flat };
 })();
 
-// A point of an outline, and how wide the penumbra is there.
-type Spot = { soft: number; x: number; y: number };
+// A point of an outline, how wide the penumbra is there and how strong the
+// shadow.
+type Spot = { soft: number; strength: number; x: number; y: number };
 
 // The convex outline of `spots`, counter-clockwise (a monotone chain).
 function hullOf(spots: Spot[]): Spot[] {
@@ -365,11 +365,12 @@ export function createRenderer(
 
   // Adds rings of points as triangles: ring 0 to ring 1, ring 1 to ring 2.
   // `place` turns a ring's point into a floor point; `fades[r]` is how far
-  // through the fade ring r is.
+  // through the fade ring r is, `strengths[r][i]` the shadow's strength at
+  // its point i.
   const band = (
     rings: Point[][],
     fades: number[],
-    strength: number,
+    strengths: number[][],
     place: (point: Point) => Point,
   ) => {
     const count = rings[0]!.length;
@@ -395,7 +396,7 @@ export function createRenderer(
           shades[shadesUsed] = x;
           shades[shadesUsed + 1] = z;
           shades[shadesUsed + 2] = fades[r]!;
-          shades[shadesUsed + 3] = strength;
+          shades[shadesUsed + 3] = strengths[r]![i]!;
           shadesUsed += 4;
         }
       }
@@ -409,15 +410,22 @@ export function createRenderer(
     const outline = hullOf(
       corners.map(([x, y, z]) => ({
         soft: PENUMBRA.atFloor + PENUMBRA.perHeight * (y - rounding),
+        strength:
+          1 / ((1 + PALING.lifted * bottom) * (1 + PALING.within * (y - rounding - bottom))),
         x: (x * SUN.x + z * SUN.z + y * SUN.lean) * SUN.squash,
         y: z * SUN.x - x * SUN.z,
       })),
     );
     const normals = normalsOf(outline);
     const share = 1 / outline.length;
-    let [x, y, soft] = [0, 0, 0];
-    for (const spot of outline)
-      [x, y, soft] = [x + spot.x * share, y + spot.y * share, soft + spot.soft * share];
+    let [x, y, soft, strength] = [0, 0, 0, 0];
+    for (const spot of outline) {
+      x += spot.x * share;
+      y += spot.y * share;
+      soft += spot.soft * share;
+      strength += spot.strength * share;
+    }
+    const strengths = outline.flatMap((spot) => [spot.strength, spot.strength, spot.strength]);
     const depth =
       rounding +
       Math.min(
@@ -437,36 +445,11 @@ export function createRenderer(
         grown(outline, normals, (spot) => rounding + spot.soft / 2),
       ],
       [0.5 - depth / soft, 0.5, 1],
-      1 / (1 + bottom * CAST_FADE),
+      [strengths.map(() => strength), strengths, strengths],
       ([along, across]) => [
         (SUN.x * along) / SUN.squash - SUN.z * across,
         (SUN.z * along) / SUN.squash + SUN.x * across,
       ],
-    );
-  };
-
-  // One die's seat: full strength from well under the die to its outline
-  // seen from above, then fading over SEAT.reach.
-  const seat = (corners: Vec[], rounding: number, bottom: number) => {
-    const strength = SEAT.strength / (1 + bottom * SEAT.fade);
-    if (strength < 0.02) return;
-    const outline = hullOf(corners.map(([x, , z]) => ({ soft: 0, x, y: z })));
-    const normals = normalsOf(outline);
-    const share = 1 / outline.length;
-    let [x, y] = [0, 0];
-    for (const spot of outline) [x, y] = [x + spot.x * share, y + spot.y * share];
-    band(
-      [
-        outline.flatMap((spot): Point[] => {
-          const under: Point = [x + (spot.x - x) * SEAT.under, y + (spot.y - y) * SEAT.under];
-          return [under, under, under];
-        }),
-        grown(outline, normals, () => rounding),
-        grown(outline, normals, () => rounding + SEAT.reach),
-      ],
-      [0, 0, 1],
-      strength,
-      (point) => point,
     );
   };
 
@@ -531,21 +514,17 @@ export function createRenderer(
 
     shadesUsed = 0;
     for (const { bottom, corners, rounding } of shaded) cast(corners, rounding, bottom);
-    const seatsFrom = shadesUsed / 4;
-    for (const { bottom, corners, rounding } of shaded) seat(corners, rounding, bottom);
     gl.useProgram(gpu.shade.program);
     gl.bindVertexArray(gpu.shade.mesh);
     gl.bindBuffer(gl.ARRAY_BUFFER, gpu.shade.buffer);
     gl.bufferData(gl.ARRAY_BUFFER, shades, gl.DYNAMIC_DRAW, 0, shadesUsed);
     gl.uniformMatrix4fv(gpu.shade.uniform("uViewProj"), false, viewProj);
     gl.uniform4f(gpu.shade.uniform("uTint"), red * alpha, green * alpha, blue * alpha, alpha);
-    // NOTE: one light, so where two cast shadows overlap the floor is no
-    // darker than under one; the seats then darken what is under them.
+    // NOTE: one light, so where two shadows overlap the floor is no darker
+    // than under one.
     gl.blendEquation(gl.MAX);
-    gl.drawArrays(gl.TRIANGLES, 0, seatsFrom);
+    gl.drawArrays(gl.TRIANGLES, 0, shadesUsed / 4);
     gl.blendEquation(gl.FUNC_ADD);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.drawArrays(gl.TRIANGLES, seatsFrom, shadesUsed / 4 - seatsFrom);
     gl.disable(gl.BLEND);
     gl.depthMask(true);
     gl.disable(gl.DEPTH_TEST);
