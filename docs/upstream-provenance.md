@@ -7,9 +7,9 @@ repository depends on tldraw 5.6.0.
 **Permission.** tldraw's hosted-app code (`apps/dotcom/**`,
 `packages/dotcom-shared/**`) carries no licence grant. It is adapted here
 with tldraw's permission, given to the maintainer in conversation ("adapt
-the code"), for this private repository. A written confirmation is being
-sought and is required before a production deploy. Until then the adapted
-code stays where it can be lifted out: everything copied or adapted is under
+the code"), for this private repository; the maintainer has decided to
+ship on that. The adapted code stays where it can be told apart and lifted
+out: everything copied or adapted is under
 `src/mcp/upstream/` and `test/mcp/upstream/`, every file there starts with a
 header naming its origin and "Copyright (c) tldraw Inc.", and nothing of it
 is mixed into our own files. Those two directories keep tldraw's formatting

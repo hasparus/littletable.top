@@ -113,15 +113,15 @@ that preflight, which is what stands in for a CSRF token. The cookie reaches
 the host only when the two hosts are the same site (for example
 `board.example.org` and `example.org`) and its `SameSite` allows it.
 
-| Status | Body                                                                                                  | The client                                 |
-| ------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| 200    | `{"pass", "board", "person": {"id", "name", "owner"}, "title", "home": {"name", "url"}, "boardsUrl"}` | opens the board                            |
-| 422    | `{"error": "name-required"}`                                                                          | asks for a display name and sends it       |
-| 422    | `{"error": "name-invalid"}`                                                                           | asks again, saying the name cannot be used |
-| 403    | `{"error": "link-reset"}`                                                                             | says the link was reset                    |
-| 404    | anything                                                                                              | says the board no longer exists            |
-| 429    | anything                                                                                              | says to wait a minute                      |
-| other  | anything                                                                                              | says it could not open the board; retry    |
+| Status | Body                                                                                                          | The client                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 200    | `{"pass", "board", "person": {"id", "name", "owner", "role"}, "title", "home": {"name", "url"}, "boardsUrl"}` | opens the board                            |
+| 422    | `{"error": "name-required"}`                                                                                  | asks for a display name and sends it       |
+| 422    | `{"error": "name-invalid"}`                                                                                   | asks again, saying the name cannot be used |
+| 403    | `{"error": "link-reset"}`                                                                                     | says the link was reset                    |
+| 404    | anything                                                                                                      | says the board no longer exists            |
+| 429    | anything                                                                                                      | says to wait a minute                      |
+| other  | anything                                                                                                      | says it could not open the board; retry    |
 
 In the 200 answer, `board` is the board's id (its room is `/rooms/<board>`),
 `person.id` is the pass's `sub`, `title` becomes the page title, `boardsUrl`
@@ -137,17 +137,31 @@ minutes old and whenever its socket reconnects. A 404 then ends the board
 
 A pass is an RS256 JWT the host signs for one person on one board:
 
-| Claim        | Value                                                          |
-| ------------ | -------------------------------------------------------------- |
-| `iss`        | `ISSUER`                                                       |
-| `aud`        | `PASS_AUDIENCE`                                                |
-| `sub`        | The person's id; one that starts with `g:` is shown as a guest |
-| `board`      | The board's id, `[A-Za-z0-9_-]{1,64}`                          |
-| `link`       | The board's link version, an integer from 0                    |
-| `name`       | The display name, 1-40 characters                              |
-| `owner`      | Whether the person owns the board                              |
-| `avatar`     | Optional. The person's picture: a URL on `HOST_ORIGIN`         |
-| `iat`, `exp` | Required. The reference host gives five minutes                |
+| Claim        | Value                                                                            |
+| ------------ | -------------------------------------------------------------------------------- |
+| `iss`        | `ISSUER`                                                                         |
+| `aud`        | `PASS_AUDIENCE`                                                                  |
+| `sub`        | The person's id; one that starts with `g:` is shown as a guest                   |
+| `board`      | The board's id, `[A-Za-z0-9_-]{1,64}`                                            |
+| `link`       | The board's link version, an integer from 0                                      |
+| `name`       | The display name, 1-40 characters                                                |
+| `role`       | `owner`, `shaman` or `write`; see "Roles"                                        |
+| `owner`      | Before roles: whether the person owns the board. Read only when `role` is absent |
+| `avatar`     | Optional. The person's picture: a URL on `HOST_ORIGIN`                           |
+| `iat`, `exp` | Required. The reference host gives five minutes                                  |
+
+#### Roles
+
+Anyone with a pass may draw, roll and upload: that is `write`, and all a
+guest (`g:`) can be; a pass that gives a guest more is refused. A `shaman`
+may also connect an AI assistant to the board and choose whether it reads
+or edits; the `owner` is a shaman and decides who else is. The host keeps
+the roles and names the person's in each pass; an assistant's access token
+names the role of the account it acts for on each board
+(`docs/mcp-design.md`), and the room refuses one that is not `shaman` or
+`owner`. A pass without `role` is read by its `owner` flag (`true`:
+`owner`, `false`: `write`), so a host can adopt roles when it is ready.
+In standalone mode the owner sets roles on the front page ("People").
 
 The picture is a claim of the pass, not a field of the bootstrap answer,
 because the answer reaches the Worker through the browser and the pass is
@@ -234,8 +248,7 @@ The operations engine, the page and cluster tools and their tests under
 `src/mcp/upstream/` and `test/mcp/upstream/` are adapted from tldraw's
 hosted app, used with tldraw's permission (Copyright (c) tldraw Inc.;
 [docs/upstream-provenance.md](docs/upstream-provenance.md) lists every
-file and change). A written confirmation is needed before a production
-deploy. `aube run e2e:fidelity` runs the same op batches on a real tldraw
+file and change). `aube run e2e:fidelity` runs the same op batches on a real tldraw
 editor and on the server's stand-in and compares the records.
 
 What is built and planned, the measurements and the host's side are in
@@ -632,12 +645,12 @@ Live board state (the tldraw document, the roll log, the link version)
 stays in the board's Durable Object. D1 keeps what has to be listed or
 looked up across boards:
 
-| Table      | Holds                                                                               |
-| ---------- | ----------------------------------------------------------------------------------- |
-| `accounts` | id (the provider's user id), name, the avatar's address and its copy's hash         |
-| `sessions` | SHA-256 of the cookie token, account, the provider's session id, CSRF token, expiry |
-| `boards`   | id, owner, title, share code (unique), link version                                 |
-| `visits`   | account, board, the share code they came by, when                                   |
+| Table      | Holds                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `accounts` | id (the provider's user id), name, the avatar's address and its copy's hash                                  |
+| `sessions` | SHA-256 of the cookie token, account, the provider's session id, CSRF token, expiry                          |
+| `boards`   | id, owner, title, share code (unique), link version                                                          |
+| `visits`   | account, board, the share code they came by, when, and the account's role on the board (`write` or `shaman`) |
 
 A Durable Object per account could hold a list of boards, but a link names
 a board by its share code, and finding a board from a code then needs an
@@ -664,19 +677,21 @@ index across all accounts anyway; D1 gives both with two indexes.
 
 ### Routes
 
-| Route                                     | Does                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `GET /`                                   | The front page: sign in, then the account's boards                                                  |
-| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                                |
-| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                                   |
-| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                          |
-| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                                          |
-| `GET /api/boards`                         | `{"owned": [...], "visited": [...]}`; a visited board's `shareCode` is null once its link was reset |
-| `POST /api/boards`                        | `{"title"}`: makes a board (201). 100 per account, 20 an hour                                       |
-| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                             |
-| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only                      |
-| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                                              |
-| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract. 30 a minute per address                                      |
+| Route                                         | Does                                                                                                |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET /`                                       | The front page: sign in, then the account's boards                                                  |
+| `GET /auth/sign-in`, `GET /auth/callback`     | The redirect sign-in                                                                                |
+| `POST /auth/sign-out`                         | Ends the session; answers `{"redirect"}`, the provider's sign-out                                   |
+| `GET /api/me`                                 | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                          |
+| `GET /api/avatars/<sha256>`                   | The signed-in account's own picture; 404 for anyone else's                                          |
+| `GET /api/boards`                             | `{"owned": [...], "visited": [...]}`; a visited board's `shareCode` is null once its link was reset |
+| `POST /api/boards`                            | `{"title"}`: makes a board (201). 100 per account, 20 an hour                                       |
+| `POST /api/boards/<id>/rename`                | `{"title"}`, owner only                                                                             |
+| `POST /api/boards/<id>/reset`                 | New share code and link version; puts out everyone on the old link. Owner only                      |
+| `POST /api/boards/<id>/delete`                | Forgets the board and wipes its room (204). Owner only                                              |
+| `GET /api/boards/<id>/people`                 | The accounts that joined the board by link, each `write` or `shaman`. Owner only                    |
+| `POST /api/boards/<id>/people/<account>/role` | `{"role": "write" \| "shaman"}`. Owner only; taking shaman back ends the board's assistants         |
+| `POST /api/b/<share code>/bootstrap`          | The pass request of the host contract. 30 a minute per address                                      |
 
 The client IP for the limits comes from `CF-Connecting-IP` only; the
 limiter stores a hash of it.
