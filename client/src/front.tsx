@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Avatar } from "./avatar";
+import { colorFor } from "./colors";
 import { fill } from "./copy";
 import { type FrontCopy } from "./front-copy";
 
@@ -8,7 +10,8 @@ import { type FrontCopy } from "./front-copy";
 // (made here, or joined by someone else's link) with what an owner can do
 // to them. The Worker's API: README, "Standalone mode".
 
-type Account = { id: string; name: string };
+// avatar is the address of the account's own picture on this origin.
+type Account = { avatar: string | null; id: string; name: string };
 type Owned = { createdAt: number; id: string; shareCode: string; title: string };
 type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
 type Lists = { owned: Owned[]; visited: Visited[] };
@@ -243,7 +246,14 @@ function SignedIn({
   return (
     <div className="mx-auto max-w-2xl px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-16">
       <header className="flex flex-wrap items-center gap-3">
-        <p className="flex-1 text-sm text-foreground-secondary">
+        {/* NOTE: `a:<id>` is the person's id on a board, so the ring is their cursor's colour there. */}
+        <Avatar
+          color={colorFor(`a:${me.account.id}`)}
+          name={me.account.name}
+          size="md"
+          src={me.account.avatar}
+        />
+        <p className="min-w-0 flex-1 text-sm text-foreground-secondary">
           {fill(copy.signedInAs, { name: me.account.name })}
         </p>
         <button className="btn btn-secondary min-h-10" onClick={() => void signOut()} type="button">

@@ -1,16 +1,22 @@
+import { useEffect } from "react";
 import { createUserId, type Editor, type TLPageId, useValue } from "tldraw";
 
+import { Avatar } from "./avatar";
 import { usePageNames } from "./pages";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-type Person = { color: string; id: string; name: string };
+// avatar is the picture's hash, as the room stamped it on their presence.
+type Person = { avatar: string | null; color: string; id: string; name: string };
 
 export type Present = Person & { page: TLPageId };
 
 // tldraw's user ids carry a prefix of their own (createUserId); the pass's
 // person id ("u:12", "g:abc") is what follows it.
 const personId = (userId: string) => userId.replace(/^user:/u, "");
+
+const avatarOf = (meta: Record<string, unknown>) =>
+  typeof meta.avatar === "string" && /^[0-9a-f]{64}$/u.test(meta.avatar) ? meta.avatar : null;
 
 // One entry per person, though one person may have the board open twice,
 // with the page they are on.
@@ -23,6 +29,7 @@ export function usePresent(editor: Editor | null): Present[] {
         const id = personId(presence.userId);
         if (!seen.has(id)) {
           seen.set(id, {
+            avatar: avatarOf(presence.meta),
             color: presence.color,
             id,
             name: presence.userName,
@@ -39,14 +46,14 @@ export function usePresent(editor: Editor | null): Present[] {
 const isGuest = (id: string) => id.startsWith("g:");
 
 function Who({ page, who }: { page: string | undefined; who: Person }) {
-  const { copy, person } = useBoardUi();
+  const { copy, files, person } = useBoardUi();
+  // NOTE: a picture asked for before the board's files cookie is set would
+  // fail and stay an initial; it waits for the cookie instead.
+  const readable = useValue("files readable", () => files.readable.get(), [files]);
+  const src = readable && who.avatar !== null ? `${files.path}/avatars/${who.avatar}` : null;
   return (
     <>
-      <span
-        aria-hidden="true"
-        className="size-3 shrink-0 rounded-full ring-2 ring-bg-secondary"
-        style={{ backgroundColor: who.color }}
-      />
+      <Avatar color={who.color} name={who.name} src={src} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate">{who.name}</span>
@@ -70,7 +77,9 @@ function Who({ page, who }: { page: string | undefined; who: Person }) {
 // Tapping someone follows them with tldraw's own follow: to their page, and
 // along as they look around, until this person moves the board themself.
 export function PeopleSheet() {
-  const { color, copy, editor, locale, open, person } = useBoardUi();
+  const { color, copy, editor, files, locale, open, person } = useBoardUi();
+  const ownAvatar = useValue("own avatar", () => files.avatar.get(), [files]);
+  useEffect(() => files.keepReadable(), [files]);
   const pages = usePageNames(editor);
   const here = useValue("current page", () => editor?.getCurrentPageId(), [editor]);
   const following = useValue(
@@ -88,7 +97,15 @@ export function PeopleSheet() {
     <Sheet panel="people" title={copy.people}>
       <ul className="divide-y divide-border">
         <li className="flex min-h-12 items-center gap-3">
-          <Who page={pageOf(here)} who={{ color, id: person.id, name: person.name }} />
+          <Who
+            page={pageOf(here)}
+            who={{
+              avatar: ownAvatar?.split("/").at(-1) ?? null,
+              color,
+              id: person.id,
+              name: person.name,
+            }}
+          />
         </li>
         {others.map((present) => {
           const userId = createUserId(present.id);

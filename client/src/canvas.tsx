@@ -11,6 +11,7 @@ import type { Copy } from "./copy";
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
 import { components } from "./chrome";
+import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
 import { Notice } from "./notice";
@@ -18,7 +19,7 @@ import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
 import { PlacesSheet } from "./places-sheet";
 import { useRolls } from "./rolls";
-import { colorFor, useBoardStore } from "./sync";
+import { useBoardStore } from "./sync";
 import { type BoardUi, BoardUiContext, type Panel } from "./ui";
 
 // NOTE: fonts, icons and tldraw's own translations ship in our build: the
@@ -82,6 +83,11 @@ export function BoardCanvas({
   const { refusal, store } = useBoardStore({ color, files, keeper, rolls });
   const usable = store.status === "synced-remote";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
+  // The cookie the board's pictures load with, before anyone opens a sheet
+  // that shows them.
+  useEffect(() => {
+    if (usable) files.keepReadable();
+  }, [files, usable]);
   // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
   // a while the person is told why nothing shows.
   const [stalled, setStalled] = useState(false);

@@ -7,7 +7,9 @@
 //   node e2e/fake-host.ts   (Node 22.18+ runs the TypeScript as it is)
 //
 // Pages, all plain HTML:
-//   GET  /sign-in?name=Ada      a session for a member called Ada
+//   GET  /sign-in?name=Ada      a session for a member called Ada, with a
+//                               picture (&picture=none: without one)
+//   GET  /avatars/<id>.png      a member's picture, which the tabletop copies
 //   GET  /boards/               the member's boards, with New / Reset / Delete
 //   POST /boards/new            creates a board, then 302 to the tabletop
 //   POST /boards/<id>/reset     gives the board a new link and link version
@@ -19,6 +21,8 @@ import { importPKCS8, SignJWT } from "jose";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+
+import { pictureOf } from "./fake-workos.ts";
 
 const PORT = Number(process.env.FAKE_HOST_PORT ?? 8000);
 const TABLETOP = process.env.TABLETOP_ORIGIN ?? "http://localhost:8788";
@@ -32,7 +36,8 @@ const signingKey = await importPKCS8(
 );
 
 type Board = { code: string; id: string; link: number; owner: string; title: string };
-type Session = { guest?: { id: string; name: string }; member?: { id: string; name: string } };
+type Member = { avatar: string | null; id: string; name: string };
+type Session = { guest?: { id: string; name: string }; member?: Member };
 
 const boards = new Map<string, Board>();
 const sessions = new Map<string, Session>();
@@ -73,8 +78,14 @@ const cleanName = (name: string) => name.split(/\s+/u).filter(Boolean).join(" ")
 
 const now = () => Math.floor(Date.now() / 1000);
 
-function signPass(board: Board, person: { id: string; name: string; owner: boolean }) {
+// A member's picture rides in the pass as a URL on this host's origin,
+// signed like every other claim; the tabletop copies it from here.
+function signPass(
+  board: Board,
+  person: { avatar: string | null; id: string; name: string; owner: boolean },
+) {
   return new SignJWT({
+    ...(person.avatar === null ? {} : { avatar: person.avatar }),
     board: board.id,
     link: board.link,
     name: person.name,
@@ -133,7 +144,7 @@ async function bootstrap(request: IncomingMessage, response: ServerResponse, cod
   const board = [...boards.values()].find((candidate) => candidate.code === code);
   if (board === undefined) return json(response, 404, { error: "not-found" });
   const session = sessionOf(request, response);
-  let person: { id: string; name: string; owner: boolean };
+  let person: { avatar: string | null; id: string; name: string; owner: boolean };
   if (session.member === undefined) {
     if (typeof body.name === "string") {
       const name = cleanName(body.name);
@@ -143,7 +154,7 @@ async function bootstrap(request: IncomingMessage, response: ServerResponse, cod
       session.guest = { id: session.guest?.id ?? `g:${token(12)}`, name };
     }
     if (session.guest === undefined) return json(response, 422, { error: "name-required" });
-    person = { ...session.guest, owner: false };
+    person = { ...session.guest, avatar: null, owner: false };
   } else {
     person = { ...session.member, owner: board.owner === session.member.id };
   }
@@ -152,7 +163,7 @@ async function bootstrap(request: IncomingMessage, response: ServerResponse, cod
     boardsUrl: session.member ? `http://localhost:${PORT}/boards/` : null,
     home: { name: "Fake host", url: `http://localhost:${PORT}/` },
     pass: await signPass(board, person),
-    person,
+    person: { id: person.id, name: person.name, owner: person.owner },
     title: board.title,
   });
 }
@@ -177,10 +188,20 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://localhost:${PORT}`);
   const contract = /^\/b\/([A-Za-z0-9]+)\/bootstrap\/$/u.exec(url.pathname);
   if (contract !== null) return bootstrap(request, response, contract[1]!);
+  const picture = /^\/avatars\/(u-\d+)\.png$/u.exec(url.pathname);
+  if (picture !== null && request.method === "GET") {
+    response.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "image/png" });
+    return response.end(pictureOf(picture[1]!));
+  }
   const session = sessionOf(request, response);
   if (url.pathname === "/sign-in") {
     const name = url.searchParams.get("name") ?? "Member";
-    session.member = { id: `u:${nextMember++}`, name };
+    const id = nextMember++;
+    const avatar =
+      url.searchParams.get("picture") === "none"
+        ? null
+        : `http://localhost:${PORT}/avatars/u-${id}.png`;
+    session.member = { avatar, id: `u:${id}`, name };
     response.writeHead(302, { Location: "/boards/" });
     return response.end();
   }
