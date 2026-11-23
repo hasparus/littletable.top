@@ -143,12 +143,12 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
 
   // One page: its place carries no page.
   await putNote(ada, { at: { x: 300, y: 300 }, text: "Gate" });
-  const adaPlaces = await openSheet(ada, "Places");
+  const adaPlaces = await openSheet(ada, "Search");
   await adaPlaces.getByRole("button", { name: "Add to places" }).click();
   await adaPlaces.getByLabel("Place name").fill("Gate");
   await adaPlaces.getByRole("button", { name: "Save" }).click();
   await expect(adaPlaces.getByRole("button", { exact: true, name: "Gate" })).toBeVisible();
-  await closeSheet(ada, "Places");
+  await closeSheet(ada, "Search");
 
   // Ada makes a second page and names it; Bea sees it at once.
   await openPages(ada);
@@ -218,12 +218,12 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   // jump takes her there with the place in view.
   await goToPage(ada, "Crypt");
   await putNote(ada, { at: { x: 1100, y: 250 }, text: "Altar" });
-  const placesOnCrypt = await openSheet(ada, "Places");
+  const placesOnCrypt = await openSheet(ada, "Search");
   await placesOnCrypt.getByRole("button", { name: "Add to places" }).click();
   await placesOnCrypt.getByLabel("Place name").fill("Altar");
   await placesOnCrypt.getByRole("button", { name: "Save" }).click();
-  await closeSheet(ada, "Places");
-  const beaPlaces = await openSheet(bea, "Places");
+  await closeSheet(ada, "Search");
+  const beaPlaces = await openSheet(bea, "Search");
   const altar = beaPlaces.getByRole("button", { exact: true, name: "Altar Crypt" });
   await expect(altar).toBeVisible();
   await expect(beaPlaces.getByRole("button", { exact: true, name: "Gate Town" })).toBeVisible();
@@ -258,9 +258,9 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await ada.getByRole("menuitem", { name: "Move to page" }).click();
   await ada.getByRole("menuitem", { name: "Crypt" }).click();
   await expect(pageButton(ada)).toHaveText("Crypt");
-  const moved = await openSheet(bea, "Places");
+  const moved = await openSheet(bea, "Search");
   await expect(moved.getByRole("listitem").first()).toContainText("GateCryptMy place");
-  await closeSheet(bea, "Places");
+  await closeSheet(bea, "Search");
 
   // Ada deletes Crypt while Bea is on it: Bea lands on Town and is told why,
   // and the places on Crypt are gone with it.
@@ -270,11 +270,11 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await expect(notice).toBeInViewport({ ratio: 1 });
   await expect(pageButton(bea)).toHaveText("Town");
   await shot(bea, "deleted-notice");
-  const after = await openSheet(bea, "Places");
+  const after = await openSheet(bea, "Search");
   await expect(
     after.getByText("No places yet. Select something on the board and add it to places."),
   ).toBeVisible();
-  await closeSheet(bea, "Places");
+  await closeSheet(bea, "Search");
 
   // The last page has no way to be deleted.
   const list = await openPages(ada);
@@ -326,7 +326,7 @@ test("a .tldr's pages join the page menu and the places list, up to the page cap
   await expect(pageButton(page)).toHaveText("The map");
   expect(await pagesListed(page)).toEqual(["Page 1", "The map", "The table", "Notes"]);
   await closePages(page);
-  const places = await openSheet(page, "Places");
+  const places = await openSheet(page, "Search");
   await expect(
     places.getByRole("button", { exact: true, name: "The hall The table" }),
   ).toBeVisible();

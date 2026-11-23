@@ -67,13 +67,13 @@ for (const [name, device] of SCREENS) {
     expect(mark.y).toBeGreaterThan(height - 80);
 
     // The bottom bar, with the board's own controls in it.
-    for (const control of ["Places", "People", "Dice"]) {
+    for (const control of ["Search", "People", "Dice"]) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
     mkdirSync(SHOTS, { recursive: true });
     await page.screenshot({ path: `${SHOTS}/watermark-${name}.png` });
 
-    for (const sheet of ["Places", "People"]) {
+    for (const sheet of ["Search", "People"]) {
       const dialog = await openSheet(page, sheet);
       await expectClearOf(page, dialog, `the ${sheet} sheet`);
       await closeSheet(page, sheet);

@@ -35,6 +35,7 @@ import {
 } from "tldraw";
 
 import { BoardFileMenuItems } from "./board-files";
+import { FoundHighlight } from "./highlight";
 import { Icon, type IconName } from "./icons";
 import { usePresent } from "./people";
 import { placeName, removePlace } from "./places";
@@ -149,7 +150,7 @@ function BoardToolbar() {
         <BoardTools />
       </DefaultToolbar>
       <div className="pointer-events-auto mb-[calc(var(--tl-space-3)+var(--tl-sab))] flex shrink-0 items-center rounded-2xl bg-bg-secondary p-0.5 shadow-[0_1px_3px_rgb(37_34_32/0.18),0_4px_16px_rgb(37_34_32/0.1)]">
-        <PanelButton icon="PinIcon" label={copy.places} panel="places" />
+        <PanelButton icon="MagnifyingGlass" label={copy.search} panel="search" />
         <PanelButton badge={people} icon="Group" label={copy.people} panel="people" />
         <PanelButton icon="Dice" label={copy.dice} panel="dice" />
       </div>
@@ -184,7 +185,7 @@ function PlaceMenuItems() {
           label={copy.addToPlaces}
           onSelect={() => {
             setNaming(only.id);
-            open("places");
+            open("search");
           }}
         />
       )}
@@ -229,9 +230,11 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
 //   board's language.
 // - On a phone, duplicate and the arrange menu leave the bar (see
 //   BoardQuickActions).
+// In front of the canvas: the flash of a chosen search result.
 export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,
+  InFrontOfTheCanvas: FoundHighlight,
   MainMenu: BoardMainMenu,
   QuickActions: BoardQuickActions,
   SharePanel: null,

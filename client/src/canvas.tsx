@@ -14,11 +14,13 @@ import { components } from "./chrome";
 import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
+import { makeHighlight } from "./highlight";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
-import { PlacesSheet } from "./places-sheet";
 import { useRolls } from "./rolls";
+import { BoardSearch } from "./search-board";
+import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useBoardStore } from "./sync";
 import { type BoardUi, BoardUiContext, type Panel } from "./ui";
 
@@ -103,8 +105,17 @@ export function BoardCanvas({
 
   const [editor, setEditor] = useState<Editor | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
   const [pool, setPool] = useState<number[]>([]);
+  const highlight = useMemo(makeHighlight, []);
+  const [search, setSearch] = useState<BoardSearch | null>(null);
+  useEffect(() => {
+    if (editor === null) return;
+    const made = new BoardSearch(editor);
+    setSearch(made);
+    return () => made.dispose();
+  }, [editor]);
   const ui = useMemo<BoardUi>(
     () => ({
       board,
@@ -113,21 +124,43 @@ export function BoardCanvas({
       editor,
       exit,
       files,
+      highlight,
       locale: language,
       naming,
-      open: (next) => {
+      open: (next, options) => {
         setPanel(next);
-        if (next !== "places") setNaming(null);
+        setTyping(options?.typing ?? false);
+        if (next !== "search") setNaming(null);
       },
       panel,
       person,
       pool,
       rolls,
+      search,
       setNaming,
       setPool,
+      typing,
     }),
-    [board, color, copy, editor, exit, files, language, naming, panel, person, pool, rolls],
+    [
+      board,
+      color,
+      copy,
+      editor,
+      exit,
+      files,
+      highlight,
+      language,
+      naming,
+      panel,
+      person,
+      pool,
+      rolls,
+      search,
+      typing,
+    ],
   );
+  const { open } = ui;
+  useEffect(() => (editor === null ? undefined : searchFromKeyboard(open)), [editor, open]);
 
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
@@ -173,7 +206,7 @@ export function BoardCanvas({
         </div>
         {offline && <ConnectionBanner copy={copy} />}
         {panel === "dice" && <DiceSheet />}
-        {panel === "places" && <PlacesSheet />}
+        {panel === "search" && <SearchSheet />}
         {panel === "people" && <PeopleSheet />}
         {rolls.arrived !== null && (
           <Suspense fallback={null}>
@@ -189,6 +222,25 @@ export function BoardCanvas({
 }
 
 const STALLED_AFTER_MS = 8000;
+
+// Ctrl+F (⌘F on a Mac) searches the board instead of the page, whose own
+// find cannot see into the canvas; pressed again, it goes back to the
+// field. Taken before tldraw sees it.
+function searchFromKeyboard(open: BoardUi["open"]): () => void {
+  const find = (event: KeyboardEvent) => {
+    const mod = /Mac|iPhone|iPad/u.test(navigator.platform) ? event.metaKey : event.ctrlKey;
+    if (!mod || event.altKey || event.shiftKey || event.key.toLowerCase() !== "f") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const field = document.getElementById(SEARCH_FIELD_ID);
+    if (field instanceof HTMLInputElement) {
+      field.focus();
+      field.select();
+    } else open("search", { typing: true });
+  };
+  document.addEventListener("keydown", find, { capture: true });
+  return () => document.removeEventListener("keydown", find, { capture: true });
+}
 
 // A pasted YouTube or Figma link would become a frame onto that site, which
 // the Content-Security-Policy refuses; it stays a plain link instead.

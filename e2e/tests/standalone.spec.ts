@@ -52,17 +52,17 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   // The owner makes a place of a note off the guest's small screen; the
   // guest jumps to it.
   await putNote(page, { at: { x: 1100, y: 250 }, text: "The map" });
-  const places = await openSheet(page, "Places");
+  const places = await openSheet(page, "Search");
   await places.getByRole("button", { name: "Add to places" }).click();
   await places.getByLabel("Place name").fill("The map");
   await places.getByRole("button", { name: "Save" }).click();
   await expect(places.getByRole("button", { exact: true, name: "The map" })).toBeVisible();
-  await closeSheet(page, "Places");
+  await closeSheet(page, "Search");
   const farNote = onBoard(guest, "The map");
   await expect(farNote).not.toBeInViewport();
-  const guestPlaces = await openSheet(guest, "Places");
+  const guestPlaces = await openSheet(guest, "Search");
   await guestPlaces.getByRole("button", { exact: true, name: "The map" }).click();
-  await expect(sheet(guest, "Places")).toBeHidden();
+  await expect(sheet(guest, "Search")).toBeHidden();
   await expect(farNote).toBeInViewport();
 
   // From the front page the owner renames the board and resets its link;
