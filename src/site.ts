@@ -13,10 +13,13 @@ export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
   return Response.redirect(url.toString(), 308);
 }
 
-// NOTE: the dice are plain scripts on a WebGL2 canvas (README, "Dice").
-// Physics in WebAssembly would need "'wasm-unsafe-eval'" here, and nowhere
-// else.
-const SCRIPT_SRC = ["'self'"];
+// NOTE: reading text off images (README, "Text in images") runs two
+// engines compiled to WebAssembly in a worker of this origin, which needs
+// 'wasm-unsafe-eval': it compiles WebAssembly and nothing else, so eval
+// and string-built functions stay refused. Their workers are files of
+// this origin too, never blob: URLs.
+const SCRIPT_SRC = ["'self'", "'wasm-unsafe-eval'"];
+const WORKER_SRC = ["'self'"];
 
 // The shell's Content-Security-Policy: its own scripts, fonts and tldraw's
 // self-hosted assets, the rooms socket on this host, and in hosted mode the
@@ -41,6 +44,7 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "script-src": SCRIPT_SRC,
     // NOTE: tldraw positions every shape with inline style attributes.
     "style-src": ["'self'", "'unsafe-inline'"],
+    "worker-src": WORKER_SRC,
   };
   return Object.entries(directives)
     .map(([name, sources]) => `${name} ${sources.join(" ")}`)
@@ -69,7 +73,9 @@ export function harden(response: Response, request: Request, config: Config): Re
 }
 
 const SHELL = /^\/b\/[A-Za-z0-9]{1,64}\/?$/u;
-// Vite names every built script, style and font after its content.
+// Vite names every built script, style and font after its content, and
+// the text engines' files (WebAssembly, models, language data) carry the
+// hash of theirs in their name or their folder's (vite.config.ts).
 const HASHED = /^\/assets\//u;
 
 async function shell(request: Request, assets: Fetcher, config: Config): Promise<Response> {

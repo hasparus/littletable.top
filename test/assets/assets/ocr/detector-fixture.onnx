@@ -1,0 +1,2 @@
+A stand-in for a text model (test/site.test.ts):
+the Worker serves it as bytes, whatever is in it.

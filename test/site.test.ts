@@ -43,8 +43,9 @@ describe("the board shell", () => {
       "img-src": ["'self'", "data:", "blob:"],
       "manifest-src": ["'self'"],
       "object-src": ["'none'"],
-      "script-src": ["'self'"],
+      "script-src": ["'self'", "'wasm-unsafe-eval'"],
       "style-src": ["'self'", "'unsafe-inline'"],
+      "worker-src": ["'self'"],
     });
   });
 
@@ -115,6 +116,23 @@ describe("the built files", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
+  // What the text engines load: WebAssembly, which a browser compiles
+  // while it arrives only with its own type; language data, gzipped, which
+  // must arrive as the gzip file it is, not unpacked by the way; models.
+  it.each([
+    ["/assets/ocr/ort-fixture.wasm", "application/wasm"],
+    ["/assets/ocr/tessdata-fixture/pol.traineddata.gz", "application/gzip"],
+    ["/assets/ocr/detector-fixture.onnx", null],
+  ])("serve the text engines' %s for good", async (path, type) => {
+    const response = await get(`https://board.test${path}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(response.headers.get("Content-Encoding")).toBeNull();
+    if (type !== null) expect(response.headers.get("Content-Type")).toBe(type);
+    expect(directives(response).get("script-src")).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+  });
+
   it("include the manifest, under the same policy", async () => {
     const response = await get("https://board.test/manifest.webmanifest");
 
@@ -125,7 +143,7 @@ describe("the built files", () => {
   it("put the policy on index.html fetched by its own name", async () => {
     const response = await get("https://board.test/index.html");
 
-    expect(directives(response).get("script-src")).toEqual(["'self'"]);
+    expect(directives(response).get("script-src")).toEqual(["'self'", "'wasm-unsafe-eval'"]);
   });
 });
 
