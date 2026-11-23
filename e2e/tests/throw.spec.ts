@@ -187,6 +187,37 @@ test("with reduced motion the strip shows at once and no 3D code is fetched", as
   await guest.context().close();
 });
 
+test("a lost connection is said below the strip, not under it", async ({ browser, page }) => {
+  const boardUrl = await startBoard(page);
+  const context = await browser.newContext({ ...PHONE, reducedMotion: "reduce" });
+  let cut = false;
+  const sockets: { close: () => Promise<void> }[] = [];
+  await context.routeWebSocket(/\/connect/u, async (socket) => {
+    if (cut) {
+      await socket.close();
+      return;
+    }
+    socket.connectToServer();
+    sockets.push(socket);
+  });
+  const guest = await context.newPage();
+  await collectCspViolations(guest);
+  await guest.goto(boardUrl);
+  await joinAs(guest, "Bea");
+  await roll(page, [6]);
+  await expect(strip(guest)).toBeVisible();
+
+  cut = true;
+  await Promise.all(sockets.map(async (socket) => socket.close()));
+  const banner = guest.getByRole("status").filter({ hasText: "Connection lost" });
+  await expect(banner).toBeVisible();
+  const bar = (await strip(guest).boundingBox())!;
+  const said = (await banner.boundingBox())!;
+  expect(said.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+  await expectNoCspViolations(guest);
+  await context.close();
+});
+
 test("without WebGL2 the strip carries the result, and says so once", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const context = await browser.newContext();

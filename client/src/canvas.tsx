@@ -52,10 +52,12 @@ function warmUpDice(): () => void {
   return () => clearTimeout(handle);
 }
 
+// While the dice result strip shows across the top, the banner sits just
+// below it, as tldraw's top corner does.
 function ConnectionBanner({ copy }: { copy: Copy }) {
   return (
     <p
-      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-ink px-4 py-2 text-center text-sm text-white shadow-lg"
+      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 [body:has([data-dice-strip])_&]:top-[calc(env(safe-area-inset-top)+var(--dice-strip)+0.5rem)] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-ink px-4 py-2 text-center text-sm text-white shadow-lg"
       role="status"
     >
       {copy.connectionLost}
