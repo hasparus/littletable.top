@@ -215,7 +215,7 @@ export class BoardRoom extends DurableObject<Env> {
   mcpApplyOps(
     grant: BoardGrant,
     request: ApplyOpsRequest,
-  ): ApplyOpsResponse | "read-only" | "revoked" {
+  ): "read-only" | "revoked" | ApplyOpsResponse {
     const refusal = this.admitGrant(grant);
     if (refusal !== null) return refusal;
     if (grant.access !== "write") return "read-only";
@@ -230,7 +230,7 @@ export class BoardRoom extends DurableObject<Env> {
     return response;
   }
 
-  mcpPages(grant: BoardGrant): ReturnType<BoardOps["pages"]> | "revoked" {
+  mcpPages(grant: BoardGrant): "revoked" | ReturnType<BoardOps["pages"]> {
     return this.admitGrant(grant) ?? this.ops.pages();
   }
 

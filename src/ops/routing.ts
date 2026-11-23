@@ -56,17 +56,31 @@ export function routeArrow({
   const crossings = (bend: number) => {
     const course = arcCourse(from, to, bend, joined);
     const hit = new Set<number>();
+    // NOTE: only shapes under the course's own box can be crossed; on a
+    // large board that is a handful out of thousands.
+    const xs = course.map((point) => point.x);
+    const ys = course.map((point) => point.y);
+    const reach = label === null ? 0 : Math.max(label.w, label.h);
+    const span = {
+      h: Math.max(...ys) - Math.min(...ys) + reach * 2,
+      w: Math.max(...xs) - Math.min(...xs) + reach * 2,
+      x: Math.min(...xs) - reach,
+      y: Math.min(...ys) - reach,
+    };
+    const near = around
+      .map((box, which) => ({ box, which }))
+      .filter(({ box }) => intersects(span, box));
     for (let index = 1; index < course.length; index++) {
-      around.forEach((box, which) => {
+      for (const { box, which } of near) {
         if (segmentHitsBox(course[index - 1]!, course[index]!, box)) hit.add(which);
-      });
+      }
     }
     if (label !== null && course.length > 0) {
       const middle = course[Math.floor(course.length / 2)]!;
       const box = { h: label.h, w: label.w, x: middle.x - label.w / 2, y: middle.y - label.h / 2 };
-      around.forEach((blocker, which) => {
+      for (const { box: blocker, which } of near) {
         if (intersects(box, blocker)) hit.add(which);
-      });
+      }
     }
     return hit.size;
   };

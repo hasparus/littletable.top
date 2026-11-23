@@ -88,15 +88,15 @@ export type BatchInput = {
 };
 
 export type BatchOutcome =
-  | { kind: "invalid"; message: string }
-  | { kind: "no-page"; message: string }
   | {
       created: string[];
       deletes: string[];
       kind: "applied";
       puts: TLRecord[];
       result: ApplyOpsResult;
-    };
+    }
+  | { kind: "invalid"; message: string }
+  | { kind: "no-page"; message: string };
 
 const MAX_AUTO_WIDTH = 320;
 const MIN_BOX = { h: 80, w: 120 };
@@ -143,7 +143,7 @@ export function runBatch(records: Iterable<TLRecord>, input: BatchInput): BatchO
       .join("; ");
     return {
       kind: "invalid",
-      message: `The batch is invalid and nothing was applied. ${detail}`.slice(0, 1_500),
+      message: `The batch is invalid and nothing was applied. ${detail}`.slice(0, 1500),
     };
   }
   const doc = new Doc(records);
@@ -158,7 +158,7 @@ export function runBatch(records: Iterable<TLRecord>, input: BatchInput): BatchO
     runId: input.runId,
   };
   const results: OpResult[] = [];
-  parsed.data.forEach((op, index) => {
+  for (const [index, op] of parsed.data.entries()) {
     const mark = doc.mark();
     const createdBefore = ctx.created.length;
     try {
@@ -176,7 +176,7 @@ export function runBatch(records: Iterable<TLRecord>, input: BatchInput): BatchO
           : error.message;
       results.push({ index, message, ok: false, op: op.op, shapeIds: [] });
     }
-  });
+  }
   const { deletes, puts } = doc.changes();
   return {
     created: ctx.created.slice(input.run.created.length),
@@ -430,12 +430,12 @@ function placeNew(
   let relation = where.relation ?? "right_of";
   if (where.target !== undefined) {
     target = resolve(ctx, where.target);
-  } else if (where.relation !== undefined) {
-    throw new OpError(`relation ${where.relation} needs a target.`);
-  } else {
+  } else if (where.relation === undefined) {
     const last = ctx.created.at(-1);
     target = last === undefined ? undefined : ctx.doc.shape(last);
     relation = "right_of";
+  } else {
+    throw new OpError(`relation ${where.relation} needs a target.`);
   }
   if (target === undefined) {
     const blockers = obstacles(ctx.doc, ctx.page.id, new Set());
@@ -512,7 +512,7 @@ function arrowIndex(ctx: Context, parentId: TLParentId, joined: TLShape[]): Inde
     })
     .filter((shape) => shape !== undefined);
   if (nearest.length === 0) return topIndex(ctx, parentId);
-  const highest = nearest.reduce((a, b) => (a.index > b.index ? a : b));
+  const highest = [...nearest].sort((a, b) => (a.index < b.index ? 1 : -1))[0]!;
   const above = siblings.filter((sibling) => sibling.index > highest.index);
   return above.length === 0
     ? getIndexAbove(highest.index)
@@ -608,12 +608,14 @@ function connectArrow(
   if (from.shape !== undefined) ctx.doc.put(arrowBindingRecord(id, from.shape.id, "start"));
   if (to.shape !== undefined) ctx.doc.put(arrowBindingRecord(id, to.shape.id, "end"));
   if (!replaced) ctx.created.push(id);
+  const crossing =
+    crossed > 0
+      ? `crosses ${crossed} other shape${crossed === 1 ? "" : "s"}; no bend clears ${crossed === 1 ? "it" : "them"}`
+      : undefined;
   const adjusted =
-    bend !== 0
-      ? `bent ${Math.abs(bend)} px to the ${bend > 0 ? "left" : "right"} of the straight line to pass clear of other shapes`
-      : crossed > 0
-        ? `crosses ${crossed} other shape${crossed === 1 ? "" : "s"}; no bend clears ${crossed === 1 ? "it" : "them"}`
-        : undefined;
+    bend === 0
+      ? crossing
+      : `bent ${Math.abs(bend)} px to the ${bend > 0 ? "left" : "right"} of the straight line to pass clear of other shapes`;
   return { adjusted, id, replaced };
 }
 
@@ -643,6 +645,16 @@ function retext(
 ): { adjusted?: string; shape: TLShape } {
   const richText = toRichText(text);
   switch (shape.type) {
+    case "arrow":
+      return {
+        shape: edited(ctx, shape, {
+          props: { ...(shape as TLArrowShape).props, richText },
+        } as Partial<TLShape>),
+      };
+    case "frame":
+      return {
+        shape: edited(ctx, shape, { props: { ...shape.props, name: text } } as Partial<TLShape>),
+      };
     case "geo": {
       const geo = shape as TLGeoShape;
       const style = { font: geo.props.font as FontFamily, size: geo.props.size as SizeStyle };
@@ -709,16 +721,6 @@ function retext(
         } as Partial<TLShape>),
       };
     }
-    case "arrow":
-      return {
-        shape: edited(ctx, shape, {
-          props: { ...(shape as TLArrowShape).props, richText },
-        } as Partial<TLShape>),
-      };
-    case "frame":
-      return {
-        shape: edited(ctx, shape, { props: { ...shape.props, name: text } } as Partial<TLShape>),
-      };
     default:
       throw new OpError(`${fromShapeId(shape.id)} is a ${shape.type}, which holds no text.`);
   }
@@ -775,7 +777,7 @@ const label: Handler<"label"> = (ctx, op) => {
     });
     const best =
       options.find((option) => option.moved < 0.5) ??
-      options.reduce((a, b) => (a.moved <= b.moved ? a : b));
+      [...options].sort((a, b) => a.moved - b.moved)[0]!;
     placed = {
       adjusted:
         best.moved > 0.5

@@ -8,7 +8,6 @@ import {
   type TLRichText,
   type TLShape,
   type TLShapeId,
-  toRichText,
 } from "@tldraw/tlschema";
 import { type IndexKey } from "@tldraw/utils";
 
@@ -39,15 +38,18 @@ export const toShapeId = (key: string): TLShapeId =>
 /** A shape id as the model sees it: without its prefix. */
 export const fromShapeId = (id: string): string => id.replace(/^shape:/u, "");
 
+type RichNode = { content?: unknown[]; text?: string; type: string };
+
+function visit(node: RichNode, line: string[]) {
+  if (node.type === "text") line.push(node.text ?? "");
+  else if (node.type === "hardBreak") line.push("\n");
+  for (const child of (node.content ?? []) as RichNode[]) visit(child, line);
+}
+
 export function plainText(richText: TLRichText | undefined): string {
   if (richText === undefined) return "";
   const lines: string[] = [];
-  const visit = (node: { content?: unknown[]; text?: string; type: string }, line: string[]) => {
-    if (node.type === "text") line.push(node.text ?? "");
-    else if (node.type === "hardBreak") line.push("\n");
-    for (const child of (node.content ?? []) as (typeof node)[]) visit(child, line);
-  };
-  for (const block of richText.content as { content?: unknown[]; text?: string; type: string }[]) {
+  for (const block of richText.content as RichNode[]) {
     const line: string[] = [];
     visit(block, line);
     lines.push(line.join(""));
@@ -62,7 +64,7 @@ export function textOf(shape: TLShape): string {
   return plainText(props.richText);
 }
 
-export { toRichText };
+export { toRichText } from "@tldraw/tlschema";
 
 type Base = {
   id: TLShapeId;

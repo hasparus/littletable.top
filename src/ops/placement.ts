@@ -11,7 +11,7 @@ import { type Box, intersects, pageBounds } from "./geometry";
 
 export const CLEARANCE = 20;
 export const DEFAULT_GAP = 40;
-const SEARCH = 2_000;
+const SEARCH = 2000;
 
 export type Relation = "above" | "below" | "centered_on" | "inside" | "left_of" | "right_of";
 export type Align = "center" | "end" | "start";
@@ -38,20 +38,20 @@ export function idealSpot(
   }: { align?: Align; gap?: number; relation: Relation },
 ): { x: number; y: number } {
   switch (relation) {
-    case "right_of":
-      return { x: target.x + target.w + gap, y: along(target.y, target.h, size.h, align) };
-    case "left_of":
-      return { x: target.x - gap - size.w, y: along(target.y, target.h, size.h, align) };
-    case "below":
-      return { x: along(target.x, target.w, size.w, align), y: target.y + target.h + gap };
     case "above":
       return { x: along(target.x, target.w, size.w, align), y: target.y - gap - size.h };
-    case "inside":
+    case "below":
+      return { x: along(target.x, target.w, size.w, align), y: target.y + target.h + gap };
     case "centered_on":
+    case "inside":
       return {
         x: target.x + (target.w - size.w) / 2,
         y: target.y + (target.h - size.h) / 2,
       };
+    case "left_of":
+      return { x: target.x - gap - size.w, y: along(target.y, target.h, size.h, align) };
+    case "right_of":
+      return { x: target.x + target.w + gap, y: along(target.y, target.h, size.h, align) };
   }
 }
 
@@ -86,14 +86,14 @@ export function clearSpot(
   const onSide = (x: number, y: number) => {
     if (target === null) return true;
     switch (relation) {
-      case "right_of":
-        return x >= target.x + target.w;
-      case "left_of":
-        return x + size.w <= target.x;
-      case "below":
-        return y >= target.y + target.h;
       case "above":
         return y + size.h <= target.y;
+      case "below":
+        return y >= target.y + target.h;
+      case "left_of":
+        return x + size.w <= target.x;
+      case "right_of":
+        return x >= target.x + target.w;
       default:
         return true;
     }

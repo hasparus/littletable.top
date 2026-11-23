@@ -20,7 +20,7 @@ const key = importPKCS8(
 );
 
 async function sign(claims: Record<string, unknown>, audience: string) {
-  const at = Math.floor(Date.now() / 1_000);
+  const at = Math.floor(Date.now() / 1000);
   return new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
@@ -51,9 +51,9 @@ async function applyOps(board: string, ops: object[]) {
       Accept: "application/json, text/event-stream",
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "MCP-Protocol-Version": "2026-07-28",
       "Mcp-Method": "tools/call",
       "Mcp-Name": "apply_ops",
+      "MCP-Protocol-Version": "2026-07-28",
     },
     method: "POST",
   });
@@ -64,7 +64,7 @@ async function applyOps(board: string, ops: object[]) {
   return JSON.parse(body.result.content[1].text) as { applied: number; errors: string[] };
 }
 
-type SyncRecord = { id: string; typeName: string } & Record<string, unknown>;
+type SyncRecord = Record<string, unknown> & { id: string; typeName: string };
 
 // What the room holds, read the way a browser would: a sync socket's first
 // answer is the whole document.
@@ -133,7 +133,8 @@ test("an assistant's ops reach an open board live and survive a reload", async (
   await page.goto(`${HOST}/sign-in?name=Ada`);
   const bootstrap = page.waitForResponse((response) => response.url().includes("/bootstrap/"));
   await page.getByRole("button", { name: "New board" }).click();
-  const { board } = (await (await bootstrap).json()) as { board: string };
+  const answered = await bootstrap;
+  const { board } = (await answered.json()) as { board: string };
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
 
   const result = await applyOps(board, [
@@ -187,7 +188,7 @@ test("an assistant's ops reach an open board live and survive a reload", async (
     await expect(onBoard(page, text)).toBeVisible();
   }
   await expectLabelsInside(page, ["tavern", "cellar", "rumour", "quest", "lair", "well"]);
-  await page.waitForTimeout(1_500);
+  await page.waitForTimeout(1500);
   expect(document(await roomRecords(board))).toEqual(written);
   await page.screenshot({ path: `${SCREENSHOTS}/ops-reloaded.png` });
 });

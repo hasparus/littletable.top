@@ -166,7 +166,7 @@ export class Doc {
 
   pageOf(shape: TLShape): TLPageId {
     let parent: TLParentId = shape.parentId;
-    for (let depth = 0; depth < 1_000; depth++) {
+    for (let depth = 0; depth < 1000; depth++) {
       if (parent.startsWith("page:")) return parent as TLPageId;
       const next = this.shape(parent);
       if (next === undefined) break;

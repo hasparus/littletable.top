@@ -5,8 +5,8 @@ import { z } from "zod";
 // knows the other. Our own schema and wording; the engine (engine.ts) is
 // ours too.
 
-export const MAX_OPS = 1_000;
-export const MAX_TEXT = 5_000;
+export const MAX_OPS = 1000;
+export const MAX_TEXT = 5000;
 
 const coordinate = z.number().min(-1_000_000).max(1_000_000);
 const extent = z.number().positive().max(100_000);
@@ -96,13 +96,13 @@ const placement = {
 };
 
 const add = z.strictObject({
-  op: z.literal("add"),
-  kind: z.enum(["label", "note", "box", "ellipse", "shape"]).optional(),
-  text: text.optional(),
-  id: shapeKey.optional(),
   geo: geo.optional(),
-  w: extent.optional(),
   h: extent.optional(),
+  id: shapeKey.optional(),
+  kind: z.enum(["label", "note", "box", "ellipse", "shape"]).optional(),
+  op: z.literal("add"),
+  text: text.optional(),
+  w: extent.optional(),
   ...style,
   ...placement,
 });
@@ -111,39 +111,39 @@ const place = z.strictObject({
   op: z.literal("place"),
   subject: ref,
   ...placement,
-  w: extent.optional(),
   h: extent.optional(),
   text: text.optional(),
+  w: extent.optional(),
   ...style,
 });
 
 const label = z.strictObject({
+  arrow: z.boolean().optional(),
+  color: color.optional(),
+  gap: gap.optional(),
+  id: shapeKey.optional(),
   op: z.literal("label"),
+  side: z.enum(["above", "below", "left", "right", "auto"]).optional(),
+  size: size.optional(),
   target: targetOrPoint,
   text,
-  side: z.enum(["above", "below", "left", "right", "auto"]).optional(),
-  arrow: z.boolean().optional(),
-  gap: gap.optional(),
-  color: color.optional(),
-  size: size.optional(),
-  id: shapeKey.optional(),
 });
 
 const connect = z.strictObject({
-  op: z.literal("connect"),
-  from: targetOrPoint,
-  to: targetOrPoint,
-  text: text.optional(),
   color: color.optional(),
   dash: dash.optional(),
+  from: targetOrPoint,
   id: shapeKey.optional(),
+  op: z.literal("connect"),
+  text: text.optional(),
+  to: targetOrPoint,
 });
 
 const rename = z.strictObject({
+  fit: z.enum(["widen", "shrink_text"]).optional(),
   op: z.literal("rename"),
   target: ref,
   text,
-  fit: z.enum(["widen", "shrink_text"]).optional(),
 });
 
 const restyle = z.strictObject({
@@ -156,35 +156,35 @@ const restyle = z.strictObject({
 const remove = z.strictObject({ op: z.literal("remove"), targets: refList });
 
 const untangle = z.strictObject({
+  keepNear: z.array(ref).max(200).optional(),
+  maxDistance: z.number().positive().max(2000).optional(),
   op: z.literal("untangle"),
   targets: refList,
-  keepNear: z.array(ref).max(200).optional(),
-  maxDistance: z.number().positive().max(2_000).optional(),
 });
 
 const resize = z.strictObject({
+  anchor: z.enum(["top-left", "center"]).optional(),
+  h: extent.optional(),
   op: z.literal("resize"),
+  scale: z.number().positive().max(100).optional(),
   target: ref,
   w: extent.optional(),
-  h: extent.optional(),
-  scale: z.number().positive().max(100).optional(),
-  anchor: z.enum(["top-left", "center"]).optional(),
 });
 
 const path = z.strictObject({
-  op: z.literal("path"),
-  id: shapeKey.optional(),
-  points: z.array(point).min(2).max(256),
   closed: z.boolean().optional(),
+  id: shapeKey.optional(),
+  op: z.literal("path"),
+  points: z.array(point).min(2).max(256),
   smooth: z.boolean().optional(),
   ...style,
 });
 
 const duplicate = z.strictObject({
+  at: point,
+  id: shapeKey.optional(),
   op: z.literal("duplicate"),
   subject: ref,
-  id: shapeKey.optional(),
-  at: point,
   text: text.optional(),
 });
 

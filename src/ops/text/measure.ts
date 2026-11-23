@@ -56,7 +56,7 @@ function fontFor(family: FontFamily, bold: boolean): Font {
   if (font === undefined) {
     const data = FONT_DATA[key];
     if (data === undefined) throw new Error(`no font data for ${key}`);
-    font = create(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)) as never) as Font;
+    font = create(Uint8Array.from(atob(data), (c) => c.codePointAt(0)!) as never) as Font;
     fonts.set(key, font);
   }
   return font;
@@ -93,10 +93,10 @@ function covered(font: Font, grapheme: string): boolean {
 function shape(font: Font, pieces: string[]): number[] {
   const { glyphs, positions } = font.layout(pieces.join(""));
   const perCodePoint: number[] = [];
-  glyphs.forEach((glyph, index) => {
+  for (const [index, glyph] of glyphs.entries()) {
     perCodePoint.push(positions[index]!.xAdvance);
     for (let extra = 1; extra < glyph.codePoints.length; extra++) perCodePoint.push(0);
-  });
+  }
   const widths: number[] = [];
   let at = 0;
   for (const piece of pieces) {
@@ -155,9 +155,9 @@ function layoutParagraph(paragraph: Paragraph, options: MeasureOptions) {
     const flush = () => {
       if (pending.length === 0) return;
       const widths = shapeWords(face, font, pending);
-      pending.forEach((text, index) =>
-        out.push({ breakBefore: false, space: text === " ", text, width: widths[index]! * scale }),
-      );
+      for (const [index, text] of pending.entries()) {
+        out.push({ breakBefore: false, space: text === " ", text, width: widths[index]! * scale });
+      }
       pending = [];
     };
     for (const piece of pieces) {
@@ -256,7 +256,7 @@ function wrap(items: Grapheme[], maxWidth: number, overflowWrap: boolean) {
       }
     } else {
       line += trailing + word.width;
-      lineHasInk = lineHasInk || word.items.length > 0;
+      lineHasInk ||= word.items.length > 0;
     }
     trailing = word.spaces;
   }
@@ -270,7 +270,7 @@ export function measureParagraphs(paragraphs: Paragraph[], options: MeasureOptio
   let maxContent = 0;
   const laid = paragraphs.map((paragraph) => {
     const result = layoutParagraph(paragraph, options);
-    approximate = approximate || result.approximate;
+    approximate ||= result.approximate;
     const width = result.graphemes.reduce((sum, g) => sum + g.width, 0);
     maxContent = Math.max(maxContent, width);
     return result.graphemes;

@@ -5,8 +5,8 @@ import {
   createShapeId,
   type Editor,
   renderHtmlFromRichTextForMeasurement,
-  type TLRichText,
   Tldraw,
+  type TLRichText,
   toRichText,
 } from "tldraw";
 import "tldraw/tldraw.css";

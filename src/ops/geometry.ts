@@ -100,13 +100,48 @@ const corners = ({ h, w, x, y }: Box): Vec[] => [
 
 const props = (shape: TLShape) => shape.props as Record<string, unknown>;
 
+// NOTE: records are never changed in place, so a box that depends on its
+// record alone (not on children or bindings) is worked out once per record.
+// Without this a batch of n ops on a board of m shapes measures m texts n times.
+const ownBoxes = new WeakMap<TLShape, Box>();
+const DEPENDS_ON_OTHERS = new Set(["arrow", "group"]);
+
 /** The shape's box in its own space, before its own position and rotation. */
 export function localBounds(doc: Doc, shape: TLShape): Box {
+  if (DEPENDS_ON_OTHERS.has(shape.type)) return computeLocalBounds(doc, shape);
+  let box = ownBoxes.get(shape);
+  if (box === undefined) {
+    box = computeLocalBounds(doc, shape);
+    ownBoxes.set(shape, box);
+  }
+  return box;
+}
+
+function computeLocalBounds(doc: Doc, shape: TLShape): Box {
   const scale = (props(shape).scale as number | undefined) ?? 1;
   switch (shape.type) {
+    case "arrow": {
+      return boxOf(arrowPath(doc, shape as TLArrowShape));
+    }
+    case "draw":
+    case "highlight": {
+      const points = (shape as TLDrawShape).props.segments.flatMap((segment) =>
+        b64Vecs.decodePoints(segment.path),
+      );
+      return boxOf(points.map(({ x, y }) => ({ x: x * scale, y: y * scale })));
+    }
     case "geo": {
       const { growY, h, w } = (shape as TLGeoShape).props;
       return { h: h + growY, w, x: 0, y: 0 };
+    }
+    case "group": {
+      const boxes = doc
+        .children(shape.id)
+        .flatMap((child) => corners(localBounds(doc, child)).map((p) => apply(local(child), p)));
+      return boxOf(boxes);
+    }
+    case "line": {
+      return boxOf(Object.values((shape as TLLineShape).props.points));
     }
     case "note": {
       const { growY } = (shape as TLNoteShape).props;
@@ -121,25 +156,6 @@ export function localBounds(doc: Doc, shape: TLShape): Box {
         w,
       });
       return { h: measured.h * scale, w: measured.w * scale, x: 0, y: 0 };
-    }
-    case "group": {
-      const boxes = doc
-        .children(shape.id)
-        .flatMap((child) => corners(localBounds(doc, child)).map((p) => apply(local(child), p)));
-      return boxOf(boxes);
-    }
-    case "line": {
-      return boxOf(Object.values((shape as TLLineShape).props.points));
-    }
-    case "draw":
-    case "highlight": {
-      const points = (shape as TLDrawShape).props.segments.flatMap((segment) =>
-        b64Vecs.decodePoints(segment.path),
-      );
-      return boxOf(points.map(({ x, y }) => ({ x: x * scale, y: y * scale })));
-    }
-    case "arrow": {
-      return boxOf(arrowPath(doc, shape as TLArrowShape));
     }
     default: {
       const { h, w } = props(shape) as { h?: number; w?: number };
@@ -198,6 +214,9 @@ export function terminalOnPage(
   return { bound: null, point: apply(pageTransform(doc, arrow), arrow.props[terminal]) };
 }
 
+const sq = (p: Vec) => p.x * p.x + p.y * p.y;
+const wrap = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
 const inside = (box: Box, { x, y }: Vec) =>
   x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h;
 
@@ -220,7 +239,6 @@ export function arcCourse(a: Vec, b: Vec, bend: number, joined: Box[] = [], step
     // NOTE: tldraw: middle = med + per(u) * -bend, with per(u) = (u.y, -u.x).
     const m = { x: (a.x + b.x) / 2 - u.y * bend, y: (a.y + b.y) / 2 + u.x * bend };
     const d = 2 * (a.x * (m.y - b.y) + m.x * (b.y - a.y) + b.x * (a.y - m.y));
-    const sq = (p: Vec) => p.x * p.x + p.y * p.y;
     const c = {
       x: (sq(a) * (m.y - b.y) + sq(m) * (b.y - a.y) + sq(b) * (a.y - m.y)) / d,
       y: (sq(a) * (b.x - m.x) + sq(m) * (a.x - b.x) + sq(b) * (m.x - a.x)) / d,
@@ -230,7 +248,6 @@ export function arcCourse(a: Vec, b: Vec, bend: number, joined: Box[] = [], step
     const start = angle(a);
     let sweep = angle(b) - start;
     let toMiddle = angle(m) - start;
-    const wrap = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     sweep = wrap(sweep);
     toMiddle = wrap(toMiddle);
     if (toMiddle > sweep) sweep -= 2 * Math.PI;

@@ -87,7 +87,7 @@ export function noteSizing(richText: RichText, { font, size }: Style) {
       maxWidth,
       overflowWrap: false,
     });
-    approximate = approximate || measured.approximate;
+    approximate ||= measured.approximate;
     labelHeight = measured.h + LABEL_PADDING * 2;
     if (fontSize <= NOTE_MIN_FONT_SIZE) {
       const wrapped = measureRichText(richText, {

@@ -37,7 +37,7 @@
     "test": "vitest run",
     "e2e": "playwright test -c e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p client && tsc --noEmit -p e2e",
-    "e2e:measure": "playwright test -c e2e/measure.config.ts"
+    "e2e:measure": "playwright test -c e2e/measure.config.ts && oxfmt --write test/ops/fixtures"
   },
   "dependencies": {
     "@drdreo/dice-box-threejs": "1.1.0",

@@ -3,6 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 import { BOLD_LABELS, FAMILIES, LABELS, SIZES } from "./corpus";
 
+// What e2e/measure/harness.tsx puts on the page.
+type Harness = { harness?: { collect: (cases: unknown[]) => object[] } };
+
 const FIXTURES = new URL("../../test/ops/fixtures/", import.meta.url);
 
 type RichText = { content: unknown[]; type: string };
@@ -32,7 +35,9 @@ const bold = (parts: { bold: boolean; text: string }[]): RichText => ({
 
 test("the real editor's text sizes", async ({ page }, info) => {
   await page.goto("/");
-  await page.waitForFunction(() => globalThis.harness !== undefined, null, { timeout: 60_000 });
+  await page.waitForFunction(() => (globalThis as unknown as Harness).harness !== undefined, null, {
+    timeout: 60_000,
+  });
   const cases = [
     ...LABELS.flatMap(({ kind, text }) =>
       FAMILIES.flatMap((family) =>
@@ -45,7 +50,10 @@ test("the real editor's text sizes", async ({ page }, info) => {
       ),
     ),
   ];
-  const results = await page.evaluate((all) => globalThis.harness.collect(all as never), cases);
+  const results = await page.evaluate(
+    (all) => (globalThis as unknown as Harness).harness!.collect(all),
+    cases,
+  );
   expect(results).toHaveLength(cases.length);
   const userAgent = await page.evaluate(() => navigator.userAgent);
   mkdirSync(FIXTURES, { recursive: true });
