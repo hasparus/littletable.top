@@ -4,6 +4,7 @@
 
 import { add, dot, length, normalize, scale, sub, type Vec } from "./dice-math";
 import { cellPoint, type Layout, layoutOf } from "./dice-mesh";
+import { DIGIT_INK, DIGIT_TOP } from "./dice-numeral-centres";
 import { type DieKind, solid, type Solid } from "./dice-solids";
 
 // NOTE: the caller loads this font before drawing (dice-scene.ts); a canvas
@@ -21,8 +22,14 @@ const NUMERAL_WIDTH = 1.4;
 // How far from a d4 face's middle to its corner a numeral sits.
 const D4_REACH = 0.54;
 // The line under a numeral that reads as another one upside down, in digit
-// heights: its gap, its thickness, and its width as a share of the numeral's.
-const LINE = { gap: 0.13, thick: 0.13, wide: 0.9 };
+// heights: its gap, its thickness, its width as a share of the numeral's,
+// and how much of it counts when the numeral is centred up and down: all of
+// it pushes the digit up, none of it leaves the mark hanging low.
+const LINE = { counts: 0.5, gap: 0.11, thick: 0.11, wide: 0.9 };
+// Across, a numeral sits this share of the way from the middle of its ink's
+// box to its ink's centre of mass. All the way looks right for a 1 and a
+// touch too far for an open 3.
+const BY_MASS = 0.75;
 // What each digit reads as upside down, where it reads as a digit at all.
 const TURNED: Record<string, string> = { 0: "0", 1: "1", 6: "9", 8: "8", 9: "6" };
 
@@ -76,23 +83,39 @@ function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radi
 
 type Pen = { context: CanvasRenderingContext2D; layout: Layout; lined: Set<string> };
 
-// The ink of `text` at 100px, from the font's own outlines: its box around
-// the point the text is centred on, and that box with the line under it
-// added when it is `lined`.
+// Where the ink of `text` is at 100px, around the point the text is centred
+// on. Across, a numeral is placed by its ink's centre of mass (a 1 is heavy
+// on its right, so the middle of its box is not where it looks centred), from
+// the table of the font's digits, tempered by BY_MASS. Up and down, by the
+// height all digits share, so numerals on dice side by side keep one line.
 function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) {
   context.font = '700 100px "Outfit"';
   const box = context.measureText(text);
-  const height = box.actualBoundingBoxAscent;
+  let mass = 0;
+  let moment = 0;
+  for (const [index, digit] of [...text].entries()) {
+    const { area, x } = DIGIT_INK[digit]!;
+    const origin =
+      context.measureText(text.slice(0, index + 1)).width -
+      context.measureText(digit).width -
+      box.width / 2;
+    mass += area;
+    moment += area * (origin + x * 100);
+  }
+  const height = DIGIT_TOP * 100;
   return {
-    bottom: lined ? height * (LINE.gap + LINE.thick) : box.actualBoundingBoxDescent,
+    centre:
+      (moment / mass) * BY_MASS +
+      ((box.actualBoundingBoxRight - box.actualBoundingBoxLeft) / 2) * (1 - BY_MASS),
     height,
     left: box.actualBoundingBoxLeft,
     lined,
+    lineDrop: lined ? height * (LINE.gap + LINE.thick) * LINE.counts : 0,
     right: box.actualBoundingBoxRight,
   };
 }
 
-// Writes `text` with the middle of its ink's box, line included, on `at`.
+// Writes `text` with the centre of its ink on `at`.
 function write(
   { context, layout, lined }: Pen,
   { at, face, size, text, up }: { at: Vec; face: number; size: number; text: string; up: Vec },
@@ -104,14 +127,13 @@ function write(
   context.save();
   context.translate(x * CELL_PX, y * CELL_PX);
   context.rotate(Math.atan2(dot(up, cell.right), dot(up, cell.up)));
-  context.translate(((ink.left - ink.right) / 2) * unit, ((ink.height - ink.bottom) / 2) * unit);
+  context.translate(-ink.centre * unit, ((ink.height - ink.lineDrop) / 2) * unit);
   context.font = `700 ${size}px "Outfit"`;
   context.fillText(text, 0, 0);
   if (ink.lined) {
-    const middle = (ink.right - ink.left) / 2;
     const wide = (ink.left + ink.right) * LINE.wide;
     context.fillRect(
-      (middle - wide / 2) * unit,
+      ((ink.right - ink.left) / 2 - wide / 2) * unit,
       ink.height * LINE.gap * unit,
       wide * unit,
       ink.height * LINE.thick * unit,
