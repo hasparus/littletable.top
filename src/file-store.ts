@@ -61,6 +61,37 @@ export function sniff(bytes: Uint8Array): ImageType | null {
   return null;
 }
 
+// A body, up to `max` bytes: a larger one is cut off as soon as it shows,
+// whatever its Content-Length said. Uploads and the pictures
+// src/avatars.ts copies are read through it.
+export async function readCapped(
+  body: ReadableStream<Uint8Array> | null,
+  { declared, max }: { declared: number; max: number },
+): Promise<"too-large" | ArrayBuffer> {
+  if (declared > max) return "too-large";
+  if (body === null) return new ArrayBuffer(0);
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const reader = body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > max) {
+      await reader.cancel();
+      return "too-large";
+    }
+    chunks.push(value);
+  }
+  const whole = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    whole.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return whole.buffer;
+}
+
 export async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

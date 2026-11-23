@@ -1,9 +1,10 @@
 name: CI
 
+# A push to main runs these checks through deploy.yml, which calls this
+# workflow before it deploys, so they do not run twice.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -22,6 +23,9 @@ jobs:
       - run: aube run lint
       - run: aube run format:check
       - run: aube run build
+      # Both Workers bundle: the board Worker and the MCP Worker beside it.
+      - run: aube run build:workers
+      # Two Vitest projects; the second runs both Workers together in workerd.
       - run: aube run test
 
   e2e:
@@ -33,6 +37,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@v2
       - run: aube install
-      # The browser build that matches the pinned @playwright/test.
-      - run: aube exec playwright install --with-deps chromium
+      # The browser builds that match the pinned @playwright/test; the dice
+      # determinism spec runs the shared throw in all three engines.
+      - run: aube exec playwright install --with-deps chromium firefox webkit
       - run: aube run e2e

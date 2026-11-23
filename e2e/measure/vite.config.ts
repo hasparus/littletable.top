@@ -12,5 +12,8 @@ export default defineConfig({
   // same files get the real thing back, so the engine runs on a real Editor.
   resolve: { alias: [{ find: /^\.\.\/\.\.\/editor\/tldraw$/u, replacement: "tldraw" }] },
   root: fileURLToPath(new URL(".", import.meta.url)),
-  server: { port: Number(process.env.MEASURE_PORT ?? 8797), strictPort: true },
+  server: {
+    port: Number(process.env.MEASURE_PORT ?? 8797 + Number(process.env.E2E_PORT_OFFSET ?? 0)),
+    strictPort: true,
+  },
 });

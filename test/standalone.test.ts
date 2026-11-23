@@ -21,7 +21,11 @@ describe("signing in", () => {
     const me = await (await ada.fetch("/api/me")).json();
 
     expect(me).toEqual({
-      account: { id: expect.stringMatching(/^user_/u), name: "Ada Lovelace" },
+      account: {
+        avatar: expect.stringMatching(/^\/api\/avatars\/[0-9a-f]{64}$/u),
+        id: expect.stringMatching(/^user_/u),
+        name: "Ada Lovelace",
+      },
       csrf: expect.any(String),
     });
     expect([...ada.cookies.keys()]).toEqual(["__Host-tabletop-session"]);

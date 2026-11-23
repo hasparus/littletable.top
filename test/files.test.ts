@@ -68,7 +68,7 @@ async function readAsImage(board: string, token: string, src: string, workerEnv 
     { method: "POST" },
     workerEnv,
   );
-  if (access.status !== 204) return access;
+  if (access.status !== 200) return access;
   const [cookie = ""] = access.headers.getSetCookie()[0]!.split(";");
   const { handle } = await import("../src/index");
   return handle(
@@ -317,7 +317,7 @@ describe("the board's images stay with the board's people", () => {
       hostedEnv,
     );
 
-    expect(access.status).toBe(204);
+    expect(access.status).toBe(200);
     expect(access.headers.getSetCookie()[0]).toMatch(
       /^tabletop-files=[\w.-]+; Max-Age=(29\d|300); Path=\/rooms\/scoped\/files; Secure; HttpOnly; SameSite=Strict$/u,
     );

@@ -1,6 +1,6 @@
 import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 
-import type { BoardGrant, RoomDocumentCalls } from "../room-document";
+import type { BoardGrant, RoomDocumentCalls } from "../room-contract";
 import type { McpGrant } from "./grant";
 
 import { Doc } from "../ops/doc";

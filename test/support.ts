@@ -15,6 +15,7 @@ export const now = () => Math.floor(Date.now() / 1_000);
 
 type Claims = {
   audience?: string;
+  avatar?: string;
   board?: string;
   issuedAt?: number;
   link?: number;
@@ -25,6 +26,7 @@ type Claims = {
 
 export async function pass({
   audience = "board",
+  avatar,
   board = "b1",
   issuedAt = now(),
   link = 0,
@@ -32,7 +34,7 @@ export async function pass({
   owner = false,
   sub = "u:1",
 }: Claims = {}) {
-  return new SignJWT({ board, link, name, owner, sub })
+  return new SignJWT({ board, link, name, owner, sub, ...(avatar === undefined ? {} : { avatar }) })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
     .setIssuer(DEV_ISSUER)

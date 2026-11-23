@@ -83,6 +83,10 @@ export class BoardFiles {
   // Every upload since the last time none was running, for the progress
   // the board shows.
   readonly progress = atom<UploadProgress>("board uploads", IDLE);
+  // The person's own picture on this board, once the Worker has said.
+  readonly avatar = atom<string | null>("own avatar", null);
+  // Whether the board's files (images, people's pictures) can be read now.
+  readonly readable = atom("files readable", false);
   // Set by the board: tells the person why an upload through tldraw failed.
   onRefused: ((reason: UploadRefusal) => void) | null = null;
   private cookiePass: string | null = null;
@@ -96,8 +100,8 @@ export class BoardFiles {
     return `${this.keeper.room}/files`;
   }
 
-  // The cookie an <img> reads the board's images with, for the pass the
-  // board holds now.
+  // The cookie an <img> reads the board's images and pictures with, for
+  // the pass the board holds now.
   private async access(): Promise<void> {
     const pass = await this.keeper.pass();
     if (pass === this.cookiePass) return;
@@ -105,14 +109,25 @@ export class BoardFiles {
       headers: { Authorization: `Bearer ${pass}` },
       method: "POST",
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) throw new Error(`board: files access ${response.status}`);
+        const { avatar } = (await response.json()) as { avatar: string | null };
         this.cookiePass = pass;
+        this.avatar.set(avatar);
+        this.readable.set(true);
       })
       .finally(() => {
         this.pendingAccess = null;
       });
     await this.pendingAccess;
+  }
+
+  // For whoever is about to show a picture: the cookie may have run out
+  // while nobody looked at one. A failure leaves initials in their place.
+  keepReadable(): void {
+    this.access().catch((error: unknown) => {
+      console.warn("board: could not open the board's files", error);
+    });
   }
 
   private sum(): number {

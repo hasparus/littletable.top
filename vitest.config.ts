@@ -1,7 +1,7 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
 import { execFileSync } from "node:child_process";
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -26,6 +26,8 @@ const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.u
 // production: a second Worker in workerd, reached through the Durable Object
 // binding. An auxiliary Worker must be built JavaScript, so it is bundled here.
 const boardBundle = path(".wrangler/test-board");
+// NOTE: wrangler wants the assets directory to exist, built or not.
+mkdirSync(path("dist"), { recursive: true });
 execFileSync(
   path("node_modules/.bin/wrangler"),
   ["deploy", "--dry-run", "--outdir", boardBundle, "-c", path("wrangler.json")],

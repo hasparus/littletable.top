@@ -2,7 +2,7 @@ import type { TLPage, TLPageId, TLRecord, TLShapeId } from "@tldraw/tlschema";
 
 import { z } from "zod";
 
-import type { BoardGrant, DocumentScope, RoomDocumentCalls } from "../room-document";
+import type { BoardGrant, DocumentScope, RoomDocumentCalls } from "../room-contract";
 
 import { Doc } from "../ops/doc";
 import { InvalidRecord } from "../ops/records";

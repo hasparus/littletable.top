@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@drdreo/dice-box-threejs':
-        specifier: 1.1.0
-        version: 1.1.0(cannon-es@0.20.0)(three@0.176.0)
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
@@ -38,6 +35,9 @@ importers:
       jose:
         specifier: 6.2.3
         version: 6.2.3
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -373,12 +373,6 @@ packages:
     resolution: {integrity: sha512-XjUJ/vEOylhIZbAm85O9H6YqXKWGfVROT5BE9BGA/RXvo0bLK2+sUcjC6BoN77a99lImJkrXJuvbHBhNebObEA==}
     peerDependencies:
       effect: ^4.0.5
-
-  '@drdreo/dice-box-threejs@1.1.0':
-    resolution: {integrity: sha512-BKQlSKLnNVlqvUQ9GUPah7QXoRiu+NkU75OG6Y4IuyLd1dd00pxjcz20mBbIXA9WITXIc1Y/zHuQ661hugXCdQ==}
-    peerDependencies:
-      cannon-es: ^0.20.0
-      three: ^0.176.0
 
   '@effect/platform-node-shared@4.1.2':
     resolution: {integrity: sha512-wSwl9A/G1hcVvF8nLI+YfB3EyOIDvWS6+lsTZBkmgDnPBL7m8YWZF+1HD+mdEsb52SUGfukip46Q3gRwSdk3QA==}
@@ -2991,9 +2985,6 @@ packages:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
     engines: {node: '>=6'}
 
-  cannon-es@0.20.0:
-    resolution: {integrity: sha512-eZhWTZIkFOnMAJOgfXJa9+b3kVlvG+FX4mdkpePev/w/rP5V8NRquGyEozcjPfEoXUlb+p7d9SUcmDSn14prOA==}
-
   capnp-es@0.0.16:
     resolution: {integrity: sha512-pqhhnRqGfDdgHa+rz4JVO9j1jnkyqsHRYrD4RBtIwxCknYSRG7Mjs+x3IRfd20u+ZGS0IhW2L7cDv9ZcIkCYhQ==}
     hasBin: true
@@ -3584,6 +3575,9 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
+  minisearch@7.2.0:
+    resolution: {integrity: sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg==}
+
   modern-tar@0.8.6:
     resolution: {integrity: sha512-LYSks0tNVqbtez/9OB0YFP6qLRSqkdAxJWOQpVaR67lNTbj2zNLyYpowkRMia5lXLCZKzxwoxkxH2MbbBR2aEg==}
     engines: {node: '>=18.0.0'}
@@ -3962,9 +3956,6 @@ packages:
   tapable@2.3.4:
     resolution: {integrity: sha512-NHFiWnAbMJxNNpBwiO7jJVGDuqMxT9/oV8v57RR+fgBQShkJil5inGD8/xWy0hjLyHQyX1tu27QANhlz3KBqCg==}
     engines: {node: '>=6'}
-
-  three@0.176.0:
-    resolution: {integrity: sha512-PWRKYWQo23ojf9oZSlRGH8K09q7nRSWx6LY/HF/UUrMdYgN9i1e2OwJYHoQjwc6HF/4lvvYLC5YC1X8UJL2ZpA==}
 
   tiny-inflate@1.0.3:
     resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
@@ -4490,11 +4481,6 @@ snapshots:
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.18(effect@4.1.2)
       effect: 4.1.2
-
-  '@drdreo/dice-box-threejs@1.1.0(cannon-es@0.20.0)(three@0.176.0)':
-    dependencies:
-      cannon-es: 0.20.0
-      three: 0.176.0
 
   '@effect/platform-node-shared@4.1.2(effect@4.1.2)':
     dependencies:
@@ -6781,8 +6767,6 @@ snapshots:
 
   callsites@3.1.0: {}
 
-  cannon-es@0.20.0: {}
-
   capnp-es@0.0.16(typescript@5.9.3):
     optionalDependencies:
       typescript: 5.9.3
@@ -7366,6 +7350,8 @@ snapshots:
 
   minimist@1.2.8: {}
 
+  minisearch@7.2.0: {}
+
   modern-tar@0.8.6: {}
 
   ms@2.1.3: {}
@@ -7910,8 +7896,6 @@ snapshots:
   tailwindcss@4.2.4: {}
 
   tapable@2.3.4: {}
-
-  three@0.176.0: {}
 
   tiny-inflate@1.0.3: {}
 

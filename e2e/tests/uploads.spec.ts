@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { png } from "../fixtures/png";
+import { boardAt, HOST, HOSTED, STANDALONE } from "../ports";
 import { collectCspViolations, expectNoCspViolations, joinAs, phone } from "./helpers";
 import {
   documentOf,
@@ -22,13 +23,9 @@ import {
 // another sees, from the Worker's R2 bucket. The artifacts are the .tldr
 // files the browsers download, written to test-results/, which the
 // assertions compare with the fixtures.
-// NOTE: the file sorts after the other specs, which expect a fresh host
-// (their first board is "Board 1").
 
-const HOSTED = "http://localhost:8000";
-const STANDALONE = "http://localhost:8790";
-const ON_TABLETOP = /^http:\/\/localhost:8788\/b\/(\w+)$/u;
-const ON_BOARD = /^http:\/\/localhost:8790\/b\/(\w+)$/u;
+const ON_TABLETOP = boardAt(HOSTED);
+const ON_BOARD = boardAt(STANDALONE);
 
 const MAP = readFileSync(fixture("map.png"));
 const PORTRAIT = readFileSync(fixture("portrait.png"));
@@ -42,7 +39,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   page,
 }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Iris`);
+  await page.goto(`${HOST}/sign-in?name=Iris`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   const guest = await phone(browser, page.url());
@@ -53,16 +50,20 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   await expect.poll(() => loadedImages(page)).toEqual([expect.stringMatching(stored)]);
   // The image lands where the uploader looks; the guest's small screen
   // zooms to everything on the board.
-  await zoomToFit(guest);
-  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  // NOTE: again on each look: a zoom that comes before the image's shape
+  // has synced fits an empty board and leaves the image off screen.
+  const seenByGuest = async () => {
+    await zoomToFit(guest);
+    return loadedImages(guest);
+  };
+  await expect.poll(seenByGuest).toEqual([expect.stringMatching(stored)]);
   await guest.reload();
-  await zoomToFit(guest);
-  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  await expect.poll(seenByGuest).toEqual([expect.stringMatching(stored)]);
 
   // The address opens nothing without the board's pass.
   const [address] = await loadedImages(guest);
   const stranger = await browser.newContext();
-  const refused = await stranger.request.get(`http://localhost:8788${address}`);
+  const refused = await stranger.request.get(`${HOSTED}${address}`);
   expect(refused.status()).toBe(403);
   await stranger.close();
 
@@ -73,7 +74,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
 
 test("a photo larger than the pixel budget arrives redrawn to it", async ({ page }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Lin`);
+  await page.goto(`${HOST}/sign-in?name=Lin`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   const photo = png(6000, 4000, [90, 60, 20]);
@@ -169,7 +170,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
   page,
 }) => {
   await collectCspViolations(page);
-  await page.goto(`${HOSTED}/sign-in?name=Cy`);
+  await page.goto(`${HOST}/sign-in?name=Cy`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();

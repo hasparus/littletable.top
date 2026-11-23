@@ -2,7 +2,7 @@ import type { TLGeoShape, TLRecord, TLShape } from "@tldraw/tlschema";
 
 import { describe, expect, it } from "vitest";
 
-import type { RoomDocumentCalls } from "../../src/room-document";
+import type { RoomDocumentCalls } from "../../src/room-contract";
 
 import { applyOps, type ApplyOpsResponse, MAX_ATTEMPTS } from "../../src/mcp/board";
 import { Doc } from "../../src/ops/doc";

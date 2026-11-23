@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { boardAt, HOST, HOSTED, socketOf } from "../ports";
 import {
   collectCspViolations,
   expectNoCspViolations,
@@ -11,12 +12,11 @@ import {
   rollTwoD6,
 } from "./helpers";
 
-// Hosted mode against e2e/fake-host.ts on :8000: the host owns accounts and
-// boards and signs passes; the tabletop on :8788 trusts it. The artifact is
+// Hosted mode against e2e/fake-host.ts (HOST): the host owns accounts and
+// boards and signs passes; the tabletop (HOSTED) trusts it. The artifact is
 // the run's trace (test-results/) when it fails, and the assertions below.
 
-const HOST = "http://localhost:8000";
-const ON_TABLETOP = /^http:\/\/localhost:8788\/b\/(\w+)$/u;
+const ON_TABLETOP = boardAt(HOSTED);
 
 test("a member and a guest share a board the host signed them onto", async ({ browser, page }) => {
   await collectCspViolations(page);
@@ -27,8 +27,11 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(page).toHaveURL(ON_TABLETOP);
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-  await expectOwnPolicy(page, `'self' ws://localhost:8788 ${HOST}`);
-  await expect(page).toHaveTitle("Board 1");
+  await expectOwnPolicy(page, `'self' ${socketOf(HOSTED)} ${HOST}`);
+  // The fake host numbers boards across the run; this one is whichever
+  // number it was given.
+  await expect(page).toHaveTitle(/^Board \d+$/u);
+  const title = await page.title();
 
   // A guest on a phone opens the link and names themself once.
   const guest = await phone(browser, boardUrl);
@@ -41,9 +44,9 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   // The host resets the link: the guest, who has only the old one, is out.
   const host = await page.context().newPage();
   await host.goto(`${HOST}/boards/`);
-  await host.getByRole("button", { name: "Reset link of Board 1" }).click();
+  await host.getByRole("button", { exact: true, name: `Reset link of ${title}` }).click();
   await page.goto(
-    await host.getByRole("link", { name: "Board 1" }).getAttribute("href").then(String),
+    await host.getByRole("link", { exact: true, name: title }).getAttribute("href").then(String),
   );
   await expect(page).not.toHaveURL(boardUrl);
   await expect(onBoard(page, "Hello table")).toBeVisible();
@@ -53,7 +56,7 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(guest.getByRole("link", { name: "Back to Fake host" })).toBeVisible();
 
   // The host deletes the board: the member is put out and the room is wiped.
-  await host.getByRole("button", { name: "Delete Board 1" }).click();
+  await host.getByRole("button", { exact: true, name: `Delete ${title}` }).click();
   await expect(page.getByText("This board no longer exists.")).toBeVisible();
 
   await expectNoCspViolations(page);

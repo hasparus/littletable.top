@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2024",
-    "types": ["node", "@cloudflare/workers-types"]
+    "types": ["node"]
   },
   "include": ["**/*.ts"]
 }

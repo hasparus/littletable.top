@@ -1,4 +1,10 @@
-import { type BoardRoom, PASS_HEADER, type Refusal } from "./board-room";
+import {
+  AVATAR_HEADER,
+  type AvatarSource,
+  type BoardRoom,
+  PASS_HEADER,
+  type Refusal,
+} from "./board-room";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
 import { serveFiles } from "./files";
@@ -81,7 +87,12 @@ async function mayDelete(request: Request, verifier: Verifier | null, board: str
 }
 
 const ROOMS = /^\/rooms\//u;
-const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/([\w-]{1,64}))?$/u;
+const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/(avatars\/[0-9a-f]{64}|[\w-]{1,64}))?$/u;
+
+const avatarSource = (config: Config): AvatarSource =>
+  config.mode === "hosted"
+    ? { hostOrigin: config.hostOrigin, mode: "hosted" }
+    : { mode: "standalone" };
 
 async function rooms(
   request: Request,
@@ -95,6 +106,7 @@ async function rooms(
     return serveFiles(
       request,
       {
+        avatars: avatarSource(config),
         board: filesOf,
         bucket: env.Files,
         config,
@@ -123,8 +135,10 @@ async function rooms(
     if (url.searchParams.get("sessionId") === null) {
       return new Response("Bad request", { status: 400 });
     }
+    const avatar = await room.personAvatar(pass, avatarSource(config));
     const forwarded = new Request(request);
     forwarded.headers.set(PASS_HEADER, JSON.stringify(pass));
+    forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
     return room.fetch(forwarded);
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));
@@ -158,7 +172,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return new Response("This tabletop is not configured", { status: 500 });
     }
     const own = new Standalone(
-      { BoardRoom: env.BoardRoom, DB: env.DB, Limiter: env.Limiter },
+      { BoardRoom: env.BoardRoom, DB: env.DB, Files: env.Files, Limiter: env.Limiter },
       config,
       verifiers.keys!,
     ).route(request);

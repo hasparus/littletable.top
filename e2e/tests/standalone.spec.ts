@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
   closeSheet,
   collectCspViolations,
@@ -14,13 +15,12 @@ import {
   sheet,
 } from "./helpers";
 
-// Standalone mode on :8790: the tabletop is its own host. The owner signs
-// in through the fake WorkOS on :8001 (the hosted AuthKit page's stand-in),
+// Standalone mode: the tabletop is its own host. The owner signs
+// in through e2e/fake-workos.ts (the hosted AuthKit page's stand-in),
 // makes a board on the front page, and a guest joins by its link with only
 // a name. Nothing leaves the machine.
 
-const TABLETOP = "http://localhost:8790";
-const ON_BOARD = /^http:\/\/localhost:8790\/b\/(\w+)$/u;
+const ON_BOARD = boardAt(STANDALONE);
 
 test("an owner signs in and makes a board; a guest joins by link and plays", async ({
   browser,
@@ -28,7 +28,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
 }) => {
   await collectCspViolations(page);
 
-  await page.goto(`${TABLETOP}/`);
+  await page.goto(`${STANDALONE}/`);
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Ada Lovelace");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -39,7 +39,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(page).toHaveURL(ON_BOARD);
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-  await expectOwnPolicy(page, "'self' ws://localhost:8790;");
+  await expectOwnPolicy(page, `'self' ${socketOf(STANDALONE)};`);
 
   // The guest, on a phone, has no account and needs none.
   const guest = await phone(browser, boardUrl);
@@ -52,24 +52,24 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   // The owner makes a place of a note off the guest's small screen; the
   // guest jumps to it.
   await putNote(page, { at: { x: 1100, y: 250 }, text: "The map" });
-  const places = await openSheet(page, "Places");
+  const places = await openSheet(page, "Search");
   await places.getByRole("button", { name: "Add to places" }).click();
   await places.getByLabel("Place name").fill("The map");
   await places.getByRole("button", { name: "Save" }).click();
   await expect(places.getByRole("button", { exact: true, name: "The map" })).toBeVisible();
-  await closeSheet(page, "Places");
+  await closeSheet(page, "Search");
   const farNote = onBoard(guest, "The map");
   await expect(farNote).not.toBeInViewport();
-  const guestPlaces = await openSheet(guest, "Places");
+  const guestPlaces = await openSheet(guest, "Search");
   await guestPlaces.getByRole("button", { exact: true, name: "The map" }).click();
-  await expect(sheet(guest, "Places")).toBeHidden();
+  await expect(sheet(guest, "Search")).toBeHidden();
   await expect(farNote).toBeInViewport();
 
   // From the front page the owner renames the board and resets its link;
   // the guest, who has only the old link, is put out.
   const front = await page.context().newPage();
   await collectCspViolations(front);
-  await front.goto(`${TABLETOP}/`);
+  await front.goto(`${STANDALONE}/`);
   const row = front.getByRole("listitem").filter({ hasText: "Board" });
   await row.getByRole("button", { name: "Rename" }).click();
   await row.getByLabel("Board name").fill("Mörk Borg night");
@@ -85,7 +85,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(link).not.toHaveAttribute("href", new URL(boardUrl).pathname);
   const newLink = await link.getAttribute("href");
 
-  await page.goto(`${TABLETOP}${newLink}`);
+  await page.goto(`${STANDALONE}${newLink}`);
   await expect(onBoard(page, "Hello table")).toBeVisible();
   await expect(page).toHaveTitle("Mörk Borg night");
 

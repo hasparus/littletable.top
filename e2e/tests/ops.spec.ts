@@ -3,6 +3,7 @@ import { createTLSchema } from "@tldraw/tlschema";
 import { importPKCS8, SignJWT } from "jose";
 import { mkdirSync, readFileSync } from "node:fs";
 
+import { HOST, HOSTED, socketOf } from "../ports";
 import { onBoard } from "./helpers";
 
 // An assistant edits a board through the tabletop's MCP endpoint while a
@@ -10,8 +11,7 @@ import { onBoard } from "./helpers";
 // the board is the same, with no browser rewriting what the server wrote.
 // The artifacts are the screenshots in SCREENSHOTS and the assertions.
 
-const HOST = "http://localhost:8000";
-const TABLETOP = "http://localhost:8788";
+const TABLETOP = HOSTED;
 const SCREENSHOTS = process.env.OPS_SCREENSHOTS ?? "/home/user/ludamus/screenshots/board";
 
 const key = importPKCS8(
@@ -74,7 +74,7 @@ async function roomRecords(board: string): Promise<SyncRecord[]> {
     "board",
   );
   const socket = new WebSocket(
-    `${TABLETOP.replace("http", "ws")}/rooms/${board}/connect?sessionId=${crypto.randomUUID()}&pass=${pass}`,
+    `${socketOf(TABLETOP)}/rooms/${board}/connect?sessionId=${crypto.randomUUID()}&pass=${pass}`,
   );
   return new Promise((resolve, reject) => {
     socket.addEventListener("open", () =>

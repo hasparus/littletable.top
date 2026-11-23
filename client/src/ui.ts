@@ -1,13 +1,16 @@
-import type { Editor, TLShapeId } from "tldraw";
+import type { Atom, Editor, TLShapeId } from "tldraw";
 
 import { createContext, useContext } from "react";
 
 import type { BoardFiles } from "./assets";
 import type { Person } from "./bootstrap";
 import type { Copy } from "./copy";
+import type { Flash } from "./highlight";
 import type { Rolls } from "./rolls";
+import type { BoardSearch } from "./search-board";
 
-export type Panel = "dice" | "people" | "places";
+// The search sheet is also where the board's places are listed.
+export type Panel = "dice" | "people" | "search";
 
 // What the board's own controls share: the buttons sit inside tldraw's
 // toolbar and the sheets beside the canvas, so both read it from here.
@@ -21,16 +24,23 @@ export type BoardUi = {
   files: BoardFiles;
   // Where the board's menu leads out: their boards, or the board's home for a guest.
   exit: { href: string; label: string };
+  // What a chosen search result flashes, on this screen only.
+  highlight: Atom<Flash | null>;
   locale: string;
   // The shape whose new place name is being typed.
   naming: TLShapeId | null;
-  open: (panel: Panel | null) => void;
+  // `typing`: the person asked from the keyboard, so the search field
+  // takes focus even on a touch screen.
+  open: (panel: Panel | null, options?: { typing: boolean }) => void;
   panel: Panel | null;
   person: Person;
   pool: number[];
   rolls: Rolls;
+  // Null until the canvas is up.
+  search: BoardSearch | null;
   setNaming: (id: TLShapeId | null) => void;
   setPool: (pool: number[]) => void;
+  typing: boolean;
 };
 
 export const BoardUiContext = createContext<BoardUi | null>(null);
@@ -44,5 +54,5 @@ export function useBoardUi(): BoardUi {
 export const PANEL_ID: Record<Panel, string> = {
   dice: "board-dice",
   people: "board-people",
-  places: "board-places",
+  search: "board-search",
 };

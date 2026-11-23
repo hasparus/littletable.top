@@ -3,7 +3,7 @@ import type { Copy } from "./copy";
 import { dieLabel } from "./copy";
 
 type Tone = "quiet" | "soft" | "solid";
-type Size = "lg" | "md" | "sm";
+type Size = "lg" | "md" | "sm" | "xs";
 
 export type DieShapeProps = {
   copy: Copy;
@@ -23,7 +23,7 @@ type Outline = {
 // NOTE: classic die silhouettes in a 32-unit box, drawn so that no two share an
 // outline at 28px: triangle, rounded square, rhombus, kite, pentagon, hexagon, and a many-sided ball for the d100.
 const OUTLINES: Record<number, Outline> = {
-  4: { points: "16,3.5 29,27 3,27", text: { size: 12, y: 21 } },
+  4: { points: "16,3 29,26.5 3,26.5", text: { size: 12, y: 19 } },
   6: { text: { size: 14, y: 16.5 } },
   8: { points: "16,2 29.5,16 16,30 2.5,16", text: { size: 13, y: 16.5 } },
   10: { points: "16,2 29.5,12 16,30 2.5,12", text: { size: 12, y: 14.5 } },
@@ -43,7 +43,7 @@ const OUTLINES: Record<number, Outline> = {
 
 const FALLBACK = OUTLINES[20] as Outline;
 
-const SIZES: Record<Size, string> = { lg: "h-9", md: "h-8", sm: "h-7" };
+const SIZES: Record<Size, string> = { lg: "h-9", md: "h-8", sm: "h-7", xs: "h-6" };
 
 const TONES: Record<Tone, { shape: string; text: string; tick: string }> = {
   quiet: {

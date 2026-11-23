@@ -2,9 +2,10 @@ let unavailable = false;
 
 export const isDice3dDown = () => unavailable;
 
-// NOTE: one failure (chunk or WebGL) turns the 3D off for the rest of the
-// visit; the card carries the result alone.
+// NOTE: one failure (the chunk, WebGL2 or an error mid-throw) turns the 3D
+// dice off for the rest of the visit; the strip carries the result alone.
 export function dropDice3d(error: unknown) {
-  if (!unavailable) console.error("board: 3D dice unavailable, showing the card only", error);
+  if (!unavailable)
+    console.error("board: 3D dice unavailable, showing the result strip only", error);
   unavailable = true;
 }

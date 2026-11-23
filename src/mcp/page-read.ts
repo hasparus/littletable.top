@@ -2,6 +2,7 @@ import type { TLArrowBinding, TLArrowShape, TLPage, TLShape } from "@tldraw/tlsc
 
 import type { Doc } from "../ops/doc";
 
+import { closeness, excerpt, fold, oneLine } from "../../client/src/search-text";
 import { apply, arrowPath, localBounds, pageBounds, pageTransform } from "../ops/geometry";
 import { textOf } from "../ops/records";
 import { type McpPageRead, readMcpPage, toShapeMeasurements } from "./upstream/shared/mcpPageRead";
@@ -61,34 +62,40 @@ export type ShapeMatch = {
   source: "native";
 };
 
-const EXCERPT = 200;
-
-/** Shapes whose own text contains every word of the query, on one page or all. */
+// NOTE: the same folding, ranking and excerpts as the board's own search
+// sheet (client/src/search-text.ts, pure text code), so "zolw" finds "żółw"
+// here as it does there. The sheet's index (typos, prefixes) is not used.
 export function searchShapes(doc: Doc, query: string, pageId: string | null): ShapeMatch[] {
-  const words = query.toLowerCase().split(/\s+/u).filter(Boolean);
-  const out: ShapeMatch[] = [];
+  const words = fold(oneLine(query)).split(" ").filter(Boolean);
+  const found: { closeness: number; match: ShapeMatch }[] = [];
   for (const page of doc.pages()) {
     if (pageId !== null && page.id !== pageId) continue;
     for (const shape of doc.shapesOnPage(page.id)) {
       const text = textOf(shape);
-      const lower = text.toLowerCase();
-      if (text === "" || !words.every((word) => lower.includes(word))) continue;
-      const at = Math.max(0, lower.indexOf(words[0]!) - 40);
+      const folded = fold(text);
+      if (text === "" || words.length === 0 || !words.every((word) => folded.includes(word))) {
+        continue;
+      }
       const box = pageBounds(doc, shape);
-      out.push({
-        bounds: {
-          h: Math.round(box.h),
-          w: Math.round(box.w),
-          x: Math.round(box.x),
-          y: Math.round(box.y),
+      found.push({
+        closeness: closeness(query, text),
+        match: {
+          bounds: {
+            h: Math.round(box.h),
+            w: Math.round(box.w),
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+          },
+          confidence: 1,
+          excerpt: excerpt(text, query, words)
+            .map((part) => part.text)
+            .join(""),
+          pageId: page.id,
+          shapeId: shape.id.replace(/^shape:/u, ""),
+          source: "native",
         },
-        confidence: 1,
-        excerpt: text.slice(at, at + EXCERPT),
-        pageId: page.id,
-        shapeId: shape.id.replace(/^shape:/u, ""),
-        source: "native",
       });
     }
   }
-  return out;
+  return found.sort((a, b) => b.closeness - a.closeness).map(({ match }) => match);
 }

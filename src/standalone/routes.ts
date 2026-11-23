@@ -8,6 +8,8 @@ import type { StandaloneConfig } from "../config";
 import type { Limiter } from "../limiter";
 import type { SignInProvider } from "./provider";
 
+import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
+import { serveStored } from "../files";
 import { addressKey } from "../limiter";
 import {
   MAX_BOARDS_PER_ACCOUNT,
@@ -24,6 +26,7 @@ import { workOs } from "./workos";
 export type StandaloneEnv = {
   BoardRoom: DurableObjectNamespace<BoardRoom>;
   DB: D1Database;
+  Files: R2Bucket;
   Limiter: DurableObjectNamespace<Limiter>;
 };
 
@@ -134,6 +137,10 @@ export class Standalone {
     if (pathname === "/auth/callback" && method === "GET") return this.callback(request);
     if (pathname === "/auth/sign-out" && method === "POST") return this.signOut(request);
     if (pathname === "/api/me" && method === "GET") return this.me(request);
+    const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
+    if (picture !== null && (method === "GET" || method === "HEAD")) {
+      return this.avatar(request, picture[1]!);
+    }
     if (pathname === "/api/boards" && method === "GET") return this.list(request);
     if (pathname === "/api/boards" && method === "POST") return this.create(request);
     const action = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/(rename|reset|delete)$/u.exec(pathname);
@@ -229,6 +236,7 @@ export class Standalone {
     const signedIn = now();
     const account = await this.store.signIn(
       { ...identity, name: cleanName(identity.name) ?? "Player" },
+      await this.accountAvatar(identity),
       signedIn,
     );
     const token = randomToken();
@@ -245,6 +253,36 @@ export class Standalone {
     headers.append("Set-Cookie", setCookie(SESSION_COOKIE, token, SESSION_LIFETIME_S));
     headers.append("Set-Cookie", setCookie(SIGN_IN_COOKIE, "", 0));
     return new Response(null, { headers, status: 302 });
+  }
+
+  // The account's picture after this sign-in: the copy it has while the
+  // provider's address stays the same, else a fresh copy, else none. A
+  // failed copy is tried again at the next sign-in.
+  private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
+    if (identity.avatarUrl === null) return null;
+    const kept = await this.store.avatarOf(identity.subject);
+    if (kept.avatarUrl === identity.avatarUrl && kept.avatar !== null) return kept.avatar;
+    const copy = await copyAvatar({
+      bucket: this.env.Files,
+      rule: providerRule(this.config.workOs.apiBase),
+      url: identity.avatarUrl,
+    });
+    logAvatar({ copy, mode: "standalone", person: "member" });
+    return "hash" in copy ? copy.hash : null;
+  }
+
+  // The signed-in person's own picture, for the front page; nobody else's.
+  private async avatar(request: Request, hash: string): Promise<Response> {
+    const found = await this.session(request);
+    if (found === null || found.session.account.avatar !== hash) {
+      return new Response("Not found", { status: 404 });
+    }
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: avatarKey(hash),
+      name: hash,
+    });
   }
 
   private async signOut(request: Request): Promise<Response> {
@@ -265,7 +303,8 @@ export class Standalone {
     const found = await this.session(request);
     if (found === null) return json(200, { account: null, csrf: null });
     const { account, csrf } = found.session;
-    return json(200, { account: { id: account.id, name: account.name }, csrf });
+    const avatar = account.avatar === null ? null : `/api/avatars/${account.avatar}`;
+    return json(200, { account: { avatar, id: account.id, name: account.name }, csrf });
   }
 
   private async list(request: Request): Promise<Response> {
@@ -337,7 +376,7 @@ export class Standalone {
     if (board === null) return refuse(404, "not-found");
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });
-    let person: { id: string; name: string; owner: boolean };
+    let person: { avatar: string | null; id: string; name: string; owner: boolean };
     if (found === null) {
       const kept = cookie(request, GUEST_COOKIE);
       const guest = kept === null ? null : await unseal(this.keys, GUEST_AUDIENCE, kept);
@@ -348,16 +387,17 @@ export class Standalone {
       }
       if (name === null) return refuse(422, "name-required");
       const id = typeof guest?.sub === "string" ? guest.sub : `g:${randomCode(16)}`;
-      person = { id, name, owner: false };
+      person = { avatar: null, id, name, owner: false };
       const sealed = await seal(this.keys, GUEST_AUDIENCE, { name, sub: id }, GUEST_LIFETIME_S);
       headers.append("Set-Cookie", setCookie(GUEST_COOKIE, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
       const owner = board.ownerId === account.id;
-      person = { id: `a:${account.id}`, name: account.name, owner };
+      person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner) await this.store.visit(account.id, board, now());
     }
     const pass = await signPass(this.keys, {
+      avatar: person.avatar,
       board: board.id,
       link: board.linkVersion,
       name: person.name,
@@ -375,7 +415,7 @@ export class Standalone {
         boardsUrl: found === null ? null : "/",
         home: { name: this.config.displayName, url: "/" },
         pass,
-        person,
+        person: { id: person.id, name: person.name, owner: person.owner },
         title: board.title,
       },
       { headers, status: 200 },

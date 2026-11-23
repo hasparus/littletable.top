@@ -1,4 +1,7 @@
-# tltabletop
+# Little Table
+
+The repository and package are `littletable-top`; its own deployment is
+Little Table, at [littletable.top](https://littletable.top).
 
 A shared whiteboard with dice for tabletop games: a [tldraw](https://tldraw.dev)
 canvas that everyone at the table draws on, a dice tray whose rolls the
@@ -18,9 +21,24 @@ The tabletop runs in one of two modes, chosen by configuration:
   accounts (signed in through WorkOS AuthKit) and boards, and signs its
   own passes; guests join by link with a name. See "Standalone mode".
 
-No licence has been chosen for this repository yet. The Outfit font in
-`client/src/theme/fonts/` is under the SIL Open Font License (`OFL.txt`
-beside it); tldraw is an ordinary npm dependency under its own licence.
+## Licence
+
+No licence has been chosen for this repository's own code yet, and there is
+no `LICENSE` file. The Outfit font in `client/src/theme/fonts/` is under the
+SIL Open Font License (`OFL.txt` beside it).
+
+The board is built on the [tldraw SDK](https://tldraw.dev), an ordinary npm
+dependency under tldraw's own licence, not this repository's. Off
+`localhost` the SDK runs only with a tldraw licence key (`licenseKey`,
+`TLDRAW_LICENSE_KEY`), and under the hobby licence Little Table uses it
+shows tldraw's "made with tldraw" mark, which the licence requires to stay
+visible, unobscured and open to interaction. tldraw 5.6 draws it in the
+bottom right corner of the canvas: the full mark (96 × 32 px) on a screen
+700 px wide or more, a narrow tab on the right edge on a phone. Nothing of
+the board hides or restyles it; `e2e/tests/watermark.spec.ts` checks at
+360, 390 and 430 px and on a desktop that the bottom bar's controls, every
+sheet and the dice strip leave it uncovered and reachable. A host that
+deploys the tabletop brings its own key and licence terms.
 
 ## Layout
 
@@ -128,7 +146,17 @@ A pass is an RS256 JWT the host signs for one person on one board:
 | `link`       | The board's link version, an integer from 0                    |
 | `name`       | The display name, 1-40 characters                              |
 | `owner`      | Whether the person owns the board                              |
+| `avatar`     | Optional. The person's picture: a URL on `HOST_ORIGIN`         |
 | `iat`, `exp` | Required. The reference host gives five minutes                |
+
+The picture is a claim of the pass, not a field of the bootstrap answer,
+because the answer reaches the Worker through the browser and the pass is
+the only thing the Worker trusts: a person can then show no picture but the
+one the host signed for them. The Worker fetches it itself, from
+`HOST_ORIGIN` only (see "Avatars"); a URL anywhere else, or a claim that is
+not a string of at most 2048 characters, is ignored and the person shows an
+initial. The reference host serves `/avatars/<id>.png` and signs that
+address into its members' passes.
 
 The pass travels in the request (`?pass=` on the socket, `Authorization:
 Bearer` elsewhere). The one exception is reading a board's images, which
@@ -149,18 +177,19 @@ the same id starts again from link version 0.
 
 ### Routes
 
-| Route                               | Does                                                      |
-| ----------------------------------- | --------------------------------------------------------- |
-| `GET /b/<share code>`               | The client's shell                                        |
-| `GET /`                             | 302 to `HOME_URL`                                         |
-| `GET /<file>`                       | The built client: scripts, styles, fonts, manifest, icons |
-| `GET /rooms/<board>/connect`        | The tldraw sync socket (`?sessionId=&pass=`)              |
-| `POST /rooms/<board>/roll`          | Rolls `{"dice": [6, 6]}` for everyone                     |
-| `GET /rooms/<board>/rolls`          | The latest 50 rolls                                       |
-| `POST /rooms/<board>/delete`        | Deletes the board's data (deletion token)                 |
-| `POST /rooms/<board>/files`         | Uploads an image (the bytes as the body); see "Images"    |
-| `POST /rooms/<board>/files/access`  | Sets the cookie the board's `<img>`s read images with     |
-| `GET /rooms/<board>/files/<sha256>` | An image of the board                                     |
+| Route                                       | Does                                                      |
+| ------------------------------------------- | --------------------------------------------------------- |
+| `GET /b/<share code>`                       | The client's shell                                        |
+| `GET /`                                     | 302 to `HOME_URL`                                         |
+| `GET /<file>`                               | The built client: scripts, styles, fonts, manifest, icons |
+| `GET /rooms/<board>/connect`                | The tldraw sync socket (`?sessionId=&pass=`)              |
+| `POST /rooms/<board>/roll`                  | Rolls `{"dice": [6, 6]}` for everyone                     |
+| `GET /rooms/<board>/rolls`                  | The latest 50 rolls                                       |
+| `POST /rooms/<board>/delete`                | Deletes the board's data (deletion token)                 |
+| `POST /rooms/<board>/files`                 | Uploads an image (the bytes as the body); see "Images"    |
+| `POST /rooms/<board>/files/access`          | Sets the cookie the board's `<img>`s read images with     |
+| `GET /rooms/<board>/files/<sha256>`         | An image of the board                                     |
+| `GET /rooms/<board>/files/avatars/<sha256>` | The picture of someone who has been on the board          |
 
 The rooms API is same-origin with the client and sends no CORS headers. The
 room draws every die (d4 d6 d8 d10 d12 d20 d100, up to 20 at once, one roll
@@ -239,7 +268,7 @@ same pass that opens the board.
   client trades its pass for a cookie: `POST /rooms/<board>/files/access`
   (Bearer pass) answers `Set-Cookie: tabletop-files=<the pass>;
 Path=/rooms/<board>/files; Max-Age=<the pass's remaining life>; Secure;
-HttpOnly; SameSite=Strict`. The client does this again whenever its pass
+HttpOnly; SameSite=Strict` and `{"avatar"}` (see "Avatars"). The client does this again whenever its pass
   is renewed, and tldraw asks the asset store before it shows an image, so
   a tab that slept past the pass's five minutes gets a fresh cookie before
   its next image loads. The cookie is read only on `GET`/`HEAD` of the
@@ -281,6 +310,103 @@ retry a dropped connection three times (1, 3, 8 s) and a busy Worker five
 times (15 s), and say why when refused. The page's policy allows images
 from `'self'` (and `blob:`, for tldraw's preview while one uploads).
 
+## Avatars
+
+A member's picture shows in the board's people list and, in standalone
+mode, beside the account on the front page. A guest, or anyone without a
+picture, gets a circle with their initial; either way the ring is the
+person's cursor colour. Nothing else shows avatars.
+
+Pictures are never hot-linked. The Worker copies each one into the images'
+bucket as `avatars/<sha256>` and serves it itself, so the page's policy
+stays at images from `'self'`, no other player's browser contacts the
+identity provider or the host, and a picture that changes or disappears
+upstream breaks nothing.
+
+- **The copy** (`src/avatars.ts`): `https` only, no address literals and no
+  `localhost`, `.local`, `.internal` or `.home.arpa` names, at most three
+  redirects with every hop checked again, three seconds in all, 1 MiB. The
+  bytes are sniffed by the images' own sniffer and must be PNG, JPEG, GIF,
+  WebP or AVIF (an SVG is refused); nothing is re-encoded. Any failure
+  leaves the person without a picture, is logged as `avatar.copied` with
+  its outcome, and never fails the request it happened in.
+- **Standalone.** The sign-in callback copies the provider's picture
+  (WorkOS's `profile_picture_url`), and a later sign-in copies again only
+  when that address has changed or the last copy failed. `accounts` keeps
+  the hash (`avatar_hash`) beside the address. The account's own picture is
+  `GET /api/avatars/<sha256>`, for its session only; `/api/me` names it.
+  The Worker signs the hash into the passes it issues.
+- **Hosted.** The host signs an optional `avatar` URL into the pass. The
+  board's Durable Object copies it when a pass that names it connects or
+  asks for files access: only from `HOST_ORIGIN`, again only when the claim
+  changes, and after a failure no sooner than an hour later. So only a
+  host-signed pass makes the Worker fetch, only from the host, and at most
+  once per person, picture and board.
+- **Who sees it.** `GET /rooms/<board>/files/avatars/<sha256>` answers with
+  the board's pass or files cookie, exactly as for an image, and only for
+  the picture of someone who has been on that board (the room's `people`
+  table); any other hash is a 404. Headers are the images' own
+  (`serveStored`): the sniffed type, `nosniff`, `private, immutable`,
+  `Cross-Origin-Resource-Policy: same-origin`, the sandboxing policy.
+- **How clients learn it.** tldraw's presence record carries it, in `meta`.
+  A client writes its own presence, so the room overwrites the user id, the
+  name and `meta.avatar` of every presence push with what the session's
+  pass says (`src/presence.ts`): a client cannot appear under another
+  person's id, name or picture, and what it reads is a hash the Worker
+  issued, which it turns into the same-origin address above. A person
+  learns their own from the answer of `POST /rooms/<board>/files/access`
+  (`{"avatar": <address or null>}`).
+- **Deleting.** Avatars are shared by content across boards and accounts,
+  so deleting a board leaves them.
+  TODO: deleting an account (not built yet) must delete its picture's
+  object once no account and no board's `people` row names its hash.
+
+## Search
+
+The bottom bar's Search (Ctrl+F or ⌘F on a keyboard) finds text across
+every page of the board. With nothing typed the sheet lists the board's
+places; typing turns the list into what matches, ranked. Choosing a
+result switches to its page, brings it into view and flashes its outline
+for a moment. All of it happens in the person's own browser: neither the
+query nor the flash is synced or sent anywhere.
+
+- **What is found.** What tldraw's own shape utils say a shape reads as
+  (`getText` and `getAriaDescriptor`): notes, text, geo and arrow labels,
+  frame names, a link's address, an image's alt text, a bookmark's title
+  and description. Place names (`meta.place`) are indexed beside them
+  and shown as places. Text a shape says twice is indexed once, and a
+  shape that matches through its text and its place name is one result.
+- **Matching** (`client/src/search-text.ts`, `search-index.ts`, on
+  [MiniSearch](https://lucaong.github.io/minisearch/)): case and Polish
+  diacritics fold (`zolw` finds `Żółw`, `ł` is `l`), the word being typed
+  matches by its start, and typos are forgiven by word length (none up to
+  three letters, one edit in four or five, two from six; a swap counts as
+  two). Several words must all match, unless no text has them all. One
+  letter only starts words.
+- **Ranking.** Text that holds the query as typed, diacritics included,
+  first; then the query once folded; then prefix and typo matches. Within
+  each, MiniSearch's relevance, with places boosted. Up to 50 results,
+  each an excerpt of about 90 characters around its first match, and the
+  page's name when the board has more than one page.
+- **Keeping up** (`search-board.ts`). A store listener only notes which
+  shapes, pages and assets changed (a shape that only moved or turned is
+  skipped). 250 ms after the board settles the index catches up: at once
+  while the search is open, else in the browser's idle time, a slice at a
+  time, so the board's text is indexed before anyone searches and typing
+  never waits for it. Rich text is read straight from its JSON, not
+  through TipTap. The browser's performance timeline has each
+  `board-search:update`.
+- **Text in images, later.** Every index document has an id, a kind
+  (`native`, `place`, or `ocr` for a line read off an image), its shape
+  and page, its text and, for `ocr`, a `region`: the line's corners in
+  the source image's pixels. `BoardIndex.setImageText(shape, lines)`
+  replaces one image's lines as a whole, so a better reading can replace
+  an older one. `imageQuadToPage` (`client/src/image-quad.ts`) maps a
+  region to page coordinates for the image as it lies now, flipped,
+  cropped or rotated, and the flash takes any page-space polygon, so such
+  a result flashes only its line. The results list already shows an `ocr`
+  result with an "In image" label.
+
 ## .tldr files
 
 The board's menu downloads the whole board as tldraw's own file: every
@@ -289,6 +415,9 @@ bindings, and every image embedded as a `data:` URL, so the file opens on
 tldraw.com or any tldraw app without this server. It opens such a file
 too, from the menu or dropped onto the board:
 
+- A board holds at most 40 pages, tldraw's own cap, which its page menu
+  keeps too. A file whose pages would pass it is refused whole, before any
+  of its images is uploaded, with a message saying how many more fit.
 - The file's pages are added after the board's own, never in its place.
   On a board nobody has drawn on (one empty page), the file's pages take
   the empty page's place, so the board reads exactly as the file.
@@ -318,7 +447,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
-import { Tabletop } from "tltabletop/alchemy";
+import { Tabletop } from "littletable-top/alchemy";
 
 export default Alchemy.Stack(
   "Host",
@@ -356,10 +485,10 @@ TypeScript under `node_modules`.
 
 ### As a dependency
 
-The package is `tltabletop`; nothing is published yet.
+The package is `littletable-top`; nothing is published yet.
 
 - **Git dependency**, which works today:
-  `"tltabletop": "github:hasparus/tltabletop#<commit>"`. The repository is
+  `"littletable-top": "github:hasparus/littletable-top#<commit>"`. The repository is
   private, so the host's install needs a token that can read it. No build
   runs at install; the helper builds the client at deploy time.
 - **Registry package**: drop `"private": true`, choose a licence (and a
@@ -386,6 +515,77 @@ standalone mode, build with `TABLETOP_MODE=standalone`, run
 `node e2e/fake-workos.ts`, apply `wrangler d1 migrations apply DB --local`,
 and start `wrangler dev --env-file e2e/standalone.env`; the e2e config does
 exactly this on :8790.
+
+`aube run e2e` starts its four servers on :8000 (the fake host), :8001
+(the fake WorkOS), :8788 (hosted) and :8790 (standalone), and with `CI`
+unset reuses any already listening there. A second checkout on the same
+machine sets `E2E_PORT_OFFSET` (a multiple of 10, say `100`) to move all
+four, so the two suites never talk to each other's servers.
+
+## Dice
+
+The server draws every value (`src/dice.ts`) and gives each roll an unsigned
+32-bit `seed`. The seed shapes only the animation: every client simulates
+the same throw from it and then turns each die's numbering so the server's
+value is on top. Values never come from the physics.
+
+The throw is the tabletop's own code: a small rigid-body simulation
+(`client/src/dice-math.ts`, `dice-solids.ts`, `dice-physics.ts`,
+`dice-throw.ts`) and a WebGL2 renderer (`dice-mesh.ts`, `dice-atlas.ts`,
+`dice-renderer.ts`, `dice-scene.ts`). A physics engine in WebAssembly or a
+worker would need a wider Content-Security-Policy, and general engines do
+not promise the same floats in every browser; this one is under a tenth of
+the size of the three.js dice it replaced and loads as one lazy chunk.
+
+**The determinism rule.** From the seed to the last frame, the simulation
+may use only `+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`,
+`Math.floor` and `Math.imul`, with a fixed step (1/240 s), a fixed number of
+solver iterations and a fixed body order. Those are exact in every
+JavaScript engine; `Math.sin`, `cos`, `atan2`, `pow`, `exp`, `hypot` and
+the rest are not, so shape constants are closed forms in square roots and
+random rotations are normalised random quaternions. Three checks keep it:
+
+- `test/dice-exact.test.ts` runs a throw with every other `Math` function
+  stubbed to throw;
+- `e2e/tests/dice-determinism.spec.ts` runs 200 seeded throws in Chromium,
+  Firefox and WebKit and compares each frame hash with Node's;
+- `test/dice-throw.test.ts` pins the hashes of two throws. That tripwire
+  changes only when the simulation is changed on purpose: run the
+  cross-engine spec first, then paste the hashes the failing test prints.
+  Clients on the old and the new build would see different throws until
+  they reload.
+
+The renderer is free of the rule: nothing it computes feeds back into the
+frames.
+
+**The d100** is one die: a ball of a hundred small faces, as the server
+draws one value from 1 to 100. It rolls as a sphere, slowed by a rolling
+resistance that does not weaken with speed, so it stops rather than creeps.
+Seen from anywhere a ball is the same, so its numbering turns freely: the
+value ends straight up, upright, tipped to face the camera.
+
+**Numerals** are drawn on a canvas and centred by where their ink is, not
+by their box: across, by the ink's centre of mass (a 1 is heavy on its
+right); up and down, by the height all digits share. The centres of mass
+are a table measured once from the font, `client/src/dice-numeral-centres.ts`,
+so every browser places numerals alike. After changing the font or its
+weight, `node e2e/numeral-centres.ts` rewrites the table;
+`e2e/tests/numeral-centres.spec.ts` fails until it has been run. A numeral
+is underlined only when, upside down, it reads as another numeral of the
+same die.
+
+**The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
+renderer fits that rectangle, aspect kept, into the area between the result
+strip and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),
+so a die lands on the same spot of the tray on every screen, whatever its
+size.
+
+A device that asks for reduced motion never loads the 3D code and gets the
+result strip at once; so does one without WebGL2, or after any error in the
+dice, which is logged once. Software rendering or a weak device gets a
+cheaper drawing of the same throw; `localStorage["tabletop.dice-tier"]` set
+to `low` or `full` forces one. The dice take `--brand-primary`; `LOOK` in
+`dice-scene.ts` switches to ivory with dark ink.
 
 ## Standalone mode
 
@@ -418,9 +618,11 @@ opens a board in the other, even when both trust the same key.
 | `Files`                       | (made by the helper) | R2 bucket of the boards' images; in hosted mode too                   |
 | `Limiter`                     | (made by the helper) | Durable Object counting requests per client address                   |
 
-`alchemy.run.ts` deploys this repository's copy: stages `prod` (on
-`TABLETOP_DOMAIN`) and `staging` (on `staging.<TABLETOP_DOMAIN>`), any other
-stage a workers.dev preview. It reads `TABLETOP_DOMAIN`,
+`alchemy.run.ts` deploys this repository's copy, Little Table (the display
+name it sets; a host's default stays "Tabletop"): stages `prod` (on
+`TABLETOP_DOMAIN`, in production `littletable.top`) and `staging` (on
+`staging.<TABLETOP_DOMAIN>`), any other stage a workers.dev preview. Its
+Workers are `littletable` and `littletable-staging`. It reads `TABLETOP_DOMAIN`,
 `TABLETOP_SIGNING_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` and
 `TLDRAW_LICENSE_KEY` from the environment; none is committed.
 
@@ -432,7 +634,7 @@ looked up across boards:
 
 | Table      | Holds                                                                               |
 | ---------- | ----------------------------------------------------------------------------------- |
-| `accounts` | id (the provider's user id), name and avatar from the last sign-in                  |
+| `accounts` | id (the provider's user id), name, the avatar's address and its copy's hash         |
 | `sessions` | SHA-256 of the cookie token, account, the provider's session id, CSRF token, expiry |
 | `boards`   | id, owner, title, share code (unique), link version                                 |
 | `visits`   | account, board, the share code they came by, when                                   |
@@ -467,7 +669,8 @@ index across all accounts anyway; D1 gives both with two indexes.
 | `GET /`                                   | The front page: sign in, then the account's boards                                                  |
 | `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                                |
 | `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                                   |
-| `GET /api/me`                             | `{"account": {"id", "name"}, "csrf"}`; both null when signed out                                    |
+| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                          |
+| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                                          |
 | `GET /api/boards`                         | `{"owned": [...], "visited": [...]}`; a visited board's `shareCode` is null once its link was reset |
 | `POST /api/boards`                        | `{"title"}`: makes a board (201). 100 per account, 20 an hour                                       |
 | `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                             |
@@ -494,3 +697,94 @@ tabletop's own session decides who is signed in.
 Tests never call WorkOS: `e2e/fake-workos.ts` answers those three endpoints
 (checking the client id, secret, single-use codes and PKCE), as the
 Worker's outbound fetch in Vitest and as a server in Playwright.
+
+## Deploying from GitHub
+
+`.github/workflows/deploy.yml` deploys Little Table, this repository's
+standalone copy (`alchemy.run.ts`), with `alchemy deploy --stage <stage> --yes`, after the
+CI checks (`ci.yml`, called as a reusable workflow) pass:
+
+- every push to `main` deploys stage `staging`;
+- "Run workflow" on the Deploy workflow deploys the stage it is given:
+  `staging`, `prod` (only from `main`), or a preview name (lowercase
+  letters, digits and hyphens), which gets a Worker, a D1 database and an
+  R2 bucket of its own on workers.dev.
+
+Each stage is what `Tabletop(...)` (`alchemy/index.js`) declares for
+standalone mode: the Worker with the built client as its static assets,
+the `BoardRoom` and `Limiter` Durable Objects, the D1 database with
+`migrations/` applied, the R2 bucket of the boards' images
+(`<app>-<stage>-TabletopFiles`), and the custom domain when there is one.
+A bucket with images in it is never destroyed with its stage, so a preview
+stage that someone uploaded to leaves its bucket behind until it is
+emptied by hand.
+
+One deploy per stage runs at a time; a later one waits. The job summary
+and the Environment's deployment show the URL. Until an Environment has
+every required input, its deploys end green with a notice listing what is
+missing, and nothing is deployed; once they are there, a failed deploy fails
+the run.
+
+### What to create
+
+**A Cloudflare API token** (My Profile, API Tokens, Create Custom Token),
+for the account the tabletop deploys to:
+
+| Scope                           | Permission               | For                                                                                       |
+| ------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| Account                         | Workers Scripts: Edit    | The Worker, its assets, `BoardRoom` and `Limiter`, workers.dev, the state store's Worker  |
+| Account                         | D1: Edit                 | The database, and its migrations, which Alchemy applies on each deploy                    |
+| Account                         | Workers R2 Storage: Edit | The bucket of the boards' images, made on the first deploy and bound to the Worker        |
+| Account                         | Secrets Store: Edit      | The state store's token and encryption key (read alone is not enough: Alchemy binds them) |
+| Zone: the `TABLETOP_DOMAIN` one | Zone: Read               | Finding the zone of a custom domain                                                       |
+| Zone: the `TABLETOP_DOMAIN` one | Workers Routes: Edit     | Attaching the custom domain                                                               |
+| Zone: the `TABLETOP_DOMAIN` one | DNS: Edit                | The DNS record the custom domain gets                                                     |
+
+The zone rows matter only once `TABLETOP_DOMAIN` is set, and that zone must
+be in the same account. Alchemy keeps its deploy state in the account's
+state store, a Worker named `alchemy-state-store` with a Durable Object; the
+first deploy creates it (and the account's Secrets Store, if there is none),
+so the state store needs no secret of its own here. An account whose store
+already exists, from another project, reuses it.
+
+**Two GitHub Environments** (Settings, Environments): `staging`, used by
+`staging` and every preview stage, and `production`, used by `prod`. Give
+`production` a deployment branch rule for `main` and, if you like, required
+reviewers.
+
+| Kind     | Name                    | Value                                                                                           |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| secret   | `CLOUDFLARE_API_TOKEN`  | The token above                                                                                 |
+| variable | `CLOUDFLARE_ACCOUNT_ID` | The account's id (the dashboard's URL, or Workers & Pages, Account details)                     |
+| secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                     |
+| variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                    |
+| secret   | `TABLETOP_SIGNING_KEY`  | A key of this Environment's own: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` |
+| variable | `TABLETOP_DOMAIN`       | Optional. `littletable.top`: `prod` serves it, `staging` serves `staging.<it>`                  |
+| variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but see below. Public by design                                             |
+
+All but the two optional ones are required. Use WorkOS's staging environment
+for `staging` and its production one for `production`.
+
+### The first deploy, on workers.dev
+
+The custom domain can come later. Without `TABLETOP_DOMAIN`, `staging`
+serves `https://littletable-staging.<account subdomain>.workers.dev` and
+`prod` `https://littletable.<account subdomain>.workers.dev`. WorkOS needs that
+address, which you only learn from the first deploy:
+
+1. Set the Environment's inputs and deploy (push to `main`, or run the
+   workflow).
+2. Read the URL from the run's summary.
+3. In WorkOS, add `https://<that host>/auth/callback` as a redirect URI and
+   `https://<that host>/` as a sign-out redirect. Sign-in works from then
+   on; nothing needs redeploying.
+
+Setting `TABLETOP_DOMAIN` later moves `prod` and `staging` to their custom
+domains on the next deploy; register those hosts the same way. A preview
+stage has its own workers.dev host, which needs registering too before
+anyone signs in there.
+
+tldraw's SDK runs without a licence key only on local addresses
+(`localhost`), so a deploy without `TLDRAW_LICENSE_KEY` succeeds, with a
+warning, but its boards do not work. tldraw ties a key to its domains: get
+one that covers every host the Environment deploys to.

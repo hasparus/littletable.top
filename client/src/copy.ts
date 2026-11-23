@@ -1,8 +1,8 @@
 import type { Language } from "../settings";
 
 // Every string the board shows, in English and Polish. In Polish the board is
-// "tablica", a place is "miejsce", a die is "k6", and the copy stays
-// gender-neutral.
+// "tablica", a page is "strona", a place is "miejsce", a die is "k6", and the
+// copy stays gender-neutral.
 // `%(name)s`-style placeholders are filled in by `fill`.
 const EN = {
   addDie: "Add %(die)s",
@@ -18,6 +18,8 @@ const EN = {
   boardFileOpen: "Open a .tldr file…",
   boardFileOpening: "Opening the file…",
   boardFileTooLarge: "This file is too large to open. Files can be up to %(size)s.",
+  boardFileTooManyPages:
+    "This file has too many pages. The board has room for %(room)s more, up to %(max)s in all.",
   boardFileTooNew:
     "This file comes from a newer version of tldraw than the board, so it cannot be opened here yet.",
   boardFull: "This board is full. You will join as soon as someone leaves.",
@@ -29,6 +31,7 @@ const EN = {
   connectionLost: "Connection lost. Reconnecting…",
   dice: "Dice",
   die: "d%(sides)s",
+  follow: "Follow",
   guest: "Guest",
   imageFailed: "The image did not upload. Check your connection and try again.",
   imagesOverQuota: "This board has no room for more images.",
@@ -45,6 +48,7 @@ const EN = {
   nameInvalid: "This name cannot be used. Try another one.",
   noPlacesYet: "No places yet. Select something on the board and add it to places.",
   noRollsYet: "Nobody has rolled yet.",
+  pageDeleted: "“%(gone)s” was deleted. You are now on “%(page)s”.",
   people: "People",
   placeName: "Place name",
   places: "Places",
@@ -60,6 +64,15 @@ const EN = {
   rollLog: "Roll log",
   rollTooFast: "Wait a moment before rolling again.",
   save: "Save",
+  search: "Search",
+  searchBoard: "Search the board",
+  searchFound: "Found: %(text)s",
+  searchInImage: "In image",
+  searchNothing: "Nothing on the board matches “%(query)s”.",
+  searchNothingHelp: "Check the spelling, or type less of the word.",
+  searchPlace: "Place",
+  searchResults: "Results",
+  stopFollowing: "Stop following",
   tooManyTries: "Too many tries. Wait a minute, then try again.",
   total: "Total",
   you: "you",
@@ -83,6 +96,8 @@ const PL: Copy = {
   boardFileOpen: "Otwórz plik .tldr…",
   boardFileOpening: "Otwieramy plik…",
   boardFileTooLarge: "Ten plik jest za duży. Plik może mieć do %(size)s.",
+  boardFileTooManyPages:
+    "Ten plik ma za dużo stron. Na tablicy zmieści się jeszcze %(room)s, w sumie najwyżej %(max)s.",
   boardFileTooNew:
     "Ten plik pochodzi z nowszej wersji tldraw niż tablica, więc nie da się go tu jeszcze otworzyć.",
   boardFull: "Tablica jest pełna. Dołączysz, gdy tylko ktoś wyjdzie.",
@@ -95,6 +110,8 @@ const PL: Copy = {
   // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   die: "k%(sides)s",
+  // NOTE: tldraw's own Polish says "Obserwuj" for following someone.
+  follow: "Obserwuj",
   guest: "Gość",
   imageFailed: "Nie udało się wysłać obrazu. Sprawdź połączenie i spróbuj ponownie.",
   imagesOverQuota: "Na tej tablicy nie ma już miejsca na obrazy.",
@@ -111,6 +128,7 @@ const PL: Copy = {
   nameInvalid: "Tego imienia nie można użyć. Wpisz inne.",
   noPlacesYet: "Nie ma jeszcze miejsc. Zaznacz coś na tablicy i dodaj to do miejsc.",
   noRollsYet: "Nikt jeszcze nie rzucał.",
+  pageDeleted: "Usunięto stronę „%(gone)s”. Jesteś teraz na stronie „%(page)s”.",
   people: "Osoby",
   placeName: "Nazwa miejsca",
   places: "Miejsca",
@@ -126,6 +144,15 @@ const PL: Copy = {
   rollLog: "Historia rzutów",
   rollTooFast: "Zaczekaj chwilę przed kolejnym rzutem.",
   save: "Zapisz",
+  search: "Szukaj",
+  searchBoard: "Szukaj na tablicy",
+  searchFound: "Znaleziono: %(text)s",
+  searchInImage: "Na obrazie",
+  searchNothing: "Na tablicy nie ma nic, co pasuje do „%(query)s”.",
+  searchNothingHelp: "Sprawdź pisownię albo wpisz krótszy fragment słowa.",
+  searchPlace: "Miejsce",
+  searchResults: "Wyniki",
+  stopFollowing: "Przestań obserwować",
   tooManyTries: "Za dużo prób. Zaczekaj minutę i spróbuj ponownie.",
   total: "Suma",
   you: "ty",

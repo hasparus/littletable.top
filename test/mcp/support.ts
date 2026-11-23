@@ -4,7 +4,7 @@ import { createTLSchema } from "@tldraw/tlschema";
 import { env, exports } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
 
-import type { BoardGrant, RoomDocumentCalls } from "../../src/room-document";
+import type { BoardGrant, RoomDocumentCalls } from "../../src/room-contract";
 
 // The MCP Worker under test, with the real board Worker beside it
 // (vitest.config.ts): `BoardRoom` is the cross-Worker binding production

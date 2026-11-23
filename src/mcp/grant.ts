@@ -1,7 +1,7 @@
 import { jwtVerify } from "jose";
 
 import type { Verifier } from "../pass";
-import type { BoardGrant } from "../room-document";
+import type { BoardGrant } from "../room-contract";
 
 // An MCP access token, which the host's authorization server signs after
 // a board owner consents: which account the assistant acts for, and which

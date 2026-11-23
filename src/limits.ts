@@ -18,3 +18,11 @@ export const MAX_SIGN_INS_PER_MINUTE = 10;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_BOARD_FILE_BYTES = 256 * 1024 * 1024;
 export const MAX_UPLOADS_PER_MINUTE = 60;
+// People's pictures (src/avatars.ts): the largest one copied (a provider's
+// are tens of kilobytes), how long a copy may take before the person goes
+// without, the redirects followed, and how long a hosted board waits before
+// it tries a picture that failed again.
+export const MAX_AVATAR_BYTES = 1024 * 1024;
+export const AVATAR_TIMEOUT_MS = 3000;
+export const MAX_AVATAR_REDIRECTS = 3;
+export const AVATAR_RETRY_MS = 60 * 60 * 1000;

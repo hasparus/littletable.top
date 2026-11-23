@@ -14,7 +14,8 @@ import { fileURLToPath } from "node:url";
 // is Chrome's Linux default (whole-pixel advances).
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const port = Number(process.env.MEASURE_PORT ?? 8797);
+// NOTE: moves with the other e2e servers (e2e/ports.ts).
+const port = Number(process.env.MEASURE_PORT ?? 8797 + Number(process.env.E2E_PORT_OFFSET ?? 0));
 const sandbox = { chromiumSandbox: false };
 
 export default defineConfig({

@@ -13,12 +13,18 @@ export type Verifier = {
 // What the issuer vouches for: this person may be on this board while the
 // board's link is at this version.
 export type Pass = {
+  // Hosted mode: the person's picture, a URL on the host's origin.
+  // Standalone mode: the SHA-256 of the copy the Worker made at sign-in.
+  // Null for a guest or anyone without one.
+  avatar: string | null;
   board: string;
   link: number;
   name: string;
   owner: boolean;
   sub: string;
 };
+
+const MAX_AVATAR_CLAIM = 2048;
 
 const imported = new Map<string, Promise<CryptoKey>>();
 
@@ -38,7 +44,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     issuer: verifier.issuer,
     requiredClaims: ["exp", "iat", "sub"],
   });
-  const { board, link, name, owner, sub } = payload;
+  const { avatar, board, link, name, owner, sub } = payload;
   if (
     typeof sub !== "string" ||
     typeof board !== "string" ||
@@ -51,7 +57,12 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
   ) {
     throw new Error("Invalid pass");
   }
-  return { board, link: link as number, name, owner, sub };
+  // NOTE: a malformed picture costs the person their picture, not the board.
+  const picture =
+    typeof avatar === "string" && avatar.length > 0 && avatar.length <= MAX_AVATAR_CLAIM
+      ? avatar
+      : null;
+  return { avatar: picture, board, link: link as number, name, owner, sub };
 }
 
 // NOTE: its own audience keeps the two kinds apart: a pass cannot delete a

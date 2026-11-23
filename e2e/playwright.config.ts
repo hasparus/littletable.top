@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
+import { HOST, HOSTED, PORTS, STANDALONE, WORKOS } from "./ports";
+
 // Each mode runs against the real Worker in workerd (wrangler dev) serving a
-// client built for that mode: hosted on :8788 with e2e/fake-host.ts on :8000,
-// standalone on :8790 with e2e/fake-workos.ts on :8001.
+// client built for that mode: hosted with e2e/fake-host.ts, standalone with
+// e2e/fake-workos.ts, on the ports of e2e/ports.ts.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const isCI = process.env.CI !== undefined;
@@ -28,9 +30,10 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
 // NOTE: the hosted run has the MCP Worker beside the board Worker, as one
 // `wrangler dev` session behind dev/both.ts (see there). With several
 // configs wrangler's --assets flag would go to the first, so the board's
-// config is written out with this run's client instead.
+// config is written out with this run's client and host instead (--var
+// would go to the first config too).
 const HOSTED_CONFIG = "wrangler.e2e.json";
-const writeHostedConfig = `node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync("wrangler.json", "utf8")); c.assets.directory = "./dist-e2e/hosted"; fs.writeFileSync("${HOSTED_CONFIG}", JSON.stringify(c, null, 2));'`;
+const writeHostedConfig = `node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync("wrangler.json", "utf8")); c.assets.directory = "./dist-e2e/hosted"; c.vars.HOST_ORIGIN = "${HOST}"; fs.writeFileSync("${HOSTED_CONFIG}", JSON.stringify(c, null, 2));'`;
 
 export default defineConfig({
   expect: { timeout: 10_000 },
@@ -55,43 +58,43 @@ export default defineConfig({
     {
       command: "node e2e/fake-host.ts",
       cwd: root,
-      env,
+      env: { ...env, FAKE_HOST_PORT: String(PORTS.host), TABLETOP_ORIGIN: HOSTED },
       reuseExistingServer: !isCI,
-      url: "http://localhost:8000/",
+      url: `${HOST}/`,
     },
     {
       command: tabletop(
         "hosted",
-        8788,
+        PORTS.hosted,
         `-c wrangler.dev.json -c ${HOSTED_CONFIG} -c wrangler.mcp.json`,
         [writeHostedConfig],
       ),
       cwd: root,
-      env: { ...env, TABLETOP_HOST_ORIGIN: "http://localhost:8000" },
+      env: { ...env, TABLETOP_HOST_ORIGIN: HOST },
       reuseExistingServer: !isCI,
       timeout: 120_000,
       // A room without a pass answers 403, which counts as up.
-      url: "http://localhost:8788/rooms/e2e/rolls",
+      url: `${HOSTED}/rooms/e2e/rolls`,
     },
     {
       command: "node e2e/fake-workos.ts",
       cwd: root,
-      env,
+      env: { ...env, FAKE_WORKOS_PORT: String(PORTS.workos) },
       reuseExistingServer: !isCI,
-      url: "http://localhost:8001/user_management/authorize?client_id=client_fake",
+      url: `${WORKOS}/user_management/authorize?client_id=client_fake`,
     },
     {
       command: tabletop(
         "standalone",
-        8790,
-        "--assets dist-e2e/standalone --env-file e2e/standalone.env",
+        PORTS.standalone,
+        `--assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS}`,
         ["wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone"],
       ),
       cwd: root,
       env: { ...env, TABLETOP_MODE: "standalone" },
       reuseExistingServer: !isCI,
       timeout: 120_000,
-      url: "http://localhost:8790/api/me",
+      url: `${STANDALONE}/api/me`,
     },
   ],
   workers: 1,
