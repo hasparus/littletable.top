@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Avatar } from "./avatar";
+import { BoardPeople } from "./board-people";
 import { colorFor } from "./colors";
 import { fill } from "./copy";
 import { type FrontCopy } from "./front-copy";
@@ -49,7 +50,7 @@ function SignedOut({ copy, failed, name }: { copy: FrontCopy; failed: boolean; n
   );
 }
 
-type Editing = { id: string; kind: "delete" | "rename" | "reset" } | null;
+type Editing = { id: string; kind: "delete" | "people" | "rename" | "reset" } | null;
 
 function OwnedRow({
   board,
@@ -57,6 +58,7 @@ function OwnedRow({
   editing,
   locale,
   onAction,
+  post,
   setEditing,
 }: {
   board: Owned;
@@ -64,6 +66,7 @@ function OwnedRow({
   editing: Editing;
   locale: string;
   onAction: (board: Owned, action: "delete" | "rename" | "reset", title?: string) => Promise<void>;
+  post: (path: string, body?: object) => Promise<Response>;
   setEditing: (editing: Editing) => void;
 }) {
   const [title, setTitle] = useState(board.title);
@@ -111,6 +114,13 @@ function OwnedRow({
           </button>
           <button
             className="btn btn-secondary min-h-10"
+            onClick={() => setEditing({ id: board.id, kind: "people" })}
+            type="button"
+          >
+            {copy.people}
+          </button>
+          <button
+            className="btn btn-secondary min-h-10"
             onClick={() => setEditing({ id: board.id, kind: "delete" })}
             type="button"
           >
@@ -152,6 +162,9 @@ function OwnedRow({
             {copy.cancel}
           </button>
         </form>
+      )}
+      {mode === "people" && (
+        <BoardPeople board={board} copy={copy} onClose={() => setEditing(null)} post={post} />
       )}
       {(mode === "reset" || mode === "delete") && (
         <div
@@ -289,6 +302,7 @@ function SignedIn({
                   key={board.id}
                   locale={locale}
                   onAction={act}
+                  post={post}
                   setEditing={setEditing}
                 />
               ))}

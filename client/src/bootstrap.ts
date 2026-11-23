@@ -1,4 +1,10 @@
-export type Person = { id: string; name: string; owner: boolean };
+// NOTE: `role` is absent from a host that has not adopted roles yet.
+export type Person = {
+  id: string;
+  name: string;
+  owner: boolean;
+  role?: "owner" | "shaman" | "write";
+};
 
 // What the pass endpoint answers (README, "The host contract").
 export type Bootstrap = {
