@@ -6,7 +6,7 @@ import { BOLD_LABELS, FAMILIES, LABELS, SIZES } from "./corpus";
 // What e2e/measure/harness.tsx puts on the page.
 type Harness = { harness?: { collect: (cases: unknown[]) => object[] } };
 
-const FIXTURES = new URL("../../test/ops/fixtures/", import.meta.url);
+const FIXTURES = new URL("../../test/mcp/fixtures/", import.meta.url);
 
 type RichText = { content: unknown[]; type: string };
 

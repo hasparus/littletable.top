@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 // Asks the real tldraw editor how it sizes the labels in
 // e2e/measure/corpus.ts and writes the answers to
-// test/ops/fixtures/browser-text.<project>.json, which the Workers suite
+// test/mcp/fixtures/browser-text.<project>.json, which the Workers suite
 // compares the server-side measurer with. Run it again after a tldraw or
 // font update:
 //

@@ -1,51 +1,29 @@
 import type { TLArrowBinding, TLGeoShape, TLRecord, TLShape } from "@tldraw/tlschema";
 
 import { createTLSchema } from "@tldraw/tlschema";
-import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
-import type { BoardRoom } from "../../src/board-room";
-import type { BoardGrant } from "../../src/mcp/grant";
-import type { ApplyOpsResponse } from "../../src/ops/board-ops";
-
+import { applyOps, type ApplyOpsResponse } from "../../src/mcp/board";
 import { Doc } from "../../src/ops/doc";
 import { arrowPath, intersects, pageBounds } from "../../src/ops/geometry";
 import { segmentHitsBox } from "../../src/ops/routing";
-import { pass, seat, until } from "../support";
+import { freshBoard, seat, until } from "./support";
 
-// apply_ops against a real board room with nobody connected: the engine
-// reads the room's records and writes through its storage, as it will in
-// production when nobody has the board open.
+// apply_ops from the MCP Worker against a real board room in the board
+// Worker, with nobody connected: the engine computes here from a snapshot
+// and the room commits the diff.
 
-const rooms = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> }).BoardRoom;
-
-// NOTE: the stub's own types recurse through every record type and give up.
-type Promised<T> = {
-  [K in keyof T]: T[K] extends (...args: infer A) => infer R
-    ? (...args: A) => Promise<Awaited<R>>
-    : never;
-};
-type RoomCalls = Promised<
-  Pick<BoardRoom, "mcpApplyOps" | "mcpPages" | "records" | "revokeMcpGrants">
->;
-
-let boards = 0;
 function board() {
-  const id = `ops-${++boards}-${crypto.randomUUID().slice(0, 8)}`;
-  const grant: BoardGrant = { access: "write", board: id, grant: 0, title: null };
-  const room = rooms.get(rooms.idFromName(id)) as unknown as RoomCalls;
+  const b = freshBoard();
   return {
-    apply: async (ops: unknown[], extra: { page?: number | string; runId?: string } = {}) =>
-      (await room.mcpApplyOps(grant, { ops, ...extra })) as ApplyOpsResponse,
-    grant,
-    id,
-    records: async () => (await room.records()) as TLRecord[],
-    room,
+    ...b,
+    apply: (ops: unknown[], extra: { page?: number | string; runId?: string } = {}) =>
+      applyOps(b.room, b.grant, { ops, ...extra }),
   };
 }
 
 const applied = (response: ApplyOpsResponse) => {
-  if (response.kind !== "applied") throw new Error(`not applied: ${JSON.stringify(response)}`);
+  if (typeof response === "string" || response.kind !== "applied") throw new Error(`not applied: ${JSON.stringify(response)}`);
   return response.result;
 };
 
@@ -244,17 +222,17 @@ describe("apply_ops on a board nobody has open", () => {
   it("refuses a read-only grant and a revoked one", async () => {
     const b = board();
     const op = [{ at: { x: 0, y: 0 }, op: "add", text: "x" }];
-    expect(await b.room.mcpApplyOps({ ...b.grant, access: "read" }, { ops: op })).toBe("read-only");
+    expect(await applyOps(b.room, { ...b.grant, access: "read" }, { ops: op })).toBe("read-only");
     await b.room.revokeMcpGrants(b.id, 3);
-    expect(await b.room.mcpApplyOps({ ...b.grant, grant: 2 }, { ops: op })).toBe("revoked");
-    expect(await b.room.mcpApplyOps({ ...b.grant, grant: 3 }, { ops: op })).toMatchObject({
+    expect(await applyOps(b.room, { ...b.grant, grant: 2 }, { ops: op })).toBe("revoked");
+    expect(await applyOps(b.room, { ...b.grant, grant: 3 }, { ops: op })).toMatchObject({
       kind: "applied",
     });
   });
 
   it("sends the whole batch to a connected browser as one patch", async () => {
     const b = board();
-    const person = await seat(b.id, await pass({ board: b.id }));
+    const person = await seat(b.id);
     const result = applied(
       await b.apply([
         { at: { x: 0, y: 0 }, id: "one", op: "add", text: "One" },

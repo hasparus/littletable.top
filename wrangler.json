@@ -36,8 +36,7 @@
   "vars": {
     "TABLETOP_MODE": "hosted",
     "ISSUER": "dev-host",
-    "HOST_ORIGIN": "http://localhost:8000",
-    "MCP_AUTHORIZATION_SERVER": "http://localhost:8000"
+    "HOST_ORIGIN": "http://localhost:8000"
   },
   "r2_buckets": [
     {

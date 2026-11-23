@@ -1,20 +1,12 @@
 import { jwtVerify } from "jose";
 
 import type { Verifier } from "../pass";
+import type { BoardGrant } from "../room-document";
 
 // An MCP access token, which the host's authorization server signs after
 // a board owner consents: which account the assistant acts for, and which
 // boards it may read or edit. The board's Durable Object also checks the
 // grant version, so a host revokes without the Worker asking it each call.
-
-export type BoardGrant = {
-  access: "read" | "write";
-  board: string;
-  /** The board's grant version when the host signed this; a lower one is revoked. */
-  grant: number;
-  /** The board's title, as the host knows it. */
-  title: string | null;
-};
 
 export type McpGrant = {
   account: string;

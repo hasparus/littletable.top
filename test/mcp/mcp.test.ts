@@ -1,36 +1,14 @@
-import { env } from "cloudflare:workers";
-import { importPKCS8, SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 
-import type { BoardRoom } from "../../src/board-room";
-
 import { BOARD_NOT_FOUND, UNTRUSTED } from "../../src/mcp/server";
-import { call, now } from "../support";
+import { roomOf, token, worker } from "./support";
 
-// The MCP endpoint in workerd, as an assistant's client speaks to it: the
-// 2025 handshake and the 2026-07-28 revision's handshake-free requests,
-// tools/list, and apply_ops on a board nobody has open.
+// The MCP Worker's endpoint in workerd, as an assistant's client speaks to
+// it: the 2025 handshake and the 2026-07-28 revision's handshake-free
+// requests, tools/list, and apply_ops on a board nobody has open, which
+// lives in the board Worker.
 
-const testEnv = env as unknown as {
-  BoardRoom: DurableObjectNamespace<BoardRoom>;
-  TEST_SIGNING_KEY: string;
-};
-
-type Grant = { access: "read" | "write"; board: string; grant?: number; title?: string };
-
-async function token(boards: Grant[], { audience = "tabletop-mcp", sub = "u:1" } = {}) {
-  return new SignJWT({
-    boards: boards.map((board) => ({ grant: 0, ...board })),
-    client_id: "client-1",
-  })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setAudience(audience)
-    .setIssuer("dev-host")
-    .setSubject(sub)
-    .setIssuedAt(now())
-    .setExpirationTime(now() + 300)
-    .sign(await importPKCS8(testEnv.TEST_SIGNING_KEY, "RS256"));
-}
+const MCP = "https://mcp.test";
 
 type Rpc = { method: string; params?: { name?: string } };
 
@@ -48,11 +26,8 @@ const rpc = (method: string, params: object = {}) => ({
 });
 
 async function post(bearer: string | null, body: object, headers: Record<string, string> = {}) {
-  const worker = (await import("cloudflare:workers")) as unknown as {
-    exports: { default: { fetch: typeof fetch } };
-  };
-  return worker.exports.default.fetch(
-    new Request("https://board.test/mcp", {
+  return worker.fetch(
+    new Request(`${MCP}/mcp`, {
       body: JSON.stringify(body),
       headers: {
         Accept: "application/json, text/event-stream",
@@ -93,13 +68,13 @@ describe("the MCP endpoint", () => {
     const response = await post(null, rpc("tools/list"));
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="https://board.test/.well-known/oauth-protected-resource/mcp", scope="boards:read boards:write"',
+      'Bearer resource_metadata="https://mcp.test/.well-known/oauth-protected-resource/mcp", scope="boards:read boards:write"',
     );
-    const metadata = await call("/.well-known/oauth-protected-resource/mcp", null);
+    const metadata = await worker.fetch(`${MCP}/.well-known/oauth-protected-resource/mcp`);
     expect(await metadata.json()).toEqual({
       authorization_servers: ["http://localhost:8000"],
       bearer_methods_supported: ["header"],
-      resource: "https://board.test/mcp",
+      resource: "https://mcp.test/mcp",
       resource_name: "Tabletop boards",
       scopes_supported: ["boards:read", "boards:write"],
     });
@@ -184,10 +159,11 @@ describe("the MCP endpoint", () => {
     expect(applied.result.content[0]).toEqual({ text: UNTRUSTED, type: "text" });
     const body = JSON.parse(applied.result.content[1].text);
     expect(body).toMatchObject({ applied: 3, errors: [], pageName: "Page 1" });
-    const room = testEnv.BoardRoom.get(testEnv.BoardRoom.idFromName("mcp-b")) as unknown as {
-      records(): Promise<{ id: string }[]>;
-    };
-    const records = await room.records();
+    const snapshot = await roomOf("mcp-b").readDocument(
+      { access: "read", board: "mcp-b", grant: 0, title: null },
+      { scope: "document" },
+    );
+    const records = snapshot === "revoked" ? [] : snapshot.records;
     expect(records.map((record) => record.id)).toEqual(
       expect.arrayContaining(["shape:vault", "shape:guard"]),
     );

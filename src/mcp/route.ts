@@ -1,8 +1,7 @@
-import type { BoardRoom } from "../board-room";
 import type { Verifier } from "../pass";
 
 import { verifyMcpToken } from "./grant";
-import { mcpHandler } from "./server";
+import { mcpHandler, type Rooms } from "./server";
 
 // The MCP endpoint as an OAuth protected resource (RFC 9728): it names the
 // host's authorization server, answers 401 with a pointer to that metadata
@@ -40,7 +39,7 @@ function unauthorized(origin: string, error?: string): Response {
 
 export async function serveMcp(
   request: Request,
-  rooms: DurableObjectNamespace<BoardRoom>,
+  rooms: Rooms,
   settings: McpSettings,
 ): Promise<Response> {
   const url = new URL(request.url);

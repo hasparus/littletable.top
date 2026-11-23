@@ -23,6 +23,7 @@ export class Doc {
   private readonly overlay = new Map<string, TLRecord | null>();
   private journal: { id: string; previous: TLRecord | null | undefined }[] = [];
   private index: Index | null = null;
+  private readonly relied = new Set<string>();
 
   constructor(records: Iterable<TLRecord>) {
     this.base = new Map([...records].map((record) => [record.id, record]));
@@ -50,6 +51,29 @@ export class Doc {
     this.journal.push({ id, previous: this.overlay.get(id) });
     this.overlay.set(id, null);
     this.index = null;
+  }
+
+  /** An op's answer rests on this record being as it is (and its parents). */
+  depend(id: string): void {
+    for (let at: string | undefined = id, depth = 0; at !== undefined && depth < 1_000; depth++) {
+      this.relied.add(at);
+      at = this.shape(at)?.parentId;
+    }
+  }
+
+  /**
+   * What must still hold in the room for this batch's writes to be right:
+   * records it relied on or overwrites must be unchanged, ids it creates
+   * must still be free.
+   */
+  preconditions(): { absent: string[]; unchanged: string[] } {
+    const unchanged = new Set([...this.relied].filter((id) => this.base.has(id)));
+    const absent: string[] = [];
+    for (const [id, record] of this.overlay) {
+      if (this.base.has(id)) unchanged.add(id);
+      else if (record !== null) absent.push(id);
+    }
+    return { absent, unchanged: [...unchanged] };
   }
 
   mark(): number {

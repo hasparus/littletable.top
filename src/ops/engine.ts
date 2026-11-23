@@ -89,11 +89,15 @@ export type BatchInput = {
 
 export type BatchOutcome =
   | {
+      /** Ids this batch creates, which must still be free when it is written. */
+      absent: string[];
       created: string[];
       deletes: string[];
       kind: "applied";
       puts: TLRecord[];
       result: ApplyOpsResult;
+      /** Records the batch relied on or overwrites: unchanged since the snapshot, or it is stale. */
+      unchanged: string[];
     }
   | { kind: "invalid"; message: string }
   | { kind: "no-page"; message: string };
@@ -178,7 +182,9 @@ export function runBatch(records: Iterable<TLRecord>, input: BatchInput): BatchO
     }
   }
   const { deletes, puts } = doc.changes();
+  doc.depend(page.id);
   return {
+    ...doc.preconditions(),
     created: ctx.created.slice(input.run.created.length),
     deletes,
     kind: "applied",
@@ -220,6 +226,12 @@ function byText(ctx: Context, text: string): TLShape[] {
 }
 
 function resolve(ctx: Context, ref: Ref): TLShape {
+  const shape = find(ctx, ref);
+  ctx.doc.depend(shape.id);
+  return shape;
+}
+
+function find(ctx: Context, ref: Ref): TLShape {
   if (typeof ref === "string") {
     const shape = ctx.doc.shape(toShapeId(ref));
     if (shape === undefined || ctx.doc.pageOf(shape) !== ctx.page.id) {
@@ -273,6 +285,7 @@ function resolveList(ctx: Context, refs: RefList): TLShape[] {
     const found = byText(ctx, refs.text);
     if (found.length === 0)
       throw new OpError(`No shape on this page has the text ${quote(refs.text)}.`);
+    for (const shape of found) ctx.doc.depend(shape.id);
     return found;
   }
   if ("created" in refs) {
@@ -280,6 +293,7 @@ function resolveList(ctx: Context, refs: RefList): TLShape[] {
       .map((id) => ctx.doc.shape(id))
       .filter((shape) => shape !== undefined);
     if (shapes.length === 0) throw new OpError("This run has made no shapes that still exist.");
+    for (const shape of shapes) ctx.doc.depend(shape.id);
     return shapes;
   }
   return [resolve(ctx, refs)];
@@ -433,6 +447,7 @@ function placeNew(
   } else if (where.relation === undefined) {
     const last = ctx.created.at(-1);
     target = last === undefined ? undefined : ctx.doc.shape(last);
+    if (target !== undefined) ctx.doc.depend(target.id);
     relation = "right_of";
   } else {
     throw new OpError(`relation ${where.relation} needs a target.`);

@@ -2,7 +2,6 @@ import { type BoardRoom, PASS_HEADER, type Refusal } from "./board-room";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
 import { serveFiles } from "./files";
-import { isMcpPath, type McpSettings, serveMcp } from "./mcp/route";
 import { type Pass, publicKeyFrom, type Verifier, verifyDeletion, verifyPass } from "./pass";
 import { aliasRedirect, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
@@ -30,12 +29,7 @@ function answer(result: Refusal | object): Response {
     : Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
-type Verifiers = {
-  deletion: Verifier | null;
-  keys: Keys | null;
-  mcp: McpSettings | null;
-  pass: Verifier;
-};
+type Verifiers = { deletion: Verifier | null; keys: Keys | null; pass: Verifier };
 
 async function verifiersFor(config: Config): Promise<Verifiers> {
   if (config.mode === "standalone") {
@@ -43,8 +37,7 @@ async function verifiersFor(config: Config): Promise<Verifiers> {
       throw new ConfigError("SIGNING_KEY is not an RSA private key in PKCS#8 PEM form");
     });
     // NOTE: standalone mode deletes boards itself; no token can.
-    // TODO: standalone mode's own authorization server (docs/mcp-design.md).
-    return { deletion: null, keys, mcp: null, pass: passVerifier(keys) };
+    return { deletion: null, keys, pass: passVerifier(keys) };
   }
   const key = await publicKeyFrom(config.publicKey).catch(() => {
     throw new ConfigError("ISSUER_PUBLIC_KEY is not a public key in SPKI PEM form");
@@ -52,13 +45,6 @@ async function verifiersFor(config: Config): Promise<Verifiers> {
   return {
     deletion: { audience: config.deletionAudience, issuer: config.issuer, key },
     keys: null,
-    mcp:
-      config.mcp === null
-        ? null
-        : {
-            authorizationServer: config.mcp.authorizationServer,
-            verifier: { audience: config.mcp.audience, issuer: config.issuer, key },
-          },
     pass: { audience: config.passAudience, issuer: config.issuer, key },
   };
 }
@@ -163,11 +149,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
   const moved = aliasRedirect(request, config.hosts);
   if (moved !== null) return moved;
-  const { pathname } = new URL(request.url);
-  if (verifiers.mcp !== null && isMcpPath(pathname)) {
-    return serveMcp(request, env.BoardRoom, verifiers.mcp);
-  }
-  if (ROOMS.test(pathname)) return rooms(request, env, config, verifiers);
+  if (ROOMS.test(new URL(request.url).pathname)) return rooms(request, env, config, verifiers);
   if (config.mode === "standalone") {
     if (env.DB === undefined || env.Limiter === undefined) {
       console.error(

@@ -9,13 +9,19 @@ import {
 } from "@tldraw/sync-core";
 import { DurableObject } from "cloudflare:workers";
 
-import type { BoardGrant } from "./mcp/grant";
 import type { Pass } from "./pass";
 
 import { type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
-import { type ApplyOpsRequest, type ApplyOpsResponse, BoardOps } from "./ops/board-ops";
+import {
+  type BoardGrant,
+  type CommitOutcome,
+  type DocumentDiff,
+  type DocumentScope,
+  type DocumentSnapshot,
+  RoomDocument,
+} from "./room-document";
 
 type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
 
@@ -44,7 +50,7 @@ export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<TLRecord, Person>;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
-  private ops!: BoardOps;
+  private document!: RoomDocument;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -71,7 +77,7 @@ export class BoardRoom extends DurableObject<Env> {
     );
     this.lastRollAt = new Map();
     this.files = new FileLedger(sql, this.env.Files);
-    this.ops = new BoardOps(sql, () => this.room.storage);
+    this.document = new RoomDocument(sql, () => this.room.storage);
   }
 
   private link(): number {
@@ -212,31 +218,28 @@ export class BoardRoom extends DurableObject<Env> {
     log("board.mcp_revoked", { board, version });
   }
 
-  mcpApplyOps(
+  // NOTE: only a Worker bound to this class can call these; the caller has
+  // verified the grant's token, the room checks its version and access.
+  readDocument(
     grant: BoardGrant,
-    request: ApplyOpsRequest,
-  ): "read-only" | "revoked" | ApplyOpsResponse {
+    request: { runId?: string; scope: DocumentScope },
+  ): DocumentSnapshot | "revoked" {
+    return this.admitGrant(grant) ?? this.document.read(request.scope, request.runId);
+  }
+
+  commitDocument(grant: BoardGrant, diff: DocumentDiff): CommitOutcome | "read-only" | "revoked" {
     const refusal = this.admitGrant(grant);
     if (refusal !== null) return refusal;
     if (grant.access !== "write") return "read-only";
-    const response = this.ops.apply(request);
-    log("board.mcp_ops", {
-      applied: response.kind === "applied" ? response.result.applied : 0,
+    const outcome = this.document.commit(diff);
+    log("board.document_commit", {
       board: grant.board,
-      failed: response.kind === "applied" ? response.result.errors.length : 0,
-      outcome: response.kind,
+      outcome: outcome.kind,
       people: this.room.getNumActiveSessions(),
+      puts: diff.puts.length,
+      removes: diff.removes.length,
     });
-    return response;
-  }
-
-  mcpPages(grant: BoardGrant): "revoked" | ReturnType<BoardOps["pages"]> {
-    return this.admitGrant(grant) ?? this.ops.pages();
-  }
-
-  /** For tests and tools that read the document as it is now. */
-  records(): TLRecord[] {
-    return this.room.storage.transaction((txn) => [...txn.values()]).result;
+    return outcome;
   }
 
   async destroy(board: string) {

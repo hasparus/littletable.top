@@ -12,10 +12,6 @@ export type ConfigEnv = {
   ISSUER?: string;
   ISSUER_PUBLIC_KEY?: string;
   PASS_AUDIENCE?: string;
-  // Hosted, optional: the host's OAuth authorization server (its issuer
-  // URL), which turns on the MCP endpoint, and the `aud` of its access tokens.
-  MCP_AUDIENCE?: string;
-  MCP_AUTHORIZATION_SERVER?: string;
   // Hosted: the host's origin, which the client asks for passes, and where a
   // person typing the tabletop's bare name goes.
   HOME_URL?: string;
@@ -48,7 +44,6 @@ export type HostedConfig = {
   hostOrigin: string;
   hosts: Hosts;
   issuer: string;
-  mcp: { audience: string; authorizationServer: string } | null;
   mode: "hosted";
   passAudience: string;
   publicKey: string;
@@ -134,22 +129,12 @@ function hosted(env: ConfigEnv): HostedConfig {
     throw new ConfigError(`the audience "${STANDALONE_AUDIENCE}" is the standalone mode's own`);
   }
   const hostOrigin = origin(env.HOST_ORIGIN!, "HOST_ORIGIN");
-  const mcpAudience = present(env.MCP_AUDIENCE) ? env.MCP_AUDIENCE : "tabletop-mcp";
-  if ([deletionAudience, passAudience, STANDALONE_AUDIENCE].includes(mcpAudience)) {
-    throw new ConfigError("MCP_AUDIENCE must differ from the other audiences");
-  }
   return {
     deletionAudience,
     homeUrl: present(env.HOME_URL) ? env.HOME_URL : `${hostOrigin}/`,
     hostOrigin,
     hosts: hostsOf(env),
     issuer: env.ISSUER!,
-    mcp: present(env.MCP_AUTHORIZATION_SERVER)
-      ? {
-          audience: mcpAudience,
-          authorizationServer: origin(env.MCP_AUTHORIZATION_SERVER, "MCP_AUTHORIZATION_SERVER"),
-        }
-      : null,
     mode: "hosted",
     passAudience,
     publicKey: pem(env.ISSUER_PUBLIC_KEY!),
@@ -165,8 +150,6 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     "DELETION_AUDIENCE",
     "HOST_ORIGIN",
     "HOME_URL",
-    "MCP_AUDIENCE",
-    "MCP_AUTHORIZATION_SERVER",
   ]);
   return {
     displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
