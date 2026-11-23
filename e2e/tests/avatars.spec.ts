@@ -11,7 +11,12 @@ import { collectCspViolations, expectNoCspViolations, joinAs, openSheet, PHONE }
 
 const SHOTS = "/home/user/ludamus/screenshots/board";
 
-// The picture inside a person's avatar, once it has really loaded, as the
+// A person's row in the people list. The avatar is decoration beside the
+// name, so the row is found by the name it says.
+const rowOf = (people: Locator, name: string): Locator =>
+  people.getByRole("listitem").filter({ hasText: name });
+
+// The picture in a person's avatar, once it has really loaded, as the
 // address it came from; null while there is only an initial.
 async function pictureOf(avatar: Locator): Promise<string | null> {
   const picture = avatar.locator("img");
@@ -55,12 +60,13 @@ test("hosted: a member's picture reaches a guest's people list from the tabletop
   await joinAs(guest, "Bea");
 
   const people = await openSheet(guest, "People");
-  const ada = people.getByRole("img", { name: "Ada" });
   await expect
-    .poll(async () => pictureOf(ada))
+    .poll(async () => pictureOf(rowOf(people, "Ada")))
     .toMatch(new RegExp(String.raw`^${HOSTED}/rooms/[\w-]+/files/avatars/[0-9a-f]{64}$`, "u"));
-  const own = people.getByRole("img", { name: "Bea" });
-  await expect(own).toHaveText("B");
+  // A screen reader hears each name once, not the avatar's too.
+  await expect(people.getByRole("button", { exact: true, name: "Ada Follow" })).toBeVisible();
+  const own = rowOf(people, "Bea");
+  await expect(own.getByText("B", { exact: true })).toBeVisible();
   expect(await pictureOf(own)).toBeNull();
   // The guest's browser asked the host for its pass and nothing else.
   expect(asked.filter((url) => url.startsWith(HOST) && !url.includes("/bootstrap/"))).toEqual([]);
@@ -69,8 +75,8 @@ test("hosted: a member's picture reaches a guest's people list from the tabletop
 
   // Ada sees her own picture, and Bea's initial.
   const hers = await openSheet(page, "People");
-  await expect.poll(async () => pictureOf(hers.getByRole("img", { name: "Ada" }))).not.toBeNull();
-  await expect(hers.getByRole("img", { name: "Bea" })).toHaveText("B");
+  await expect.poll(async () => pictureOf(rowOf(hers, "Ada"))).not.toBeNull();
+  await expect(rowOf(hers, "Bea").getByText("B", { exact: true })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/avatars-people-desktop.png` });
 
   await expectNoCspViolations(page);
@@ -91,7 +97,7 @@ test("standalone: the account's picture is on the front page and on its boards",
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("Signed in as Katherine Johnson")).toBeVisible();
 
-  const mine = page.getByRole("img", { name: "Katherine Johnson" });
+  const mine = page.getByRole("banner");
   await expect
     .poll(async () => pictureOf(mine))
     .toMatch(new RegExp(String.raw`^${STANDALONE}/api/avatars/[0-9a-f]{64}$`, "u"));
@@ -110,9 +116,9 @@ test("standalone: the account's picture is on the front page and on its boards",
   const fromGuest = requestsOf(guest);
   const people = await openSheet(guest, "People");
   await expect
-    .poll(async () => pictureOf(people.getByRole("img", { name: "Katherine Johnson" })))
+    .poll(async () => pictureOf(rowOf(people, "Katherine Johnson")))
     .toMatch(new RegExp(String.raw`^${STANDALONE}/rooms/[\w-]+/files/avatars/[0-9a-f]{64}$`, "u"));
-  await expect(people.getByRole("img", { name: "Noor" })).toHaveText("N");
+  await expect(rowOf(people, "Noor").getByText("N", { exact: true })).toBeVisible();
   expect(fromGuest.filter((url) => url.startsWith("http") && !url.startsWith(STANDALONE))).toEqual(
     [],
   );

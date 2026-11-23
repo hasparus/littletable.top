@@ -12,7 +12,8 @@ function initialOf(name: string): string {
 // A person's picture in a ring of their colour, or, without one or while it
 // fails to load, the first letter of their name on a light wash of that
 // colour. The box never changes size, so nothing moves when the picture
-// arrives. The picture is decoration; the name is the accessible one.
+// arrives. Wherever it shows, the name is written beside it, so the avatar
+// is decoration and a screen reader hears the name once.
 export function Avatar({
   color,
   name,
@@ -31,12 +32,11 @@ export function Avatar({
   };
   return (
     <span
-      aria-label={name}
+      aria-hidden="true"
       className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-ink select-none ${SIZES[size]}`}
-      role="img"
       style={style}
     >
-      <span aria-hidden="true">{initialOf(name)}</span>
+      {initialOf(name)}
       {src !== null && failed !== src && (
         <img
           alt=""
