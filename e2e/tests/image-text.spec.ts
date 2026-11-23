@@ -46,6 +46,7 @@ const truth = JSON.parse(readFileSync(fixture("text/map_pl.gt.json"), "utf8")) a
 const READ_MS = 150_000;
 
 async function shot(page: Page, name: string): Promise<void> {
+  if (test.info().project.name !== "chromium") return;
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: `${SHOTS}/ocr-${name}.png` });
 }

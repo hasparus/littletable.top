@@ -32,7 +32,17 @@ export default defineConfig({
   forbidOnly: isCI,
   fullyParallel: false,
   outputDir: "test-results",
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // NOTE: mobile Safari reads text in images too (a nested worker, both
+    // engines' WebAssembly); WebKit runs that core flow.
+    {
+      grep: /found by others/u,
+      name: "webkit",
+      testMatch: /image-text\.spec\.ts/u,
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
   reporter: isCI ? [["github"], ["line"]] : [["line"]],
   retries: isCI ? 1 : 0,
   testDir: "./tests",
