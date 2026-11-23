@@ -240,7 +240,12 @@ describe("a guest", () => {
     });
     const joined: Answer = await (await guest.bootstrap(board.shareCode, { name: " Cy " })).json();
 
-    expect(joined.person).toEqual({ id: expect.stringMatching(/^g:/u), name: "Cy", owner: false });
+    expect(joined.person).toEqual({
+      id: expect.stringMatching(/^g:/u),
+      name: "Cy",
+      owner: false,
+      role: "write",
+    });
     expect((await openSocket(joined.board, joined.pass)).response.status).toBe(101);
     const rolled = await roomCall(`/rooms/${joined.board}/roll`, joined.pass, {
       body: JSON.stringify({ dice: [6, 6] }),
