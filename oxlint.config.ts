@@ -6,7 +6,9 @@ const tailwindEntryPoint = fileURLToPath(new URL("client/src/app.css", import.me
 
 export default defineConfig({
   extends: [baseConfig, { options: { typeAware: false } }],
-  ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report"],
+  // NOTE: src/mcp/upstream is tldraw's code, kept as close to the original as
+  // it can be (docs/upstream-provenance.md); it follows tldraw's style, not ours.
+  ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report", "src/mcp/upstream"],
   overrides: [
     // The Worker logs one JSON line per event to the console, which is what
     // Workers Logs collects, and the fakes are server processes; the
