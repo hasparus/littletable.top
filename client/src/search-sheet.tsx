@@ -197,10 +197,7 @@ function Results({
                 {label !== null && !source.seen && <span className="sr-only">{`${label}: `}</span>}
                 {hit.excerpt.map((part, at) =>
                   part.mark ? (
-                    <mark
-                      className="rounded-sm bg-primary-light px-0.5 text-primary-strong"
-                      key={at}
-                    >
+                    <mark className="rounded-sm bg-primary-light text-primary-strong" key={at}>
                       {part.text}
                     </mark>
                   ) : (
