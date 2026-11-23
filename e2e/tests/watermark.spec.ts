@@ -1,0 +1,93 @@
+import { devices, expect, type Locator, type Page, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+
+import { HOST } from "../ports";
+import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
+
+// tldraw's licence asks that its "made with tldraw" mark stays visible,
+// unobscured and open to interaction. It sits in the bottom right corner
+// of the canvas: a small tab on the edge of a phone, the full mark on a
+// wider screen. Nothing of the board's own may cover it: not the bottom
+// bar's controls, a sheet, or the dice strip.
+// NOTE: without a licence key on localhost tldraw draws the same element in
+// the same place, with "Get a license for production" on wide screens.
+
+const SHOTS = "/home/user/ludamus/screenshots/board";
+
+const watermark = (page: Page): Locator => page.locator("[data-testid^='tl-watermark']");
+
+type Box = { height: number; width: number; x: number; y: number };
+
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+// Whether the mark is what a tap in its middle would reach.
+const onTop = (page: Page) =>
+  watermark(page).evaluate((mark) => {
+    const box = mark.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit !== null && mark.contains(hit);
+  });
+
+async function expectClearOf(page: Page, other: Locator, what: string): Promise<void> {
+  await expect(other).toBeVisible();
+  const mark = (await watermark(page).boundingBox())!;
+  expect(overlap(mark, (await other.boundingBox())!), `${what} leaves the mark alone`).toBe(false);
+  expect(await onTop(page), `the mark is on top beside ${what}`).toBe(true);
+}
+
+const SCREENS = [
+  ["phone-360", { ...PHONE, viewport: { height: 740, width: 360 } }],
+  ["phone-390", { ...PHONE, viewport: { height: 844, width: 390 } }],
+  ["phone-430", { ...PHONE, viewport: { height: 932, width: 430 } }],
+  ["desktop", devices["Desktop Chrome"]],
+] as const;
+
+for (const [name, device] of SCREENS) {
+  test(`tldraw's mark stays in view and uncovered on ${name}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      ...device,
+      deviceScaleFactor: 2,
+      // The strip shows at once, and stays for the shot.
+      reducedMotion: "reduce",
+    });
+    const page = await context.newPage();
+    await collectCspViolations(page);
+    await page.goto(`${HOST}/sign-in?name=Ada`);
+    await page.getByRole("button", { name: "New board" }).click();
+    await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+
+    const { height, width } = page.viewportSize()!;
+    await expect(watermark(page)).toBeVisible();
+    const mark = (await watermark(page).boundingBox())!;
+    // Bottom right, inside the screen but for the tab's 2px tuck on a phone.
+    expect(mark.x + mark.width).toBeGreaterThan(width - 16);
+    expect(mark.x).toBeLessThan(width);
+    expect(mark.y + mark.height).toBeLessThanOrEqual(height);
+    expect(mark.y).toBeGreaterThan(height - 80);
+
+    // The bottom bar, with the board's own controls in it.
+    for (const control of ["Places", "People", "Dice"]) {
+      await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
+    }
+    mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: `${SHOTS}/watermark-${name}.png` });
+
+    for (const sheet of ["Places", "People"]) {
+      const dialog = await openSheet(page, sheet);
+      await expectClearOf(page, dialog, `the ${sheet} sheet`);
+      await closeSheet(page, sheet);
+    }
+    const dice = await openSheet(page, "Dice");
+    await expectClearOf(page, dice, "the Dice sheet");
+    await page.screenshot({ path: `${SHOTS}/watermark-${name}-sheet.png` });
+    await dice.getByRole("button", { exact: true, name: "Add d20" }).click();
+    await dice.getByRole("button", { name: /^Roll/u }).click();
+    await closeSheet(page, "Dice");
+
+    const strip = page.getByRole("button", { exact: true, name: "Close" });
+    await expectClearOf(page, strip, "the dice strip");
+    await page.screenshot({ path: `${SHOTS}/watermark-${name}-strip.png` });
+    await context.close();
+  });
+}
