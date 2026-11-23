@@ -1,4 +1,4 @@
-import type { Editor, IndexKey, TLPageId, TLShape, TLShapeId } from "tldraw";
+import type { BoxLike, Editor, IndexKey, TLPageId, TLShape, TLShapeId } from "tldraw";
 
 import { useCallback, useState } from "react";
 
@@ -56,18 +56,14 @@ export const nameAsPlace = (editor: Editor, id: TLShapeId, name: string) =>
 
 export const removePlace = (editor: Editor, id: TLShapeId) => setMeta(editor, id, null);
 
-export function goTo(editor: Editor, id: TLShapeId): void {
-  const shape = editor.getShape(id);
-  if (shape === undefined) return;
-  const page = editor.getAncestorPageId(shape);
-  const away = page !== undefined && page !== editor.getCurrentPageId();
+// Shows `bounds` (page coordinates) on `page`, switching to it first.
+export function goToBounds(editor: Editor, page: TLPageId, bounds: BoxLike): void {
+  const away = page !== editor.getCurrentPageId();
   if (editor.getInstanceState().followingUserId !== null) editor.stopFollowingUser();
   if (away) {
     editor.markHistoryStoppingPoint("change-page");
     editor.setCurrentPage(page);
   }
-  const bounds = editor.getShapePageBounds(id);
-  if (bounds === undefined) return;
   editor.zoomToBounds(bounds, {
     // NOTE: the other page's camera starts wherever it was left; gliding
     // from there would only show unrelated parts of that page.
@@ -77,6 +73,13 @@ export function goTo(editor: Editor, id: TLShapeId): void {
     // than blown up to fill the screen.
     targetZoom: 1,
   });
+}
+
+export function goTo(editor: Editor, id: TLShapeId): void {
+  const page = editor.getAncestorPageId(id);
+  const bounds = editor.getShapePageBounds(id);
+  if (page === undefined || bounds === undefined) return;
+  goToBounds(editor, page, bounds);
 }
 
 // The one place each person keeps first in their own list. Private to this
