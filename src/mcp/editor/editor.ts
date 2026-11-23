@@ -23,11 +23,11 @@ import type { Doc } from "../../ops/doc";
 import {
   apply,
   arrowPath,
-  type Box as Rect,
   localBounds,
   pageBounds,
   pageToLocal,
   pageTransform,
+  type Box as Rect,
   toParentSpace,
   type Vec,
 } from "../../ops/geometry";
@@ -105,9 +105,9 @@ type MeasureTextOptions = {
   fontStyle?: string;
   fontWeight?: string;
   lineHeight: number;
+  maxWidth: number | null;
+  minWidth?: number | null;
   padding?: string;
-  maxWidth: null | number;
-  minWidth?: null | number;
 };
 
 const idOf = (value: IdOrShape): TLShapeId => (typeof value === "string" ? value : value.id);
@@ -170,8 +170,8 @@ const DEFAULT_PROPS: Record<string, () => Record<string, unknown>> = {
       color: "black",
       dash: "draw",
       points: {
-        [start]: { id: start, index: start, x: 0, y: 0 },
         [end]: { id: end, index: end, x: 0.1, y: 0.1 },
+        [start]: { id: start, index: start, x: 0, y: 0 },
       },
       scale: 1,
       size: "m",
@@ -214,7 +214,7 @@ export class StandInEditor {
   private undoable: number[] = [];
   private redoable: { puts: TLRecord[]; removed: string[] }[] = [];
   private selected: TLShapeId[];
-  private readonly userId: null | string;
+  private readonly userId: string | null;
 
   readonly textMeasure = {
     // tldraw measures plain text as one paragraph per line.
@@ -239,7 +239,7 @@ export class StandInEditor {
   constructor(
     readonly doc: Doc,
     private readonly pageId: TLPageId,
-    options: { selected?: TLShapeId[]; userId?: null | string } = {},
+    options: { selected?: TLShapeId[]; userId?: string | null } = {},
   ) {
     this.selected = options.selected ?? [];
     this.userId = options.userId ?? null;
@@ -318,7 +318,7 @@ export class StandInEditor {
 
   isShapeOrAncestorLocked(value: IdOrShape): boolean {
     let shape = this.find(value);
-    for (let depth = 0; shape !== undefined && depth < 1_000; depth++) {
+    for (let depth = 0; shape !== undefined && depth < 1000; depth++) {
       if (shape.isLocked) return true;
       shape = this.doc.shape(shape.parentId);
     }
@@ -420,7 +420,7 @@ export class StandInEditor {
     if (defaults === undefined) throw new Error(`This board cannot create a ${given.type} shape`);
     let { x = 0, y = 0 } = given;
     let rotation = given.rotation ?? 0;
-    let parentId = given.parentId;
+    let { parentId } = given;
     if (parentId === undefined || this.doc.get(parentId) === undefined) {
       const positioned = given.x !== undefined && given.y !== undefined;
       parentId = positioned ? this.parentAt({ x, y }, given.type) : this.pageId;

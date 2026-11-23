@@ -3,7 +3,7 @@ import type { TLRecord } from "@tldraw/tlschema";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 
-import type { Step } from "./harness";
+import type { Step } from "./corpus";
 
 import { computeOps } from "../../src/mcp/board";
 
@@ -229,28 +229,48 @@ const SCENARIOS: { name: string; ops: object[]; steps: Step[] }[] = [
   },
 ];
 
-type Shape = TLRecord & {
+// A record as the comparison reads it, whichever kind it is.
+type Row = {
+  fromId: string;
   id: string;
+  index: string;
+  parentId: string;
   props: Record<string, unknown>;
-  typeName: "shape";
+  toId: string;
+  type: string;
+  typeName: string;
   x: number;
   y: number;
 };
+type Shape = Row;
 
-const NUMERIC_PROPS = [
-  "w",
-  "h",
-  "growY",
+const bindingsOf = (records: Row[]) =>
+  records
+    .filter((r) => r.typeName === "binding")
+    .map(({ fromId, props, toId }) => {
+      const sorted = Object.fromEntries(
+        Object.entries(props).sort(([x], [y]) => x.localeCompare(y)),
+      );
+      return JSON.stringify({ fromId, props: sorted, toId });
+    })
+    .sort();
+
+const NUMERIC_PROPS = new Set([
   "bend",
+  "fontSizeAdjustment",
+  "growY",
+  "h",
+  "labelPosition",
   "scale",
   "scaleX",
   "scaleY",
-  "fontSizeAdjustment",
-  "labelPosition",
-];
+  "w",
+]);
 
-function compare(browser: TLRecord[], standIn: TLRecord[], pageId: string) {
-  const onPage = (records: TLRecord[]) => {
+function compare(browserRecords: TLRecord[], standInRecords: TLRecord[], pageId: string) {
+  const browser = browserRecords as unknown as Row[];
+  const standIn = standInRecords as unknown as Row[];
+  const onPage = (records: Row[]) => {
     const shapes = records.filter((r): r is Shape => r.typeName === "shape");
     const parents = new Map(
       shapes.map((shape) => [shape.id, (shape as { parentId: string }).parentId]),
@@ -286,7 +306,7 @@ function compare(browser: TLRecord[], standIn: TLRecord[], pageId: string) {
       note(shape.id, field, (shape as never)[field], (twin as never)[field]);
     }
     for (const [key, value] of Object.entries(shape.props)) {
-      if (NUMERIC_PROPS.includes(key)) note(shape.id, key, value, twin.props[key]);
+      if (NUMERIC_PROPS.has(key)) note(shape.id, key, value, twin.props[key]);
       else if (key === "start" || key === "end") {
         const a = value as { x: number; y: number };
         const b = twin.props[key] as { x: number; y: number };
@@ -298,31 +318,16 @@ function compare(browser: TLRecord[], standIn: TLRecord[], pageId: string) {
   }
   for (const extra of ours.values())
     rows.push({ field: "extra", id: extra.id, ours: extra.type, theirs: null });
-  const order = (records: TLRecord[]) =>
+  const order = (records: Row[]) =>
     onPage(records)
       .sort((a, b) => ((a as { index: string }).index < (b as { index: string }).index ? -1 : 1))
       .map((shape) => `${(shape as { parentId: string }).parentId}/${shape.id}`);
-  const bindings = (records: TLRecord[]) =>
-    records
-      .filter((r) => r.typeName === "binding")
-      .map((binding) => {
-        const { fromId, props, toId } = binding as never as {
-          fromId: string;
-          props: object;
-          toId: string;
-        };
-        const sorted = Object.fromEntries(
-          Object.entries(props).sort(([x], [y]) => x.localeCompare(y)),
-        );
-        return JSON.stringify({ fromId, props: sorted, toId });
-      })
-      .sort();
   const ids = new Set(onPage(browser).map((shape) => shape.id));
   const mine = (list: string[]) => list.filter((entry) => ids.has(JSON.parse(entry).fromId));
   return {
     bindingsEqual:
-      JSON.stringify(mine(bindings(browser))) === JSON.stringify(mine(bindings(standIn))),
-    bindingsSeen: [mine(bindings(browser)).length, mine(bindings(standIn)).length],
+      JSON.stringify(mine(bindingsOf(browser))) === JSON.stringify(mine(bindingsOf(standIn))),
+    bindingsSeen: [mine(bindingsOf(browser)).length, mine(bindingsOf(standIn)).length],
     differences: rows,
     max,
     orderEqual: JSON.stringify(order(browser)) === JSON.stringify(order(standIn)),
@@ -378,7 +383,7 @@ test("tldraw's engine on a real editor and on the stand-in write the same record
     await other.evaluate(
       ([records, pageId]) =>
         (globalThis as unknown as Harness).harness!.show(records as object[], pageId as string),
-      [standIn, real.pageId] as const,
+      [standIn as object[], real.pageId] as const,
     );
     await other.waitForTimeout(300);
     await other.screenshot({ path: `${SCREENSHOTS}/ops2-${name}-standin.png` });
@@ -387,7 +392,7 @@ test("tldraw's engine on a real editor and on the stand-in write the same record
     );
   }
   writeFileSync(REPORT, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(
+  process.stdout.write(
     Object.entries(report)
       .map(([name, value]) => {
         const r = value as ReturnType<typeof compare>;

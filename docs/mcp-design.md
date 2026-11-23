@@ -5,7 +5,162 @@ everything else is a plan. Numbers were measured on this branch (tldraw
 5.6.0, workerd from wrangler 4.145, Node 26 for timings) unless a source is
 named.
 
-## 1. Decision
+## 0. Where this stands (latest)
+
+tldraw allowed us to adapt its hosted-app code, so the engine is no longer
+ours: **tldraw's own canvas-ops engine runs in the MCP Worker, unchanged but
+for its import line, on a stand-in for tldraw's `Editor`** built from the
+records snapshot, our geometry and our text measurer. All eleven operations
+work offline; tldraw's 38 engine tests pass on the stand-in; and on four
+realistic boards the stand-in and a real browser editor, given the same
+batch, write the same records. Sections 1 to 4 describe what the stand-in
+stands on and are still current; §5 and §6 (our own ops and clustering) are
+superseded and kept short.
+
+### Inventory: what tldraw's code asks an editor for
+
+Counted from the source at `ebe1433` (`ops.ts`, `actions.ts`, `receiver.ts`;
+`pathGeometry.ts` and `schema.ts` call no editor).
+
+| Call                                                                                                                                                                   | Uses      | Class            | How the stand-in answers                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor.getShape`                                                                                                                                                      | 23        | already covered  | The document view (`Doc`); a lookup by id is also what records the batch's dependencies for the conflict check                                                                                                                                                      |
+| `editor.createShape`                                                                                                                                                   | 6         | needed real work | What `Editor.createShapes` does to a record: default props per type, the topmost frame under the point as parent, top index, the page's 4,000-shape limit, then the shape util's `onBeforeCreate` (geo `growY`, note `growY` and font adjustment) from our measurer |
+| `editor.getShapePageBounds`                                                                                                                                            | 5         | already covered  | Our geometry                                                                                                                                                                                                                                                        |
+| `editor.getShapeUtil(shape).getText`                                                                                                                                   | 4         | easy             | Plain text of the rich text; a frame's name                                                                                                                                                                                                                         |
+| `editor.getShapeGeometry`                                                                                                                                              | 3         | needed real work | `.bounds` from our geometry; `hitTestPoint` on a geo outline as a polygon or ellipse (`geo-outline.ts`; hearts, clouds and stars are taken as the ellipse in their box)                                                                                             |
+| `editor.markHistoryStoppingPoint` / `bailToMark` / `squashToMark`                                                                                                      | 2 / 1 / 1 | already covered  | Marks and rollback on the document view's journal; the batch is one commit, so squashing is a no-op                                                                                                                                                                 |
+| `editor.getShapePageTransform`                                                                                                                                         | 2         | already covered  | Our transforms (`applyToPoint`, `rotation()`)                                                                                                                                                                                                                       |
+| `editor.updateShape`                                                                                                                                                   | 1         | needed real work | Merge as the editor does, skip locked shapes, then `onBeforeUpdate` of geo (grow or widen to the label, the first-label rule), note and text (auto-size shift by alignment)                                                                                         |
+| `editor.deleteShapes`                                                                                                                                                  | 1         | easy             | Descendants and bindings go; an arrow that outlives a bound shape keeps its drawn end, as the arrow binding util does                                                                                                                                               |
+| `editor.createBindings`                                                                                                                                                | 1         | already covered  | Binding records, then the arrow binding util's re-parenting and order rule                                                                                                                                                                                          |
+| `editor.resizeShape`                                                                                                                                                   | 1         | needed real work | Only the case the engine uses: lines (points scaled) and strokes (`scaleX`/`scaleY`), about a page point, on shapes turned by quarter turns or scaled evenly                                                                                                        |
+| `editor.textMeasure.measureText`                                                                                                                                       | 1         | already covered  | fontkit measurer (§3)                                                                                                                                                                                                                                               |
+| `getArrowInfo(editor, arrow)`                                                                                                                                          | 1         | needed real work | Drawn ends of straight arrows as tldraw clips them (10 px gap plus strokes at an arrowhead, the short-arrow rule); see the limits below                                                                                                                             |
+| `editor.run`, `getCurrentPageId`, `getCurrentPageShapes(Sorted)`, `getSelectedShapeIds`, `getShapeAndDescendantIds`, `isShapeOrAncestorLocked`, `getBindingsFromShape` | 1 each    | easy             | From records                                                                                                                                                                                                                                                        |
+| `createShapeId`, `createBindingId`, `toRichText`, `b64Vecs`, `DefaultFontFamilies`, `getIndices`, `uniqueId`, `structuredClone`                                        | -         | already covered  | tldraw's MIT packages                                                                                                                                                                                                                                               |
+| `areAnglesCompatible`                                                                                                                                                  | 1         | easy             | Five lines                                                                                                                                                                                                                                                          |
+
+The page-read code (`shapeClusters.ts`, `mcpPageRead.ts`) calls no editor
+at all: it takes shapes, bindings and per-shape measurements. Upstream
+fills those in a browser tab (`boardCapture.ts`: `getShape`,
+`getShapePageBounds`, `getShapeUtil().getText`, `getShapePageTransform`,
+`getShapeGeometry`, `getArrowInfo`); `src/mcp/page-read.ts` fills them
+from records.
+
+**Nothing the engine or the page-read code calls needs a DOM.** The only
+DOM-bound call in the whole path is `editor.toImage`, for screenshots (§7).
+`{selected: true}` needs a person's live selection, which is presence, not
+DOM; with nobody connected the engine answers "The user has nothing
+selected", and reading it from the acting account's session is planned.
+
+### How small the adaptation is
+
+|                                                                                                                     | Lines             | Changed against upstream                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| Engine: `ops.ts`, `actions.ts`, `schema.ts`, `pathGeometry.ts`, `receiver.ts`                                       | 2,301             | 16 (five import lines, and one added 8-line export for run memory)                  |
+| Clustering and page read: `shapeClusters.ts`, `mcpPageRead.ts`; the ops JSON schema                                 | 1,913             | 0                                                                                   |
+| Tool layer: `boardTools.ts`                                                                                         | 907 of 2,668 kept | An excerpt; wording changed only where it named tldraw.com or asked for an open tab |
+| tldraw's engine tests: `ops.test.ts`                                                                                | 841               | 73: imports and the editor factory                                                  |
+| Ours: the stand-in (`src/mcp/editor/`, 880 lines) and the glue (`board.ts`, `page-read.ts`, `server.ts`, 500 lines) |                   |                                                                                     |
+
+Every file and change is in `docs/upstream-provenance.md`. Our own engine,
+placement, routing, schema and clustering were deleted.
+
+### tldraw's own tests on the stand-in
+
+All 38 tests of upstream's `ops.test.ts` pass (`test/mcp/upstream`, in
+workerd), with upstream's fixed-width measurer swapped in as upstream does.
+One failed on the first run: "resizes a rotated line along the page axes it
+was measured in". That was a real gap in the stand-in (`resizeShape` took
+the page-axis scale as the shape's own on a shape a quarter turn round),
+now fixed. None fails on a DOM assumption. Two tests use `editor.undo()`
+and `redo()`; the stand-in implements them as "take back the last batch",
+which is also the seed of undo-a-batch (§9b).
+
+### Fidelity against the real editor
+
+`e2e/measure/fidelity.spec.ts` (`aube run e2e:fidelity`): each scenario's
+page is set up through a real tldraw editor in Chromium; the batch is run
+there by the adapted engine with its `tldraw` import pointed back at the
+real package, and again in Node on the stand-in from the same starting
+records; the two sets of records are compared field by field.
+
+| Scenario                                                                                                                                                     | Ops | Shapes after | Fields that differ | Largest difference         | Order, bindings, per-op results |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- | ------------ | ------------------ | -------------------------- | ------------------------------- |
+| Relationship map: boxes, ellipse, diamond, a note in Polish, four labelled arrows, labels, rename with widen, restyle                                        | 13  | 14           | 0                  | 0.005 px (x), 0.007 px (w) | same                            |
+| Crowded page: 24 overlapping boxes; untangle, place, add beside, duplicate, resize, remove                                                                   | 8   | 25           | 0                  | 0                          | same                            |
+| Frames and a group: add inside a frame, beside a framed box, connect out of the frame and within it, place a grouped shape, label, rename the frame, restyle | 8   | 11           | 0                  | 0.004 px                   | same                            |
+| Rotated shapes: add beside and label a tilted box, connect to a turned one, resize it, an open path resized, a closed smooth path, place                     | 8   | 8            | 0                  | 0.004 px                   | same                            |
+
+Multi-page is covered by the run itself: each scenario is a page of one
+document, so the stand-in always computes with other pages' shapes present.
+Compared: position, rotation, parent, type, every prop (sizes, `growY`,
+bend, arrow ends, text, styles), z-order, and each binding's ends, anchor
+and flags. A difference counts above 0.5 px; the residue is fontkit against
+HarfBuzz on text widths.
+
+Getting there took one correction: tldraw lets an arrow that would be
+shorter than its minimum reach into the shape it points at, which moved
+arrow labels by 7 px and, through a collision that then did or did not
+happen, another label by 24. With that rule in `arrowPath` the records are
+identical.
+
+Screenshots, browser and stand-in side by side:
+`screenshots/board/ops2-{map,crowded,frames,rotated}-{browser,standin}.png`.
+The map pair is indistinguishable. The frames pair is identical too, and
+shows the engine's own limits, in the browser as well: an arrow drawn
+through a box inside the frame, and a label lying on a box.
+
+### Costs
+
+|                                             | Raw        | gzip       |
+| ------------------------------------------- | ---------- | ---------- |
+| Board Worker (unchanged by this step)       | 608.1 KiB  | 123.6 KiB  |
+| MCP Worker before the adapted code          | 2990.5 KiB | 1099.2 KiB |
+| MCP Worker with it (our own engine removed) | 3128.4 KiB | 1127.3 KiB |
+
+Timings, Node (same V8), a board of 5,000 shapes on two pages (2,500 each;
+tldraw allows 4,000 shapes a page and the stand-in keeps that limit) plus
+490 arrows, 6,472 records, 3.4 MB:
+
+| Step                                                                    | Time                                                                |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 500 `add`s in one batch, on an empty page / on 2,000 shapes             | 0.44 s / 0.89 s                                                     |
+| 490 `connect`s in one batch on the full page                            | 3.1 s                                                               |
+| One `add` beside a target, cold / warm                                  | 25 ms / 10 ms                                                       |
+| `untangle` of 10 shapes on the full page                                | 49 ms                                                               |
+| `untangle` of a pile of 100 overlapping boxes                           | 370 ms (moved 12; the engine reports the rest as "could not clear") |
+| `get_page_info` on a 2,500-shape page: measure and cluster, cold / warm | 71 ms / 41 ms; shaping the 40K-character answer 2 ms                |
+| `get_cluster_info` for three clusters                                   | 36 ms                                                               |
+| `search_shapes` over both pages                                         | 5 ms                                                                |
+
+Nothing here comes near the 30 s CPU limit. What could: a batch of 1,000
+`connect`s on a crowded page (the engine scans every shape per op: about
+6 ms each at 2,500 shapes, so about 6 s), and memory for very large
+boards, since a call holds the snapshot, the document view and the diff
+(roughly three times the snapshot's 3.4 MB here, against 128 MB).
+
+### What does not work yet
+
+- `{selected: true}` with nobody connected, by design; reading it from the
+  acting account's session is not built.
+- Arrow geometry beyond straight arrows cut at a shape's box: curved and
+  elbow arrows, and exact outlines of ellipses and diamonds, are
+  approximated. It matters only for where the engine puts arrow labels; no
+  scenario above hit it, and one built to hit it would differ by a few px.
+- `hitTestPoint` for hearts, clouds and stars is the ellipse in their box.
+- `resizeShape` covers lines and strokes only (all the engine asks for).
+- Glyphs outside tldraw's fonts (CJK, emoji) are still estimated (§3), and
+  the op result does not yet say so.
+- tldraw's page limit of 4,000 shapes is enforced; the board client's own
+  options should be checked against it when merging.
+- The tools not adapted: screenshots, user state and board users, create
+  and rename board. Unexpected errors inside a tool come back as their
+  message, not yet as upstream's closed vocabulary.
+- Standalone mode still has no MCP Worker.
+
+## 1. Decision (the server-side engine)
 
 **Go: a pure, server-side operations engine, in a Worker of its own.** The
 MCP Worker reads a snapshot of the board's records from the board's Durable
@@ -255,50 +410,31 @@ metadata path to the MCP Worker and everything else to the board Worker
 Standalone mode gets no MCP Worker yet (§9); the helper ignores `mcp`
 there.
 
-## 2. What the slice proves, and what it does not
+## 2. What is built and tested
 
-**Built and tested** (`aube run test`: 149 tests in two projects; `aube run e2e`: 7 specs):
+`aube run test`: two Vitest projects, the second with both Workers in
+workerd. `aube run e2e`: 7 specs.
 
-- `apply_ops` with `add` (label, note, box, ellipse, any geo; fitted to its
-  text; `at`, or `relation`/`gap`/`align` beside a target with collision
-  avoidance), `connect` (bound arrow, labelled, routed around shapes),
-  `label` (text by a shape, optional arrow), `rename` (with `fit`), `remove`
-  (arrows that lose an end stay put). References by id, `{text}`,
-  `{created}`; run memory in the Durable Object's SQLite, so `{created}`
-  works across calls with nobody connected.
-- The full op vocabulary as our own zod schema (`src/ops/schema.ts`): the
-  other six ops validate and answer "not supported yet" per op.
-- Executed from the MCP Worker against a real `BoardRoom` in the board
-  Worker, in the Workers pool, with no session
-  (`test/mcp/apply-ops.test.ts`), and through the MCP endpoint
+- `apply_ops` with all eleven ops, through tldraw's engine on the stand-in,
+  from the MCP Worker against a real `BoardRoom` in the board Worker with
+  no session (`test/mcp/apply-ops.test.ts`): per-op failure with rollback,
+  an invalid batch applying nothing, `{created}` run memory in the room
+  across calls, a named page on a board with several, read-only and
+  revoked grants, one patch to a connected session.
+- The conflict model under concurrent edits (`test/mcp/concurrency.test.ts`,
+  §1a).
+- The MCP endpoint, both protocol eras; `get_board_info`, `get_page_info`,
+  `get_cluster_info` on tldraw's page-read code and `search_shapes` on
+  shape text, each result opening with the untrusted-data notice
   (`test/mcp/mcp.test.ts`).
-- Playwright (`e2e/tests/ops.spec.ts`): a member's open tab shows the shapes
-  without a reload; every label fits inside its shape in the real browser;
-  after a reload the room's shape and binding records are byte-for-byte
-  what the server wrote (no browser re-parented or re-indexed an arrow, or
-  re-measured a label). Screenshots: `ops-live.png`, `ops-reloaded.png`.
-- MCP endpoint with `tools/list` and tool calls in workerd, both protocol
-  eras, behind a board-scoped RS256 access token with a per-board grant
-  version.
-- Page clusters from records (`src/ops/clusters.ts`), not yet a tool.
+- tldraw's 38 engine tests (`test/mcp/upstream`), the text-measurement
+  comparison (`test/mcp/text-measure.test.ts`), the fidelity comparison
+  (`e2e/measure/fidelity.spec.ts`).
+- Playwright (`e2e/tests/ops.spec.ts`): a member's open tab shows the
+  shapes without a reload, every label fits inside its shape, and after a
+  reload the room's shape and binding records are what the server wrote.
 
-**Not proven:**
-
-- `place`, `restyle`, `resize`, `duplicate`, `untangle`, `path`;
-  `{description}` and `{selected}` references.
-- Arrow labels as obstacles. In the screenshot the "Old well" label sits on
-  the course of an earlier arrow, and "two days" is cramped on an arrow 40 px
-  long. Labels and arrows must become obstacles for `label`, and `connect`
-  must report a label that does not fit its arrow.
-- Frames as placement context (a shape placed beside one inside a frame
-  stays on the page), rotated targets (handled as their page-axis box),
-  groups as targets.
-- A client editing a shape at the moment the server removes it. The room
-  rebases pushes on server state; what a pending client `put` does to a
-  record the server deleted was not exercised.
-- Standalone mode has no MCP endpoint yet (§8).
-- Real ChatGPT and Claude clients against the endpoint (needs a deployed
-  authorization server).
+What is not proven is listed in §0.
 
 ## 3. Text measurement without a DOM
 
@@ -534,50 +670,19 @@ the spike took 159 s for the 980 connects (every op re-measured every
 shape); caching boxes per record and filtering route obstacles fixed it,
 and the benchmark stays worth running.
 
-## 5. Remaining ops and contract: effort
+## 5. Operations
 
-One person, including tests and e2e, on top of the slice.
+Superseded: all eleven ops, `{description}` references, collision
+avoidance, label and arrow layout and untangle come with tldraw's engine
+(§0). The 15 days estimated here for writing them are no longer needed.
 
-| Item                                                                                             | Days         |
-| ------------------------------------------------------------------------------------------------ | ------------ |
-| `place` (move, resize, retext, restyle one shape; reuses add/rename)                             | 1.5          |
-| `restyle` with `like`                                                                            | 0.5          |
-| `resize` (`w`/`h`/`scale`, anchor, label refit; notes scale)                                     | 1            |
-| `duplicate` (with children, bindings between copies)                                             | 1            |
-| `path` (line shape; `closed` as a draw or geo polygon; `smooth`)                                 | 1.5          |
-| `untangle` (overlap removal with `keepNear`, `maxDistance`)                                      | 2.5          |
-| `{description}` references (colour, kind, label, region words)                                   | 1.5          |
-| `{selected}` from the account's presence                                                         | 0.5          |
-| Labels and arrows as obstacles; arrow label fit; frames as parents; ellipse and diamond outlines | 3            |
-| Result contract polish (`adjusted` texts, approximate-size flag, undo-a-batch)                   | 1.5          |
-| Multi-page: page by id everywhere, moving across pages refused                                   | 0.5          |
-| **Total**                                                                                        | **about 15** |
+## 6. Page inspection
 
-`untangle` and the obstacle work are where estimates can slip: they are
-layout heuristics judged by eye.
-
-## 6. Page inspection (`get_page_info`, `get_cluster_info`)
-
-Both are computable from records and our geometry; nothing needs a tab.
-Our algorithm (`src/ops/clusters.ts`, built; the tools are not):
-
-1. An atom is a top-level shape with everything inside it.
-2. An arrow joins the atoms it is bound to.
-3. Atoms whose boxes are closer than `reach` join; `reach` is half the
-   median atom's shorter side, between 40 and 160 px. A grid of
-   `reach`-sized cells finds neighbours in about linear time; arrows are
-   left out of the grid so a long arrow does not chain distant groups.
-4. Keywords are the words frequent in the cluster and rare across the
-   page's clusters; the label is the top three; the id is a hash of the
-   member ids, so it is stable until membership changes.
-
-Cost: 180 ms for 5,000 shapes once boxes are known (table above), well
-inside one request. `get_cluster_info` is a lookup plus serialisation with
-the 60K-character cap and a cursor. To add: paging at 40K characters,
-handwriting reported as "N strokes" (only a screenshot shows it), and a
-containment rule for large background images (a map under tokens should
-not swallow the page into one cluster; treat a shape covering more than
-half the page box as a backdrop).
+Superseded: `get_page_info` and `get_cluster_info` run tldraw's
+`shapeClusters.ts` and `mcpPageRead.ts` unchanged, fed by measurements from
+records (`src/mcp/page-read.ts`), with upstream's paging (40K and 60K
+characters, cursors bound to the page and cluster ids) and result shapes.
+Costs are in §0. Our own clustering was removed.
 
 ## 7. Screenshots (`get_cluster_screenshot`)
 
@@ -748,6 +853,82 @@ out on facts.)
   counts and how many people were connected. Never shape text, names or
   ops.
 
+## 9b. Permissions, and a record of changes (design)
+
+### Roles on a board
+
+The maintainer wants a permissions page per board where people have
+**write** or **manage** access, and an assistant gets the boards its person
+may manage.
+
+| Role   | May                                                                                                                                                        | Who                                         |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| guest  | draw, roll, upload, while holding the link                                                                                                                 | anyone with the link and a name; no account |
+| write  | the same, as a named account the board remembers; the board is in their list                                                                               | accounts the board was shared with          |
+| manage | all of that; rename, reset the link, delete; change people's roles; **let an assistant act on the board**, read-only or editing; undo an assistant's batch | the owner, and accounts the owner promotes  |
+
+"Agent access" is not a fourth role: an assistant never holds a role of
+its own. It acts for one account, on boards where that account's role is
+manage, with the access (read or edit) that account picked for that
+assistant on that board. Write alone does not let someone point an
+assistant at a shared board: the people at the table agreed to that
+person, not to their tools; a manager decides that.
+
+Where roles live and how they reach a token:
+
+- **Standalone.** A `board_members (board, account, role)` table in D1
+  beside `boards` (the owner row is implicit); the permissions page is the
+  board's People sheet for managers: each account that has joined, with a
+  role control, and "Assistants" listing the clients granted on this board
+  with their access and a revoke button. The authorization server's
+  consent page (§9) lists the boards where the signing-in account's role is
+  manage. The grant is stored as `(account, client, board, access, grant
+version)`.
+- **Hosted.** The host owns roles and the page. The pass's `owner` boolean
+  becomes `role: "write" | "manage"` (`owner: true` is read as manage for
+  one release). The host's consent page offers boards where the member's
+  role is manage.
+- **Into the token**, in both modes: each `boards` entry is
+  `{board, access, grant, title}` as now; the authorization server only
+  ever issues entries for boards the account manages. It re-checks roles
+  whenever it issues or refreshes a token (one hour at most).
+- **Losing the role** must not wait for expiry: demoting an account, or
+  revoking a client, raises the board's grant version and tells the room
+  (`revokeMcpGrants`), which kills every outstanding assistant token for
+  that board; the other clients get fresh ones on their next refresh.
+
+### Recent changes, with undo for an assistant's batch
+
+A list in the board ("Recent changes") naming who changed what, most
+recent first.
+
+- **Store.** A `changes` table in the room's SQLite: `seq, at, actor_kind
+(person | assistant), actor_id, actor_name, page, batch_id, created,
+changed, removed, undo` and a cap (the last 200 entries or 30 days).
+  Counts and names only in the row itself; never shape text in logs.
+- **Assistants.** `commitDocument` writes one row per batch: the account
+  the assistant acts for and its client name, the counts, and `undo`, the
+  inverse diff the room computes in the same transaction (the previous
+  value of every record the batch overwrote or removed, and the ids it
+  created). That is the one place every assistant write passes through.
+- **People.** The sync room knows which session a push came from
+  (`TLSocketRoom`'s per-session message hook; the session's pass names the
+  person). Pushes are coalesced per person and page into one row per
+  minute of activity ("Ania changed 12 shapes on Dungeon"). No inverse is
+  kept: people have their own undo.
+- **Undo a batch.** `undoBatch(batchId)`, for managers, from the list or
+  as an MCP tool: applies the stored inverse through the same commit path,
+  under the precondition that the records it restores or removes are still
+  as the batch left them. Records someone has since edited are skipped and
+  named ("3 of 14 shapes were changed afterwards and were left alone"), so
+  an undo never destroys a person's later work. Shapes the batch created
+  carry `meta.agent.batchId`, which the list uses to highlight them.
+- **Reading it.** A room call for the client's sheet and a `get_changes`
+  tool later; rows are untrusted data like any other board content (names
+  are user-chosen).
+
+## 10. Tools and contracts
+
 ## 10. Tools and contracts
 
 Common: input objects are strict. Bad arguments and refusals come back as
@@ -796,23 +977,28 @@ user-supplied).
 
 ## 11. Plan
 
-| Phase | What                                                                                                                                                                                               | Days                       |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| 0     | Bring the branch onto current `main` (§14)                                                                                                                                                         | 3                          |
-| 1     | Read tools: `get_page_info`, `get_cluster_info`, `search_boards` paging, `get_board_users`; backdrop rule; caps and cursors; page filter in SQL                                                    | 4.5                        |
-| 2     | Hosted authorization end to end with the first host: consent page, tokens, the revocation call, e2e against the reference host; deploy the MCP Worker on its hostname; try with Claude and ChatGPT | 5.5 (plus the host's side) |
-| 3     | Remaining ops and references (§5)                                                                                                                                                                  | 15                         |
-| 4     | Screenshots through Browser Run with an internal render token; then the connected-tab fast path                                                                                                    | 6 + 4                      |
-| 5     | Standalone authorization server on the MCP host (`workers-oauth-provider`, consent page, grants in D1/KV), `create_board`, `rename_board`                                                          | 7                          |
-| 6     | `get_user_state` (presence through the room), undo-a-batch, "Assistant" in the People sheet, rate limits per account and board                                                                     | 4.5                        |
-| 7     | `search_shapes` native, then OCR when the index exists                                                                                                                                             | 2 + OCR work               |
-| -     | Snapshot cache with `getChangesSince` deltas, if boards grow past a few thousand shapes                                                                                                            | 2                          |
+What the adaptation changed: the remaining ops (15 days), the read tools
+(4.5) and most of the result contract are done. What remains, one person,
+with tests and e2e:
 
-About 52 days in all, 2 more than before the split: a day for the merge
-with two Workers, half days where a tool needs a new room call. The ops
-estimate (§5) is unchanged; ops are pure functions of a snapshot either
-way. Order: 0, 1, 2 give a useful read-and-annotate assistant on the first
-host; 3 can run in parallel with 2.
+| Phase | What                                                                                                                                                                                                                                                                                                                                        | Days                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 0     | Written confirmation from tldraw on file (blocks production, not work)                                                                                                                                                                                                                                                                      | -                          |
+| 1     | Bring the branch onto current `main` (§14): multi-page, custom dice shapes in the stand-in's defaults and geometry, e2e ports, the new names, two Workers in the deploy workflow                                                                                                                                                            | 4                          |
+| 2     | Harden what is built: page filter in SQL and snapshot deltas, rate limits per account and board, upstream's closed error vocabulary, "sized approximately" in op results, the 4,000-shape limit reconciled with the client, curved and elbow arrow ends and exact ellipse and diamond outlines in the stand-in, fidelity scenarios for them | 5                          |
+| 3     | Roles (§9b): hosted contract change (`role` in the pass, reference host), standalone `board_members`, the permissions page in the People sheet                                                                                                                                                                                              | 6                          |
+| 4     | Hosted authorization end to end: consent page on the first host listing managed boards, tokens, the revocation call, the MCP Worker at `mcp.<domain>`, tried with Claude and ChatGPT                                                                                                                                                        | 5.5 (plus the host's side) |
+| 5     | Standalone authorization server on the MCP host (`workers-oauth-provider`, consent listing managed boards, grants in D1/KV), then `create_board`, `rename_board`                                                                                                                                                                            | 7                          |
+| 6     | Recent changes and undo-a-batch (§9b): the room's change log, attribution of people's pushes, inverse diffs, the list in the client, `undoBatch`                                                                                                                                                                                            | 7                          |
+| 7     | Screenshots through Cloudflare's headless browser (chosen): render page, internal render token, `get_cluster_screenshot` on upstream's sizing code                                                                                                                                                                                          | 6                          |
+| 8     | Presence tools: `get_board_users`, `get_user_state`, `{selected: true}` from the acting account's session (upstream's parsers and shaping adapted)                                                                                                                                                                                          | 3                          |
+| 9     | `search_shapes` with OCR matches when the image index exists                                                                                                                                                                                                                                                                                | 1 + the OCR work           |
+
+**About 44.5 days**, against 52 before the adaptation, although the scope
+grew by roles (6) and recent changes with undo (7, of which undo was 1.5
+before). Like for like, the adaptation saved about 19 days. Order: 1, 2, 3,
+4 give assistants on the first host; 6 and 7 can follow in either order; 5
+when standalone needs it.
 
 ## 12. Risks and unknowns
 
@@ -842,25 +1028,42 @@ host; 3 can run in parallel with 2.
   control.
 - **Protocol drift**: the SDK is young (2.4.0); pin it and keep the two
   workerd tests.
-- **Upstream contract drift**: tool names and shapes follow tldraw's hosted
-  tools at commit `ebe1433`; they version theirs (3.10.0) and will change.
+- **Upstream drift**: the adapted code is tldraw's at commit `ebe1433`
+  (their server version 3.10.0). Taking a later version is a re-copy and a
+  16-line patch for the engine, as long as it asks the editor for nothing
+  new; the inventory in §0 and tldraw's own tests are the check.
+- **The permission is verbal** so far. The adapted code is confined to
+  `src/mcp/upstream/` and `test/mcp/upstream/`; without it the stand-in,
+  the room contract and the MCP Worker remain, and the first spike's own
+  engine is in the branch's history (`9834c55`).
+- **The stand-in is a second implementation of editor behaviour.** It
+  matches on every scenario tried; a tldraw upgrade can change a default
+  prop or a sizing rule under it. `aube run e2e:fidelity` and
+  `e2e:measure` on every tldraw bump are the tripwires.
 - **WorkOS facts** in §9 need confirming against current documentation.
 
-## 13. Decisions needed
+## 13. Decisions
 
-1. Decided: MCP in a second Worker (§1a). Open within it: the hostname
-   (`mcp.<domain>` assumed) and whether three attempts is the right bound.
-2. Screenshots: Browser Run as the offline renderer (a paid-plan feature
-   with a small monthly cost), with the connected tab as a fast path.
-3. Standalone authorization: our own authorization server in the Worker
+Made: MCP in a second Worker at `mcp.<domain>`; screenshots through
+Cloudflare's headless browser; tldraw's engine adapted, not rewritten.
+
+Needed:
+
+1. The role model in §9b: that write does not include pointing an
+   assistant at a board, and that assistant access is a manager's grant
+   per client and board, read or edit.
+2. Hosted contract: `owner` becomes `role` in the pass; who builds the
+   permissions page on the first host.
+3. Recent changes: how long the list is kept (200 entries or 30 days
+   proposed), and whether people's edits are listed or only assistants'.
+4. Standalone authorization: our own authorization server on the MCP host
    (recommended) or WorkOS AuthKit with a second board-picking step.
-4. Hosted contract: the token and revocation shape in §9, and whether the
-   first host adds the consent page now.
-5. Whether `create_board` / `rename_board` exist in hosted mode at all, or
-   stay with the host's own MCP server.
-6. Italic faces (+700 KB) and the "sized approximately" flag: ship now or
-   when someone notices.
-7. Undo for assistant batches: a tool, a button on the board, or both.
+5. Whether `create_board` / `rename_board` exist in hosted mode or stay
+   with the host's own MCP server.
+6. Italic faces (+700 KB in the MCP Worker) and the "sized approximately"
+   flag: now or later.
+7. Whether the adapted code may ship before tldraw's written confirmation
+   arrives (assumed: no).
 
 ## 14. Bringing it onto current `main`
 
@@ -896,9 +1099,17 @@ Nothing was rebased. What to expect:
   a page id, and `readDocument`'s page scope is already there. Ops that
   move shapes between pages do not exist.
 - **Custom dice shapes**: if dice are now records of a custom shape type,
-  `src/room-document.ts` must validate with the room's schema instead of
-  `createTLSchema()`, and `src/ops/geometry.ts` needs their box (it falls
-  back to `w` x `h` props, else 1 x 1).
+  `src/room-document.ts` and `src/ops/records.ts` must validate with the
+  room's schema instead of `createTLSchema()`, `src/ops/geometry.ts` needs
+  their box (it falls back to `w` x `h` props, else 1 x 1), and the engine
+  will treat them as obstacles it cannot restyle, which is right.
+- **Search**: main has its own shape search; `search_shapes` here is a
+  40-line pass over records (`src/mcp/page-read.ts`) and should call
+  main's matcher instead once merged.
+- **Adapted code**: `src/mcp/upstream/` and `test/mcp/upstream/` are
+  excluded from oxfmt and oxlint (`.oxfmtrc.json`, `oxlint.config.ts`);
+  keep those exclusions through the merge or the diff against upstream is
+  lost.
 - **Names**: nothing new contains the old prefix. The Worker names
   `tabletop` and `tabletop-mcp` in the wrangler configs (and the
   `script_name` binding, and `name: "tabletop"` in `vitest.config.ts`)

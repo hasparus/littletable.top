@@ -108,8 +108,14 @@ const quoting = (result: ToolResult): ToolResult =>
     ? result
     : { ...result, content: [{ text: UNTRUSTED, type: "text" }, ...result.content] };
 
-const selectorOf = (page: null | PageSelector) =>
+const selectorOf = (page: PageSelector | null) =>
   page === null ? undefined : page.kind === "id" ? page.id : page.ordinal;
+
+const pageIn = (doc: Doc, selector: PageSelector) =>
+  findMcpPage(
+    doc.pages().map(({ id, index, name }) => ({ id, index, name })),
+    selector,
+  );
 
 function serverFor(grant: McpGrant, rooms: Rooms, audit: CallLog): Server {
   const server = new Server(SERVER_INFO, {
@@ -125,12 +131,6 @@ function serverFor(grant: McpGrant, rooms: Rooms, audit: CallLog): Server {
     const snapshot = await roomOf(granted).readDocument(granted, { scope: "document" });
     return snapshot === "revoked" ? null : new Doc(snapshot.records);
   };
-  const pageIn = (doc: Doc, selector: PageSelector) =>
-    findMcpPage(
-      doc.pages().map(({ id, index, name }) => ({ id, index, name })),
-      selector,
-    );
-
   const tools: Record<string, (input: unknown) => Promise<{ board?: string; result: ToolResult }>> =
     {
       [APPLY_OPS_TOOL_NAME]: async (input) => {

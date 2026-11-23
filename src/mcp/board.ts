@@ -35,7 +35,7 @@ const pageScope = (page: ApplyOpsRequest["page"]): DocumentScope =>
     ? { page: page.startsWith("page:") ? page : `page:${page}` }
     : "document";
 
-export function pageOf(doc: Doc, page: ApplyOpsRequest["page"]): string | TLPage {
+export function pageOf(doc: Doc, page: ApplyOpsRequest["page"]): TLPage | string {
   const pages = doc.pages();
   if (pages.length === 0) return "This board has no pages.";
   if (page === undefined || page === null) return pages[0]!;
@@ -50,7 +50,6 @@ export function pageOf(doc: Doc, page: ApplyOpsRequest["page"]): string | TLPage
 }
 
 type Computed =
-  | { kind: "invalid" | "no-page"; message: string }
   | {
       absent: string[];
       created: string[];
@@ -59,7 +58,8 @@ type Computed =
       puts: TLRecord[];
       result: BoardOpsResult;
       unchanged: string[];
-    };
+    }
+  | { kind: "invalid" | "no-page"; message: string };
 
 /** One batch on a snapshot: tldraw's engine over the stand-in editor. Nothing is written. */
 export function computeOps(

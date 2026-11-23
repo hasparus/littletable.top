@@ -188,7 +188,8 @@ rooms socket; the host's origin) and the usual hardening headers.
 
 A second Worker, `tabletop-mcp` (`wrangler.mcp.json`, `src/mcp/worker.ts`),
 serves an MCP endpoint at `/mcp` on a hostname of its own (tools
-`search_boards`, `get_board_info`, `apply_ops`) behind board-scoped access
+`search_boards`, `get_board_info`, `get_page_info`, `get_cluster_info`,
+`apply_ops`, `search_shapes`) behind board-scoped access
 tokens the host signs. It holds the ops engine, the text measurer and its
 fonts, so the board Worker stays small; it reaches a board through a
 binding to this Worker's `BoardRoom` class and two calls on it,
@@ -200,6 +201,14 @@ assistants deploys the board Worker alone.
 session; `dev/both.ts` gives them one address). `aube run test` runs two
 Vitest projects, the second with both Workers in workerd. `aube run
 e2e:measure` refreshes the text-measurement fixtures from real browsers.
+The operations engine, the page and cluster tools and their tests under
+`src/mcp/upstream/` and `test/mcp/upstream/` are adapted from tldraw's
+hosted app, used with tldraw's permission (Copyright (c) tldraw Inc.;
+[docs/upstream-provenance.md](docs/upstream-provenance.md) lists every
+file and change). A written confirmation is needed before a production
+deploy. `aube run e2e:fidelity` runs the same op batches on a real tldraw
+editor and on the server's stand-in and compares the records.
+
 What is built and planned, the measurements and the host's side are in
 [docs/mcp-design.md](docs/mcp-design.md); where tldraw's own code was read,
 in [docs/upstream-provenance.md](docs/upstream-provenance.md).

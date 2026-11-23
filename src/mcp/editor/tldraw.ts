@@ -9,6 +9,7 @@ import { type StandInEditor } from "./editor";
 // `Editor` is our stand-in. The adapted engine (../upstream/canvas-ops)
 // imports this module where the original imports "tldraw".
 
+export { Box } from "./editor";
 export {
   b64Vecs,
   createBindingId,
@@ -27,7 +28,6 @@ export {
   toRichText,
 } from "@tldraw/tlschema";
 export { getIndices, uniqueId } from "@tldraw/utils";
-export { Box } from "./editor";
 
 export type Editor = StandInEditor;
 

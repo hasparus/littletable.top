@@ -64,7 +64,7 @@ export type ShapeMatch = {
 const EXCERPT = 200;
 
 /** Shapes whose own text contains every word of the query, on one page or all. */
-export function searchShapes(doc: Doc, query: string, pageId: null | string): ShapeMatch[] {
+export function searchShapes(doc: Doc, query: string, pageId: string | null): ShapeMatch[] {
   const words = query.toLowerCase().split(/\s+/u).filter(Boolean);
   const out: ShapeMatch[] = [];
   for (const page of doc.pages()) {

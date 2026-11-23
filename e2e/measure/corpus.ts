@@ -57,3 +57,9 @@ export const BOLD_LABELS: { kind: string; parts: { bold: boolean; text: string }
   },
   { kind: "bold", parts: [{ bold: true, text: "Zażółć gęślą jaźń" }] },
 ];
+
+// A step of a fidelity scenario's setup, done through the real editor.
+export type Step =
+  | { by: number; do: "rotate"; ids: string[] }
+  | { do: "create"; shapes: object[] }
+  | { do: "group"; id: string; ids: string[] };
