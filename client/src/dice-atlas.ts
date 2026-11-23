@@ -20,9 +20,26 @@ const D4_DIGIT_HEIGHT = 0.86;
 const NUMERAL_WIDTH = 1.4;
 // How far from a d4 face's middle to its corner a numeral sits.
 const D4_REACH = 0.54;
-// The line that tells a 6 from a 9, in digit heights: its gap, its
-// thickness, and its width as a share of the digit's.
+// The line under a numeral that reads as another one upside down, in digit
+// heights: its gap, its thickness, and its width as a share of the numeral's.
 const LINE = { gap: 0.13, thick: 0.13, wide: 0.9 };
+// What each digit reads as upside down, where it reads as a digit at all.
+const TURNED: Record<string, string> = { 0: "0", 1: "1", 6: "9", 8: "8", 9: "6" };
+
+// The numerals of `texts` that need the line: those that, upside down, read
+// as a different numeral of the same die. A d6 or a d8 has a 6 and no 9, so
+// neither is lined.
+function linedOf(texts: string[]): Set<string> {
+  return new Set(
+    texts.filter((text) => {
+      const turned = [...text].toReversed().map((digit) => TURNED[digit]);
+      const other = turned.join("");
+      return (
+        turned.every((digit) => digit !== undefined) && other !== text && texts.includes(other)
+      );
+    }),
+  );
+}
 
 // How far `p` is from the line through `from` and `to`.
 function toLine(p: Vec, from: Vec, to: Vec): number {
@@ -57,15 +74,14 @@ function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radi
   return { at: add(pole, scale(sub(blunt, pole), share)), radius: fromPole * share };
 }
 
-type Pen = { context: CanvasRenderingContext2D; layout: Layout };
+type Pen = { context: CanvasRenderingContext2D; layout: Layout; lined: Set<string> };
 
 // The ink of `text` at 100px, from the font's own outlines: its box around
-// the point the text is centred on, and that box with the line under a 6 or
-// a 9 added.
-function inkOf(context: CanvasRenderingContext2D, text: string) {
+// the point the text is centred on, and that box with the line under it
+// added when it is `lined`.
+function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) {
   context.font = '700 100px "Outfit"';
   const box = context.measureText(text);
-  const lined = text === "6" || text === "9";
   const height = box.actualBoundingBoxAscent;
   return {
     bottom: lined ? height * (LINE.gap + LINE.thick) : box.actualBoundingBoxDescent,
@@ -78,12 +94,12 @@ function inkOf(context: CanvasRenderingContext2D, text: string) {
 
 // Writes `text` with the middle of its ink's box, line included, on `at`.
 function write(
-  { context, layout }: Pen,
+  { context, layout, lined }: Pen,
   { at, face, size, text, up }: { at: Vec; face: number; size: number; text: string; up: Vec },
 ) {
   const cell = layout.cells[face]!;
   const [x, y] = cellPoint(layout, face, at);
-  const ink = inkOf(context, text);
+  const ink = inkOf(context, text, lined.has(text));
   const unit = size / 100;
   context.save();
   context.translate(x * CELL_PX, y * CELL_PX);
@@ -109,7 +125,7 @@ function write(
 function sizeFor(context: CanvasRenderingContext2D, texts: string[], radius: number, tall: number) {
   return Math.min(
     ...texts.map((text) => {
-      const ink = inkOf(context, text);
+      const ink = inkOf(context, text, false);
       return Math.min(
         (radius * tall * 100) / ink.height,
         (radius * NUMERAL_WIDTH * 100) / (ink.left + ink.right),
@@ -130,7 +146,7 @@ export function drawAtlas(kind: DieKind): HTMLCanvasElement {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#000";
   context.textAlign = "center";
-  const pen: Pen = { context, layout };
+  const pen: Pen = { context, layout, lined: linedOf(shape.features.map(({ text }) => text)) };
   const size = sizeFor(
     context,
     shape.features.map(({ text }) => text),
