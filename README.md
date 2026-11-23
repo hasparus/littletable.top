@@ -332,6 +332,50 @@ upstream breaks nothing.
   TODO: deleting an account (not built yet) must delete its picture's
   object once no account and no board's `people` row names its hash.
 
+## Search
+
+The bottom bar's Search (Ctrl+F or ⌘F on a keyboard) finds text across
+every page of the board. With nothing typed the sheet lists the board's
+places; typing turns the list into what matches, ranked. Choosing a
+result switches to its page, brings it into view and flashes its outline
+for a moment. All of it happens in the person's own browser: neither the
+query nor the flash is synced or sent anywhere.
+
+- **What is found.** What tldraw's own shape utils say a shape reads as
+  (`getText` and `getAriaDescriptor`): notes, text, geo and arrow labels,
+  frame names, a link's address, an image's alt text, a bookmark's title
+  and description. Place names (`meta.place`) are indexed beside them
+  and shown as places. Text a shape says twice is indexed once, and a
+  shape that matches through its text and its place name is one result.
+- **Matching** (`client/src/search-text.ts`, `search-index.ts`, on
+  [MiniSearch](https://lucaong.github.io/minisearch/)): case and Polish
+  diacritics fold (`zolw` finds `Żółw`, `ł` is `l`), the word being typed
+  matches by its start, and typos are forgiven by word length (none up to
+  three letters, one edit in four or five, two from six; a swap counts as
+  two). Several words must all match, unless no text has them all. One
+  letter only starts words.
+- **Ranking.** Text that holds the query as typed, diacritics included,
+  first; then the query once folded; then prefix and typo matches. Within
+  each, MiniSearch's relevance, with places boosted. Up to 50 results,
+  each an excerpt of about 90 characters around its first match, and the
+  page's name when the board has more than one page.
+- **Keeping up** (`search-board.ts`). The index is built the first time
+  the search opens. From then on a store listener only notes which
+  shapes, pages and assets changed (a shape that only moved or turned is
+  skipped); the index catches up when the search opens again, and while
+  it is open, 250 ms after the board settles. The browser's performance
+  timeline has `board-search:build` and `board-search:update`.
+- **Text in images, later.** Every index document has an id, a kind
+  (`native`, `place`, or `ocr` for a line read off an image), its shape
+  and page, its text and, for `ocr`, a `region`: the line's corners in
+  the source image's pixels. `BoardIndex.setImageText(shape, lines)`
+  replaces one image's lines as a whole, so a better reading can replace
+  an older one. `imageQuadToPage` (`client/src/image-quad.ts`) maps a
+  region to page coordinates for the image as it lies now, flipped,
+  cropped or rotated, and the flash takes any page-space polygon, so such
+  a result flashes only its line. The results list already shows an `ocr`
+  result with an "In image" label.
+
 ## .tldr files
 
 The board's menu downloads the whole board as tldraw's own file: every
