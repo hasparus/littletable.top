@@ -122,6 +122,13 @@ export class FileLedger {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS files (hash TEXT PRIMARY KEY, bytes INTEGER NOT NULL, type TEXT NOT NULL, at INTEGER NOT NULL)",
     );
+    // The image's size, filled in the first time a text reading of it is
+    // checked (src/text-store.ts).
+    const columns = sql.exec("SELECT name FROM pragma_table_info('files')").toArray();
+    if (!columns.some((column) => column.name === "width")) {
+      sql.exec("ALTER TABLE files ADD COLUMN width INTEGER");
+      sql.exec("ALTER TABLE files ADD COLUMN height INTEGER");
+    }
   }
 
   private spend(sub: string, at: number): boolean {
@@ -132,8 +139,14 @@ export class FileLedger {
     return true;
   }
 
-  private storedBytes(): number {
-    const [row] = this.sql.exec("SELECT COALESCE(SUM(bytes), 0) AS total FROM files").toArray();
+  // What the board keeps in all: its images, and the text read off them
+  // (src/text-store.ts keeps the texts table).
+  storedBytes(): number {
+    const [row] = this.sql
+      .exec(
+        "SELECT (SELECT COALESCE(SUM(bytes), 0) FROM files) + (SELECT COALESCE(SUM(bytes), 0) FROM texts) AS total",
+      )
+      .toArray();
     return row!.total as number;
   }
 

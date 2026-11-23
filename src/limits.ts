@@ -26,3 +26,15 @@ export const MAX_AVATAR_BYTES = 1024 * 1024;
 export const AVATAR_TIMEOUT_MS = 3000;
 export const MAX_AVATAR_REDIRECTS = 3;
 export const AVATAR_RETRY_MS = 60 * 60 * 1000;
+// Text read off a board's images (src/text-store.ts): the largest result a
+// browser may store for one image and engine, its words and their length;
+// how many results a person may store, and readings they may claim, per
+// minute; how long a claim holds without being renewed; and how many
+// failed readings of one image make the board stop handing it out.
+export const MAX_TEXT_RESULT_BYTES = 512 * 1024;
+export const MAX_TEXT_WORDS = 20_000;
+export const MAX_WORD_LENGTH = 64;
+export const MAX_TEXT_WRITES_PER_MINUTE = 60;
+export const MAX_TEXT_CLAIMS_PER_MINUTE = 60;
+export const TEXT_LEASE_MS = 30_000;
+export const MAX_TEXT_FAILURES = 3;

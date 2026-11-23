@@ -9,8 +9,10 @@ import type { Pass } from "./pass";
 
 import { avatarKey } from "./avatars";
 import { fileKey, readCapped } from "./file-store";
-import { MAX_FILE_BYTES } from "./limits";
+import { MAX_FILE_BYTES, MAX_TEXT_RESULT_BYTES } from "./limits";
 import { harden } from "./site";
+import { type EngineKey, isEngineKey } from "./text-result";
+import { parseClaim, textKey } from "./text-store";
 
 // NOTE: an <img> cannot send an Authorization header. The pass rides in
 // this cookie instead, scoped to the board's files, for reads only.
@@ -216,6 +218,160 @@ async function readAvatar(request: Request, route: FileRoute, hash: string): Pro
   });
 }
 
+const TEXT_STATUS = {
+  invalid: 422,
+  "link-reset": 403,
+  "over-quota": 507,
+  "too-fast": 429,
+  "unknown-image": 404,
+  unreadable: 422,
+} as const;
+
+const fresh = (body: unknown, status = 200) =>
+  Response.json(body, { headers: { "Cache-Control": "no-store" }, status });
+
+async function jsonBody(request: Request, max: number): Promise<unknown> {
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length") ?? "0"),
+    max,
+  });
+  if (body === "too-large") return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+// The lease a renew or release names, and for a release the engines
+// that failed.
+function leaseOf(body: unknown): { failed: EngineKey[]; lease: string } | null {
+  if (typeof body !== "object" || body === null) return null;
+  const { failed = [], lease } = body as Record<string, unknown>;
+  if (typeof lease !== "string" || lease.length > 64) return null;
+  if (
+    !Array.isArray(failed) ||
+    !failed.every((key) => typeof key === "string" && isEngineKey(key))
+  ) {
+    return null;
+  }
+  return { failed: failed as EngineKey[], lease };
+}
+
+function logText(fields: {
+  board: string;
+  engine: string;
+  outcome: string;
+  pass: Pass | null;
+  problem?: string;
+  words: number | null;
+}) {
+  const { pass, ...rest } = fields;
+  const person = pass === null ? null : pass.sub.startsWith("g:") ? "guest" : "member";
+  console.log(JSON.stringify({ event: "board.text_stored", ...rest, person }));
+}
+
+// The board's text readings (README, "Text in images"): what is stored and
+// under way, claiming an image to read, keeping and giving back the claim.
+async function textControl(request: Request, route: FileRoute, action: string): Promise<Response> {
+  if (action === "" && (request.method === "GET" || request.method === "HEAD")) {
+    const pass = await reader(request, route);
+    if (pass === null) return refuse(403, "forbidden");
+    const listing = await route.room.textListing(pass);
+    return typeof listing === "string" ? refuse(403, listing) : fresh(listing);
+  }
+  if (request.method !== "POST") return new Response("Not found", { status: 404 });
+  const pass = await route.passOf(bearer(request));
+  if (pass === null) return refuse(403, "forbidden");
+  const body = await jsonBody(request, 256 * 1024);
+  if (action === "/claim") {
+    const claim = parseClaim(body);
+    if (claim === null) return refuse(400, "invalid");
+    const result = await route.room.claimText(pass, claim);
+    if (result === null) return new Response(null, { status: 204 });
+    if (typeof result === "string") return refuse(result === "too-fast" ? 429 : 403, result);
+    return fresh(result);
+  }
+  const held = leaseOf(body);
+  if (held === null) return refuse(400, "invalid");
+  if (action === "/renew") {
+    const renewed = await route.room.renewText(pass, held.lease);
+    if (renewed === "link-reset") return refuse(403, renewed);
+    return renewed ? new Response(null, { status: 204 }) : refuse(409, "lease-expired");
+  }
+  if (action === "/release") {
+    const released = await route.room.releaseText(pass, held.lease, held.failed);
+    return released === null ? new Response(null, { status: 204 }) : refuse(403, released);
+  }
+  return new Response("Not found", { status: 404 });
+}
+
+async function storeText(
+  request: Request,
+  route: FileRoute,
+  reading: { engine: EngineKey; hash: string },
+): Promise<Response> {
+  const { board } = route;
+  const pass = await route.passOf(bearer(request));
+  if (pass === null) return refuse(403, "forbidden");
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length") ?? "0"),
+    max: MAX_TEXT_RESULT_BYTES,
+  });
+  if (body === "too-large") {
+    logText({ board, engine: reading.engine, outcome: body, pass, words: null });
+    return refuse(413, body);
+  }
+  const stored = await route.room.storeText(pass, reading, body);
+  if (typeof stored === "string") {
+    logText({ board, engine: reading.engine, outcome: stored, pass, words: null });
+    return refuse(TEXT_STATUS[stored], stored);
+  }
+  if ("problem" in stored) {
+    logText({
+      board,
+      engine: reading.engine,
+      outcome: "invalid",
+      pass,
+      problem: stored.problem,
+      words: null,
+    });
+    return Response.json(
+      { error: "invalid", problem: stored.problem },
+      { headers: { "Cache-Control": "no-store" }, status: 422 },
+    );
+  }
+  logText({
+    board,
+    engine: reading.engine,
+    outcome: stored.duplicate ? "duplicate" : "stored",
+    pass,
+    words: stored.words,
+  });
+  return new Response(stored.body, {
+    headers: { "Cache-Control": "no-store", "Content-Type": "application/json" },
+    status: stored.duplicate ? 200 : 201,
+  });
+}
+
+async function readText(
+  request: Request,
+  route: FileRoute,
+  { engine, hash }: { engine: EngineKey; hash: string },
+): Promise<Response> {
+  if ((await reader(request, route)) === null) return new Response("Forbidden", { status: 403 });
+  // NOTE: a result is written once, so its address holds it for good, as
+  // an image's does.
+  return serveStored(request, {
+    bucket: route.bucket,
+    config: route.config,
+    key: textKey(route.board, hash, engine),
+    name: hash,
+  });
+}
+
+const TEXT_OF = /^([0-9a-f]{64})\/text\/([\w.-]{1,40})$/u;
+
 export function serveFiles(
   request: Request,
   route: FileRoute,
@@ -224,6 +380,14 @@ export function serveFiles(
   const { method } = request;
   if (file === undefined && method === "POST") return upload(request, route);
   if (file === "access" && method === "POST") return access(request, route);
+  const control = /^text(|\/claim|\/renew|\/release)$/u.exec(file ?? "");
+  if (control !== null) return textControl(request, route, control[1]!);
+  const [, textOf, engine = ""] = TEXT_OF.exec(file ?? "") ?? [];
+  if (textOf !== undefined && isEngineKey(engine)) {
+    if (method === "PUT") return storeText(request, route, { engine, hash: textOf });
+    if (method === "GET" || method === "HEAD")
+      return readText(request, route, { engine, hash: textOf });
+  }
   const avatar = /^avatars\/([0-9a-f]{64})$/u.exec(file ?? "");
   if (avatar !== null && (method === "GET" || method === "HEAD")) {
     return readAvatar(request, route, avatar[1]!);

@@ -87,7 +87,9 @@ async function mayDelete(request: Request, verifier: Verifier | null, board: str
 }
 
 const ROOMS = /^\/rooms\//u;
-const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/(avatars\/[0-9a-f]{64}|[\w-]{1,64}))?$/u;
+// A board's files: its images and their text readings, the cookie, and
+// people's pictures (src/files.ts tells them apart).
+const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/([\w./-]{1,160}))?$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"

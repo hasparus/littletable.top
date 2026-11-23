@@ -8,12 +8,22 @@ import {
 import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
+import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { addSeedColumn, drawSeed, type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
+import {
+  type Claim,
+  type ClaimRequest,
+  type Reading,
+  type StoredText,
+  TextLedger,
+  type TextListing,
+  type TextRefusal,
+} from "./text-store";
 
 type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
 
@@ -49,6 +59,7 @@ export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<never, Person>;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
+  private texts!: TextLedger;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -83,6 +94,8 @@ export class BoardRoom extends DurableObject<Env> {
       }),
     });
     this.lastRollAt = new Map();
+    // NOTE: the texts table first: the images' ledger counts it in the quota.
+    this.texts = new TextLedger(sql, this.env.Files);
     this.files = new FileLedger(sql, this.env.Files);
   }
 
@@ -245,6 +258,64 @@ export class BoardRoom extends DurableObject<Env> {
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
     return this.admit(pass) ?? this.files.store(pass.board, pass.sub, body);
+  }
+
+  // Tells everyone on the board how the reading of an image moved on, as
+  // a sync custom message like a roll: "stored" for a result to fetch,
+  // "reading" and "idle" for what is under way.
+  private announceText(readings: Reading[], state: "idle" | "reading" | "stored"): void {
+    if (readings.length === 0) return;
+    for (const session of this.room.getSessions()) {
+      this.room.sendCustomMessage(session.sessionId, { readings, state, type: "image-text" });
+    }
+  }
+
+  textListing(pass: Pass): "link-reset" | TextListing {
+    return this.admit(pass) ?? this.texts.listing();
+  }
+
+  claimText(pass: Pass, request: ClaimRequest): Claim | Refusal | null {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    const claim = this.texts.claim(pass.sub, request);
+    if (claim !== null && claim !== "too-fast") {
+      this.announceText(
+        claim.engines.map((engine) => ({ engine, hash: claim.hash })),
+        "reading",
+      );
+    }
+    return claim;
+  }
+
+  renewText(pass: Pass, lease: string): "link-reset" | boolean {
+    return this.admit(pass) ?? this.texts.renew(pass.sub, lease);
+  }
+
+  releaseText(pass: Pass, lease: string, failed: EngineKey[]): "link-reset" | null {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    this.announceText(this.texts.release(pass.sub, lease, failed), "idle");
+    return null;
+  }
+
+  async storeText(
+    pass: Pass,
+    { engine, hash }: Reading,
+    body: ArrayBuffer,
+  ): Promise<"link-reset" | StoredText | TextRefusal | { problem: string; refusal: "invalid" }> {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    const stored = await this.texts.store(
+      { board: pass.board, engine, hash, sub: pass.sub },
+      body,
+      {
+        bytesNow: () => this.files.storedBytes(),
+      },
+    );
+    if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
+      this.announceText([{ engine, hash }], "stored");
+    }
+    return stored;
   }
 
   async destroy(board: string) {
