@@ -1,6 +1,7 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 
-import type { TextResult } from "../src/text-result";
+import type { Box, TextResult } from "../src/text-result";
 
 import { linesToIndex, overlap } from "../client/src/text-filter";
 import { score, type Truth } from "../e2e/text-score";
@@ -30,7 +31,7 @@ const fixtures = Object.entries(readings).map(([path, read]) => ({
   truth: truths[path.replace(".read.json", ".gt.json")]!,
 }));
 
-const box = (region: { x: number; y: number }[]) => [
+const box = (region: { x: number; y: number }[]): Box => [
   Math.min(...region.map((point) => point.x)),
   Math.min(...region.map((point) => point.y)),
   Math.max(...region.map((point) => point.x)),
@@ -79,7 +80,7 @@ describe("filtering what the engines read", () => {
   it("indexes each word once per place, whichever reading came first", () => {
     for (const { read } of fixtures) {
       const forwards = linesToIndex(read);
-      expect(linesToIndex(read.toReversed())).toEqual(forwards);
+      expect(linesToIndex([...read].reverse())).toEqual(forwards);
       const words = forwards.flatMap((line) =>
         line.words.map((word) => ({ box: box(word.region), text: word.text })),
       );
