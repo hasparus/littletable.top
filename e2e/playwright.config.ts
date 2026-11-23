@@ -22,8 +22,15 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
     `rm -rf .wrangler/e2e-${mode} dist-e2e/${mode}`,
     `vite build --logLevel warn --outDir "$PWD/dist-e2e/${mode}"`,
     ...setUp,
-    `exec wrangler dev --port ${port} --assets dist-e2e/${mode} --persist-to .wrangler/e2e-${mode} ${extra}`,
+    `exec wrangler dev --port ${port} --persist-to .wrangler/e2e-${mode} ${extra}`,
   ].join(" && ");
+
+// NOTE: the hosted run has the MCP Worker beside the board Worker, as one
+// `wrangler dev` session behind dev/both.ts (see there). With several
+// configs wrangler's --assets flag would go to the first, so the board's
+// config is written out with this run's client instead.
+const HOSTED_CONFIG = "wrangler.e2e.json";
+const writeHostedConfig = `node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync("wrangler.json", "utf8")); c.assets.directory = "./dist-e2e/hosted"; fs.writeFileSync("${HOSTED_CONFIG}", JSON.stringify(c, null, 2));'`;
 
 export default defineConfig({
   expect: { timeout: 10_000 },
@@ -53,7 +60,12 @@ export default defineConfig({
       url: "http://localhost:8000/",
     },
     {
-      command: tabletop("hosted", 8788, ""),
+      command: tabletop(
+        "hosted",
+        8788,
+        `-c wrangler.dev.json -c ${HOSTED_CONFIG} -c wrangler.mcp.json`,
+        [writeHostedConfig],
+      ),
       cwd: root,
       env: { ...env, TABLETOP_HOST_ORIGIN: "http://localhost:8000" },
       reuseExistingServer: !isCI,
@@ -69,9 +81,12 @@ export default defineConfig({
       url: "http://localhost:8001/user_management/authorize?client_id=client_fake",
     },
     {
-      command: tabletop("standalone", 8790, "--env-file e2e/standalone.env", [
-        "wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone",
-      ]),
+      command: tabletop(
+        "standalone",
+        8790,
+        "--assets dist-e2e/standalone --env-file e2e/standalone.env",
+        ["wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone"],
+      ),
       cwd: root,
       env: { ...env, TABLETOP_MODE: "standalone" },
       reuseExistingServer: !isCI,

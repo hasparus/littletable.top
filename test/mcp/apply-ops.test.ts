@@ -23,7 +23,8 @@ function board() {
 }
 
 const applied = (response: ApplyOpsResponse) => {
-  if (typeof response === "string" || response.kind !== "applied") throw new Error(`not applied: ${JSON.stringify(response)}`);
+  if (typeof response === "string" || response.kind !== "applied")
+    throw new Error(`not applied: ${JSON.stringify(response)}`);
   return response.result;
 };
 

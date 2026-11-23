@@ -15,7 +15,10 @@ export default defineConfig({
       files: ["src/**/*.ts", "e2e/fake-host.ts", "e2e/fake-workos.ts"],
       rules: { "no-console": "off" },
     },
-    { files: ["src/index.ts"], rules: { "import/no-default-export": "off" } },
+    {
+      files: ["src/index.ts", "src/mcp/worker.ts", "dev/both.ts"],
+      rules: { "import/no-default-export": "off" },
+    },
     {
       files: ["client/src/**/*.ts"],
       rules: {

@@ -44,6 +44,17 @@ export type HostedProps = Shared & {
   // Where the bare name and an unexplained exit lead. Default: hostOrigin.
   exitUrl?: string;
   homeUrl?: string;
+  // Assistants (MCP): a second Worker with the MCP endpoint at
+  // https://<domain>/mcp, which trusts access tokens the host's
+  // authorization server signs with the pass key for `audience` (default
+  // "tabletop-mcp"). Omit to deploy the board alone.
+  mcp?: {
+    audience?: string;
+    authorizationServer: string;
+    // The MCP Worker's own host. Omit for a workers.dev preview.
+    domain?: string;
+    workerName?: string;
+  };
 };
 
 export type StandaloneProps = Shared & {
@@ -61,6 +72,8 @@ export type TabletopProps = HostedProps | StandaloneProps;
 export type Tabletop = {
   // The R2 bucket that keeps the boards' images.
   files: Cloudflare.R2.Bucket;
+  // The MCP Worker, when `mcp` was asked for.
+  mcp: Cloudflare.Worker | undefined;
   url: Cloudflare.Worker["url"];
   worker: Cloudflare.Worker;
 };

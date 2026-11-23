@@ -223,11 +223,11 @@ export class BoardRoom extends DurableObject<Env> {
   readDocument(
     grant: BoardGrant,
     request: { runId?: string; scope: DocumentScope },
-  ): DocumentSnapshot | "revoked" {
+  ): "revoked" | DocumentSnapshot {
     return this.admitGrant(grant) ?? this.document.read(request.scope, request.runId);
   }
 
-  commitDocument(grant: BoardGrant, diff: DocumentDiff): CommitOutcome | "read-only" | "revoked" {
+  commitDocument(grant: BoardGrant, diff: DocumentDiff): "read-only" | "revoked" | CommitOutcome {
     const refusal = this.admitGrant(grant);
     if (refusal !== null) return refusal;
     if (grant.access !== "write") return "read-only";

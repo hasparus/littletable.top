@@ -38,7 +38,10 @@ function interleaved(b: Board, meanwhile: (read: number) => Promise<void>): Room
 }
 
 // A person's edit: whatever they change, written on top of the room as it is.
-async function edit(b: Board, change: (records: TLRecord[]) => { puts?: TLRecord[]; removes?: string[] }) {
+async function edit(
+  b: Board,
+  change: (records: TLRecord[]) => { puts?: TLRecord[]; removes?: string[] },
+) {
   const snapshot = await b.read();
   const { puts = [], removes = [] } = change(snapshot.records);
   const outcome = await b.room.commitDocument(b.grant, {
@@ -137,9 +140,15 @@ describe("a batch computed while people edit the board", () => {
     const b = await seeded();
     const room = interleaved(b, async (read) => {
       if (read !== 1) return;
-      applied(await applyOps(b.room, b.grant, { ops: [{ from: "far", id: "road", op: "connect", to: "inn" }] }));
+      applied(
+        await applyOps(b.room, b.grant, {
+          ops: [{ from: "far", id: "road", op: "connect", to: "inn" }],
+        }),
+      );
     });
-    const response = applied(await applyOps(room, b.grant, { ops: [{ op: "remove", targets: ["inn"] }] }));
+    const response = applied(
+      await applyOps(room, b.grant, { ops: [{ op: "remove", targets: ["inn"] }] }),
+    );
     expect(response.attempts).toBe(2);
     const records = await b.records();
     expect(shape(records, "inn")).toBeUndefined();
@@ -174,7 +183,9 @@ describe("a batch computed while people edit the board", () => {
       why: "exists",
     });
     const broken = { ...inn, id: "shape:broken", x: "left" } as unknown as TLRecord;
-    expect(await b.room.commitDocument(b.grant, { ...base, absent: [], puts: [broken] })).toMatchObject({
+    expect(
+      await b.room.commitDocument(b.grant, { ...base, absent: [], puts: [broken] }),
+    ).toMatchObject({
       kind: "invalid",
       message: expect.stringMatching(/^shape:broken: /u),
     });

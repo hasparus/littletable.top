@@ -183,5 +183,29 @@ export const Tabletop = (id, props) =>
       name: props.workerName,
       observability,
     });
-    return { files, url: worker.url, worker };
+    // The MCP Worker, when the host asks for one: everything assistants
+    // need (the MCP server, the ops engine, the text measurer and its
+    // fonts) in a Worker of its own, so the board Worker stays small. It
+    // reaches boards through the board Worker's BoardRoom class.
+    const mcp =
+      props.mode === "hosted" && props.mcp !== undefined
+        ? yield* Cloudflare.Worker(`${id}Mcp`, {
+            compatibility: {
+              date: testedRuntime.compatibility_date,
+              flags: ["legacy_module_registry"],
+            },
+            domain: props.mcp.domain === undefined ? undefined : { name: props.mcp.domain },
+            env: {
+              BoardRoom: Cloudflare.DurableObject("BoardRoom", { scriptName: worker.workerName }),
+              ISSUER: props.issuer,
+              ISSUER_PUBLIC_KEY: props.issuerPublicKey,
+              MCP_AUDIENCE: props.mcp.audience ?? "tabletop-mcp",
+              MCP_AUTHORIZATION_SERVER: props.mcp.authorizationServer,
+            },
+            main: packageFile("src/mcp/worker.ts"),
+            name: props.mcp.workerName,
+            observability,
+          })
+        : undefined;
+    return { files, mcp, url: worker.url, worker };
   });

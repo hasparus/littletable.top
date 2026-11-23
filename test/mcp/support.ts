@@ -53,7 +53,13 @@ export function freshBoard() {
     if (snapshot === "revoked") throw new Error("revoked");
     return snapshot;
   };
-  return { grant, id, read, records: async (): Promise<TLRecord[]> => (await read()).records, room };
+  return {
+    grant,
+    id,
+    read,
+    records: async (): Promise<TLRecord[]> => (await read()).records,
+    room,
+  };
 }
 
 type SyncMessage = { data?: unknown; type: string };

@@ -55,7 +55,7 @@ export class Doc {
 
   /** An op's answer rests on this record being as it is (and its parents). */
   depend(id: string): void {
-    for (let at: string | undefined = id, depth = 0; at !== undefined && depth < 1_000; depth++) {
+    for (let at: string | undefined = id, depth = 0; at !== undefined && depth < 1000; depth++) {
       this.relied.add(at);
       at = this.shape(at)?.parentId;
     }

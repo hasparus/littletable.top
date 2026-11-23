@@ -40,7 +40,10 @@ export async function handle(request: Request, env: McpEnv): Promise<Response> {
   return serveMcp(request, env.BoardRoom, {
     authorizationServer: env.MCP_AUTHORIZATION_SERVER!,
     verifier: {
-      audience: env.MCP_AUDIENCE === undefined || env.MCP_AUDIENCE === "" ? DEFAULT_AUDIENCE : env.MCP_AUDIENCE,
+      audience:
+        env.MCP_AUDIENCE === undefined || env.MCP_AUDIENCE === ""
+          ? DEFAULT_AUDIENCE
+          : env.MCP_AUDIENCE,
       issuer: env.ISSUER!,
       key,
     },

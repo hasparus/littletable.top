@@ -20,7 +20,7 @@ export type BoardGrant = {
   title: string | null;
 };
 
-export type DocumentScope = { page: string } | "document";
+export type DocumentScope = "document" | { page: string };
 
 export type DocumentSnapshot = {
   clock: number;
@@ -65,11 +65,11 @@ export type RoomDocumentCalls = {
   commitDocument(
     grant: BoardGrant,
     diff: DocumentDiff,
-  ): Promise<CommitOutcome | "read-only" | "revoked">;
+  ): Promise<"read-only" | "revoked" | CommitOutcome>;
   readDocument(
     grant: BoardGrant,
     request: { runId?: string; scope: DocumentScope },
-  ): Promise<DocumentSnapshot | "revoked">;
+  ): Promise<"revoked" | DocumentSnapshot>;
   revokeMcpGrants(board: string, version: number): Promise<void>;
 };
 
@@ -180,7 +180,7 @@ function onPage(records: TLRecord[], pageId: string): TLRecord[] {
   }
   const here = (id: string): boolean => {
     let parent = parents.get(id);
-    for (let depth = 0; parent !== undefined && depth < 1_000; depth++) {
+    for (let depth = 0; parent !== undefined && depth < 1000; depth++) {
       if (parent === pageId) return true;
       parent = parents.get(parent);
     }

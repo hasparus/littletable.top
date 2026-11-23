@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tabletop-dev",
+  "main": "dev/both.ts",
+  "compatibility_date": "2026-08-06",
+  "services": [
+    { "binding": "BOARD", "service": "tabletop" },
+    { "binding": "MCP", "service": "tabletop-mcp" }
+  ]
+}

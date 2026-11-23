@@ -80,7 +80,7 @@ export type PageInfo = { hasContent: boolean; id: string; index: number; name: s
 export async function pages(
   room: RoomDocumentCalls,
   grant: BoardGrant,
-): Promise<PageInfo[] | "revoked"> {
+): Promise<"revoked" | PageInfo[]> {
   const snapshot = await room.readDocument(grant, { scope: "document" });
   if (snapshot === "revoked") return snapshot;
   const doc = new Doc(snapshot.records);
