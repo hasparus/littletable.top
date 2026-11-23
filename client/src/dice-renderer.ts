@@ -1,22 +1,28 @@
 // A WebGL2 renderer for dice only: one lit shader (key light, ambient, a
 // procedural studio to reflect, a clearcoat highlight, numerals that look
-// engraved) and a floor shadow made of the dice's projected, blurred
-// silhouettes plus a contact blob under each. The output is transparent and
-// premultiplied, so the board shows through.
+// engraved) and floor shadows made of geometry alone. A die is convex, so
+// its shadow is the convex outline of its corners as the light throws them
+// on the floor, grown by its rounding. That outline is drawn as a mesh whose
+// vertices carry how far through the penumbra they are: the penumbra is as
+// wide as the corner that casts it is high, so a shadow is crisp where the
+// die touches the floor and soft at its far end. A second, narrow shade
+// around the die's outline seen from above seats it on the floor. The output
+// is transparent and premultiplied, so the board shows through.
 //
 // NOTE: nothing here feeds back into the throw, so trigonometry and pow are
 // fine in the shaders; the frames come from dice-physics.ts alone.
 
-import type { Quat, Vec } from "./dice-math";
 import type { DieMesh } from "./dice-mesh";
 
+import { add, type Quat, rotate, type Vec } from "./dice-math";
 import { TRAY_DEPTH, TRAY_WIDTH } from "./dice-physics";
 
-// "low": one device pixel per CSS pixel, no blurred silhouettes, no clearcoat.
+// "low": one device pixel per CSS pixel, no clearcoat.
 export type Tier = "full" | "low";
 export type Rgb = [number, number, number];
 export type Look = { body: Rgb; ink: Rgb };
-export type Model = { atlas: HTMLCanvasElement; inradius: number; mesh: DieMesh; radius: number };
+// `core` and `rounding`: the die is its core's corners swept by a ball.
+export type Model = { atlas: HTMLCanvasElement; core: Vec[]; mesh: DieMesh; rounding: number };
 export type Pose = { model: Model; position: Vec; rotation: Quat };
 
 export type Renderer = {
@@ -31,11 +37,18 @@ const MARGIN = 0.4;
 const TAN_HALF_FOV = 0.2126;
 const CAMERA_TILT = 0.12;
 const MAX_PIXEL_RATIO = 2;
-const SHADOW_WIDTH = 256;
-// The shadow covers the tray and this much around it.
-const SHADOW_REACH = 2;
-const LIGHT: Vec = [-0.3042, 0.8692, -0.3911];
-const SHADOW_OPACITY = { dark: 0.65, light: 0.32 };
+// 64° up, from the far left.
+const LIGHT: Vec = [-0.269, 0.8988, -0.3458];
+// Shadow colours, not premultiplied: ink on a light board, black on a dark one.
+const SHADOW_TINT = { dark: [0, 0, 0, 0.75], light: [0.07, 0.08, 0.17, 0.34] } as const;
+// Penumbra width in floor units: at the floor, and more per unit of height.
+const PENUMBRA = { atFloor: 0.05, perHeight: 0.22 };
+// How quickly a die's cast shadow pales as it leaves the floor.
+const CAST_FADE = 0.35;
+// The shade that seats a die: how far it reaches past the outline, its
+// strength next to the cast shadow's, how quickly it pales with height, and
+// how far under the die it starts, as a share of the outline.
+const SEAT = { fade: 4, reach: 0.24, strength: 0.7, under: 0.7 };
 const MATERIAL = { bump: 1.3, coat: 0.8, coatRoughness: 0.12, roughness: 0.42 };
 
 // The tray's rectangle in a host of `width` by `height` CSS pixels: as large
@@ -119,66 +132,75 @@ void main() {
   frag = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
 }`;
 
-// A die's silhouette as the key light throws it on the floor.
-const SILHOUETTE_VS = `#version 300 es
-in vec3 aPos;
-uniform vec4 uQ; uniform vec3 uP; uniform vec3 uLight; uniform vec2 uHalf;
-${ROTATE}
+// The shades of all dice as one mesh on the floor: x, z, how far through the
+// fade from full shade (0) to none (1) the vertex is, and the shade's
+// strength.
+const SHADE_VS = `#version 300 es
+in vec4 aPos; uniform mat4 uViewProj;
+out vec2 vShade;
 void main() {
-  vec3 w = rot(uQ, aPos) + uP;
-  vec3 f = w - uLight * (w.y / uLight.y);
-  gl_Position = vec4(f.x / uHalf.x, -f.z / uHalf.y, 0.0, 1.0);
+  vShade = aPos.zw;
+  gl_Position = uViewProj * vec4(aPos.x, 0.0, aPos.y, 1.0);
 }`;
-const SILHOUETTE_FS = `
-precision highp float; uniform float uStrength; out vec4 frag;
-void main() { frag = vec4(uStrength); }`;
-
-const QUAD_VS = `#version 300 es
-in vec2 aPos; out vec2 vUv;
-void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
-const BLUR_FS = `
-precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform vec2 uStep; out vec4 frag;
-void main() {
-  float w[5] = float[](0.227, 0.194, 0.121, 0.054, 0.016);
-  float s = texture(uTex, vUv).r * w[0];
-  for (int i = 1; i < 5; i++) {
-    s += texture(uTex, vUv + uStep * float(i)).r * w[i];
-    s += texture(uTex, vUv - uStep * float(i)).r * w[i];
-  }
-  frag = vec4(s);
-}`;
-
-// A quad lying on the floor: the whole shadow area, or one die's blob.
-const FLOOR_VS = `#version 300 es
-in vec2 aPos; uniform mat4 uViewProj; uniform vec2 uCenter; uniform vec2 uHalf;
-out vec2 vLocal; out vec2 vUv;
-void main() {
-  vLocal = aPos;
-  vUv = vec2(aPos.x, -aPos.y) * 0.5 + 0.5;
-  vec2 xz = uCenter + aPos * uHalf;
-  gl_Position = uViewProj * vec4(xz.x, 0.0, xz.y, 1.0);
-}`;
-const SHADOW_FS = `
-precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform float uOpacity; out vec4 frag;
-void main() { frag = vec4(0.0, 0.0, 0.0, clamp(texture(uTex, vUv).r * 0.75, 0.0, 1.0) * uOpacity); }`;
-const BLOB_FS = `
-precision highp float; in vec2 vLocal; uniform float uOpacity; out vec4 frag;
-void main() {
-  float fade = 1.0 - smoothstep(0.0, 1.0, length(vLocal));
-  frag = vec4(0.0, 0.0, 0.0, fade * fade * uOpacity);
-}`;
+const SHADE_FS = `
+precision highp float;
+in vec2 vShade; uniform vec4 uTint;
+out vec4 frag;
+void main() { frag = uTint * (vShade.y * (1.0 - smoothstep(0.0, 1.0, vShade.x))); }`;
 
 type Program = { program: WebGLProgram; uniform: (name: string) => WebGLUniformLocation | null };
-type Target = { framebuffer: WebGLFramebuffer; texture: WebGLTexture };
-type Uploaded = {
-  atlas: WebGLTexture;
-  count: number;
-  die: WebGLVertexArrayObject;
-  silhouette: WebGLVertexArrayObject;
-};
+type Uploaded = { atlas: WebGLTexture; count: number; die: WebGLVertexArrayObject };
+type Point = [number, number];
 
-// How far a die is off the floor.
-const lift = (pose: Pose) => Math.max(0, pose.position[1] - pose.model.inradius);
+// The key light on the floor: the way shadows fall, how far per unit of
+// height, and the sine of its elevation.
+const SUN = (() => {
+  const flat = Math.hypot(LIGHT[0], LIGHT[2]);
+  return { lean: flat / LIGHT[1], squash: LIGHT[1], x: -LIGHT[0] / flat, z: -LIGHT[2] / flat };
+})();
+
+// A point of an outline, and how wide the penumbra is there.
+type Spot = { soft: number; x: number; y: number };
+
+// The convex outline of `spots`, counter-clockwise (a monotone chain).
+function hullOf(spots: Spot[]): Spot[] {
+  const sorted = spots.toSorted((a, b) => a.x - b.x || a.y - b.y);
+  const chain = (list: Spot[]) => {
+    const kept: Spot[] = [];
+    for (const p of list) {
+      while (kept.length >= 2) {
+        const o = kept.at(-2)!;
+        const a = kept.at(-1)!;
+        if ((a.x - o.x) * (p.y - o.y) - (a.y - o.y) * (p.x - o.x) > 1e-9) break;
+        kept.pop();
+      }
+      kept.push(p);
+    }
+    kept.pop();
+    return kept;
+  };
+  return [...chain(sorted), ...chain(sorted.toReversed())];
+}
+
+// Per edge of `outline`, its outward normal.
+const normalsOf = (outline: Spot[]) =>
+  outline.map(({ x, y }, index): Point => {
+    const next = outline[(index + 1) % outline.length]!;
+    const reach = Math.max(Math.hypot(next.x - x, next.y - y), 1e-6);
+    return [(next.y - y) / reach, (x - next.x) / reach];
+  });
+
+// `outline` pushed out by `offset(spot)`, each corner as three points of its arc.
+function grown(outline: Spot[], normals: Point[], offset: (spot: Spot) => number): Point[] {
+  return outline.flatMap((spot, index) => {
+    const before = normals[(index + outline.length - 1) % outline.length]!;
+    const after = normals[index]!;
+    const size = Math.max(Math.hypot(before[0] + after[0], before[1] + after[1]), 1e-6);
+    const middle: Point = [(before[0] + after[0]) / size, (before[1] + after[1]) / size];
+    const out = offset(spot);
+    return [before, middle, after].map(([nx, ny]): Point => [spot.x + nx * out, spot.y + ny * out]);
+  });
+}
 
 function must<T>(value: T | null, what: string): T {
   if (value === null) throw new Error(`dice: WebGL gave no ${what}`);
@@ -278,47 +300,23 @@ export function createRenderer(
 ): Renderer {
   const { gl, tier } = contextOf(canvas, forced);
   const full = tier === "full";
-  const half: [number, number] = [
-    TRAY_WIDTH / 2 + MARGIN + SHADOW_REACH,
-    TRAY_DEPTH / 2 + MARGIN + SHADOW_REACH,
-  ];
-  const shadowHeight = Math.round(SHADOW_WIDTH * (half[1] / half[0]));
   const uploaded = new Map<Model, Uploaded>();
+  // The shades' vertices, four numbers each; it grows to hold a throw.
+  let shades = new Float32Array(1 << 14);
+  let shadesUsed = 0;
   let lost = false;
 
   const build = () => {
     const header = `#version 300 es\n${full ? "#define FULL\n" : ""}`;
-    const quad = must(gl.createVertexArray(), "vertex array");
-    gl.bindVertexArray(quad);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const mesh = must(gl.createVertexArray(), "vertex array");
+    const buffer = must(gl.createBuffer(), "buffer");
+    gl.bindVertexArray(mesh);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    const target = (): Target => {
-      const texture = must(gl.createTexture(), "texture");
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, SHADOW_WIDTH, shadowHeight);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      const framebuffer = must(gl.createFramebuffer(), "framebuffer");
-      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      return { framebuffer, texture };
-    };
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
     return {
-      blob: compile(gl, FLOOR_VS, header + BLOB_FS),
       die: compile(gl, DIE_VS, header + DIE_FS),
-      quad,
-      shadows: full
-        ? {
-            blur: compile(gl, QUAD_VS, header + BLUR_FS),
-            floor: compile(gl, FLOOR_VS, header + SHADOW_FS),
-            silhouette: compile(gl, SILHOUETTE_VS, header + SILHOUETTE_FS),
-            targets: [target(), target()] as const,
-          }
-        : null,
+      shade: { ...compile(gl, SHADE_VS, header + SHADE_FS), buffer, mesh },
     };
   };
   let gpu = build();
@@ -335,12 +333,6 @@ export function createRenderer(
       gl.enableVertexAttribArray(index);
       gl.vertexAttribPointer(index, index === 2 ? 2 : 3, gl.FLOAT, false, 0, 0);
     }
-    const silhouette = must(gl.createVertexArray(), "vertex array");
-    gl.bindVertexArray(silhouette);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     const atlas = must(gl.createTexture(), "texture");
     gl.bindTexture(gl.TEXTURE_2D, atlas);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -352,7 +344,7 @@ export function createRenderer(
     if (anisotropy !== null) {
       gl.texParameterf(gl.TEXTURE_2D, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, 4);
     }
-    const made = { atlas, count: mesh.count, die, silhouette };
+    const made = { atlas, count: mesh.count, die };
     uploaded.set(model, made);
     return made;
   };
@@ -371,42 +363,111 @@ export function createRenderer(
   canvas.addEventListener("webglcontextlost", onLost);
   canvas.addEventListener("webglcontextrestored", onRestore);
 
-  const castShadows = (poses: Pose[], shadows: NonNullable<typeof gpu.shadows>) => {
-    const [first, second] = shadows.targets;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, first.framebuffer);
-    gl.viewport(0, 0, SHADOW_WIDTH, shadowHeight);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.MAX);
-    const { program, uniform } = shadows.silhouette;
-    gl.useProgram(program);
-    gl.uniform3fv(uniform("uLight"), LIGHT);
-    gl.uniform2fv(uniform("uHalf"), half);
-    for (const pose of poses) {
-      const model = upload(pose.model);
-      gl.bindVertexArray(model.silhouette);
-      gl.uniform4fv(uniform("uQ"), pose.rotation);
-      gl.uniform3fv(uniform("uP"), pose.position);
-      gl.uniform1f(uniform("uStrength"), 1 / (1 + lift(pose) * 0.6));
-      gl.drawArrays(gl.TRIANGLES, 0, model.count);
+  // Adds rings of points as triangles: ring 0 to ring 1, ring 1 to ring 2.
+  // `place` turns a ring's point into a floor point; `fades[r]` is how far
+  // through the fade ring r is.
+  const band = (
+    rings: Point[][],
+    fades: number[],
+    strength: number,
+    place: (point: Point) => Point,
+  ) => {
+    const count = rings[0]!.length;
+    const needed = shadesUsed + (rings.length - 1) * count * 24;
+    if (needed > shades.length) {
+      const larger = new Float32Array(Math.max(needed, shades.length * 2));
+      larger.set(shades);
+      shades = larger;
     }
-    gl.blendEquation(gl.FUNC_ADD);
-    gl.disable(gl.BLEND);
-    gl.useProgram(shadows.blur.program);
-    gl.bindVertexArray(gpu.quad);
-    for (const [from, to, x, y] of [
-      [first, second, 1 / SHADOW_WIDTH, 0],
-      [second, first, 0, 1 / shadowHeight],
-      [first, second, 2 / SHADOW_WIDTH, 0],
-      [second, first, 0, 2 / shadowHeight],
-    ] as const) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, to.framebuffer);
-      gl.bindTexture(gl.TEXTURE_2D, from.texture);
-      gl.uniform2f(shadows.blur.uniform("uStep"), x, y);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const placed = rings.map((ring) => ring.map(place));
+    for (let ring = 0; ring + 1 < rings.length; ring += 1)
+      for (let index = 0; index < count; index += 1) {
+        const next = (index + 1) % count;
+        for (const [r, i] of [
+          [ring, index],
+          [ring + 1, index],
+          [ring + 1, next],
+          [ring, index],
+          [ring + 1, next],
+          [ring, next],
+        ] as const) {
+          const [x, z] = placed[r]![i]!;
+          shades[shadesUsed] = x;
+          shades[shadesUsed + 1] = z;
+          shades[shadesUsed + 2] = fades[r]!;
+          shades[shadesUsed + 3] = strength;
+          shadesUsed += 4;
+        }
+      }
+  };
+
+  // One die's cast shadow, built in the sun's space: the floor turned so
+  // that x runs away from the light and squashed along it by the sine of the
+  // light's elevation, which makes the shadow of the die's rounding a circle
+  // again. From its middle to its outline, then out through half the penumbra.
+  const cast = (corners: Vec[], rounding: number, bottom: number) => {
+    const outline = hullOf(
+      corners.map(([x, y, z]) => ({
+        soft: PENUMBRA.atFloor + PENUMBRA.perHeight * (y - rounding),
+        x: (x * SUN.x + z * SUN.z + y * SUN.lean) * SUN.squash,
+        y: z * SUN.x - x * SUN.z,
+      })),
+    );
+    const normals = normalsOf(outline);
+    const share = 1 / outline.length;
+    let [x, y, soft] = [0, 0, 0];
+    for (const spot of outline)
+      [x, y, soft] = [x + spot.x * share, y + spot.y * share, soft + spot.soft * share];
+    const depth =
+      rounding +
+      Math.min(
+        ...outline.map((spot, index) => {
+          const [nx, ny] = normals[index]!;
+          return (spot.x - x) * nx + (spot.y - y) * ny;
+        }),
+      );
+    band(
+      [
+        outline.flatMap((): Point[] => [
+          [x, y],
+          [x, y],
+          [x, y],
+        ]),
+        grown(outline, normals, () => rounding),
+        grown(outline, normals, (spot) => rounding + spot.soft / 2),
+      ],
+      [0.5 - depth / soft, 0.5, 1],
+      1 / (1 + bottom * CAST_FADE),
+      ([along, across]) => [
+        (SUN.x * along) / SUN.squash - SUN.z * across,
+        (SUN.z * along) / SUN.squash + SUN.x * across,
+      ],
+    );
+  };
+
+  // One die's seat: full strength from well under the die to its outline
+  // seen from above, then fading over SEAT.reach.
+  const seat = (corners: Vec[], rounding: number, bottom: number) => {
+    const strength = SEAT.strength / (1 + bottom * SEAT.fade);
+    if (strength < 0.02) return;
+    const outline = hullOf(corners.map(([x, , z]) => ({ soft: 0, x, y: z })));
+    const normals = normalsOf(outline);
+    const share = 1 / outline.length;
+    let [x, y] = [0, 0];
+    for (const spot of outline) [x, y] = [x + spot.x * share, y + spot.y * share];
+    band(
+      [
+        outline.flatMap((spot): Point[] => {
+          const under: Point = [x + (spot.x - x) * SEAT.under, y + (spot.y - y) * SEAT.under];
+          return [under, under, under];
+        }),
+        grown(outline, normals, () => rounding),
+        grown(outline, normals, () => rounding + SEAT.reach),
+      ],
+      [0, 0, 1],
+      strength,
+      (point) => point,
+    );
   };
 
   const draw = (poses: Pose[], dark: boolean) => {
@@ -420,8 +481,6 @@ export function createRenderer(
       [canvas.width, canvas.height] = pixels;
     }
     gl.activeTexture(gl.TEXTURE0);
-    gl.disable(gl.DEPTH_TEST);
-    if (gpu.shadows !== null) castShadows(poses, gpu.shadows);
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -432,36 +491,6 @@ export function createRenderer(
       tray.height / height,
       tray.width / tray.height,
     );
-    const opacity = dark ? SHADOW_OPACITY.dark : SHADOW_OPACITY.light;
-
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.bindVertexArray(gpu.quad);
-    if (gpu.shadows !== null) {
-      const { program, uniform } = gpu.shadows.floor;
-      gl.useProgram(program);
-      gl.uniformMatrix4fv(uniform("uViewProj"), false, viewProj);
-      gl.uniform2f(uniform("uCenter"), 0, 0);
-      gl.uniform2fv(uniform("uHalf"), half);
-      gl.uniform1f(uniform("uOpacity"), opacity);
-      gl.bindTexture(gl.TEXTURE_2D, gpu.shadows.targets[0].texture);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
-    gl.useProgram(gpu.blob.program);
-    gl.uniformMatrix4fv(gpu.blob.uniform("uViewProj"), false, viewProj);
-    for (const pose of poses) {
-      const [x, y, z] = pose.position;
-      // Without the cast silhouettes the blob is the whole shadow: larger,
-      // darker, and pushed away from the light as the die rises.
-      const [reach, strength, shift] = full ? [1.05, 0.55, 0] : [1.3, 1.1, y * 0.45];
-      const size = pose.model.radius * reach * (1 + lift(pose) * 0.3);
-      gl.uniform2f(gpu.blob.uniform("uCenter"), x + shift * 0.8, z + shift);
-      gl.uniform2f(gpu.blob.uniform("uHalf"), size, size);
-      gl.uniform1f(gpu.blob.uniform("uOpacity"), (strength / (1 + lift(pose) * 1.5)) * opacity);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
-    gl.disable(gl.BLEND);
-
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     const { program, uniform } = gpu.die;
@@ -485,6 +514,41 @@ export function createRenderer(
       gl.drawArrays(gl.TRIANGLES, 0, model.count);
     }
     gl.disable(gl.CULL_FACE);
+
+    // NOTE: after the dice and behind them in depth, so the floor under a die
+    // costs no shading.
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    const [red, green, blue, alpha] = dark ? SHADOW_TINT.dark : SHADOW_TINT.light;
+    const shaded = poses.map((pose) => {
+      const corners = pose.model.core.map((corner) =>
+        add(rotate(pose.rotation, corner), pose.position),
+      );
+      const { rounding } = pose.model;
+      const bottom = Math.max(0, Math.min(...corners.map((corner) => corner[1])) - rounding);
+      return { bottom, corners, rounding };
+    });
+
+    shadesUsed = 0;
+    for (const { bottom, corners, rounding } of shaded) cast(corners, rounding, bottom);
+    const seatsFrom = shadesUsed / 4;
+    for (const { bottom, corners, rounding } of shaded) seat(corners, rounding, bottom);
+    gl.useProgram(gpu.shade.program);
+    gl.bindVertexArray(gpu.shade.mesh);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gpu.shade.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, shades, gl.DYNAMIC_DRAW, 0, shadesUsed);
+    gl.uniformMatrix4fv(gpu.shade.uniform("uViewProj"), false, viewProj);
+    gl.uniform4f(gpu.shade.uniform("uTint"), red * alpha, green * alpha, blue * alpha, alpha);
+    // NOTE: one light, so where two cast shadows overlap the floor is no
+    // darker than under one; the seats then darken what is under them.
+    gl.blendEquation(gl.MAX);
+    gl.drawArrays(gl.TRIANGLES, 0, seatsFrom);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLES, seatsFrom, shadesUsed / 4 - seatsFrom);
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
+    gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
   };
 

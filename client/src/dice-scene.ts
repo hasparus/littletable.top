@@ -69,8 +69,8 @@ const models = new Map<DieKind, Model>();
 function modelOf(kind: DieKind): Model {
   const known = models.get(kind);
   if (known !== undefined) return known;
-  const { inradius, radius } = solid(kind);
-  const made = { atlas: drawAtlas(kind), inradius, mesh: meshOf(kind), radius };
+  const { core, r } = solid(kind);
+  const made = { atlas: drawAtlas(kind), core, mesh: meshOf(kind), rounding: r };
   models.set(kind, made);
   return made;
 }
