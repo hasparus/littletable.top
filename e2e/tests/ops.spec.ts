@@ -138,9 +138,16 @@ test("an assistant's ops reach an open board live and survive a reload", async (
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
 
   const result = await applyOps(board, [
-    { at: { x: 80, y: 200 }, id: "tavern", op: "add", text: "The Yawning Portal" },
-    { at: { x: 420, y: 180 }, h: 140, id: "well", op: "add", w: 140 },
-    { id: "cellar", op: "add", relation: "right_of", target: "tavern", text: "Cellar" },
+    { at: { x: 80, y: 200 }, id: "tavern", kind: "box", op: "add", text: "The Yawning Portal" },
+    { at: { x: 420, y: 180 }, h: 140, id: "well", kind: "box", op: "add", w: 140 },
+    {
+      id: "cellar",
+      kind: "box",
+      op: "add",
+      relation: "right_of",
+      target: "tavern",
+      text: "Cellar",
+    },
     {
       id: "rumour",
       kind: "note",
@@ -151,6 +158,7 @@ test("an assistant's ops reach an open board live and survive a reload", async (
     },
     {
       id: "quest",
+      kind: "box",
       op: "add",
       relation: "right_of",
       target: "rumour",

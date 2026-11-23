@@ -4,12 +4,15 @@ import {
   allDefaultFontFaces,
   createShapeId,
   type Editor,
+  PageRecordType,
   renderHtmlFromRichTextForMeasurement,
   Tldraw,
   type TLRichText,
   toRichText,
 } from "tldraw";
 import "tldraw/tldraw.css";
+
+import { applyOps } from "../../src/mcp/upstream/canvas-ops/ops";
 
 // What the harness answers for one label in one font and size: the raw
 // measurements tldraw takes, and what its shape utils make of them.
@@ -95,9 +98,60 @@ function collect(editor: Editor, cases: BrowserCase[]) {
   });
 }
 
+// One fidelity scenario: a page set up through the real editor, then a batch
+// of ops run by tldraw's own engine on it. The records before and after go
+// back to the test, which runs the same batch on the stand-in editor.
+export type Step =
+  | { by: number; do: "rotate"; ids: string[] }
+  | { do: "create"; shapes: object[] }
+  | { do: "group"; id: string; ids: string[] };
+
+const DOCUMENT = new Set(["binding", "document", "page", "shape"]);
+
+function documentOf(editor: Editor) {
+  return structuredClone(
+    editor.store.allRecords().filter((record) => DOCUMENT.has(record.typeName)),
+  );
+}
+
+function scenario(editor: Editor, name: string, steps: Step[], ops: object[]) {
+  const pageId = PageRecordType.createId(name);
+  editor.createPage({ id: pageId, name });
+  editor.setCurrentPage(pageId);
+  for (const step of steps) {
+    if (step.do === "create") editor.createShapes(step.shapes as never);
+    else if (step.do === "rotate")
+      editor.rotateShapesBy(
+        step.ids.map((id) => createShapeId(id)),
+        step.by,
+      );
+    else
+      editor.groupShapes(
+        step.ids.map((id) => createShapeId(id)),
+        { groupId: createShapeId(step.id) },
+      );
+  }
+  editor.selectNone();
+  const before = documentOf(editor);
+  const result = applyOps(editor as never, ops as never, {});
+  editor.selectNone();
+  editor.zoomToFit({ animation: { duration: 0 } });
+  return { after: documentOf(editor), before, pageId, result };
+}
+
+// Shows records another engine produced, on a page of their own.
+function show(editor: Editor, records: object[], pageId: string) {
+  editor.store.mergeRemoteChanges(() => editor.store.put(records as never));
+  editor.setCurrentPage(pageId as never);
+  editor.selectNone();
+  editor.zoomToFit({ animation: { duration: 0 } });
+}
+
 declare global {
   var harness: {
     collect: (cases: BrowserCase[]) => ReturnType<typeof collect>;
+    scenario: (name: string, steps: Step[], ops: object[]) => ReturnType<typeof scenario>;
+    show: (records: object[], pageId: string) => void;
     editor: Editor;
     toRichText: typeof toRichText;
   };
@@ -112,6 +166,8 @@ createRoot(document.getElementById("root")!).render(
         .then(() => {
           globalThis.harness = {
             collect: (cases) => collect(editor, cases),
+            scenario: (name, steps, ops) => scenario(editor, name, steps, ops),
+            show: (records, pageId) => show(editor, records, pageId),
             editor,
             toRichText,
           };

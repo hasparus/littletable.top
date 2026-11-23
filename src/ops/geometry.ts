@@ -218,6 +218,11 @@ export function terminalOnPage(
 const sq = (p: Vec) => p.x * p.x + p.y * p.y;
 const wrap = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
+const ARROW_GAP = 10;
+const MIN_ARROW = 10;
+// tldraw's stroke widths by size style (theme stroke 2 x 1, 1.75, 2.5, 5).
+const STROKES = { l: 5, m: 3.5, s: 2, xl: 10 };
+
 const inside = (box: Box, { x, y }: Vec) =>
   x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h;
 
@@ -273,6 +278,32 @@ export function arrowPath(doc: Doc, arrow: TLArrowShape): Vec[] {
     start.bound === null ? start.point : exitPoint(start.bound, course[0] ?? end.point),
     end.bound === null ? end.point : exitPoint(end.bound, course.at(-1) ?? start.point),
   ];
+  // As tldraw's straight arrows: an end with an arrowhead stops short of
+  // the shape it is bound to, by 10 px and half of each stroke; an arrow
+  // that would then be too short reaches into the shape instead.
+  const strokes = (terminal: "end" | "start") => {
+    const head = terminal === "start" ? arrow.props.arrowheadStart : arrow.props.arrowheadEnd;
+    const target = doc.shape(find(terminal)?.toId ?? "");
+    if (head === "none" || target === undefined) return null;
+    const stroke = (size: unknown) => STROKES[size as keyof typeof STROKES] ?? 0;
+    return stroke(arrow.props.size) / 2 + stroke((target.props as { size?: string }).size) / 2;
+  };
+  const { scale } = arrow.props;
+  const [strokeStart, strokeEnd] = [strokes("start"), strokes("end")];
+  let gapStart = strokeStart === null ? 0 : (ARROW_GAP + strokeStart) * scale;
+  let gapEnd = strokeEnd === null ? 0 : (ARROW_GAP + strokeEnd) * scale;
+  const minLength = (MIN_ARROW + (strokeStart ?? 0) + (strokeEnd ?? 0)) * scale;
+  const length = Math.hypot(ends[1]!.x - ends[0]!.x, ends[1]!.y - ends[0]!.y);
+  if (length > 0) {
+    if (length - gapStart - gapEnd < minLength) {
+      const both = gapStart !== 0 && gapEnd !== 0;
+      gapStart *= both ? -1.5 : -1;
+      gapEnd *= both ? -1.5 : -1;
+    }
+    const u = { x: (ends[1]!.x - ends[0]!.x) / length, y: (ends[1]!.y - ends[0]!.y) / length };
+    ends[0] = { x: ends[0]!.x + u.x * gapStart, y: ends[0]!.y + u.y * gapStart };
+    ends[1] = { x: ends[1]!.x - u.x * gapEnd, y: ends[1]!.y - u.y * gapEnd };
+  }
   const toLocal = invert(pageTransform(doc, arrow));
   return [ends[0]!, ...course, ends[1]!].map((point) => apply(toLocal, point));
 }
