@@ -98,10 +98,13 @@ export function clearSpot(
         return true;
     }
   };
+  // NOTE: sliding further along the asked direction keeps "right of" reading
+  // as right of; a sideways step costs twice as much.
+  const sideways = relation === "above" || relation === "below" ? { x: 2, y: 1 } : { x: 1, y: 2 };
   let best: { distance: number; x: number; y: number } | null = null;
   for (const x of xs) {
     for (const y of ys) {
-      const distance = Math.hypot(x - ideal.x, y - ideal.y);
+      const distance = Math.hypot((x - ideal.x) * sideways.x, (y - ideal.y) * sideways.y);
       if (best !== null && distance >= best.distance) continue;
       if (onSide(x, y) && free(x, y)) best = { distance, x, y };
     }

@@ -45,6 +45,7 @@ import {
   toShapeId,
   validate,
 } from "./records";
+import { routeArrow } from "./routing";
 import {
   type ApplyOpsResult,
   type Op,
@@ -54,8 +55,9 @@ import {
   type RefList,
   type TargetOrPoint,
 } from "./schema";
-import { type FontFamily } from "./text/measure";
+import { type FontFamily, measureRichText } from "./text/measure";
 import {
+  ARROW_LABEL_SIZE,
   geoGrowY,
   geoLabelSize,
   isEmptyRichText,
@@ -525,6 +527,17 @@ function commonParent(ctx: Context, shapes: TLShape[]): TLParentId {
   return ctx.page.id;
 }
 
+// tldraw's arrow label box: its font at the arrow's size, with padding.
+function arrowLabelSize(richText: TLRichText) {
+  const measured = measureRichText(richText, {
+    family: "draw",
+    fontSize: 16 * ARROW_LABEL_SIZE.m,
+    lineHeight: 1.35,
+    maxWidth: null,
+  });
+  return { h: measured.h + 8.5, w: measured.w + 8.5 };
+}
+
 function connectArrow(
   ctx: Context,
   {
@@ -535,7 +548,7 @@ function connectArrow(
     text,
     to,
   }: { color?: string; dash?: string; from: End; id?: string; text?: string; to: End },
-): { id: TLShapeId; replaced: boolean } {
+): { adjusted?: string; id: TLShapeId; replaced: boolean } {
   if (from.shape !== undefined && from.shape.id === to.shape?.id) {
     throw new OpError(
       "An arrow needs two different ends; this one starts and ends on the same shape.",
@@ -557,6 +570,18 @@ function connectArrow(
   }
   const joined = [from.shape, to.shape].filter((shape) => shape !== undefined);
   const parentId = commonParent(ctx, joined);
+  const richText = toRichText(text ?? "");
+  const { bend, crossed } = routeArrow({
+    blockers: obstacles(
+      ctx.doc,
+      ctx.page.id,
+      excludeFor(ctx.doc, [...joined, ...(existing === undefined ? [] : [existing as TLShape])]),
+    ),
+    from: from.point,
+    joined: joined.map((shape) => pageBounds(ctx.doc, shape)),
+    label: text ? arrowLabelSize(richText) : null,
+    to: to.point,
+  });
   const toLocal = toParentSpace(ctx.doc, parentId);
   const origin = apply(toLocal, from.point);
   const tip = apply(toLocal, to.point);
@@ -574,15 +599,22 @@ function connectArrow(
       dash: dash ?? "draw",
       end: { x: round(tip.x - origin.x), y: round(tip.y - origin.y) },
       font: "draw",
-      richText: toRichText(text ?? ""),
+      richText,
       size: "m",
     },
   );
-  ctx.doc.put(arrow);
+  const routed = { ...arrow, props: { ...arrow.props, bend } } as TLShape;
+  ctx.doc.put(routed);
   if (from.shape !== undefined) ctx.doc.put(arrowBindingRecord(id, from.shape.id, "start"));
   if (to.shape !== undefined) ctx.doc.put(arrowBindingRecord(id, to.shape.id, "end"));
   if (!replaced) ctx.created.push(id);
-  return { id, replaced };
+  const adjusted =
+    bend !== 0
+      ? `bent ${Math.abs(bend)} px to the ${bend > 0 ? "left" : "right"} of the straight line to pass clear of other shapes`
+      : crossed > 0
+        ? `crosses ${crossed} other shape${crossed === 1 ? "" : "s"}; no bend clears ${crossed === 1 ? "it" : "them"}`
+        : undefined;
+  return { adjusted, id, replaced };
 }
 
 const endName = (ctx: Context, end: End) =>
@@ -593,8 +625,9 @@ const endName = (ctx: Context, end: End) =>
 const connect: Handler<"connect"> = (ctx, op) => {
   const from = endOf(ctx, op.from);
   const to = endOf(ctx, op.to);
-  const { id, replaced } = connectArrow(ctx, { ...op, from, to });
+  const { adjusted, id, replaced } = connectArrow(ctx, { ...op, from, to });
   return {
+    adjusted,
     message: `${replaced ? "Replaced the arrow" : "Added an arrow"} from ${endName(ctx, from)} to ${endName(ctx, to)}${op.text ? ` labelled ${quote(op.text)}` : ""}.`,
     shapeIds: [fromShapeId(id)],
   };

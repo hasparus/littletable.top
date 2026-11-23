@@ -9,7 +9,8 @@ import type { BoardGrant } from "../../src/mcp/grant";
 import type { ApplyOpsResponse } from "../../src/ops/board-ops";
 
 import { Doc } from "../../src/ops/doc";
-import { intersects, pageBounds } from "../../src/ops/geometry";
+import { arrowPath, intersects, pageBounds } from "../../src/ops/geometry";
+import { segmentHitsBox } from "../../src/ops/routing";
 import { pass, seat, until } from "../support";
 
 // apply_ops against a real board room with nobody connected: the engine
@@ -116,6 +117,31 @@ describe("apply_ops on a board nobody has open", () => {
     ]);
     const indexOf = (id: string) => (records.find((r) => r.id === id) as TLShape).index;
     expect(indexOf("shape:road") > indexOf("shape:b")).toBe(true);
+  });
+
+  it("bends an arrow around a shape in its way, on the side tldraw draws the bend", async () => {
+    const b = board();
+    const result = applied(
+      await b.apply([
+        { at: { x: 0, y: 0 }, h: 100, id: "west", op: "add", w: 100 },
+        { at: { x: 250, y: 0 }, h: 100, id: "middle", op: "add", w: 100 },
+        { at: { x: 500, y: 0 }, h: 100, id: "east", op: "add", w: 100 },
+        { from: "west", id: "over", op: "connect", text: "around", to: "east" },
+      ]),
+    );
+    expect(result.results[3]!.adjusted).toMatch(/^bent \d+ px/u);
+    const doc = new Doc(await b.records());
+    const arrow = doc.shape("shape:over") as TLShape & { props: { bend: number } };
+    expect(arrow.props.bend).not.toBe(0);
+    const middle = pageBounds(doc, doc.shape("shape:middle")!);
+    // NOTE: the arrow sits on the page unrotated, so its space is the page's moved.
+    const course = arrowPath(doc, arrow as never).map(({ x, y }) => ({
+      x: x + arrow.x,
+      y: y + arrow.y,
+    }));
+    for (let index = 1; index < course.length; index++) {
+      expect(segmentHitsBox(course[index - 1]!, course[index]!, middle)).toBe(false);
+    }
   });
 
   it("reaches shapes made by earlier calls of the same run", async () => {

@@ -198,6 +198,50 @@ export function terminalOnPage(
   return { bound: null, point: apply(pageTransform(doc, arrow), arrow.props[terminal]) };
 }
 
+const inside = (box: Box, { x, y }: Vec) =>
+  x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h;
+
+/**
+ * The course of an arrow between two anchors in one space: a straight line,
+ * or with a bend the arc through the point `bend` off the chord's middle (on
+ * the side tldraw's curved arrow puts it), sampled. The parts inside the
+ * boxes it joins are dropped, as tldraw stops an arrow at their outline.
+ */
+export function arcCourse(a: Vec, b: Vec, bend: number, joined: Box[] = [], steps = 24): Vec[] {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  let points: Vec[];
+  if (bend === 0 || length === 0) {
+    points = Array.from({ length: steps + 1 }, (_, step) => ({
+      x: a.x + ((b.x - a.x) * step) / steps,
+      y: a.y + ((b.y - a.y) * step) / steps,
+    }));
+  } else {
+    const u = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+    // NOTE: tldraw: middle = med + per(u) * -bend, with per(u) = (u.y, -u.x).
+    const m = { x: (a.x + b.x) / 2 - u.y * bend, y: (a.y + b.y) / 2 + u.x * bend };
+    const d = 2 * (a.x * (m.y - b.y) + m.x * (b.y - a.y) + b.x * (a.y - m.y));
+    const sq = (p: Vec) => p.x * p.x + p.y * p.y;
+    const c = {
+      x: (sq(a) * (m.y - b.y) + sq(m) * (b.y - a.y) + sq(b) * (a.y - m.y)) / d,
+      y: (sq(a) * (b.x - m.x) + sq(m) * (a.x - b.x) + sq(b) * (m.x - a.x)) / d,
+    };
+    const r = Math.hypot(a.x - c.x, a.y - c.y);
+    const angle = (p: Vec) => Math.atan2(p.y - c.y, p.x - c.x);
+    const start = angle(a);
+    let sweep = angle(b) - start;
+    let toMiddle = angle(m) - start;
+    const wrap = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    sweep = wrap(sweep);
+    toMiddle = wrap(toMiddle);
+    if (toMiddle > sweep) sweep -= 2 * Math.PI;
+    points = Array.from({ length: steps + 1 }, (_, step) => {
+      const t = start + (sweep * step) / steps;
+      return { x: c.x + r * Math.cos(t), y: c.y + r * Math.sin(t) };
+    });
+  }
+  return points.filter((point) => !joined.some((box) => inside(box, point)));
+}
+
 /** An arrow's visible course in its own space, clipped to the shapes it joins. */
 export function arrowPath(doc: Doc, arrow: TLArrowShape): Vec[] {
   const bindings = doc.bindingsOf(arrow.id).filter((binding) => binding.fromId === arrow.id);
@@ -205,27 +249,12 @@ export function arrowPath(doc: Doc, arrow: TLArrowShape): Vec[] {
     bindings.find((binding) => binding.props.terminal === terminal);
   const start = terminalOnPage(doc, arrow, "start", find("start"));
   const end = terminalOnPage(doc, arrow, "end", find("end"));
-  const from = start.bound === null ? start.point : exitPoint(start.bound, end.point);
-  const to = end.bound === null ? end.point : exitPoint(end.bound, start.point);
+  const joined = [start.bound, end.bound].filter((box) => box !== null);
+  const course = arcCourse(start.point, end.point, arrow.props.bend, joined);
+  const ends = [
+    start.bound === null ? start.point : exitPoint(start.bound, course[0] ?? end.point),
+    end.bound === null ? end.point : exitPoint(end.bound, course.at(-1) ?? start.point),
+  ];
   const toLocal = invert(pageTransform(doc, arrow));
-  const a = apply(toLocal, from);
-  const b = apply(toLocal, to);
-  const bend = arrow.props.bend;
-  if (bend === 0) return [a, b];
-  // NOTE: a bent arrow is an arc through the point `bend` off the middle of
-  // its chord; sampling it is enough for a box.
-  const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  const middle = {
-    x: (a.x + b.x) / 2 + ((b.y - a.y) / length) * bend,
-    y: (a.y + b.y) / 2 - ((b.x - a.x) / length) * bend,
-  };
-  const out: Vec[] = [];
-  for (let step = 0; step <= 16; step++) {
-    const t = step / 16;
-    out.push({
-      x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * (2 * middle.x - (a.x + b.x) / 2) + t * t * b.x,
-      y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * (2 * middle.y - (a.y + b.y) / 2) + t * t * b.y,
-    });
-  }
-  return out;
+  return [ends[0]!, ...course, ends[1]!].map((point) => apply(toLocal, point));
 }
