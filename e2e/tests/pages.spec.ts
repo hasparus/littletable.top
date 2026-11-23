@@ -53,6 +53,17 @@ async function closePages(page: Page): Promise<void> {
   await expect(page.getByTestId("page-menu.list")).toBeHidden();
 }
 
+// Closes the page menu and any menu of an item in it.
+// NOTE: Escape is pressed only while a menu is open, so tldraw takes it
+// for the menu's and never for the canvas (see putNote in helpers.ts).
+async function closeMenus(page: Page): Promise<void> {
+  const list = page.getByTestId("page-menu.list");
+  await expect(async () => {
+    if (await list.isVisible()) await page.keyboard.press("Escape");
+    await expect(list).toBeHidden({ timeout: 500 });
+  }).toPass();
+}
+
 // The page names in the menu, top to bottom.
 async function pagesListed(page: Page): Promise<string[]> {
   const list = await openPages(page);
@@ -164,10 +175,7 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   const moveUp = ada.getByRole("menuitem", { name: "Move up" });
   const moveDown = bea.getByRole("menuitem", { name: "Move down" });
   await expect(async () => {
-    for (const screen of [ada, bea]) {
-      await screen.keyboard.press("Escape");
-      await screen.keyboard.press("Escape");
-    }
+    for (const screen of [ada, bea]) await closeMenus(screen);
     await openPageItemMenu(ada, "Vault");
     await openPageItemMenu(bea, "Town");
     await expect(moveUp).toBeVisible({ timeout: 1000 });

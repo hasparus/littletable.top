@@ -71,7 +71,12 @@ export async function putNote(
   await page.getByTestId("tools.note").click();
   await page.mouse.click(at.x, at.y);
   await page.keyboard.type(text);
-  await page.keyboard.press("Escape");
+  // NOTE: not Escape. tldraw ignores an Escape it believes is still held,
+  // and it misses the key coming up whenever that lands while a menu is
+  // open or a text field has focus, which then leaves a board deaf to
+  // Escape. Picking the select tool ends the edit and keeps the note
+  // selected, as Escape would.
+  await page.getByTestId("tools.select").click();
   await expect(onBoard(page, text)).toBeVisible();
 }
 
