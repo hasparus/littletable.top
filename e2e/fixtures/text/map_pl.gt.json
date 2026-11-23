@@ -1,0 +1,30 @@
+{
+  "category": "map",
+  "height": 1536,
+  "image": "map_pl.jpg",
+  "searchable": ["Bagna", "Dolny", "Gród", "Góry", "Kraśnik", "Królestwo", "Książąt", "Kurhan", "Młyn", "Przystań", "Rzeka", "Smocze", "Stary", "Wąwozowa", "Wędrowców", "Zatoka", "Ćmy", "Łęgów", "Śledziowa", "Źródlane", "Żółwia"],
+  "width": 2048,
+  "words": [
+    {"angle": 0, "bbox": [170, 253, 303, 291], "curved": false, "text": "Gród"},
+    {"angle": 0, "bbox": [315, 251, 489, 291], "curved": false, "text": "Żółwia"},
+    {"angle": 15, "bbox": [552, 410, 678, 471], "curved": false, "text": "Kraśnik"},
+    {"angle": 15, "bbox": [677, 384, 778, 448], "curved": false, "text": "Dolny"},
+    {"angle": 0, "bbox": [1180, 633, 1326, 667], "curved": false, "text": "Przystań"},
+    {"angle": 0, "bbox": [1336, 633, 1544, 668], "curved": false, "text": "Wędrowców"},
+    {"angle": -30, "bbox": [979, 1273, 1099, 1361], "curved": false, "text": "Zatoka"},
+    {"angle": -30, "bbox": [1090, 1332, 1254, 1450], "curved": false, "text": "Śledziowa"},
+    {"angle": 45, "bbox": [383, 798, 490, 905], "curved": false, "text": "Bagna"},
+    {"angle": 45, "bbox": [469, 663, 616, 810], "curved": false, "text": "Źródlane"},
+    {"angle": 90, "bbox": [1536, 340, 1561, 420], "curved": false, "text": "Rzeka"},
+    {"angle": 90, "bbox": [1538, 187, 1569, 333], "curved": false, "text": "Wąwozowa"},
+    {"angle": 0, "bbox": [620, 91, 967, 141], "curved": false, "text": "Królestwo"},
+    {"angle": 0, "bbox": [982, 91, 1194, 151], "curved": false, "text": "Łęgów"},
+    {"angle": 0, "bbox": [880, 343, 935, 366], "curved": false, "text": "Stary"},
+    {"angle": 0, "bbox": [941, 342, 997, 366], "curved": false, "text": "Młyn"},
+    {"angle": -15, "bbox": [1650, 879, 1752, 926], "curved": false, "text": "Kurhan"},
+    {"angle": -15, "bbox": [1752, 905, 1854, 961], "curved": false, "text": "Książąt"},
+    {"angle": 0.0, "bbox": [819, 775, 918, 892], "curved": true, "text": "Góry"},
+    {"angle": 0.0, "bbox": [901, 666, 1052, 794], "curved": true, "text": "Smocze"},
+    {"angle": 0.0, "bbox": [1041, 616, 1144, 691], "curved": true, "text": "Ćmy"}
+  ]
+}

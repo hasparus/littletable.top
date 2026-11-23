@@ -1,0 +1,23 @@
+{
+  "category": "token",
+  "height": 200,
+  "image": "small_card_pl.png",
+  "searchable": ["Bagien", "Jadwiga", "Źródlanych", "Żmudzka"],
+  "width": 360,
+  "words": [
+    {"angle": 0.0, "bbox": [18, 34, 110, 58], "curved": false, "text": "Jadwiga"},
+    {"angle": 0.0, "bbox": [117, 30, 224, 52], "curved": false, "text": "Żmudzka"},
+    {"angle": 0.0, "bbox": [18, 80, 61, 95], "curved": false, "text": "Elfka,"},
+    {"angle": 0.0, "bbox": [66, 80, 143, 92], "curved": false, "text": "łuczniczka"},
+    {"angle": 0.0, "bbox": [18, 118, 36, 128], "curved": false, "text": "KP"},
+    {"angle": 0.0, "bbox": [40, 118, 58, 128], "curved": false, "text": "15"},
+    {"angle": 0.0, "bbox": [67, 118, 89, 128], "curved": false, "text": "PW"},
+    {"angle": 0.0, "bbox": [94, 118, 112, 128], "curved": false, "text": "22"},
+    {"angle": 0.0, "bbox": [120, 117, 185, 131], "curved": false, "text": "Szybkość"},
+    {"angle": 0.0, "bbox": [189, 118, 198, 128], "curved": false, "text": "9"},
+    {"angle": 0.0, "bbox": [203, 120, 217, 128], "curved": false, "text": "m"},
+    {"angle": 0.0, "bbox": [18, 150, 88, 160], "curved": false, "text": "Strażniczka"},
+    {"angle": 0.0, "bbox": [92, 150, 135, 163], "curved": false, "text": "Bagien"},
+    {"angle": 0.0, "bbox": [138, 146, 208, 163], "curved": false, "text": "Źródlanych"}
+  ]
+}
