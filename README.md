@@ -128,7 +128,17 @@ A pass is an RS256 JWT the host signs for one person on one board:
 | `link`       | The board's link version, an integer from 0                    |
 | `name`       | The display name, 1-40 characters                              |
 | `owner`      | Whether the person owns the board                              |
+| `avatar`     | Optional. The person's picture: a URL on `HOST_ORIGIN`         |
 | `iat`, `exp` | Required. The reference host gives five minutes                |
+
+The picture is a claim of the pass, not a field of the bootstrap answer,
+because the answer reaches the Worker through the browser and the pass is
+the only thing the Worker trusts: a person can then show no picture but the
+one the host signed for them. The Worker fetches it itself, from
+`HOST_ORIGIN` only (see "Avatars"); a URL anywhere else, or a claim that is
+not a string of at most 2048 characters, is ignored and the person shows an
+initial. The reference host serves `/avatars/<id>.png` and signs that
+address into its members' passes.
 
 The pass travels in the request (`?pass=` on the socket, `Authorization:
 Bearer` elsewhere). The one exception is reading a board's images, which
@@ -149,18 +159,19 @@ the same id starts again from link version 0.
 
 ### Routes
 
-| Route                               | Does                                                      |
-| ----------------------------------- | --------------------------------------------------------- |
-| `GET /b/<share code>`               | The client's shell                                        |
-| `GET /`                             | 302 to `HOME_URL`                                         |
-| `GET /<file>`                       | The built client: scripts, styles, fonts, manifest, icons |
-| `GET /rooms/<board>/connect`        | The tldraw sync socket (`?sessionId=&pass=`)              |
-| `POST /rooms/<board>/roll`          | Rolls `{"dice": [6, 6]}` for everyone                     |
-| `GET /rooms/<board>/rolls`          | The latest 50 rolls                                       |
-| `POST /rooms/<board>/delete`        | Deletes the board's data (deletion token)                 |
-| `POST /rooms/<board>/files`         | Uploads an image (the bytes as the body); see "Images"    |
-| `POST /rooms/<board>/files/access`  | Sets the cookie the board's `<img>`s read images with     |
-| `GET /rooms/<board>/files/<sha256>` | An image of the board                                     |
+| Route                                       | Does                                                      |
+| ------------------------------------------- | --------------------------------------------------------- |
+| `GET /b/<share code>`                       | The client's shell                                        |
+| `GET /`                                     | 302 to `HOME_URL`                                         |
+| `GET /<file>`                               | The built client: scripts, styles, fonts, manifest, icons |
+| `GET /rooms/<board>/connect`                | The tldraw sync socket (`?sessionId=&pass=`)              |
+| `POST /rooms/<board>/roll`                  | Rolls `{"dice": [6, 6]}` for everyone                     |
+| `GET /rooms/<board>/rolls`                  | The latest 50 rolls                                       |
+| `POST /rooms/<board>/delete`                | Deletes the board's data (deletion token)                 |
+| `POST /rooms/<board>/files`                 | Uploads an image (the bytes as the body); see "Images"    |
+| `POST /rooms/<board>/files/access`          | Sets the cookie the board's `<img>`s read images with     |
+| `GET /rooms/<board>/files/<sha256>`         | An image of the board                                     |
+| `GET /rooms/<board>/files/avatars/<sha256>` | The picture of someone who has been on the board          |
 
 The rooms API is same-origin with the client and sends no CORS headers. The
 room draws every die (d4 d6 d8 d10 d12 d20 d100, up to 20 at once, one roll
@@ -210,7 +221,7 @@ same pass that opens the board.
   client trades its pass for a cookie: `POST /rooms/<board>/files/access`
   (Bearer pass) answers `Set-Cookie: tabletop-files=<the pass>;
 Path=/rooms/<board>/files; Max-Age=<the pass's remaining life>; Secure;
-HttpOnly; SameSite=Strict`. The client does this again whenever its pass
+HttpOnly; SameSite=Strict` and `{"avatar"}` (see "Avatars"). The client does this again whenever its pass
   is renewed, and tldraw asks the asset store before it shows an image, so
   a tab that slept past the pass's five minutes gets a fresh cookie before
   its next image loads. The cookie is read only on `GET`/`HEAD` of the
@@ -251,6 +262,57 @@ untouched and a 12 MP photo at full size. Uploads show their progress,
 retry a dropped connection three times (1, 3, 8 s) and a busy Worker five
 times (15 s), and say why when refused. The page's policy allows images
 from `'self'` (and `blob:`, for tldraw's preview while one uploads).
+
+## Avatars
+
+A member's picture shows in the board's people list and, in standalone
+mode, beside the account on the front page. A guest, or anyone without a
+picture, gets a circle with their initial; either way the ring is the
+person's cursor colour. Nothing else shows avatars.
+
+Pictures are never hot-linked. The Worker copies each one into the images'
+bucket as `avatars/<sha256>` and serves it itself, so the page's policy
+stays at images from `'self'`, no other player's browser contacts the
+identity provider or the host, and a picture that changes or disappears
+upstream breaks nothing.
+
+- **The copy** (`src/avatars.ts`): `https` only, no address literals and no
+  `localhost`, `.local`, `.internal` or `.home.arpa` names, at most three
+  redirects with every hop checked again, three seconds in all, 1 MiB. The
+  bytes are sniffed by the images' own sniffer and must be PNG, JPEG, GIF,
+  WebP or AVIF (an SVG is refused); nothing is re-encoded. Any failure
+  leaves the person without a picture, is logged as `avatar.copied` with
+  its outcome, and never fails the request it happened in.
+- **Standalone.** The sign-in callback copies the provider's picture
+  (WorkOS's `profile_picture_url`), and a later sign-in copies again only
+  when that address has changed or the last copy failed. `accounts` keeps
+  the hash (`avatar_hash`) beside the address. The account's own picture is
+  `GET /api/avatars/<sha256>`, for its session only; `/api/me` names it.
+  The Worker signs the hash into the passes it issues.
+- **Hosted.** The host signs an optional `avatar` URL into the pass. The
+  board's Durable Object copies it when a pass that names it connects or
+  asks for files access: only from `HOST_ORIGIN`, again only when the claim
+  changes, and after a failure no sooner than an hour later. So only a
+  host-signed pass makes the Worker fetch, only from the host, and at most
+  once per person, picture and board.
+- **Who sees it.** `GET /rooms/<board>/files/avatars/<sha256>` answers with
+  the board's pass or files cookie, exactly as for an image, and only for
+  the picture of someone who has been on that board (the room's `people`
+  table); any other hash is a 404. Headers are the images' own
+  (`serveStored`): the sniffed type, `nosniff`, `private, immutable`,
+  `Cross-Origin-Resource-Policy: same-origin`, the sandboxing policy.
+- **How clients learn it.** tldraw's presence record carries it, in `meta`.
+  A client writes its own presence, so the room overwrites the user id, the
+  name and `meta.avatar` of every presence push with what the session's
+  pass says (`src/presence.ts`): a client cannot appear under another
+  person's id, name or picture, and what it reads is a hash the Worker
+  issued, which it turns into the same-origin address above. A person
+  learns their own from the answer of `POST /rooms/<board>/files/access`
+  (`{"avatar": <address or null>}`).
+- **Deleting.** Avatars are shared by content across boards and accounts,
+  so deleting a board leaves them.
+  TODO: deleting an account (not built yet) must delete its picture's
+  object once no account and no board's `people` row names its hash.
 
 ## .tldr files
 
@@ -461,7 +523,7 @@ looked up across boards:
 
 | Table      | Holds                                                                               |
 | ---------- | ----------------------------------------------------------------------------------- |
-| `accounts` | id (the provider's user id), name and avatar from the last sign-in                  |
+| `accounts` | id (the provider's user id), name, the avatar's address and its copy's hash         |
 | `sessions` | SHA-256 of the cookie token, account, the provider's session id, CSRF token, expiry |
 | `boards`   | id, owner, title, share code (unique), link version                                 |
 | `visits`   | account, board, the share code they came by, when                                   |
@@ -496,7 +558,8 @@ index across all accounts anyway; D1 gives both with two indexes.
 | `GET /`                                   | The front page: sign in, then the account's boards                                                  |
 | `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                                |
 | `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                                   |
-| `GET /api/me`                             | `{"account": {"id", "name"}, "csrf"}`; both null when signed out                                    |
+| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                          |
+| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                                          |
 | `GET /api/boards`                         | `{"owned": [...], "visited": [...]}`; a visited board's `shareCode` is null once its link was reset |
 | `POST /api/boards`                        | `{"title"}`: makes a board (201). 100 per account, 20 an hour                                       |
 | `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                             |
