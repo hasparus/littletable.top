@@ -50,11 +50,15 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   await expect.poll(() => loadedImages(page)).toEqual([expect.stringMatching(stored)]);
   // The image lands where the uploader looks; the guest's small screen
   // zooms to everything on the board.
-  await zoomToFit(guest);
-  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  // NOTE: again on each look: a zoom that comes before the image's shape
+  // has synced fits an empty board and leaves the image off screen.
+  const seenByGuest = async () => {
+    await zoomToFit(guest);
+    return loadedImages(guest);
+  };
+  await expect.poll(seenByGuest).toEqual([expect.stringMatching(stored)]);
   await guest.reload();
-  await zoomToFit(guest);
-  await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
+  await expect.poll(seenByGuest).toEqual([expect.stringMatching(stored)]);
 
   // The address opens nothing without the board's pass.
   const [address] = await loadedImages(guest);
