@@ -5,6 +5,33 @@ everything else is a plan. Numbers were measured on this branch (tldraw
 5.6.0, workerd from wrangler 4.145, Node 26 for timings) unless a source is
 named.
 
+## Decisions on record
+
+Made by the maintainer; later sections follow them.
+
+1. **The adapted tldraw code ships.** tldraw's answer was "generally yeah",
+   "adapt the code"; no written confirmation is being waited for. The
+   provenance document, the per-file origin headers and the separate
+   `upstream/` folders stay.
+2. **The role is "shaman"** (Polish "szaman"). A board has people who can
+   write, and shamans. Only a shaman connects an assistant to a board and
+   chooses read or edit. The owner makes shamans on a permissions page.
+   Built: §9b.
+3. **Recent changes list people and assistants**, a summary per actor and
+   time, 200 entries or 30 days, with undo for an assistant's batch.
+4. **Standalone consent: WorkOS, then our own board step** (§9).
+5. **The tabletop owns board names, in hosted mode too**; `create_board`
+   and `rename_board` exist in both modes (§9c).
+6. **`mcp.<domain>`** is the MCP host; **screenshots** come from
+   Cloudflare's headless browser, with a connected tab as the fast path.
+7. MCP in a second Worker; tldraw's engine adapted, not rewritten.
+
+## 0. Where this stands (latest)
+
+The branch is merged with `main` (multi-page, images, avatars, search,
+dice, the rename): see §14. The role model is built in the board Worker,
+the room and the standalone front page.
+
 ## 0. Where this stands (latest)
 
 tldraw allowed us to adapt its hosted-app code, so the engine is no longer
@@ -158,7 +185,9 @@ boards, since a call holds the snapshot, the document view and the diff
 - The tools not adapted: screenshots, user state and board users, create
   and rename board. Unexpected errors inside a tool come back as their
   message, not yet as upstream's closed vocabulary.
-- Standalone mode still has no MCP Worker.
+- Standalone mode still has no MCP Worker: its tokens come from WorkOS
+  (§9), which the MCP Worker does not verify yet, and the Alchemy helper
+  deploys the MCP Worker for hosted mode only.
 
 ## 1. Decision (the server-side engine)
 
@@ -821,23 +850,75 @@ Built (on the MCP Worker, which also takes `ISSUER` and
 grant version check and `BoardRoom.revokeMcpGrants`. Not built: the
 `/mcp/revoke` route and anything on a host.
 
-### Standalone mode (design)
+### Standalone mode: WorkOS, then our own board step (design)
 
-|                           | (a) WorkOS AuthKit as the authorization server                                                                                                                                                                    | (b) `@cloudflare/workers-oauth-provider` in the Worker, WorkOS for sign-in only               |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Standards                 | CIMD, DCR, PKCE, resource indicators handled by WorkOS                                                                                                                                                            | The library implements the endpoints, DCR and CIMD, PKCE; tokens stored hashed in KV          |
-| Per-board consent         | No: scopes are fixed and its consent screen is its own. Board choice would be a second step of ours after the OAuth flow (a "connect this assistant" page), with tokens that are valid before any board is chosen | Yes: our own consent page, inside the flow, lists the account's boards with off / read / edit |
-| Token contents            | WorkOS's JWT; board grants live in our D1 and are looked up per call                                                                                                                                              | Opaque token; the grant (boards, access, grant versions) is the token's stored props          |
-| Revocation                | Ours in D1 for boards; WorkOS for the client                                                                                                                                                                      | Ours entirely: delete the grant, or raise a board's grant version                             |
-| Coupling                  | Ties MCP to one identity vendor's product decisions; the provider seam in `src/standalone/provider.ts` stops being the only WorkOS touchpoint                                                                     | WorkOS stays behind the existing seam; needs a KV namespace                                   |
-| Same shape as hosted mode | No (two-step)                                                                                                                                                                                                     | Yes (one consent, per-board grants, grant versions)                                           |
+Decided: WorkOS AuthKit is the OAuth authorization server for the MCP
+resource; the MCP Worker then narrows the token's account to boards and
+access a person picked on a page of ours.
 
-**Recommendation: (b).** The product promise is "you choose which boards
-this assistant sees", and only (b) puts that choice in the authorization
-step. It also keeps one model across modes: in both, the room sees a board
-grant with an access level and a grant version. (WorkOS's MCP feature set
-is stated from its documentation as I know it; confirm before ruling (a)
-out on facts.)
+What AuthKit gives, from its MCP documentation (`workos.com/docs/authkit/mcp`,
+read 2026-11-23):
+
+|                     |                                                                                                                                                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client registration | Client ID Metadata Documents, off by default, turned on in the dashboard (Connect, Configuration); Dynamic Client Registration for older clients (`/oauth2/register`)                                                                              |
+| PKCE                | `S256` advertised                                                                                                                                                                                                                                  |
+| Resource indicators | The MCP endpoint's URL is added as a Resource Indicator in the dashboard; the access token's `aud` is then that URL. Without one, `aud` is the environment's client id and `resource` is ignored                                                   |
+| Token               | A JWT; issuer `https://<authkit domain>`; keys at `https://<authkit domain>/oauth2/jwks`; `sub` is the WorkOS user id (the same id our `accounts.id` holds); `org_id` when scoped to an organization; `sub_profile: "ai_agent"` marks agent tokens |
+| Metadata            | `https://<authkit domain>/.well-known/oauth-authorization-server`                                                                                                                                                                                  |
+| Scopes and consent  | `openid`, `profile`, `email`, `offline_access` only; AuthKit shows its own consent prompt; nothing per resource or per board                                                                                                                       |
+| Not stated there    | Whether the token carries `client_id`; the board step below needs to know which client a token belongs to, so this must be checked on a real token before building (the introspection endpoint needs a first-party client's credentials)           |
+
+The sequence:
+
+```
+Assistant client        MCP Worker (mcp.<domain>)          WorkOS AuthKit        Board Worker / D1
+   | POST /mcp (no token)      |                                |                      |
+   |-------------------------->| 401, resource_metadata=...     |                      |
+   | GET /.well-known/oauth-protected-resource/mcp              |                      |
+   |-------------------------->| {resource, authorization_servers: [authkit domain]}   |
+   | authorize (PKCE, client id = its metadata URL, resource = https://mcp.<domain>/mcp)
+   |----------------------------------------------------------->| sign in, AuthKit's consent
+   | code -> token                                              |                      |
+   |<-----------------------------------------------------------| JWT: sub, aud = resource
+   | POST /mcp  Bearer <jwt>   |                                |                      |
+   |-------------------------->| verify with JWKS (iss, aud, exp); refuse sub_profile ai_agent
+   |                           | grants for (sub, client)? ------------------------- D1 |
+   |                           |   none: every tool answers "No boards are connected yet.
+   |                           |   Ask the person to open https://<tabletop>/assistants"
+   |                           |                                |                      |
+   Person, in a browser, signed in to the tabletop:             |                      |
+   |   GET /assistants  -> the clients that hold a token for this account (seen by the MCP
+   |   Worker, recorded in D1), and for each the boards where the account is owner or shaman,
+   |   each off / read / edit.  POST with CSRF, as the other owner actions.            |
+   |                           |                                |                      |
+   | POST /mcp tools/call      |                                |                      |
+   |-------------------------->| grants for (sub, client) -> board grant {board, access,
+   |                           |   grant version, role} --------- readDocument / commitDocument
+```
+
+- **Where grants live**: D1, on the standalone side, read by the MCP Worker
+  through a D1 binding to the same database.
+  `assistant_clients (account_id, client_id, name, first_seen, last_seen)`,
+  written by the MCP Worker the first time it sees a valid token;
+  `assistant_grants (account_id, client_id, board_id, access, PRIMARY KEY
+(account_id, client_id, board_id))`, written by the board Worker's
+  `/assistants` page.
+- **The role is looked up, not stored in the grant**: on each call the MCP
+  Worker joins the grant with `boards.owner_id` and `visits.role`; an
+  account that is no longer owner or shaman has no usable grant, whatever
+  the row says. The room still gets `role` in the board grant and refuses
+  anything else.
+- **Grant version**: `boards` gains `grant_version`; demoting a shaman or
+  switching a board off for a client raises it (`endAssistants` on the
+  room, built), and the MCP Worker passes the current one. With grants
+  looked up per call this is a second lock, kept so both modes present the
+  room with the same thing.
+- **Cost of a call**: one D1 read (grants joined with roles) before the
+  room; JWKS cached in the isolate.
+- If the token has no `client_id`, grants are per account instead of per
+  client ("your assistants may read these boards"), which is weaker and
+  should be said on the page.
 
 ### Guests, attribution, audit
 
@@ -853,54 +934,60 @@ out on facts.)
   counts and how many people were connected. Never shape text, names or
   ops.
 
-## 9b. Permissions, and a record of changes (design)
+## 9b. Roles (built), and a record of changes (design)
 
-### Roles on a board
+### Roles on a board (built)
 
-The maintainer wants a permissions page per board where people have
-**write** or **manage** access, and an assistant gets the boards its person
-may manage.
+| Role     | May                                                                      | Who                                                         |
+| -------- | ------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `write`  | draw, roll, upload                                                       | anyone holding a pass: guests (always `write`) and accounts |
+| `shaman` | all of that, and connect an assistant to the board, read-only or editing | accounts the owner makes shamans                            |
+| `owner`  | all of that; rename, reset the link, delete; make and unmake shamans     | the account that made the board                             |
 
-| Role   | May                                                                                                                                                        | Who                                         |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| guest  | draw, roll, upload, while holding the link                                                                                                                 | anyone with the link and a name; no account |
-| write  | the same, as a named account the board remembers; the board is in their list                                                                               | accounts the board was shared with          |
-| manage | all of that; rename, reset the link, delete; change people's roles; **let an assistant act on the board**, read-only or editing; undo an assistant's batch | the owner, and accounts the owner promotes  |
+An assistant never holds a role. It acts for one account, on boards where
+that account is `shaman` or `owner`, with the access that person picked.
 
-"Agent access" is not a fourth role: an assistant never holds a role of
-its own. It acts for one account, on boards where that account's role is
-manage, with the access (read or edit) that account picked for that
-assistant on that board. Write alone does not let someone point an
-assistant at a shared board: the people at the table agreed to that
-person, not to their tools; a manager decides that.
+What changed in the contract:
 
-Where roles live and how they reach a token:
-
-- **Standalone.** A `board_members (board, account, role)` table in D1
-  beside `boards` (the owner row is implicit); the permissions page is the
-  board's People sheet for managers: each account that has joined, with a
-  role control, and "Assistants" listing the clients granted on this board
-  with their access and a revoke button. The authorization server's
-  consent page (§9) lists the boards where the signing-in account's role is
-  manage. The grant is stored as `(account, client, board, access, grant
-version)`.
-- **Hosted.** The host owns roles and the page. The pass's `owner` boolean
-  becomes `role: "write" | "manage"` (`owner: true` is read as manage for
-  one release). The host's consent page offers boards where the member's
-  role is manage.
-- **Into the token**, in both modes: each `boards` entry is
-  `{board, access, grant, title}` as now; the authorization server only
-  ever issues entries for boards the account manages. It re-checks roles
-  whenever it issues or refreshes a token (one hour at most).
-- **Losing the role** must not wait for expiry: demoting an account, or
-  revoking a client, raises the board's grant version and tells the room
-  (`revokeMcpGrants`), which kills every outstanding assistant token for
-  that board; the other clients get fresh ones on their next refresh.
+- **The pass** has `role: "owner" | "shaman" | "write"`. `owner: boolean`
+  stays readable for one step: a pass without `role` is `owner` or `write`
+  by that flag; a pass with both goes by `role`. A pass that gives a guest
+  (`g:`) more than `write`, or names an unknown role, is refused (403).
+  The standalone Worker signs both claims; the reference host
+  (`e2e/fake-host.ts`) sends `role`.
+- **The bootstrap answer**'s `person` has `role` beside `owner`.
+- **An assistant's board grant** (in the access token, and in every call to
+  the room) has `role: "shaman" | "owner"`: the role of the account it acts
+  for. The MCP Worker refuses a token entry with any other role, and the
+  room refuses the call again on its side (`readDocument`,
+  `commitDocument` answer "revoked"), so no Worker bound to the room can
+  act for someone who is not a shaman.
+- **Hosted mode**: the host keeps roles and its own permissions page; it
+  names the person's role in each pass, offers on its consent page only
+  boards where the member is shaman or owner, puts that role in the token,
+  and raises the board's grant version (and tells the room, §9) when a
+  shaman is demoted.
+- **Standalone mode**: `visits.role` (`write` or `shaman`, migration
+  `0003_board_roles.sql`); the owner is the board's `owner_id`.
+  `GET /api/boards/<id>/people` lists the accounts that joined by link;
+  `POST /api/boards/<id>/people/<account>/role` sets one, with the same
+  origin and CSRF checks as the other owner actions. Taking shaman back
+  calls the room's `endAssistants`, which ends every assistant on the board
+  at once. The page is "People" on a board's row of the front page
+  (`client/src/board-people.tsx`): each person with a "Shaman" checkbox,
+  and a line saying what a shaman can do; guests are not listed and cannot
+  be promoted.
+- Tests: `test/roles.test.ts` (every refusal: signed out, not the owner,
+  no CSRF token, another origin, a role that is not one, an account that
+  never joined, a guest; the pass's role values; the room's refusal),
+  `e2e/tests/roles.spec.ts` on a phone, in English and Polish.
 
 ### Recent changes, with undo for an assistant's batch
 
-A list in the board ("Recent changes") naming who changed what, most
-recent first.
+Decided: people and assistants both, a summary per actor and time ("Ania
+changed 12 shapes on Town"), 200 entries or 30 days, undo for an
+assistant's batch. A list in the board ("Recent changes"), most recent
+first.
 
 - **Store.** A `changes` table in the room's SQLite: `seq, at, actor_kind
 (person | assistant), actor_id, actor_name, page, batch_id, created,
@@ -916,7 +1003,7 @@ changed, removed, undo` and a cap (the last 200 entries or 30 days).
   person). Pushes are coalesced per person and page into one row per
   minute of activity ("Ania changed 12 shapes on Dungeon"). No inverse is
   kept: people have their own undo.
-- **Undo a batch.** `undoBatch(batchId)`, for managers, from the list or
+- **Undo a batch.** `undoBatch(batchId)`, for shamans, from the list or
   as an MCP tool: applies the stored inverse through the same commit path,
   under the precondition that the records it restores or removes are still
   as the batch left them. Records someone has since edited are skipped and
@@ -926,6 +1013,57 @@ changed, removed, undo` and a cap (the last 200 entries or 30 days).
 - **Reading it.** A room call for the client's sheet and a `get_changes`
   tool later; rows are untrusted data like any other board content (names
   are user-chosen).
+
+## 9c. Board names belong to the tabletop (design)
+
+Decided: the host stores a board's id or link and "doesn't need their
+names". So the title lives with the board in both modes, and
+`create_board` and `rename_board` are tools in both.
+
+- **Where the title lives.** In the room: a `title` in the `board` row of
+  its SQLite, beside the link version. In standalone mode D1's
+  `boards.title` stays as the index the front page lists from, written
+  together with the room's.
+- **Who may set it.** The owner from the board itself (a rename in the
+  board's menu) and, in standalone mode, the front page; an assistant
+  acting for a shaman or owner with edit access, through `rename_board`.
+- **The bootstrap answer.** `title` becomes optional and is only a
+  **suggestion for a board the tabletop has not seen**: the first pass for
+  a new board id may carry `title` (also as a claim of the pass, since the
+  Worker trusts nothing else from the browser); the room takes it if it has
+  none. After that the client reads the title from the room (a small field
+  in the room's hello, updated live on rename) and ignores the host's. A
+  host that sends no title gets "Board" until someone names it.
+- **How the host learns the id of a board made through the tabletop.** The
+  simplest contract keeps the host as the only one that mints ids, because
+  it already owns the share code and the link version:
+
+  ```
+  POST <HOST_ORIGIN>/boards/           (server to server, from the MCP Worker)
+  Authorization: Bearer <the assistant's access token, as received>
+  {"title": "Dungeon level 2"}
+  -> 201 {"board": "<id>", "url": "https://<tabletop>/b/<share code>",
+          "grant": 0, "access": "write"}
+  ```
+
+  The host checks the token (it issued it), creates its record with the
+  account as owner, and answers the id and link; the MCP Worker sets the
+  title in the room and answers the tool. The new board is not in the
+  token the assistant already holds, so the answer's `grant` and `access`
+  stand in for a token entry for that board until the token is refreshed;
+  the MCP Worker keeps them only for the rest of that call, and tells the
+  assistant the board will appear in `search_boards` after it reconnects.
+  The path is configuration (`MCP_HOST_BOARDS_URL`), absent means
+  `create_board` answers "This tabletop's boards are made on <home>".
+
+- The alternative, the tabletop minting ids and calling the host back, was
+  set aside: the host would have to accept ids it did not choose and an
+  inbound webhook with its own authentication, for the same result.
+- **Listing.** `search_boards` reads names from the rooms of the boards in
+  the token (hosted) or from D1 (standalone); the token's `title` per
+  board is dropped once the room has titles.
+
+## 10. Tools and contracts
 
 ## 10. Tools and contracts
 
@@ -977,28 +1115,23 @@ user-supplied).
 
 ## 11. Plan
 
-What the adaptation changed: the remaining ops (15 days), the read tools
-(4.5) and most of the result contract are done. What remains, one person,
-with tests and e2e:
+Done since the last cut: the merge with `main`, the role model, both
+Workers in CI.
 
-| Phase | What                                                                                                                                                                                                                                                                                                                                        | Days                       |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| 0     | Written confirmation from tldraw on file (blocks production, not work)                                                                                                                                                                                                                                                                      | -                          |
-| 1     | Bring the branch onto current `main` (§14): multi-page, custom dice shapes in the stand-in's defaults and geometry, e2e ports, the new names, two Workers in the deploy workflow                                                                                                                                                            | 4                          |
-| 2     | Harden what is built: page filter in SQL and snapshot deltas, rate limits per account and board, upstream's closed error vocabulary, "sized approximately" in op results, the 4,000-shape limit reconciled with the client, curved and elbow arrow ends and exact ellipse and diamond outlines in the stand-in, fidelity scenarios for them | 5                          |
-| 3     | Roles (§9b): hosted contract change (`role` in the pass, reference host), standalone `board_members`, the permissions page in the People sheet                                                                                                                                                                                              | 6                          |
-| 4     | Hosted authorization end to end: consent page on the first host listing managed boards, tokens, the revocation call, the MCP Worker at `mcp.<domain>`, tried with Claude and ChatGPT                                                                                                                                                        | 5.5 (plus the host's side) |
-| 5     | Standalone authorization server on the MCP host (`workers-oauth-provider`, consent listing managed boards, grants in D1/KV), then `create_board`, `rename_board`                                                                                                                                                                            | 7                          |
-| 6     | Recent changes and undo-a-batch (§9b): the room's change log, attribution of people's pushes, inverse diffs, the list in the client, `undoBatch`                                                                                                                                                                                            | 7                          |
-| 7     | Screenshots through Cloudflare's headless browser (chosen): render page, internal render token, `get_cluster_screenshot` on upstream's sizing code                                                                                                                                                                                          | 6                          |
-| 8     | Presence tools: `get_board_users`, `get_user_state`, `{selected: true}` from the acting account's session (upstream's parsers and shaping adapted)                                                                                                                                                                                          | 3                          |
-| 9     | `search_shapes` with OCR matches when the image index exists                                                                                                                                                                                                                                                                                | 1 + the OCR work           |
+| Phase | What                                                                                                                                                                                                                                                                                                                      | Days                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| 1     | Hosted authorization end to end: the first host's consent page listing boards where the member is shaman or owner, tokens with `role`, the revocation call (`/rooms/<board>/mcp/revoke`), the reference host as an authorization server for e2e, the MCP Worker deployed at `mcp.<domain>`, tried with Claude and ChatGPT | 6 (plus the host's side) |
+| 2     | Standalone authorization: verify AuthKit tokens (JWKS, issuer, audience), `assistant_clients` and `assistant_grants` in D1, the `/assistants` page (EN/PL), `grant_version` on boards, the Alchemy helper deploying the MCP Worker in standalone mode with the D1 binding                                                 | 7                        |
+| 3     | Board names in the tabletop (§9c): title in the room, rename in the board's menu, the bootstrap `title` as a first suggestion, `create_board` and `rename_board`, the host's create endpoint in the reference host                                                                                                        | 5                        |
+| 4     | Recent changes and undo-a-batch (§9b): the room's change log, attribution of people's pushes per session, inverse diffs for assistant batches, the list in the client, `undoBatch`                                                                                                                                        | 7                        |
+| 5     | Screenshots: render page, internal render token, Cloudflare's headless browser, `get_cluster_screenshot` on upstream's sizing code; then the connected-tab fast path                                                                                                                                                      | 6 + 4                    |
+| 6     | Presence tools: `get_board_users`, `get_user_state`, `{selected: true}` from the acting account's session (main's presence stamping names the person)                                                                                                                                                                     | 3                        |
+| 7     | Hardening: page filter in SQL and snapshot deltas, rate limits per account and board, upstream's closed error vocabulary, "sized approximately" in op results, curved and elbow arrow ends and exact outlines in the stand-in                                                                                             | 5                        |
+| 8     | `search_shapes` on the board's own index (typos, prefixes) and OCR matches when the image index exists                                                                                                                                                                                                                    | 2 + the OCR work         |
 
-**About 44.5 days**, against 52 before the adaptation, although the scope
-grew by roles (6) and recent changes with undo (7, of which undo was 1.5
-before). Like for like, the adaptation saved about 19 days. Order: 1, 2, 3,
-4 give assistants on the first host; 6 and 7 can follow in either order; 5
-when standalone needs it.
+**About 45 days.** Order: 1 gives assistants on the first host; 3 and 4
+are what the maintainer asked for by name; 2 when the standalone site
+needs assistants; 5 to 8 as wanted.
 
 ## 12. Risks and unknowns
 
@@ -1032,7 +1165,8 @@ when standalone needs it.
   (their server version 3.10.0). Taking a later version is a re-copy and a
   16-line patch for the engine, as long as it asks the editor for nothing
   new; the inventory in §0 and tldraw's own tests are the check.
-- **The permission is verbal** so far. The adapted code is confined to
+- **The permission is verbal**, and the maintainer has decided to ship on
+  it. The adapted code is confined to
   `src/mcp/upstream/` and `test/mcp/upstream/`; without it the stand-in,
   the room contract and the MCP Worker remain, and the first spike's own
   engine is in the branch's history (`9834c55`).
@@ -1042,81 +1176,48 @@ when standalone needs it.
   `e2e:measure` on every tldraw bump are the tripwires.
 - **WorkOS facts** in §9 need confirming against current documentation.
 
-## 13. Decisions
+## 13. Open decisions
 
-Made: MCP in a second Worker at `mcp.<domain>`; screenshots through
-Cloudflare's headless browser; tldraw's engine adapted, not rewritten.
-
-Needed:
-
-1. The role model in §9b: that write does not include pointing an
-   assistant at a board, and that assistant access is a manager's grant
-   per client and board, read or edit.
-2. Hosted contract: `owner` becomes `role` in the pass; who builds the
-   permissions page on the first host.
-3. Recent changes: how long the list is kept (200 entries or 30 days
-   proposed), and whether people's edits are listed or only assistants'.
-4. Standalone authorization: our own authorization server on the MCP host
-   (recommended) or WorkOS AuthKit with a second board-picking step.
-5. Whether `create_board` / `rename_board` exist in hosted mode or stay
-   with the host's own MCP server.
+1. Role values: `"owner" | "shaman" | "write"` as built, with `owner:
+boolean` read for one more step. Confirm, and say when the flag goes.
+2. Whether a shaman, and not only the owner, may make other shamans
+   (built: owner only).
+3. §9c: that the host keeps minting board ids (the MCP Worker asks it),
+   and that the bootstrap `title` becomes a first suggestion only.
+4. Standalone grants per client need `client_id` in AuthKit's token; if it
+   is not there, grants per account, or wait for it.
+5. Whether demoting a shaman should end every assistant on the board
+   (built: yes, the simple and safe reading) or only that person's.
 6. Italic faces (+700 KB in the MCP Worker) and the "sized approximately"
    flag: now or later.
-7. Whether the adapted code may ship before tldraw's written confirmation
-   arrives (assumed: no).
 
-## 14. Bringing it onto current `main`
+## 14. The merge with `main` (done)
 
-`main` has moved (multi-page boards, custom dice, deploy workflow, image
-storage, configurable e2e ports, the rename away from the `tl` prefix).
-Nothing was rebased. What to expect:
+`main` at `4465586` was merged into `mcp` with a merge commit.
 
-- **`src/board-room.ts`**: the only file of the board Worker the spike
-  still changes. It adds an import, the `document` field, the `mcp_grant`
-  table and `RoomDocument` in `open()`, and five methods at the end
-  (`grantVersion`, `setGrantVersion`, `admitGrant`, `revokeMcpGrants`,
-  `readDocument`, `commitDocument`). It also changes
-  `TLSocketRoom<never, Person>` to `TLSocketRoom<TLRecord, Person>`; if
-  main's room has custom record types, use its type. `destroy()` already
-  drops the new tables with `deleteAll`.
-- **`src/index.ts`, `src/config.ts`, `wrangler.json`,
-  `e2e/standalone.env`, `test/standalone-support.ts`**: no longer touched;
-  no conflict.
-- **`package.json`, `aube-lock.yaml`**: new dependencies (`fontkit`,
-  `@modelcontextprotocol/server`, `zod`, `@tldraw/utils`,
-  `@types/fontkit`) and scripts (`e2e:measure`, `serve:mcp`); `dev` added
-  to `lint`. Re-resolve the lockfile.
-- **`vitest.config.ts`**: rewritten as two projects; main's changes to the
-  board project's miniflare options go into the `board` plugin, and any new
-  binding the board Worker needs to start goes into the auxiliary Worker
-  in the `mcp` plugin too.
-- **`e2e/playwright.config.ts`**: the hosted server command now runs three
-  configs and writes `wrangler.e2e.json`; main's `E2E_PORT_OFFSET`
-  (`e2e/ports.ts`) must be applied to it, to `e2e/tests/ops.spec.ts`
-  (8788 and 8000 are written out) and to `e2e/measure.config.ts` (8797).
-- **Multi-page**: the engine takes `page` as an index or id and defaults
-  to the first page; with real multi-page boards the tools should require
-  a page id, and `readDocument`'s page scope is already there. Ops that
-  move shapes between pages do not exist.
-- **Custom dice shapes**: if dice are now records of a custom shape type,
-  `src/room-document.ts` and `src/ops/records.ts` must validate with the
-  room's schema instead of `createTLSchema()`, `src/ops/geometry.ts` needs
-  their box (it falls back to `w` x `h` props, else 1 x 1), and the engine
-  will treat them as obstacles it cannot restyle, which is right.
-- **Search**: main has its own shape search; `search_shapes` here is a
-  40-line pass over records (`src/mcp/page-read.ts`) and should call
-  main's matcher instead once merged.
-- **Adapted code**: `src/mcp/upstream/` and `test/mcp/upstream/` are
-  excluded from oxfmt and oxlint (`.oxfmtrc.json`, `oxlint.config.ts`);
-  keep those exclusions through the merge or the diff against upstream is
-  lost.
-- **Names**: nothing new contains the old prefix. The Worker names
-  `tabletop` and `tabletop-mcp` in the wrangler configs (and the
-  `script_name` binding, and `name: "tabletop"` in `vitest.config.ts`)
-  must follow whatever main calls the board Worker.
-- **`alchemy/index.js`**, **`README.md`**, **`.gitignore`**,
-  **`oxlint.config.ts`**, **`tsconfig.json`**: small additions; merge by
-  hand.
-- **Deploy workflow**: add the MCP Worker (optional) after the board
-  Worker; it needs `ISSUER`, `ISSUER_PUBLIC_KEY`, `MCP_AUTHORIZATION_SERVER`
-  and optionally `MCP_AUDIENCE`.
+| Conflict                         | Resolution                                                                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`, `aube-lock.yaml` | Both sides' dependencies (main dropped the old dice library and added `minisearch`; this branch adds `fontkit`, `@modelcontextprotocol/server`, `zod`, `@tldraw/utils`); the lockfile regenerated by `aube install` |
+| `src/board-room.ts`              | Both: main's avatars, presence stamping and roll seeds, and this branch's document interface and grant version. The room's record type is `TLRecord`                                                                |
+| `e2e/playwright.config.ts`       | The hosted run keeps its three Worker configs (`dev/both.ts`) on the ports of `e2e/ports.ts`; the host's origin is written into the generated board config, because `--var` reaches only the first config           |
+
+After the merge:
+
+- Dice and rolls are not document records (rolls are the room's own table,
+  the die is a toolbar icon), places and avatars are `meta` and presence:
+  the room's schema is tldraw's default, and the stand-in needs nothing
+  new.
+- `search_shapes` uses the board's own folding, ranking and excerpts
+  (`client/src/search-text.ts`, pure text code imported by the MCP
+  Worker); the sheet's index (typos, prefixes) is not used server-side yet.
+- The room contract's types moved to `src/room-contract.ts`, so the e2e
+  type-check does not pull in Workers types.
+- `e2e/tests/ops.spec.ts` and the measurement harness follow
+  `E2E_PORT_OFFSET`.
+- CI builds both Workers (`aube run build:workers`) and `aube run test`
+  runs both Vitest projects.
+- The tools take `page` as an index or an id; `apply_ops` defaults to the
+  first page and its description asks for the id on boards with several.
+- Open: the Alchemy helper deploys the MCP Worker in hosted mode only
+  (type-checked, not deployed); tldraw's 4,000-shapes-a-page limit is
+  enforced by the stand-in as by the client.

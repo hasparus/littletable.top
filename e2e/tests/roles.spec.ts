@@ -21,23 +21,30 @@ async function signedIn(browser: Browser, name: string, locale = "en-GB"): Promi
   return page;
 }
 
+// The role the Worker put in the pass request's answer.
+async function roleIn(answer: Promise<import("@playwright/test").Response>): Promise<string> {
+  const response = await answer;
+  const { person } = (await response.json()) as { person: { role: string } };
+  return person.role;
+}
+
 test("an owner makes someone who joined a shaman, and takes it back", async ({ browser }) => {
   mkdirSync(SCREENSHOTS, { recursive: true });
-  const ada = await signedIn(browser, "Ada Lovelace");
-  await expect(ada.getByText("Signed in as Ada Lovelace")).toBeVisible();
-  await ada.getByRole("button", { name: "New board" }).click();
-  await expect(ada).toHaveURL(ON_BOARD);
-  const boardUrl = ada.url();
+  const owner = await signedIn(browser, "Ola Nowak");
+  await expect(owner.getByText("Signed in as Ola Nowak")).toBeVisible();
+  await owner.getByRole("button", { name: "New board" }).click();
+  await expect(owner).toHaveURL(ON_BOARD);
+  const boardUrl = owner.url();
 
   // Nobody has joined with an account yet.
-  await ada.goto(`${STANDALONE}/`);
-  const row = ada.getByRole("listitem").filter({ hasText: "Board" });
+  await owner.goto(`${STANDALONE}/`);
+  const row = owner.getByRole("listitem").filter({ hasText: "Board" });
   await row.getByRole("button", { name: "People" }).click();
-  const people = ada.getByRole("region", { name: "People" });
+  const people = owner.getByRole("region", { name: "People" });
   await expect(
     people.getByText("Nobody has joined this board with an account yet.", { exact: false }),
   ).toBeVisible();
-  await ada.screenshot({ path: `${SCREENSHOTS}/roles-empty.png` });
+  await owner.screenshot({ path: `${SCREENSHOTS}/roles-empty.png` });
   await people.getByRole("button", { name: "Done" }).click();
 
   // Bea signs in and opens the board's link: now she is one of its people.
@@ -45,7 +52,7 @@ test("an owner makes someone who joined a shaman, and takes it back", async ({ b
   await expect(bea.getByText("Signed in as Bea Kowalska")).toBeVisible();
   const first = bea.waitForResponse((response) => response.url().endsWith("/bootstrap"));
   await bea.goto(boardUrl);
-  expect(((await (await first).json()) as { person: { role: string } }).person.role).toBe("write");
+  expect(await roleIn(first)).toBe("write");
 
   await row.getByRole("button", { name: "People" }).click();
   const shaman = people.getByRole("checkbox", { name: "Shaman" });
@@ -53,28 +60,26 @@ test("an owner makes someone who joined a shaman, and takes it back", async ({ b
   await expect(shaman).not.toBeChecked();
   await shaman.check();
   await expect(shaman).toBeChecked();
-  await ada.screenshot({ path: `${SCREENSHOTS}/roles-shaman.png` });
+  await owner.screenshot({ path: `${SCREENSHOTS}/roles-shaman.png` });
 
   // Her next pass says so.
   const second = bea.waitForResponse((response) => response.url().endsWith("/bootstrap"));
   await bea.reload();
-  expect(((await (await second).json()) as { person: { role: string } }).person.role).toBe(
-    "shaman",
-  );
+  expect(await roleIn(second)).toBe("shaman");
 
   // It holds across a reload of the owner's page, and can be taken back.
-  await ada.reload();
+  await owner.reload();
   await row.getByRole("button", { name: "People" }).click();
   await expect(shaman).toBeChecked();
   await shaman.uncheck();
   await expect(shaman).not.toBeChecked();
   const third = bea.waitForResponse((response) => response.url().endsWith("/bootstrap"));
   await bea.reload();
-  expect(((await (await third).json()) as { person: { role: string } }).person.role).toBe("write");
+  expect(await roleIn(third)).toBe("write");
 
   // The same page in Polish.
-  const ola = await signedIn(browser, "Ada Lovelace", "pl-PL");
-  await expect(ola.getByText("Zalogowano jako Ada Lovelace")).toBeVisible();
+  const ola = await signedIn(browser, "Ola Nowak", "pl-PL");
+  await expect(ola.getByText("Zalogowano jako Ola Nowak")).toBeVisible();
   await ola
     .getByRole("listitem")
     .filter({ hasText: "Board" })
