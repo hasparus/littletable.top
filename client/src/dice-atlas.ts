@@ -188,6 +188,14 @@ export function numeralSpot(kind: DieKind): { columns: number; x: number; y: num
   return { columns: layout.columns, x, y };
 }
 
+// Where the numeral of face `index` is centred in the atlas, in cells.
+export function faceSpot(kind: DieKind, index: number): { columns: number; x: number; y: number } {
+  const shape = solid(kind);
+  const layout = layoutOf(shape);
+  const [x, y] = cellPoint(layout, index, inscribed(shape, index, layout).at);
+  return { columns: layout.columns, x, y };
+}
+
 export function drawAtlas(kind: DieKind): HTMLCanvasElement {
   const shape = solid(kind);
   const layout = layoutOf(shape);
