@@ -264,7 +264,24 @@ function wrap(items: Grapheme[], maxWidth: number, overflowWrap: boolean) {
   return lines;
 }
 
+export type Paragraphs = Paragraph[];
+type Measurer = (paragraphs: Paragraph[], options: MeasureOptions) => Measured;
+
+let replacement: Measurer | null = null;
+
+/**
+ * Swap the font measurer for another (null puts it back). tldraw's own
+ * engine tests run with a fixed-width measurer; ours must be able to too.
+ */
+export function useMeasurer(measurer: Measurer | null): void {
+  replacement = measurer;
+}
+
 export function measureParagraphs(paragraphs: Paragraph[], options: MeasureOptions): Measured {
+  return replacement === null ? measureWithFonts(paragraphs, options) : replacement(paragraphs, options);
+}
+
+function measureWithFonts(paragraphs: Paragraph[], options: MeasureOptions): Measured {
   const lineHeight = Math.round(options.fontSize * options.lineHeight);
   let approximate = false;
   let maxContent = 0;
