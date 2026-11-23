@@ -184,6 +184,18 @@ Every page and file leaves with the tabletop's Content-Security-Policy
 (`default-src 'none'`; scripts, styles, fonts and images from itself; the
 rooms socket; the host's origin) and the usual hardening headers.
 
+## Assistants (MCP), a spike
+
+Setting `MCP_AUTHORIZATION_SERVER` in hosted mode serves an MCP endpoint at
+`/mcp` (tools `search_boards`, `get_board_info`, `apply_ops`) behind
+board-scoped access tokens the host signs. `apply_ops` edits a board on the
+server, whether or not anyone has it open. What is built, what is planned,
+the measurements behind it and the host's side are in
+[docs/mcp-design.md](docs/mcp-design.md); where tldraw's own code was read,
+in [docs/upstream-provenance.md](docs/upstream-provenance.md).
+`aube run e2e:measure` refreshes the text-measurement fixtures from real
+browsers.
+
 ## Images
 
 A board's images live in one R2 bucket per deployment (`Files`; the Alchemy
