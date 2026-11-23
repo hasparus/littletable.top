@@ -32,7 +32,10 @@ type Granted = { access: "read" | "write"; board: string; grant?: number; title?
 
 export const token = (boards: Granted[], { audience = "tabletop-mcp" } = {}) =>
   sign(
-    { boards: boards.map((board) => ({ grant: 0, ...board })), client_id: "client-1" },
+    {
+      boards: boards.map((board) => ({ grant: 0, role: "shaman", ...board })),
+      client_id: "client-1",
+    },
     audience,
     "u:1",
   );
@@ -46,7 +49,7 @@ let boards = 0;
 
 export function freshBoard() {
   const id = `ops-${++boards}-${crypto.randomUUID().slice(0, 8)}`;
-  const grant: BoardGrant = { access: "write", board: id, grant: 0, title: null };
+  const grant: BoardGrant = { access: "write", board: id, grant: 0, role: "shaman", title: null };
   const room = roomOf(id);
   const read = async () => {
     const snapshot = await room.readDocument(grant, { scope: "document" });

@@ -6,6 +6,7 @@
 import type { BoardRoom } from "../board-room";
 import type { StandaloneConfig } from "../config";
 import type { Limiter } from "../limiter";
+import type { Role } from "../pass";
 import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
@@ -145,6 +146,12 @@ export class Standalone {
     if (pathname === "/api/boards" && method === "POST") return this.create(request);
     const action = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/(rename|reset|delete)$/u.exec(pathname);
     if (action !== null && method === "POST") return this.act(request, action[1]!, action[2]!);
+    const people = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/people$/u.exec(pathname);
+    if (people !== null && method === "GET") return this.people(request, people[1]!);
+    const role = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/people\/([\w-]{1,128})\/role$/u.exec(
+      pathname,
+    );
+    if (role !== null && method === "POST") return this.setRole(request, role[1]!, role[2]!);
     const door = /^\/api\/b\/([A-Za-z0-9]{1,64})\/bootstrap$/u.exec(pathname);
     if (door !== null && method === "POST") return this.bootstrap(request, door[1]!);
     if (pathname.startsWith("/api/") || pathname.startsWith("/auth/")) {
@@ -364,6 +371,46 @@ export class Standalone {
     return new Response(null, { status: 204 });
   }
 
+  // Owner-only: the accounts that joined the board by link, each with what
+  // it is on the board. Guests have no account and are not listed.
+  private async people(request: Request, id: string): Promise<Response> {
+    const found = await this.session(request);
+    if (found === null) return refuse(401, "signed-out");
+    if ((await this.store.owned(id, found.session.account.id)) === null) {
+      return refuse(404, "not-found");
+    }
+    const people = await this.store.people(id);
+    return json(200, {
+      people: people.map(({ avatar, id: person, name, role }) => ({
+        avatar: avatar === null ? null : `/api/avatars/${avatar}`,
+        id: person,
+        name,
+        role,
+      })),
+    });
+  }
+
+  // Owner-only: makes a joined account a shaman of the board, or takes that
+  // back. Taking it back also ends every assistant connected to the board,
+  // since one of them may have been that account's.
+  private async setRole(request: Request, id: string, person: string): Promise<Response> {
+    const found = await this.member(request);
+    if ("refusal" in found) return found.refusal;
+    const owner = found.session.account.id;
+    const body = (await request.json().catch(() => null)) as { role?: unknown } | null;
+    const role = body?.role;
+    if (role !== "write" && role !== "shaman") return refuse(400, "role-invalid");
+    const board = await this.store.owned(id, owner);
+    if (board === null) return refuse(404, "not-found");
+    if (!(await this.store.setRole(id, person, role))) return refuse(404, "not-found");
+    if (role === "write") {
+      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+      await room.endAssistants(id);
+    }
+    log("board.role_set", { account: owner, board: id, role });
+    return json(200, { id: person, role });
+  }
+
   // The host contract's pass endpoint, answered by the Worker itself.
   private async bootstrap(request: Request, code: string): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
@@ -376,7 +423,7 @@ export class Standalone {
     if (board === null) return refuse(404, "not-found");
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });
-    let person: { avatar: string | null; id: string; name: string; owner: boolean };
+    let person: { avatar: string | null; id: string; name: string; role: Role };
     if (found === null) {
       const kept = cookie(request, GUEST_COOKIE);
       const guest = kept === null ? null : await unseal(this.keys, GUEST_AUDIENCE, kept);
@@ -387,27 +434,30 @@ export class Standalone {
       }
       if (name === null) return refuse(422, "name-required");
       const id = typeof guest?.sub === "string" ? guest.sub : `g:${randomCode(16)}`;
-      person = { avatar: null, id, name, owner: false };
+      person = { avatar: null, id, name, role: "write" };
       const sealed = await seal(this.keys, GUEST_AUDIENCE, { name, sub: id }, GUEST_LIFETIME_S);
       headers.append("Set-Cookie", setCookie(GUEST_COOKIE, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
       const owner = board.ownerId === account.id;
-      person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner) await this.store.visit(account.id, board, now());
+      const role = owner ? "owner" : ((await this.store.roleOf(account.id, board.id)) ?? "write");
+      person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, role };
     }
     const pass = await signPass(this.keys, {
       avatar: person.avatar,
       board: board.id,
       link: board.linkVersion,
       name: person.name,
-      owner: person.owner,
+      owner: person.role === "owner",
+      role: person.role,
       sub: person.id,
     });
     log("pass.issued", {
       board: board.id,
-      owner: person.owner,
+      owner: person.role === "owner",
       person: found ? "member" : "guest",
+      role: person.role,
     });
     return Response.json(
       {
@@ -415,7 +465,12 @@ export class Standalone {
         boardsUrl: found === null ? null : "/",
         home: { name: this.config.displayName, url: "/" },
         pass,
-        person: { id: person.id, name: person.name, owner: person.owner },
+        person: {
+          id: person.id,
+          name: person.name,
+          owner: person.role === "owner",
+          role: person.role,
+        },
         title: board.title,
       },
       { headers, status: 200 },

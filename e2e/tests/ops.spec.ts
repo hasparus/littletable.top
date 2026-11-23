@@ -34,7 +34,10 @@ async function sign(claims: Record<string, unknown>, audience: string) {
 let rpcId = 0;
 
 async function applyOps(board: string, ops: object[]) {
-  const token = await sign({ boards: [{ access: "write", board, grant: 0 }] }, "tabletop-mcp");
+  const token = await sign(
+    { boards: [{ access: "write", board, grant: 0, role: "shaman" }] },
+    "tabletop-mcp",
+  );
   const meta = {
     "io.modelcontextprotocol/clientCapabilities": {},
     "io.modelcontextprotocol/clientInfo": { name: "e2e", version: "1" },

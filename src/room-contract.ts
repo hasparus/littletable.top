@@ -11,6 +11,11 @@ export type BoardGrant = {
   board: string;
   /** The board's grant version when the host signed this; a lower one is revoked. */
   grant: number;
+  /**
+   * What the account the assistant acts for is on this board. Only a shaman
+   * (the owner is one) may connect an assistant; the room refuses any other.
+   */
+  role: "owner" | "shaman";
   /** The board's title, as the host knows it. */
   title: string | null;
 };

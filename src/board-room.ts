@@ -278,6 +278,9 @@ export class BoardRoom extends DurableObject<Env> {
   // a newer one moves the board on.
   private admitGrant(grant: BoardGrant): "revoked" | null {
     const current = this.grantVersion();
+    // NOTE: the caller verified the token; the rule is checked here too, so
+    // no Worker bound to the room can act for someone who is not a shaman.
+    if (grant.role !== "shaman" && grant.role !== "owner") return "revoked";
     if (grant.grant < current) return "revoked";
     if (grant.grant > current) this.setGrantVersion(grant.grant);
     return null;
@@ -289,6 +292,15 @@ export class BoardRoom extends DurableObject<Env> {
     if (version <= this.grantVersion()) return;
     this.setGrantVersion(version);
     log("board.mcp_revoked", { board, version });
+  }
+
+  // Ends every assistant connected to this board at once (a shaman was
+  // demoted, or the owner wants them gone). Returns the grant version that
+  // later tokens must carry.
+  endAssistants(board: string): number {
+    const version = this.grantVersion() + 1;
+    this.revokeMcpGrants(board, version);
+    return version;
   }
 
   // NOTE: only a Worker bound to this class can call these; the caller has

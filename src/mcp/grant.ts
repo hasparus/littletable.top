@@ -18,18 +18,20 @@ export const MAX_GRANTED_BOARDS = 100;
 const BOARD_ID = /^[\w-]{1,64}$/u;
 
 function boardGrant(value: unknown): BoardGrant {
-  const { access, board, grant, title } = (value ?? {}) as Record<string, unknown>;
+  const { access, board, grant, role, title } = (value ?? {}) as Record<string, unknown>;
   if (
     typeof board !== "string" ||
     !BOARD_ID.test(board) ||
     (access !== "read" && access !== "write") ||
+    // NOTE: an assistant acts only where its person is a shaman of the board.
+    (role !== "shaman" && role !== "owner") ||
     !Number.isInteger(grant) ||
     (grant as number) < 0 ||
     (title !== undefined && (typeof title !== "string" || title.length > 200))
   ) {
     throw new Error("Invalid board grant");
   }
-  return { access, board, grant: grant as number, title: title ?? null };
+  return { access, board, grant: grant as number, role, title: title ?? null };
 }
 
 export async function verifyMcpToken(token: string, verifier: Verifier): Promise<McpGrant> {

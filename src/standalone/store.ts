@@ -41,6 +41,13 @@ const board = (row: BoardRow): Board => ({
   title: row.title,
 });
 
+export type BoardPerson = {
+  avatar: string | null;
+  id: string;
+  name: string;
+  role: "shaman" | "write";
+};
+
 export class Store {
   constructor(private readonly db: D1Database) {}
 
@@ -187,6 +194,41 @@ export class Store {
       )
       .bind(accountId, visited.id, visited.shareCode, now)
       .run();
+  }
+
+  /** What an account that joined this board by link is on it; null if it never joined. */
+  async roleOf(accountId: string, boardId: string): Promise<"shaman" | "write" | null> {
+    const row = await this.db
+      .prepare("SELECT role FROM visits WHERE account_id = ? AND board_id = ?")
+      .bind(accountId, boardId)
+      .first<{ role: "shaman" | "write" }>();
+    return row?.role ?? null;
+  }
+
+  /** The accounts that joined a board by link, newest visit first. */
+  async people(boardId: string): Promise<BoardPerson[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.id, a.name, a.avatar_hash, v.role FROM visits v JOIN accounts a ON a.id = v.account_id
+         WHERE v.board_id = ? ORDER BY v.visited_at DESC LIMIT 200`,
+      )
+      .bind(boardId)
+      .all<{ avatar_hash: string | null; id: string; name: string; role: "shaman" | "write" }>();
+    return results.map((row) => ({
+      avatar: row.avatar_hash,
+      id: row.id,
+      name: row.name,
+      role: row.role,
+    }));
+  }
+
+  /** Sets a joined account's role; false if that account never joined the board. */
+  async setRole(boardId: string, accountId: string, role: "shaman" | "write"): Promise<boolean> {
+    const result = await this.db
+      .prepare("UPDATE visits SET role = ? WHERE board_id = ? AND account_id = ?")
+      .bind(role, boardId, accountId)
+      .run();
+    return result.meta.changes > 0;
   }
 
   async list(accountId: string): Promise<{ owned: Listed[]; visited: Visited[] }> {

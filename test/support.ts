@@ -21,6 +21,7 @@ type Claims = {
   link?: number;
   name?: string;
   owner?: boolean;
+  role?: string;
   sub?: string;
 };
 
@@ -32,9 +33,18 @@ export async function pass({
   link = 0,
   name = "Ania",
   owner = false,
+  role,
   sub = "u:1",
 }: Claims = {}) {
-  return new SignJWT({ board, link, name, owner, sub, ...(avatar === undefined ? {} : { avatar }) })
+  return new SignJWT({
+    board,
+    link,
+    name,
+    owner,
+    sub,
+    ...(avatar === undefined ? {} : { avatar }),
+    ...(role === undefined ? {} : { role }),
+  })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
     .setIssuer(DEV_ISSUER)

@@ -163,7 +163,7 @@ describe("the MCP endpoint", () => {
     const body = JSON.parse(applied.result.content[1].text);
     expect(body).toMatchObject({ applied: 3, errors: [], pageName: "Page 1" });
     const snapshot = await roomOf("mcp-b").readDocument(
-      { access: "read", board: "mcp-b", grant: 0, title: null },
+      { access: "read", board: "mcp-b", grant: 0, role: "owner", title: null },
       { scope: "document" },
     );
     const records = snapshot === "revoked" ? [] : snapshot.records;

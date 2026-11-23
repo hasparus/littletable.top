@@ -20,9 +20,26 @@ export type Pass = {
   board: string;
   link: number;
   name: string;
+  // Whether the person owns the board: `role` is "owner".
   owner: boolean;
+  role: Role;
   sub: string;
 };
+
+// What a person is on a board. Anyone with a pass may draw; a shaman may
+// also connect an assistant to the board and say whether it reads or
+// edits; the owner makes shamans and is one. A guest is always "write".
+export type Role = "owner" | "shaman" | "write";
+
+const ROLES = new Set<unknown>(["owner", "shaman", "write"]);
+
+// NOTE: a pass from before roles says only `owner`; it reads as the owner
+// or as "write". A pass with both is taken by its role.
+function roleOf(role: unknown, owner: unknown): Role | null {
+  if (role !== undefined) return ROLES.has(role) ? (role as Role) : null;
+  if (typeof owner !== "boolean") return null;
+  return owner ? "owner" : "write";
+}
 
 const MAX_AVATAR_CLAIM = 2048;
 
@@ -45,13 +62,16 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     requiredClaims: ["exp", "iat", "sub"],
   });
   const { avatar, board, link, name, owner, sub } = payload;
+  const role = roleOf(payload.role, owner);
   if (
     typeof sub !== "string" ||
     typeof board !== "string" ||
     typeof name !== "string" ||
     name.length === 0 ||
     name.length > MAX_NAME_LENGTH ||
-    typeof owner !== "boolean" ||
+    role === null ||
+    // A guest (`g:`) holds no role beyond drawing.
+    (sub.startsWith("g:") && role !== "write") ||
     !Number.isInteger(link) ||
     (link as number) < 0
   ) {
@@ -62,7 +82,15 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     typeof avatar === "string" && avatar.length > 0 && avatar.length <= MAX_AVATAR_CLAIM
       ? avatar
       : null;
-  return { avatar: picture, board, link: link as number, name, owner, sub };
+  return {
+    avatar: picture,
+    board,
+    link: link as number,
+    name,
+    owner: role === "owner",
+    role,
+    sub,
+  };
 }
 
 // NOTE: its own audience keeps the two kinds apart: a pass cannot delete a

@@ -140,11 +140,13 @@ describe("an owner's boards", () => {
       id: expect.stringMatching(/^a:user_/u),
       name: "Ada",
       owner: true,
+      role: "owner",
     });
     expect(visit.person).toEqual({
       id: expect.stringMatching(/^a:user_/u),
       name: "Bea",
       owner: false,
+      role: "write",
     });
   });
 

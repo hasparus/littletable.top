@@ -38,9 +38,9 @@ export const PASS_LIFETIME_S = 300;
 
 export function signPass(
   keys: Keys,
-  { avatar, board, link, name, owner, sub }: Pass,
+  { avatar, board, link, name, owner, role, sub }: Pass,
 ): Promise<string> {
-  return new SignJWT({ board, link, name, owner, ...(avatar === null ? {} : { avatar }) })
+  return new SignJWT({ board, link, name, owner, role, ...(avatar === null ? {} : { avatar }) })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(STANDALONE_ISSUER)
     .setAudience(STANDALONE_AUDIENCE)
