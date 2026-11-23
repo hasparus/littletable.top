@@ -6,6 +6,15 @@ import type { EngineName } from "../../src/text-result";
 // also needs WebAssembly SIMD. A weak device, or one saving data, runs
 // Tesseract alone.
 
+// Both engines read a picture of at most this long a side; Tesseract's
+// accuracy stops growing there, and the detector looks at 960 px anyway.
+export const MAX_SIDE = 2048;
+// What each engine's reading says it was read with.
+export const PARAMS: Record<EngineName, Record<string, number>> = {
+  ppocr: { detMaxSide: 960, maxSide: MAX_SIDE },
+  tesseract: { maxSide: MAX_SIDE, psm: 11 },
+};
+
 // The smallest module that uses a SIMD instruction (i8x16.splat, then
 // i8x16.popcnt), as wasm-feature-detect checks for it.
 const SIMD_PROBE = Uint8Array.from([

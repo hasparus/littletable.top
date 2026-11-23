@@ -230,8 +230,22 @@ const finePointer = () => globalThis.matchMedia("(pointer: fine)").matches;
 // matches across every page, places among it. Choosing a result goes
 // there and flashes it, on this screen only.
 export function SearchSheet() {
-  const { board, copy, editor, highlight, locale, naming, open, search, setNaming, typing } =
-    useBoardUi();
+  const {
+    board,
+    copy,
+    editor,
+    highlight,
+    imageText,
+    locale,
+    naming,
+    open,
+    search,
+    setNaming,
+    typing,
+  } = useBoardUi();
+  // NOTE: only while something on the board is being read: why a map
+  // uploaded a moment ago is not found yet.
+  const reading = useValue("images being read", () => imageText?.pending.get() ?? 0, [imageText]);
   const [mine, setMine] = useMyPlace(board);
   const places = useValue("board places", () => (editor === null ? [] : placesOn(editor)), [
     editor,
@@ -270,8 +284,9 @@ export function SearchSheet() {
 
   const choose = (hit: Hit) => {
     if (editor === null || search === null) return;
-    const polygon = search.regionOf(hit.doc);
-    if (polygon === null) return;
+    const found = search.regionOf(hit);
+    if (found === null) return;
+    const { hidden, polygon } = found;
     const page = editor.getAncestorPageId(hit.doc.shape) ?? hit.doc.page;
     // NOTE: blurring first puts a phone's keyboard away before the board moves.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -279,6 +294,7 @@ export function SearchSheet() {
     goToBounds(editor, page, boundsOf(polygon));
     flash(highlight, {
       label: hit.excerpt.map((part) => part.text).join(""),
+      note: hidden ? copy.searchHiddenByCrop : null,
       page,
       polygon,
     });
@@ -334,6 +350,13 @@ export function SearchSheet() {
 
   return (
     <Sheet field={field} panel="search" title={copy.search}>
+      {reading > 0 && naming === null && (
+        <p className="pb-1 text-sm text-foreground-muted" role="status">
+          {reading === 1
+            ? copy.searchReadingImage
+            : fill(copy.searchReadingImages, { count: reading })}
+        </p>
+      )}
       {editor !== null && naming !== null ? (
         <NameForm editor={editor} shape={naming} />
       ) : hits === null ? (

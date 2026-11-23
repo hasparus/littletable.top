@@ -17,10 +17,12 @@ export type SearchDoc = {
   kind: SearchKind;
   page: TLPageId;
   // Only for "ocr": the line's corners in the source image's pixels, which
-  // imageQuadToPage turns into page coordinates for the shape as it lies now.
+  // imageQuadToPage turns into page coordinates for the shape as it lies
+  // now, and each word's, so a hit can show just the words it matched.
   region?: readonly Point[];
   shape: TLShapeId;
   text: string;
+  words?: readonly { region: readonly Point[]; text: string }[];
 };
 
 export type Hit = {
@@ -28,7 +30,26 @@ export type Hit = {
   doc: SearchDoc;
   excerpt: ExcerptPart[];
   score: number;
+  // The document's words that matched, folded as the index keeps them.
+  terms: string[];
 };
+
+const boxOf = (region: readonly Point[]) => {
+  const xs = region.map((point) => point.x);
+  const ys = region.map((point) => point.y);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+};
+
+// Two lines read off the same place of an image: one covers most of the
+// other (two engines' readings, a word and the line it is part of).
+function samePlace(a: readonly Point[], b: readonly Point[]): boolean {
+  const p = boxOf(a);
+  const q = boxOf(b);
+  const x = Math.max(0, Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0));
+  const y = Math.max(0, Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0));
+  const smaller = Math.min((p.x1 - p.x0) * (p.y1 - p.y0), (q.x1 - q.x0) * (q.y1 - q.y0));
+  return smaller > 0 && (x * y) / smaller >= 0.5;
+}
 
 // Typos forgiven by word length: none up to three letters, where one edit
 // already reaches most other words, one in four or five, two from six. The
@@ -136,8 +157,9 @@ export class BoardIndex {
   // The best matches, best first: text that holds the query as typed, then
   // folded, then only through prefixes and typos; within each, the index's
   // own relevance with places boosted. A shape's text and its place name
-  // are one result, not two. Several words must all match, unless no
-  // document has them all.
+  // are one result, not two, and so are lines read off the same place of
+  // an image. Several words must all match, unless no document has them
+  // all.
   search(raw: string): Hit[] {
     const query = oneLine(raw);
     if (fold(query).replaceAll(/[^\p{L}\p{N}]/gu, "").length === 0) return [];
@@ -152,14 +174,23 @@ export class BoardIndex {
           doc,
           excerpt: excerpt(doc.text, query, result.terms),
           score: result.score,
+          terms: result.terms,
         },
       ];
     });
     hits.sort((a, b) => b.closeness - a.closeness || b.score - a.score);
     const shown = new Set<TLShapeId>();
+    const places: SearchDoc[] = [];
     return hits
       .filter(({ doc }) => {
-        if (doc.kind === "ocr") return true;
+        if (doc.kind === "ocr") {
+          const region = doc.region ?? [];
+          const seen = places.some(
+            (other) => other.shape === doc.shape && samePlace(other.region ?? [], region),
+          );
+          if (!seen) places.push(doc);
+          return !seen;
+        }
         if (shown.has(doc.shape)) return false;
         shown.add(doc.shape);
         return true;

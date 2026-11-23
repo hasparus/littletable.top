@@ -15,6 +15,7 @@ import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
 import { makeHighlight } from "./highlight";
+import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
@@ -22,6 +23,7 @@ import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useBoardStore } from "./sync";
+import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel } from "./ui";
 
 // NOTE: fonts, icons and tldraw's own translations ship in our build: the
@@ -116,6 +118,14 @@ export function BoardCanvas({
     setSearch(made);
     return () => made.dispose();
   }, [editor]);
+  const [imageText, setImageText] = useState<ImageText | null>(null);
+  useEffect(() => {
+    if (editor === null || search === null || !usable) return;
+    const made = new ImageText({ editor, engines: textEngines(), files, keeper, search });
+    made.start();
+    setImageText(made);
+    return () => made.dispose();
+  }, [editor, files, keeper, search, usable]);
   const ui = useMemo<BoardUi>(
     () => ({
       board,
@@ -125,6 +135,7 @@ export function BoardCanvas({
       exit,
       files,
       highlight,
+      imageText,
       locale: language,
       naming,
       open: (next, options) => {
@@ -149,6 +160,7 @@ export function BoardCanvas({
       exit,
       files,
       highlight,
+      imageText,
       language,
       naming,
       panel,

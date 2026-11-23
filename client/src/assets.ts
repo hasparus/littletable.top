@@ -89,6 +89,10 @@ export class BoardFiles {
   readonly readable = atom("files readable", false);
   // Set by the board: tells the person why an upload through tldraw failed.
   onRefused: ((reason: UploadRefusal) => void) | null = null;
+  // Set by the board's image text (image-text.ts): an image this person
+  // uploaded, to read first, and the room's notices about reading them.
+  onUploaded: ((hash: string) => void) | null = null;
+  onTextNotice: ((message: unknown) => void) | null = null;
   private cookiePass: string | null = null;
   private pendingAccess: Promise<void> | null = null;
   private readonly loaded = new Map<number, number>();
@@ -175,7 +179,9 @@ export class BoardFiles {
           signal,
         });
         if (sent !== "network" && sent.status >= 200 && sent.status < 300) {
-          return sent.body as Uploaded;
+          const uploaded = sent.body as Uploaded;
+          this.onUploaded?.(uploaded.hash);
+          return uploaded;
         }
         const status = sent === "network" ? 0 : sent.status;
         const refusal = REFUSAL_OF[status];

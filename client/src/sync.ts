@@ -40,6 +40,7 @@ export function useBoardStore({
   const { person } = keeper.bootstrap;
   const [attempt, setAttempt] = useState(0);
 
+  const { receive } = rolls;
   // NOTE: useSync reconnects whenever this object changes, so it is built
   // once per board and attempt; a new object on each render loops React.
   const syncOptions = useMemo(() => {
@@ -52,11 +53,14 @@ export function useBoardStore({
     return {
       assets: files.store,
       attempt,
-      onCustomMessageReceived: rolls.receive,
+      onCustomMessageReceived: (message: unknown) => {
+        receive(message);
+        files.onTextNotice?.(message);
+      },
       uri: async () => keeper.socketUri(),
       users,
     };
-  }, [attempt, color, files, keeper, person, rolls.receive]);
+  }, [attempt, color, files, keeper, person, receive]);
   const store = useSync(syncOptions);
   const refusal = store.status === "error" ? refusalOf(store.error) : null;
 

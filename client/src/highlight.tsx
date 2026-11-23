@@ -7,8 +7,15 @@ import { fill } from "./copy";
 import { useBoardUi } from "./ui";
 
 // A polygon in page coordinates to show for a moment: a shape's outline,
-// or later the part of an image a line was read from.
-export type Flash = { label: string; page: TLPageId; polygon: readonly Point[]; serial: number };
+// or the words of an image that matched; `note` says what the polygon
+// cannot show (words the image's crop hides).
+export type Flash = {
+  label: string;
+  note: string | null;
+  page: TLPageId;
+  polygon: readonly Point[];
+  serial: number;
+};
 
 const FLASH_MS = 2600;
 
@@ -16,10 +23,7 @@ let serial = 0;
 
 export const makeHighlight = (): Atom<Flash | null> => atom<Flash | null>("found highlight", null);
 
-export function flash(
-  highlight: Atom<Flash | null>,
-  found: { label: string; page: TLPageId; polygon: readonly Point[] },
-): void {
+export function flash(highlight: Atom<Flash | null>, found: Omit<Flash, "serial">): void {
   serial += 1;
   highlight.set({ ...found, serial });
 }
@@ -49,8 +53,17 @@ export function FoundHighlight() {
       const points = current.polygon.map((point) => editor.pageToViewport(point));
       return {
         label: current.label,
+        note: current.note,
         points: points.map(({ x, y }) => `${x},${y}`).join(" "),
+        // Where a note sits: above the polygon's top, at its middle.
         serial: current.serial,
+        top: {
+          x:
+            (Math.min(...points.map((point) => point.x)) +
+              Math.max(...points.map((point) => point.x))) /
+            2,
+          y: Math.min(...points.map((point) => point.y)),
+        },
       };
     },
     [editor, highlight],
@@ -69,25 +82,37 @@ export function FoundHighlight() {
   }, [current, highlight]);
 
   if (shown === null) return null;
+  const label = fill(copy.searchFound, { text: shown.label });
   return (
-    <svg
-      aria-label={fill(copy.searchFound, { text: shown.label })}
-      className="pointer-events-none absolute inset-0 size-full overflow-visible"
-      ref={drawing}
-      role="img"
-    >
-      <polygon
-        className="fill-primary/10 stroke-primary/30"
-        points={shown.points}
-        strokeLinejoin="round"
-        strokeWidth={12}
-      />
-      <polygon
-        className="fill-none stroke-primary"
-        points={shown.points}
-        strokeLinejoin="round"
-        strokeWidth={3}
-      />
-    </svg>
+    <>
+      <svg
+        aria-label={shown.note === null ? label : `${label}. ${shown.note}`}
+        className="pointer-events-none absolute inset-0 size-full overflow-visible"
+        ref={drawing}
+        role="img"
+      >
+        <polygon
+          className="fill-primary/10 stroke-primary/30"
+          points={shown.points}
+          strokeLinejoin="round"
+          strokeWidth={12}
+        />
+        <polygon
+          className="fill-none stroke-primary"
+          points={shown.points}
+          strokeLinejoin="round"
+          strokeWidth={3}
+        />
+      </svg>
+      {shown.note !== null && (
+        <p
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-full bg-ink px-3 py-1 text-sm whitespace-nowrap text-white shadow-lg"
+          role="status"
+          style={{ left: shown.top.x, top: shown.top.y - 8 }}
+        >
+          {shown.note}
+        </p>
+      )}
+    </>
   );
 }

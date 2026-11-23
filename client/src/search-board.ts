@@ -9,10 +9,13 @@ import {
   type TLShapeId,
 } from "tldraw";
 
+import type { TextResult } from "../../src/text-result";
+
 import { imageQuadToPage } from "./image-quad";
 import { placeName } from "./places";
 import { BoardIndex, type Hit, type Point, type SearchDoc } from "./search-index";
 import { fold, richTextWords } from "./search-text";
+import { linesToIndex } from "./text-filter";
 
 // How long the index waits after the board changes before it catches up.
 const SETTLE_MS = 250;
@@ -59,6 +62,38 @@ const assetOf = (shape: TLShape): TLAssetId | null => {
   return typeof assetId === "string" ? (assetId as TLAssetId) : null;
 };
 
+const HASH_IN_SRC = /\/files\/([0-9a-f]{64})$/u;
+
+// The SHA-256 of an image asset's bytes, which its address on the board
+// names (README, "Images"); null for an image from anywhere else.
+export function imageHash(editor: Editor, asset: TLAssetId): string | null {
+  const record = editor.getAsset(asset);
+  if (record?.type !== "image" || typeof record.props.src !== "string") return null;
+  return HASH_IN_SRC.exec(record.props.src)?.[1] ?? null;
+}
+
+// One document per line of every reading, for one image shape.
+function readDocs(shape: TLShapeId, page: TLPageId, readings: readonly TextResult[]): SearchDoc[] {
+  return linesToIndex(readings).map((line, at) => ({
+    id: `${shape}#ocr:${at}`,
+    kind: "ocr",
+    page,
+    region: line.region,
+    shape,
+    text: line.text,
+    words: line.words,
+  }));
+}
+
+const tokens = (text: string) =>
+  fold(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+// Where a result shows: its polygon on the page, and whether the image's
+// crop hides what was found (then the polygon is the whole image).
+export type Found = { hidden: boolean; polygon: Point[] };
+
 // Hands `run` the idle time the browser has to spare, as a function that
 // says how many milliseconds are left. Safari has no requestIdleCallback.
 function whenIdle(run: (left: () => number) => void): () => void {
@@ -96,6 +131,8 @@ export class BoardSearch {
   readonly #gonePages = new Set<TLPageId>();
   readonly #changedAssets = new Set<TLAssetId>();
   readonly #shapesOfAsset = new Map<TLAssetId, Set<TLShapeId>>();
+  // What was read off each image, by the SHA-256 of its bytes.
+  readonly #readings = new Map<string, TextResult[]>();
   #watching = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #cancelIdle: (() => void) | null = null;
@@ -170,7 +207,25 @@ export class BoardSearch {
       const shapes = this.#shapesOfAsset.get(asset) ?? new Set();
       shapes.add(shape.id);
       this.#shapesOfAsset.set(asset, shapes);
+      const hash = shape.type === "image" ? imageHash(this.#editor, asset) : null;
+      const readings = hash === null ? undefined : this.#readings.get(hash);
+      if (readings !== undefined) index.setImageText(shape.id, readDocs(shape.id, page, readings));
     }
+  }
+
+  // Replaces what was read off the image with these bytes, for every image
+  // shape that shows it now or later (pasted again, brought back by undo).
+  setImageReadings(hash: string, readings: readonly TextResult[]): void {
+    this.#readings.set(hash, [...readings]);
+    for (const [asset, shapes] of this.#shapesOfAsset) {
+      if (imageHash(this.#editor, asset) !== hash) continue;
+      for (const id of shapes) {
+        const shape = this.#editor.getShape(id);
+        const page = shape === undefined ? undefined : this.#editor.getAncestorPageId(shape);
+        if (page !== undefined) this.#index.setImageText(id, readDocs(id, page, readings));
+      }
+    }
+    this.version.update((version) => version + 1);
   }
 
   #descendants(id: TLShapeId): TLShapeId[] {
@@ -224,23 +279,53 @@ export class BoardSearch {
   }
 
   // Where a result is on its page now: the outline of its shape, turned as
-  // the shape is, or for a line read off an image, that line where the
-  // image now shows it. Null once the shape is gone.
-  regionOf(doc: SearchDoc): Point[] | null {
+  // the shape is, or for a line read off an image, the words that matched
+  // where the image now shows them (the whole line if none can be told
+  // apart). Null once the shape is gone.
+  regionOf(hit: Pick<Hit, "doc" | "terms">): Found | null {
+    const { doc } = hit;
     const shape = this.#editor.getShape(doc.shape);
     if (shape === undefined) return null;
     const transform = this.#editor.getShapePageTransform(shape);
     const outline = transform.applyToPoints(this.#editor.getShapeGeometry(shape).bounds.corners);
-    if (doc.region === undefined || shape.type !== "image") return outline;
+    if (doc.region === undefined || shape.type !== "image")
+      return { hidden: false, polygon: outline };
     const asset = this.#editor.getAsset(shape.props.assetId ?? ("" as TLAssetId));
-    if (asset === undefined || asset.type !== "image") return outline;
-    const line = imageQuadToPage(
-      doc.region,
-      { h: asset.props.h, w: asset.props.w },
-      shape.props,
-      transform,
+    if (asset?.type !== "image") return { hidden: false, polygon: outline };
+    const matched = (doc.words ?? []).filter((word) =>
+      tokens(word.text).some((token) => hit.terms.includes(token)),
     );
-    // NOTE: a line the crop now hides still leads to its image.
-    return line ?? outline;
+    const regions = matched.length > 0 ? matched.map((word) => word.region) : [doc.region];
+    // NOTE: a reading's pixels are its image's as decoded, which is what
+    // the asset's own size says too, unless tldraw rounded it.
+    const read = this.#readings.get(imageHash(this.#editor, asset.id) ?? "")?.[0]?.image;
+    const size =
+      read === undefined
+        ? { h: asset.props.h, w: asset.props.w }
+        : { h: read.height, w: read.width };
+    const shown = regions.flatMap(
+      (region) => imageQuadToPage(region, size, shape.props, transform) ?? [],
+    );
+    // NOTE: a line the crop now hides still leads to its image, which says so.
+    if (shown.length === 0) return { hidden: true, polygon: outline };
+    return { hidden: false, polygon: regions.length === 1 ? shown : hull(shown) };
   }
+}
+
+// The convex hull of several words' corners: one outline around them,
+// tilted with them when they are.
+const cross = (o: Point, a: Point, b: Point) =>
+  (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+function hull(points: readonly Point[]): Point[] {
+  const sorted = points.toSorted((a, b) => a.x - b.x || a.y - b.y);
+  const half = (list: Point[]) => {
+    const out: Point[] = [];
+    for (const point of list) {
+      while (out.length >= 2 && cross(out.at(-2)!, out.at(-1)!, point) <= 0) out.pop();
+      out.push(point);
+    }
+    return out.slice(0, -1);
+  };
+  return [...half(sorted), ...half(sorted.toReversed())];
 }

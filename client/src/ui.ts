@@ -6,6 +6,7 @@ import type { BoardFiles } from "./assets";
 import type { Person } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { Flash } from "./highlight";
+import type { ImageText } from "./image-text";
 import type { Rolls } from "./rolls";
 import type { BoardSearch } from "./search-board";
 
@@ -26,6 +27,8 @@ export type BoardUi = {
   exit: { href: string; label: string };
   // What a chosen search result flashes, on this screen only.
   highlight: Atom<Flash | null>;
+  // The text in the board's images; null until the canvas is up.
+  imageText: ImageText | null;
   locale: string;
   // The shape whose new place name is being typed.
   naming: TLShapeId | null;

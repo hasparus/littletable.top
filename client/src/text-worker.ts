@@ -16,7 +16,7 @@ import type { Box, EngineName, Quad, TextLine, TextWord } from "../../src/text-r
 
 import dictionary from "../ocr/ppocr-v6-tiny-dict.json";
 import { createPipeline, type PaddleWord, type Pipeline, type Pixels } from "./ppocr";
-import { hasSimd } from "./text-support";
+import { hasSimd, MAX_SIDE } from "./text-support";
 
 export type ReadRequest = { bytes: ArrayBuffer; engines: EngineName[]; id: number; type: "read" };
 
@@ -26,14 +26,6 @@ export type ReadReply =
   | { id: number; type: "done" };
 
 export type Size = { height: number; width: number };
-
-// Both engines read a picture of at most this long a side; Tesseract's
-// accuracy stops growing there, and the detector looks at 960 px anyway.
-export const MAX_SIDE = 2048;
-export const PARAMS: Record<EngineName, Record<string, number>> = {
-  ppocr: { detMaxSide: 960, maxSide: MAX_SIDE },
-  tesseract: { maxSide: MAX_SIDE, psm: 11 },
-};
 
 const scope = globalThis as unknown as DedicatedWorkerGlobalScope;
 
