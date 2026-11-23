@@ -12,20 +12,22 @@ import {
 import { imageQuadToPage } from "./image-quad";
 import { placeName } from "./places";
 import { BoardIndex, type Hit, type Point, type SearchDoc } from "./search-index";
-import { fold } from "./search-text";
+import { fold, richTextWords } from "./search-text";
 
-// How long the index waits after the board changes before it catches up,
-// while the search sheet is open. Closed, it only notes what changed.
+// How long the index waits after the board changes before it catches up.
 const SETTLE_MS = 250;
 
 // What a shape says, as tldraw's own shape utils read it: rich text as
 // plain text (notes, text, geo and arrow labels), a frame's name, a link's
 // address, and the description it gives screen readers (an image's alt
-// text, a bookmark's title and description), each once.
+// text, a bookmark's title and description), each once. Rich text is read
+// straight from its JSON (richTextWords), which is what getText reads too.
 function textsOf(editor: Editor, shape: TLShape): string[] {
   const util = editor.getShapeUtil(shape);
+  const { richText } = shape.props as { richText?: unknown };
+  const own = richText === undefined ? util.getText(shape) : richTextWords(richText);
   const texts: string[] = [];
-  for (const text of [util.getAriaDescriptor(shape), util.getText(shape)]) {
+  for (const text of [util.getAriaDescriptor(shape), own]) {
     if (text === undefined || text.trim().length === 0) continue;
     if (texts.some((kept) => fold(kept) === fold(text))) continue;
     texts.push(text);
@@ -57,15 +59,37 @@ const assetOf = (shape: TLShape): TLAssetId | null => {
   return typeof assetId === "string" ? (assetId as TLAssetId) : null;
 };
 
-// The board's search: an index of every page's text, built on first use
-// and kept in step with the store from then on. It is this person's alone;
-// nothing about it is written to the document.
+// Hands `run` the idle time the browser has to spare, as a function that
+// says how many milliseconds are left. Safari has no requestIdleCallback.
+function whenIdle(run: (left: () => number) => void): () => void {
+  if ("requestIdleCallback" in globalThis) {
+    const handle = requestIdleCallback((deadline) => run(() => deadline.timeRemaining()), {
+      timeout: 2000,
+    });
+    return () => cancelIdleCallback(handle);
+  }
+  const handle = setTimeout(() => {
+    const end = performance.now() + 8;
+    run(() => end - performance.now());
+  }, 50);
+  return () => clearTimeout(handle);
+}
+
+// Shapes indexed in one idle slice however little time it has, so a busy
+// page still gets there.
+const MIN_SLICE = 25;
+
+// The board's search: an index of every page's text, kept in step with
+// the store. It is this person's alone; nothing about it is written to the
+// document. Every shape starts out as changed, and the index catches up in
+// the browser's idle time, slice by slice, so a search finds it ready and
+// typing on the board never waits for it.
 export class BoardSearch {
   // Moves on whenever the index has caught up, so an open results list
   // asks again.
   readonly version = atom("board search version", 0);
   readonly #editor: Editor;
-  #index: BoardIndex | null = null;
+  readonly #index = new BoardIndex();
   readonly #changed = new Set<TLShapeId>();
   // Shapes that changed parent: their children may be on another page now.
   readonly #moved = new Set<TLShapeId>();
@@ -74,22 +98,36 @@ export class BoardSearch {
   readonly #shapesOfAsset = new Map<TLAssetId, Set<TLShapeId>>();
   #watching = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
+  #cancelIdle: (() => void) | null = null;
   readonly #stop: () => void;
 
   constructor(editor: Editor) {
     this.#editor = editor;
     this.#stop = editor.store.listen(({ changes }) => this.#note(changes), { scope: "document" });
+    for (const page of editor.getPages()) {
+      for (const id of editor.getPageShapeIds(page)) this.#changed.add(id);
+    }
+    this.#warm();
   }
 
   dispose(): void {
     this.#stop();
     if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#cancelIdle?.();
+  }
+
+  #warm(): void {
+    this.#cancelIdle = whenIdle((left) => {
+      this.#catchUp(left);
+      if (this.#changed.size > 0) this.#warm();
+      else this.#cancelIdle = null;
+    });
   }
 
   // NOTE: runs on every change to the document, a keystroke in someone's
-  // note among them, so it only notes ids; the work waits for the search.
+  // note among them, so it only notes ids; the work waits for the board to
+  // settle.
   #note(changes: RecordsDiff<TLRecord>): void {
-    if (this.#index === null) return;
     for (const record of Object.values(changes.added)) {
       if (record.typeName === "shape") this.#changed.add(record.id);
       else if (record.typeName === "asset") this.#changedAssets.add(record.id);
@@ -109,11 +147,14 @@ export class BoardSearch {
     this.#schedule();
   }
 
+  // Once the board has settled: at once while the search is open, else in
+  // idle time.
   #schedule(): void {
-    if (this.#watching === 0 || this.#timer !== null) return;
+    if (this.#timer !== null) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
-      this.#catchUp();
+      if (this.#watching > 0) this.#catchUp();
+      else if (this.#cancelIdle === null) this.#warm();
     }, SETTLE_MS);
   }
 
@@ -132,28 +173,15 @@ export class BoardSearch {
     }
   }
 
-  #build(): BoardIndex {
-    const started = performance.now();
-    const index = new BoardIndex();
-    for (const page of this.#editor.getPages()) {
-      for (const id of this.#editor.getPageShapeIds(page)) {
-        const shape = this.#editor.getShape(id);
-        if (shape !== undefined) this.#put(index, shape);
-      }
-    }
-    performance.measure("board-search:build", { start: started });
-    return index;
-  }
-
   #descendants(id: TLShapeId): TLShapeId[] {
     return this.#editor
       .getSortedChildIdsForParent(id)
       .flatMap((child) => [child, ...this.#descendants(child)]);
   }
 
-  #catchUp(): void {
+  // Brings the index up to the board, or as far as `left` allows.
+  #catchUp(left: () => number = () => Infinity): void {
     const index = this.#index;
-    if (index === null) return;
     const work = this.#changed.size + this.#moved.size + this.#gonePages.size;
     if (work + this.#changedAssets.size === 0) return;
     const started = performance.now();
@@ -165,26 +193,26 @@ export class BoardSearch {
     for (const asset of this.#changedAssets) {
       for (const id of this.#shapesOfAsset.get(asset) ?? []) this.#changed.add(id);
     }
+    this.#moved.clear();
+    this.#changedAssets.clear();
+    let done = 0;
     for (const id of this.#changed) {
+      if (done >= MIN_SLICE && left() <= 1) break;
       const shape = this.#editor.getShape(id);
       if (shape === undefined) index.removeShape(id);
       else this.#put(index, shape);
+      this.#changed.delete(id);
+      done++;
     }
-    this.#changed.clear();
-    this.#moved.clear();
     this.#gonePages.clear();
-    this.#changedAssets.clear();
     performance.measure("board-search:update", { start: started });
     this.version.update((version) => version + 1);
   }
 
   // While the search is open the index follows the board as it changes;
-  // the first call builds it.
+  // opening it finishes whatever the idle time has not.
   watch(): () => void {
-    if (this.#index === null) {
-      this.#index = this.#build();
-      this.version.update((version) => version + 1);
-    } else this.#catchUp();
+    this.#catchUp();
     this.#watching++;
     return () => {
       this.#watching--;
@@ -192,7 +220,7 @@ export class BoardSearch {
   }
 
   search(query: string): Hit[] {
-    return this.#index?.search(query) ?? [];
+    return this.#index.search(query);
   }
 
   // Where a result is on its page now: the outline of its shape, turned as

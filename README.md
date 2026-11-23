@@ -359,12 +359,14 @@ query nor the flash is synced or sent anywhere.
   each, MiniSearch's relevance, with places boosted. Up to 50 results,
   each an excerpt of about 90 characters around its first match, and the
   page's name when the board has more than one page.
-- **Keeping up** (`search-board.ts`). The index is built the first time
-  the search opens. From then on a store listener only notes which
+- **Keeping up** (`search-board.ts`). A store listener only notes which
   shapes, pages and assets changed (a shape that only moved or turned is
-  skipped); the index catches up when the search opens again, and while
-  it is open, 250 ms after the board settles. The browser's performance
-  timeline has `board-search:build` and `board-search:update`.
+  skipped). 250 ms after the board settles the index catches up: at once
+  while the search is open, else in the browser's idle time, a slice at a
+  time, so the board's text is indexed before anyone searches and typing
+  never waits for it. Rich text is read straight from its JSON, not
+  through TipTap. The browser's performance timeline has each
+  `board-search:update`.
 - **Text in images, later.** Every index document has an id, a kind
   (`native`, `place`, or `ocr` for a line read off an image), its shape
   and page, its text and, for `ocr`, a `region`: the line's corners in

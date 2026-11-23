@@ -31,6 +31,25 @@ function lowerAligned(text: string): string {
   return lower;
 }
 
+type RichNode = { content?: unknown; text?: unknown; type?: unknown };
+
+// The words of a tldraw rich text (a TipTap document), blocks and line
+// breaks as spaces. tldraw's own renderPlaintextFromRichText runs TipTap's
+// generateText, about 0.3 ms a shape, which is most of a second on a
+// large board; this walk reads the same words from the JSON directly.
+export function richTextWords(richText: unknown): string {
+  const words: string[] = [];
+  const walk = (node: RichNode) => {
+    if (typeof node.text === "string") words.push(node.text);
+    else if (node.type === "hardBreak") words.push(" ");
+    if (!Array.isArray(node.content)) return;
+    for (const child of node.content as RichNode[]) walk(child);
+    words.push(" ");
+  };
+  if (typeof richText === "object" && richText !== null) walk(richText as RichNode);
+  return oneLine(words.join(""));
+}
+
 // Text as the results list shows it: one line, single spaces.
 export const oneLine = (text: string): string => text.replaceAll(/\s+/gu, " ").trim();
 

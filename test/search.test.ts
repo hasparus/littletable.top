@@ -3,7 +3,7 @@ import type { TLPageId, TLShapeId } from "tldraw";
 import { describe, expect, it } from "vitest";
 
 import { BoardIndex, type SearchDoc } from "../client/src/search-index";
-import { closeness, excerpt, EXCERPT_LENGTH, fold } from "../client/src/search-text";
+import { closeness, excerpt, EXCERPT_LENGTH, fold, richTextWords } from "../client/src/search-text";
 
 // What can go wrong with finding text on the board, and what guards it here:
 // - Polish letters: "zolw" misses "Żółw", or "Żółw" misses "zolw": "folding"
@@ -15,6 +15,8 @@ import { closeness, excerpt, EXCERPT_LENGTH, fold } from "../client/src/search-t
 // - the index keeps text that was edited, deleted, moved or whose page went:
 //   "keeping up"
 // - a long text shows from its start, hiding the match: "excerpts"
+// - words of a note run together across its lines, or styling hides them:
+//   "rich text"
 
 const PAGE_1 = "page:one" as TLPageId;
 const PAGE_2 = "page:two" as TLPageId;
@@ -210,6 +212,26 @@ describe("lines read off an image", () => {
     index.setImageText(MAP, [line(0, "Ravenhold")]);
     index.removeShape(MAP);
     expect(index.size).toBe(0);
+  });
+});
+
+describe("rich text", () => {
+  const text = (value: string, marks?: object[]) => ({ marks, text: value, type: "text" });
+  const block = (type: string, ...content: object[]) => ({ content, type });
+
+  it("reads every word, styled or not, with blocks and breaks as spaces", () => {
+    const doc = block(
+      "doc",
+      block("paragraph", text("Gród "), text("Żółwia", [{ type: "bold" }])),
+      block("paragraph", text("first"), { type: "hardBreak" }, text("second")),
+      block("bulletList", block("listItem", block("paragraph", text("item")))),
+    );
+    expect(richTextWords(doc)).toBe("Gród Żółwia first second item");
+  });
+
+  it("reads nothing from an empty or missing document", () => {
+    expect(richTextWords(block("doc", block("paragraph")))).toBe("");
+    expect(richTextWords(null)).toBe("");
   });
 });
 
