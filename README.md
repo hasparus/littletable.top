@@ -529,6 +529,22 @@ random rotations are normalised random quaternions. Three checks keep it:
 The renderer is free of the rule: nothing it computes feeds back into the
 frames.
 
+**The d100** is one die: a ball of a hundred small faces, as the server
+draws one value from 1 to 100. It rolls as a sphere, slowed by a rolling
+resistance that does not weaken with speed, so it stops rather than creeps.
+Seen from anywhere a ball is the same, so its numbering turns freely: the
+value ends straight up, upright, tipped to face the camera.
+
+**Numerals** are drawn on a canvas and centred by where their ink is, not
+by their box: across, by the ink's centre of mass (a 1 is heavy on its
+right); up and down, by the height all digits share. The centres of mass
+are a table measured once from the font, `client/src/dice-numeral-centres.ts`,
+so every browser places numerals alike. After changing the font or its
+weight, `node e2e/numeral-centres.ts` rewrites the table;
+`e2e/tests/numeral-centres.spec.ts` fails until it has been run. A numeral
+is underlined only when, upside down, it reads as another numeral of the
+same die.
+
 **The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
 renderer fits that rectangle, aspect kept, into the area between the result
 strip and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),

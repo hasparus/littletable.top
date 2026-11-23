@@ -6,6 +6,7 @@ import {
   cross,
   dot,
   fromBasis,
+  multiply,
   normalize,
   type Quat,
   rotate,
@@ -19,19 +20,8 @@ import { type DieKind, type Feature, solid, type Solid } from "./dice-solids";
 export type Die = { sides: number; value: number };
 export type ThrownDie = { kind: DieKind; value: number };
 
-// A d100 is thrown as a tens die (00-90, 00 read as 100) and a units d10
-// (0-9, 0 read as 10).
-export function bodiesOf(dice: Die[]): ThrownDie[] {
-  return dice.flatMap(({ sides, value }): ThrownDie[] => {
-    if (sides !== 100) return [{ kind: `d${sides}` as DieKind, value }];
-    const tens = Math.floor((value === 100 ? 0 : value) / 10) * 10;
-    const units = value % 10;
-    return [
-      { kind: "d100", value: tens === 0 ? 100 : tens },
-      { kind: "d10", value: units === 0 ? 10 : units },
-    ];
-  });
-}
+export const bodiesOf = (dice: Die[]): ThrownDie[] =>
+  dice.map(({ sides, value }) => ({ kind: `d${sides}` as DieKind, value }));
 
 const basis = (dir: Vec, ring: Vec): [Vec, Vec, Vec] => {
   const n = normalize(dir);
@@ -62,9 +52,24 @@ function landedFeature(shape: Solid, rotation: Quat): Feature {
 // A rotation of the solid onto itself, applied to the mesh alone, that puts
 // the face showing `value` where the landed face is. The silhouette does not
 // change, so the recorded throw stays true. Of the candidates it picks the
-// one whose numeral reads most upright on screen.
+// one whose numeral reads most upright on screen. A ball is the same seen
+// from anywhere, so its numbering turns freely: the value goes straight up,
+// upright.
 export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
   const shape = solid(kind);
+  if (shape.ball) {
+    const target = shape.features.find((feature) => feature.value === value);
+    if (target === undefined || target.up === null)
+      throw new Error(`a ${kind} cannot show ${value}`);
+    const from = basis(target.dir, target.up);
+    const to = basis([0, 1, 0], SCREEN_UP);
+    const upright = fromBasis(
+      carry(to, from, [1, 0, 0]),
+      carry(to, from, [0, 1, 0]),
+      carry(to, from, [0, 0, 1]),
+    );
+    return multiply([-rotation[0], -rotation[1], -rotation[2], rotation[3]], upright);
+  }
   const landed = landedFeature(shape, rotation);
   let pick: Quat | null = null;
   let score = Number.NEGATIVE_INFINITY;

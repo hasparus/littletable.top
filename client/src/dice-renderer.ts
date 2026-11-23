@@ -22,8 +22,33 @@ export type Tier = "full" | "low";
 export type Rgb = [number, number, number];
 export type Look = { body: Rgb; ink: Rgb };
 // `core` and `rounding`: the die is its core's corners swept by a ball.
-export type Model = { atlas: HTMLCanvasElement; core: Vec[]; mesh: DieMesh; rounding: number };
-export type Pose = { model: Model; position: Vec; rotation: Quat };
+// `coat`: its share of the clearcoat. `smooth`: how far its faces are lit
+// as the sphere around them, which keeps one of a ball's many small faces
+// from outshining the rest. `spot`: for a die whose numerals may
+// be drawn upside down, the atlas's columns and where in its cell a numeral
+// is centred.
+export type Model = {
+  atlas: HTMLCanvasElement;
+  coat: number;
+  core: Vec[];
+  mesh: DieMesh;
+  rounding: number;
+  smooth: number;
+  spot: { columns: number; x: number; y: number } | null;
+};
+// A face told apart as the result: its colours swapped and its numeral
+// larger, by `amount` from 0 to 1. `x` and `y`: where its numeral is centred
+// in the atlas, in cells; `columns`: the atlas's.
+export type Mark = { amount: number; columns: number; x: number; y: number };
+// `upsideDown`: every numeral of the die is drawn turned half round on its
+// spot.
+export type Pose = {
+  mark: Mark | null;
+  model: Model;
+  position: Vec;
+  rotation: Quat;
+  upsideDown: boolean;
+};
 
 export type Renderer = {
   dispose: () => void;
@@ -48,6 +73,8 @@ const PENUMBRA = { atFloor: 0.05, perHeight: 0.22 };
 // above the die's lowest point, and with the height of the die off the floor.
 const PALING = { lifted: 0.35, within: 0.5 };
 
+// How much larger the result's numeral is drawn on a marked face.
+const MARK_GROWTH = "0.3";
 const MATERIAL = { bump: 1.3, coat: 0.8, coatRoughness: 0.12, roughness: 0.42 };
 
 // The tray's rectangle in a host of `width` by `height` CSS pixels: as large
@@ -85,7 +112,9 @@ precision highp float;
 in vec3 vPos; in vec3 vNor; in vec2 vUv;
 uniform sampler2D uAtlas;
 uniform vec3 uCam, uLight, uBody, uInk;
-uniform float uRough, uCoat, uCoatRough, uBump;
+uniform float uRough, uCoat, uCoatRough, uBump, uSmooth;
+uniform vec4 uSpot, uMark;
+uniform vec3 uP;
 out vec4 frag;
 const float PI = 3.14159265;
 // A soft studio: a bright panel up and to the left, warm walls, a grey floor.
@@ -100,9 +129,22 @@ vec3 env(vec3 r, float rough) {
 float ggx(float nh, float a) { float a2 = a * a; float d = nh * nh * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 float schlick(float c) { return 0.04 + 0.96 * pow(1.0 - c, 5.0); }
 void main() {
-  float paper = texture(uAtlas, vUv).r;
+  // In cells from the atlas's top left; uSpot.w turns the cell half round
+  // on the numeral's spot.
+  vec2 at = vec2(vUv.x, 1.0 - vUv.y) * uSpot.x;
+  vec2 turned = 2.0 * (floor(at) + uSpot.yz) - at;
+  vec2 uv = uSpot.w > 0.5 ? vec2(turned.x, uSpot.x - turned.y) / uSpot.x : vUv;
+  // The marked face: uMark.xy is its numeral's centre in cells, uMark.z the
+  // atlas's columns, uMark.w how far the mark has come in. Its numeral
+  // grows about its centre and its ink and body swap.
+  vec2 cell = vec2(vUv.x, 1.0 - vUv.y) * uMark.z;
+  float marked = floor(cell) == floor(uMark.xy) ? uMark.w : 0.0;
+  vec2 grown = uMark.xy + (cell - uMark.xy) / (1.0 + ${MARK_GROWTH} * marked);
+  if (marked > 0.0) uv = vec2(grown.x, uMark.z - grown.y) / uMark.z;
+  float paper = texture(uAtlas, uv).r;
+  paper = mix(paper, 1.0 - paper, marked);
   vec3 base = pow(mix(uInk, uBody, paper), vec3(2.2));
-  vec3 n = normalize(vNor);
+  vec3 n = normalize(mix(normalize(vNor), normalize(vPos - uP), uSmooth));
   // Engraved numerals: the normal leans along the ink's edge on screen.
   vec3 dpx = dFdx(vPos), dpy = dFdy(vPos);
   vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
@@ -234,13 +276,16 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
   };
 }
 
+const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
+// Where the tray is seen from.
+export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
+
 // A camera above the tray, tilted a little toward the viewer, as one
 // column-major view-projection matrix. `across` and `down` are the shares of
 // the canvas the tray's rectangle takes, so the whole canvas is drawn on and
 // a die in flight is not cut off at the tray's edge.
 function camera(across: number, down: number, aspect: number) {
-  const distance = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
-  const eye: Vec = [0, distance, distance * CAMERA_TILT];
+  const eye = EYE;
   const size = Math.hypot(...eye);
   const forward: Vec = [0, -eye[1] / size, -eye[2] / size];
   // With "up" along -z: right is +x, and the camera's own up follows.
@@ -484,7 +529,6 @@ export function createRenderer(
     gl.uniform3fv(uniform("uBody"), look.body);
     gl.uniform3fv(uniform("uInk"), look.ink);
     gl.uniform1f(uniform("uRough"), MATERIAL.roughness);
-    gl.uniform1f(uniform("uCoat"), MATERIAL.coat);
     gl.uniform1f(uniform("uCoatRough"), MATERIAL.coatRoughness);
     gl.uniform1f(uniform("uBump"), MATERIAL.bump);
     gl.uniform1i(uniform("uAtlas"), 0);
@@ -494,6 +538,15 @@ export function createRenderer(
       gl.bindTexture(gl.TEXTURE_2D, model.atlas);
       gl.uniform4fv(uniform("uQ"), pose.rotation);
       gl.uniform3fv(uniform("uP"), pose.position);
+      gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
+      const { spot } = pose.model;
+      if (spot !== null && pose.upsideDown)
+        gl.uniform4f(uniform("uSpot"), spot.columns, spot.x, spot.y, 1);
+      else gl.uniform4f(uniform("uSpot"), 1, 0, 0, 0);
+      const { mark } = pose;
+      if (mark === null) gl.uniform4f(uniform("uMark"), -1, -1, 1, 0);
+      else gl.uniform4f(uniform("uMark"), mark.x, mark.y, mark.columns, mark.amount);
+      gl.uniform1f(uniform("uSmooth"), pose.model.smooth);
       gl.drawArrays(gl.TRIANGLES, 0, model.count);
     }
     gl.disable(gl.CULL_FACE);

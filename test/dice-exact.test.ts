@@ -30,5 +30,5 @@ it("throws without any Math function that engines may round differently", async 
   while (!run.advance(0));
   const { bodies, numbering, thrown } = run.planned();
   expect(numbering).toHaveLength(bodies.length);
-  expect(thrown.frames).toHaveLength(8);
+  expect(thrown.frames).toHaveLength(7);
 });

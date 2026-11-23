@@ -19,7 +19,10 @@ export type DieMesh = {
   uvs: Float32Array;
 };
 
+// Steps across a rounded edge; fewer on the ball, whose edges are short and
+// many.
 const BEVEL_SEGMENTS = 6;
+const BALL_BEVEL_SEGMENTS = 2;
 
 export function layoutOf(shape: Solid): Layout {
   const shrink = (shape.inradius - shape.r) / shape.inradius;
@@ -76,10 +79,9 @@ export function meshOf(kind: DieKind): DieMesh {
       uvs.push(...uv[k]!);
     }
   };
+  const segments = shape.ball ? BALL_BEVEL_SEGMENTS : BEVEL_SEGMENTS;
   const arc = (from: Vec, to: Vec) =>
-    Array.from({ length: BEVEL_SEGMENTS + 1 }, (_, t) =>
-      normalize(lerp(from, to, t / BEVEL_SEGMENTS)),
-    );
+    Array.from({ length: segments + 1 }, (_, t) => normalize(lerp(from, to, t / segments)));
 
   for (const [index, face] of shape.faces.entries()) {
     const corners = face.verts.map((v) => surface(v, face.normal));
@@ -96,7 +98,7 @@ export function meshOf(kind: DieKind): DieMesh {
       if (shared.length !== 2) continue;
       const [i, j] = shared as [number, number];
       const ns = arc(shape.faces[a]!.normal, shape.faces[b]!.normal);
-      for (let t = 0; t < BEVEL_SEGMENTS; t += 1) {
+      for (let t = 0; t < segments; t += 1) {
         const n0 = ns[t]!;
         const n1 = ns[t + 1]!;
         triangle([surface(i, n0), surface(j, n0), surface(j, n1)], [n0, n0, n1], blanks);
@@ -118,7 +120,7 @@ export function meshOf(kind: DieKind): DieMesh {
     const at = (n: Vec) => surface(corner, n);
     for (const [k, face] of around.entries()) {
       const ns = arc(face.normal, around[(k + 1) % around.length]!.normal);
-      for (let t = 0; t < BEVEL_SEGMENTS; t += 1) {
+      for (let t = 0; t < segments; t += 1) {
         const n0 = ns[t]!;
         const n1 = ns[t + 1]!;
         const m0 = normalize(add(middle, n0));

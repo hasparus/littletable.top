@@ -15,6 +15,8 @@ import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dic
 
 // What can go wrong with the shared throw, and what guards it here:
 // - a die ends tilted, on an edge or leaning on another: "lies flat"
+// - a d100, a ball with no face to lie on, never stops or leaves the tray:
+//   "comes to rest", and "stays in the tray, apart" with its full radius
 // - the top face is not the server's value: "shows the server's value"
 // - a die leaves the tray or ends inside another: "stays in the tray, apart"
 // - a throw that never settles is cut differently on two screens: "the cap"
@@ -26,7 +28,7 @@ import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dic
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const KINDS: DieKind[] = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"];
 
-// Mixed pools of 1 to 20 dice, d100s counting twice.
+// Mixed pools of 1 to 20 dice.
 function pool(seed: number): number[] {
   return Array.from(
     { length: 1 + (seed % 20) },
@@ -42,19 +44,22 @@ function lastPosition(frames: Float64Array): [number, number, number] {
 }
 
 describe("the shared throw", () => {
-  it.each(SEEDS)("with seed %i leaves every die lying flat on a face", (seed) => {
-    const kinds = bodiesOf(pool(seed).map((sides) => ({ sides, value: 1 }))).map(
-      (body) => body.kind,
-    );
-    const thrown = simulate(kinds, seed);
-    kinds.forEach((kind, i) => {
-      const rotation = finalRotation(thrown, i);
-      const shape = solid(kind);
-      const lowest = Math.min(...shape.faces.map((face) => rotate(rotation, face.normal)[1]));
-      expect(lowest).toBeLessThan(-0.9994);
-      expect(lastPosition(thrown.frames[i]!)[1]).toBeCloseTo(shape.inradius, 9);
-    });
-  });
+  it.each(SEEDS)(
+    "with seed %i leaves every die lying flat on a face, a ball on the floor",
+    (seed) => {
+      const kinds = bodiesOf(pool(seed).map((sides) => ({ sides, value: 1 }))).map(
+        (body) => body.kind,
+      );
+      const thrown = simulate(kinds, seed);
+      kinds.forEach((kind, i) => {
+        const rotation = finalRotation(thrown, i);
+        const shape = solid(kind);
+        const lowest = Math.min(...shape.faces.map((face) => rotate(rotation, face.normal)[1]));
+        expect(lowest).toBeLessThan(shape.ball ? -0.97 : -0.9994);
+        expect(lastPosition(thrown.frames[i]!)[1]).toBeCloseTo(shape.inradius, 9);
+      });
+    },
+  );
 
   it.each(SEEDS)("with seed %i stays in the tray, every die apart", (seed) => {
     const kinds = bodiesOf(pool(seed).map((sides) => ({ sides, value: 1 }))).map(
@@ -62,10 +67,12 @@ describe("the shared throw", () => {
     );
     const thrown = simulate(kinds, seed);
     const ends = thrown.frames.map(lastPosition);
-    for (const [x, , z] of ends) {
-      expect(Math.abs(x)).toBeLessThan(TRAY_WIDTH / 2);
-      expect(Math.abs(z)).toBeLessThan(TRAY_DEPTH / 2);
-    }
+    ends.forEach(([x, , z], i) => {
+      // A ball is all inside the walls; the others' corners may lean over.
+      const reach = solid(kinds[i]!).ball ? solid(kinds[i]!).inradius - 0.01 : 0;
+      expect(Math.abs(x)).toBeLessThan(TRAY_WIDTH / 2 - reach);
+      expect(Math.abs(z)).toBeLessThan(TRAY_DEPTH / 2 - reach);
+    });
     ends.forEach((a, i) =>
       ends.slice(i + 1).forEach((b, k) => {
         const gap = Math.hypot(a[0] - b[0], a[2] - b[2]);
@@ -75,13 +82,32 @@ describe("the shared throw", () => {
     );
   });
 
-  it("throws twenty d100s (forty dice) and lands them all", () => {
+  it.each(SEEDS.slice(0, 20))("with seed %i a d100 among other dice comes to rest", (seed) => {
+    const thrown = simulate(["d100", "d6", "d100", "d20", "d8"], seed);
+    expect(thrown.settledAt).toBeLessThan(3.2);
+    // Still across the floor and in its turning over the last two frames.
+    for (const frames of [thrown.frames[0]!, thrown.frames[2]!]) {
+      const last = [...frames.slice(-FRAME_STRIDE)];
+      const before = [...frames.slice(-2 * FRAME_STRIDE, -FRAME_STRIDE)];
+      for (const at of [0, 2, 3, 4, 5, 6]) expect(before[at]).toBeCloseTo(last[at]!, 9);
+    }
+  });
+
+  it("throws twenty d100s as twenty balls that end apart, inside the tray", () => {
     const dice = Array.from({ length: 20 }, (_, i) => ({ sides: 100, value: i * 5 + 1 }));
     const run = throwDice(dice, 99);
     run.advance(Number.POSITIVE_INFINITY);
     const { bodies, thrown } = run.planned();
-    expect(bodies).toHaveLength(40);
-    expect(thrown.settledAt).toBeLessThan(3.2);
+    expect(bodies).toHaveLength(20);
+    const reach = solid("d100").inradius;
+    const ends = thrown.frames.map(lastPosition);
+    ends.forEach(([x, , z], i) => {
+      expect(Math.abs(x)).toBeLessThan(TRAY_WIDTH / 2 - reach + 0.01);
+      expect(Math.abs(z)).toBeLessThan(TRAY_DEPTH / 2 - reach + 0.01);
+      for (const other of ends.slice(i + 1)) {
+        expect(Math.hypot(x - other[0], z - other[2])).toBeGreaterThan(2 * reach * 0.9);
+      }
+    });
   });
 
   it.each(KINDS)("puts every value of a %s on top", (kind) => {
@@ -109,32 +135,37 @@ describe("the shared throw", () => {
     }
   });
 
-  it("shows a d100 as its tens die and its units die", () => {
+  it("shows a d100's value straight up and upright, wherever the ball stopped", () => {
     for (const value of [1, 10, 63, 90, 100]) {
       const run = throwDice([{ sides: 100, value }], 5);
       run.advance(Number.POSITIVE_INFINITY);
       const { bodies, numbering: turns, thrown } = run.planned();
-      const texts = bodies.map((body, i) => {
-        const shown = multiply(finalRotation(thrown, i), turns[i]!);
-        return solid(body.kind).features.reduce((a, b) =>
-          rotate(shown, b.dir)[1] > rotate(shown, a.dir)[1] ? b : a,
-        ).text;
-      });
-      const tens = Math.floor((value % 100) / 10);
-      expect(texts).toEqual([`${tens}0`, String(value % 10)]);
+      expect(bodies).toEqual([{ kind: "d100", value }]);
+      const shown = multiply(finalRotation(thrown, 0), turns[0]!);
+      const face = solid("d100").features.find((feature) => feature.value === value)!;
+      expect(rotate(shown, face.dir)[1]).toBeCloseTo(1, 9);
+      // z runs down the screen.
+      expect(rotate(shown, face.up!)[2]).toBeCloseTo(-1, 9);
     }
   });
 
-  // Seed and pool found by search: one of 300 throws that is still moving at
-  // the cap.
+  it("gives the d100 a hundred faces, each its own number", () => {
+    const { faces, features } = solid("d100");
+    expect(faces).toHaveLength(100);
+    expect(new Set(features.map((feature) => feature.value))).toEqual(
+      new Set(Array.from({ length: 100 }, (_, i) => i + 1)),
+    );
+  });
+
+  // Seed and pool found by search: a throw that is still moving at the cap.
   it("cuts a throw that will not settle at the cap, the same way every time", () => {
     const kinds = bodiesOf(
-      [4, 100, 10, 8, 20, 6, 12, 4, 100, 10, 8, 20, 6, 12, 4, 100, 10].map((sides) => ({
+      [20, 8, 20, 8, 20, 8, 20, 8, 20, 8, 20, 8, 20, 8, 20, 8, 20, 8].map((sides) => ({
         sides,
         value: 1,
       })),
     ).map((body) => body.kind);
-    const thrown = simulate(kinds, 2_619_514_552);
+    const thrown = simulate(kinds, 1_057_067_124);
     expect(thrown.snapped).toBeGreaterThan(0);
     expect(thrown.settledAt).toBe(3.2);
     // 3.2 s at 60 frames a second, the first frame, and the 12 eased ones.
@@ -144,22 +175,11 @@ describe("the shared throw", () => {
       const lowest = Math.min(...solid(kind).faces.map((face) => rotate(rotation, face.normal)[1]));
       expect(lowest).toBeLessThan(-0.999_999);
     });
-    expect(hashThrow(simulate(kinds, 2_619_514_552))).toBe(hashThrow(thrown));
+    expect(hashThrow(simulate(kinds, 1_057_067_124))).toBe(hashThrow(thrown));
   });
 
-  it("throws a d100 as tens and units", () => {
-    expect(bodiesOf([{ sides: 100, value: 63 }])).toEqual([
-      { kind: "d100", value: 60 },
-      { kind: "d10", value: 3 },
-    ]);
-    expect(bodiesOf([{ sides: 100, value: 100 }])).toEqual([
-      { kind: "d100", value: 100 },
-      { kind: "d10", value: 10 },
-    ]);
-    expect(bodiesOf([{ sides: 100, value: 7 }])).toEqual([
-      { kind: "d100", value: 100 },
-      { kind: "d10", value: 7 },
-    ]);
+  it("throws a d100 as one die", () => {
+    expect(bodiesOf([{ sides: 100, value: 63 }])).toEqual([{ kind: "d100", value: 63 }]);
   });
 
   it("makes the same frames however the work is split", () => {
@@ -179,8 +199,11 @@ describe("the shared throw", () => {
   // (e2e/tests/dice-determinism.spec.ts) agrees on the new values; every
   // client of a board must run the same simulation.
   it("throws as it always has", () => {
-    const mixed = bodiesOf(SIDES.map((sides) => ({ sides, value: 1 }))).map((body) => body.kind);
-    expect(hashThrow(simulate(mixed, 7))).toBe("83b8619a");
+    // NOTE: the two with a d100 changed when it became a ball; the two
+    // without are as they were before it.
+    expect(hashThrow(simulate(KINDS, 7))).toBe("0d2cc80e");
+    expect(hashThrow(simulate(["d100"], 2_026))).toBe("76bc62aa");
+    expect(hashThrow(simulate(KINDS.slice(0, 6), 7))).toBe("2e06c497");
     expect(hashThrow(simulate(["d20"], 2_026))).toBe("e4fe3cb2");
   });
 });
