@@ -13,7 +13,7 @@ import {
 
 // The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
 // and is checked here: two screens show different placements; the overlay
-// swallows taps meant for the board; the dice outlive their result strip; a logged
+// swallows taps meant for the board; the dice outlive their result toast; a logged
 // roll animates on load; reduced motion or a missing WebGL2 leaves someone
 // without their result; a lost context or a resize leaves a blank tray; the
 // page's Content-Security-Policy is broken by the dice code.
@@ -21,12 +21,11 @@ import {
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
-// The result strip; it joins the accessibility tree once the dice settle.
-const strip = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
+// The result toast; it joins the accessibility tree once the dice settle.
+const toast = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
 
-// NOTE: without animations, so tldraw's top corner, which steps down into the
-// tray's box while the strip shows, cannot make two shots of the same dice
-// differ.
+// NOTE: without animations, so nothing passing over the tray, such as a
+// button's fade, can make two shots of the same dice differ.
 const shoot = async (target: Locator): Promise<Buffer> =>
   target.screenshot({ animations: "disabled" });
 
@@ -74,7 +73,7 @@ async function roll(page: Page, pool: number[]): Promise<void> {
   await closeSheet(page, "Dice");
 }
 
-test("a roll lands the same on two screens and leaves with its strip", async ({
+test("a roll lands the same on two screens and leaves with its toast", async ({
   browser,
   page,
 }, testInfo) => {
@@ -88,8 +87,8 @@ test("a roll lands the same on two screens and leaves with its strip", async ({
     ["watcher", guest],
   ] as const) {
     await expect(diceCanvas(screen)).toBeVisible();
-    await expect(strip(screen)).toBeVisible();
-    await expect(strip(screen)).toContainText("Ada");
+    await expect(toast(screen)).toBeVisible();
+    await expect(toast(screen)).toContainText("Ada");
     // Only the dice: the board under them shows each person the other's cursor.
     await setVisibility(screen.locator(".tl-container"), "hidden");
     const shot = await shoot(tray(screen));
@@ -112,9 +111,9 @@ test("a roll lands the same on two screens and leaves with its strip", async ({
   });
   expect(reachesBoard).toBe(true);
 
-  await strip(page).click();
+  await toast(page).click();
   await expect(tray(page)).toHaveCount(0);
-  await expect(strip(page)).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0);
 
   // The log does not throw again on load.
   await page.reload();
@@ -123,35 +122,75 @@ test("a roll lands the same on two screens and leaves with its strip", async ({
   await expect(log.getByRole("listitem")).toHaveCount(1);
   await closeSheet(page, "Dice");
   await expect(tray(page)).toHaveCount(0);
-  await expect(strip(page)).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0);
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);
   await guest.context().close();
 });
 
-test("the strip spans the top of a phone, above tldraw's menu, on one line", async ({ page }) => {
+type Box = { height: number; width: number; x: number; y: number };
+
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+const boxOf = async (target: Locator): Promise<Box> => (await target.boundingBox())!;
+
+// tldraw's top-left controls: the main menu, the page menu, and on a wide
+// screen undo, redo and the rest.
+const menuZone = (page: Page): Locator => page.locator(".tlui-menu-zone");
+
+// The toast drops in to the right of tldraw's top-left controls, centred on
+// the menu button's row, and never moves them or covers them.
+async function expectBesideMenu(page: Page): Promise<Box> {
+  const button = await boxOf(page.getByTestId("main-menu.button"));
+  const zone = await boxOf(menuZone(page));
+  // Once its entrance is over.
+  await expect
+    .poll(async () => {
+      const box = await boxOf(toast(page));
+      return Math.round(box.y + box.height / 2 - (button.y + button.height / 2));
+    })
+    .toBe(0);
+  const box = await boxOf(toast(page));
+  expect(box.x).toBeGreaterThanOrEqual(zone.x + zone.width);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(overlap(box, zone)).toBe(false);
+  return box;
+}
+
+test("the toast sits beside tldraw's menu on a phone, which stays put, on one line", async ({
+  page,
+}) => {
   await page.setViewportSize({ height: 740, width: 360 });
   await startBoard(page);
   const menu = page.getByTestId("main-menu.button");
-  const atRest = (await menu.boundingBox())!;
+  const pageMenu = page.getByTestId("page-menu.button");
+  const atRest = [await boxOf(menu), await boxOf(pageMenu)];
   await roll(page, [20, 20, 20, 20, 6, 6, 6, 6, 8, 8, 8, 8, 10, 10, 12, 12, 4, 4, 100, 100]);
-  await expect(strip(page)).toBeVisible();
+  await expect(toast(page)).toBeVisible();
 
-  // Once its entrance is over.
-  await expect.poll(async () => (await strip(page).boundingBox())!.y).toBe(0);
-  const box = (await strip(page).boundingBox())!;
-  expect(box).toMatchObject({ width: 360, x: 0 });
+  const box = await expectBesideMenu(page);
   expect(box.height).toBeLessThan(40);
-  await expect.poll(async () => (await menu.boundingBox())!.y).toBeGreaterThanOrEqual(box.height);
-  const rows = await strip(page)
+  expect([await boxOf(menu), await boxOf(pageMenu)]).toEqual(atRest);
+  const rows = await toast(page)
     .getByRole("img")
     .evaluateAll((dice) => new Set(dice.map((die) => die.getBoundingClientRect().top)).size);
   expect(rows).toBe(1);
+  // The total stays in view at the end of a row of dice that scrolls.
+  const sum = toast(page).getByText(/^\d+$/u).last();
+  const end = await boxOf(sum);
+  expect(end.x + end.width).toBeLessThanOrEqual(box.x + box.width);
 
-  await strip(page).click();
-  await expect(strip(page)).toHaveCount(0);
-  await expect.poll(async () => (await menu.boundingBox())!.y).toBe(atRest.y);
+  // The tray starts below the toast and the menus.
+  const tray = await boxOf(page.locator("[data-dice-tier]"));
+  expect(tray.y).toBeGreaterThanOrEqual(box.y + box.height);
+  const zone = await boxOf(menuZone(page));
+  expect(tray.y).toBeGreaterThanOrEqual(zone.y + zone.height);
+
+  await toast(page).click();
+  await expect(toast(page)).toHaveCount(0);
+  expect([await boxOf(menu), await boxOf(pageMenu)]).toEqual(atRest);
 });
 
 test("a new roll takes the tray over from the one before", async ({ browser, page }) => {
@@ -162,13 +201,13 @@ test("a new roll takes the tray over from the one before", async ({ browser, pag
   await roll(page, [20, 20, 20]);
   await ready.getByRole("button", { name: /^Roll/u }).click();
 
-  await expect(strip(page)).toContainText("Bea");
+  await expect(toast(page)).toContainText("Bea");
   await expect(diceCanvas(page)).toHaveCount(1);
   await expectNoCspViolations(page);
   await guest.context().close();
 });
 
-test("with reduced motion the strip shows at once and no 3D code is fetched", async ({
+test("with reduced motion the toast shows at once and no 3D code is fetched", async ({
   browser,
   page,
 }) => {
@@ -180,14 +219,17 @@ test("with reduced motion the strip shows at once and no 3D code is fetched", as
   await guest.waitForTimeout(6000);
 
   await roll(page, [6, 6]);
-  await expect(strip(guest)).toBeVisible();
-  await expect(strip(guest)).toContainText("Ada");
+  await expect(toast(guest)).toBeVisible();
+  await expect(toast(guest)).toContainText("Ada");
   await expect(tray(guest)).toHaveCount(0);
   expect(fetched.filter((url) => url.includes("dice-scene"))).toEqual([]);
   await guest.context().close();
 });
 
-test("a lost connection is said below the strip, not under it", async ({ browser, page }) => {
+test("a lost connection is said below the top row, clear of the toast and the menus", async ({
+  browser,
+  page,
+}) => {
   const boardUrl = await startBoard(page);
   const context = await browser.newContext({ ...PHONE, reducedMotion: "reduce" });
   let cut = false;
@@ -205,20 +247,22 @@ test("a lost connection is said below the strip, not under it", async ({ browser
   await guest.goto(boardUrl);
   await joinAs(guest, "Bea");
   await roll(page, [6]);
-  await expect(strip(guest)).toBeVisible();
+  await expect(toast(guest)).toBeVisible();
 
   cut = true;
   await Promise.all(sockets.map(async (socket) => socket.close()));
   const banner = guest.getByRole("status").filter({ hasText: "Connection lost" });
   await expect(banner).toBeVisible();
-  const bar = (await strip(guest).boundingBox())!;
-  const said = (await banner.boundingBox())!;
-  expect(said.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+  const said = await boxOf(banner);
+  for (const other of [toast(guest), menuZone(guest)]) {
+    const box = await boxOf(other);
+    expect(said.y).toBeGreaterThanOrEqual(box.y + box.height);
+  }
   await expectNoCspViolations(guest);
   await context.close();
 });
 
-test("without WebGL2 the strip carries the result, and says so once", async ({ browser, page }) => {
+test("without WebGL2 the toast carries the result, and says so once", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const context = await browser.newContext();
   await context.addInitScript(() => {
@@ -240,10 +284,10 @@ test("without WebGL2 the strip carries the result, and says so once", async ({ b
   await joinAs(guest, "Bea");
 
   await roll(page, [20]);
-  await expect(strip(guest)).toContainText("Ada");
-  await strip(guest).click();
+  await expect(toast(guest)).toContainText("Ada");
+  await toast(guest).click();
   await roll(page, [8]);
-  await expect(strip(guest)).toContainText("Ada");
+  await expect(toast(guest)).toContainText("Ada");
   await expect(tray(guest)).toHaveCount(0);
   expect(errors.filter((text) => text.includes("3D dice unavailable"))).toHaveLength(1);
   await context.close();
@@ -252,7 +296,7 @@ test("without WebGL2 the strip carries the result, and says so once", async ({ b
 test("the tray comes back after a lost context and follows a resize", async ({ page }) => {
   await startBoard(page);
   await roll(page, [6, 20]);
-  await expect(strip(page)).toBeVisible();
+  await expect(toast(page)).toBeVisible();
   const settled = await shoot(tray(page));
 
   await diceCanvas(page).evaluate(async (canvas: HTMLCanvasElement) => {
@@ -293,9 +337,10 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
 
 const SHOTS = "/home/user/ludamus/screenshots/board";
 
-// tldraw's page menu shares the top row with the main menu; the strip steps
-// the whole row down, so neither hides under it or leaves the screen.
-test("the strip steps the page menu down with the main menu, on phones and a desktop", async ({
+// tldraw's page menu shares the top row with the main menu, and its name
+// sets how wide that corner is; on a wide screen tldraw keeps its style
+// panel at the top right. The toast fits between, and the menus stay put.
+test("the toast fits between the page menu and the style panel, on phones and a desktop", async ({
   browser,
   page,
 }) => {
@@ -308,31 +353,27 @@ test("the strip steps the page menu down with the main menu, on phones and a des
     ["desktop", devices["Desktop Chrome"]],
   ] as const;
   for (const [name, device] of screens) {
-    // NOTE: reduced motion puts the strip up at once, so the shots are still.
+    // NOTE: reduced motion puts the toast up at once, so the shots are still.
     const screen = await guestOn(browser, boardUrl, {
       ...device,
       deviceScaleFactor: 2,
       reducedMotion: "reduce",
     });
-    const { width } = screen.viewportSize()!;
     const pageMenu = screen.getByTestId("page-menu.button");
     await expect(pageMenu).toBeVisible();
+    const atRest = await boxOf(menuZone(screen));
     await roll(screen, [20, 6]);
-    await expect(strip(screen)).toBeVisible();
-    const bar = (await strip(screen).boundingBox())!;
-    for (const control of [pageMenu, screen.getByTestId("main-menu.button")]) {
-      await expect
-        .poll(async () => (await control.boundingBox())!.y)
-        .toBeGreaterThanOrEqual(bar.y + bar.height);
-      const box = (await control.boundingBox())!;
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    await expect(toast(screen)).toBeVisible();
+    const box = await expectBesideMenu(screen);
+    expect(await boxOf(menuZone(screen))).toEqual(atRest);
+    for (const control of await screen.locator(".tlui-layout__top__right > *").all()) {
+      expect(overlap(box, await boxOf(control))).toBe(false);
     }
-    await screen.screenshot({ path: `${SHOTS}/merged-strip-pages-${name}.png` });
+    await screen.screenshot({ path: `${SHOTS}/toast-pages-${name}.png` });
     await pageMenu.click();
     const list = screen.getByTestId("page-menu.list");
     await expect(list).toBeVisible();
-    expect((await list.boundingBox())!.y).toBeGreaterThanOrEqual(bar.y + bar.height);
-    await screen.screenshot({ path: `${SHOTS}/merged-strip-pages-${name}-menu.png` });
+    await screen.screenshot({ path: `${SHOTS}/toast-pages-${name}-menu.png` });
     await expectNoCspViolations(screen);
     await screen.context().close();
   }

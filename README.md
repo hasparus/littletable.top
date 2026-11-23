@@ -37,7 +37,7 @@ bottom right corner of the canvas: the full mark (96 × 32 px) on a screen
 700 px wide or more, a narrow tab on the right edge on a phone. Nothing of
 the board hides or restyles it; `e2e/tests/watermark.spec.ts` checks at
 360, 390 and 430 px and on a desktop that the bottom bar's controls, every
-sheet and the dice strip leave it uncovered and reachable. A host that
+sheet and the dice toast leave it uncovered and reachable. A host that
 deploys the tabletop brings its own key and licence terms.
 
 ## Layout
@@ -546,13 +546,21 @@ is underlined only when, upside down, it reads as another numeral of the
 same die.
 
 **The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
-renderer fits that rectangle, aspect kept, into the area between the result
-strip and the bottom bar and centres it (`trayRect` in `dice-renderer.ts`),
-so a die lands on the same spot of the tray on every screen, whatever its
-size.
+renderer fits that rectangle, aspect kept, into the area between the top
+row (tldraw's menus and the result toast) and the bottom bar and centres it
+(`trayRect` in `dice-renderer.ts`), so a die lands on the same spot of the
+tray on every screen, whatever its size.
+
+**The result** drops in as a toast beside tldraw's top-left controls (the
+main menu and the page menu, whose width follows the page's name), centred
+on the menu button and reaching at most to the style panel tldraw keeps at
+the top right of a wide screen. It stays on one line: the dice scroll
+sideways with the total pinned at the end, the roller's name truncates
+first and is left out under 200 px (the roll log and the announcement keep
+it), and under 120 px of room beside the menus the toast drops below them.
 
 A device that asks for reduced motion never loads the 3D code and gets the
-result strip at once; so does one without WebGL2, or after any error in the
+result toast at once; so does one without WebGL2, or after any error in the
 dice, which is logged once. Software rendering or a weak device gets a
 cheaper drawing of the same throw; `localStorage["tabletop.dice-tier"]` set
 to `low` or `full` forces one. The dice take `--brand-primary`; `LOOK` in

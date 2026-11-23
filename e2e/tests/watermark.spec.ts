@@ -8,7 +8,7 @@ import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
 // unobscured and open to interaction. It sits in the bottom right corner
 // of the canvas: a small tab on the edge of a phone, the full mark on a
 // wider screen. Nothing of the board's own may cover it: not the bottom
-// bar's controls, a sheet, or the dice strip.
+// bar's controls, a sheet, or the dice toast.
 // NOTE: without a licence key on localhost tldraw draws the same element in
 // the same place, with "Get a license for production" on wide screens.
 
@@ -48,7 +48,7 @@ for (const [name, device] of SCREENS) {
     const context = await browser.newContext({
       ...device,
       deviceScaleFactor: 2,
-      // The strip shows at once, and stays for the shot.
+      // The toast shows at once, and stays for the shot.
       reducedMotion: "reduce",
     });
     const page = await context.newPage();
@@ -85,9 +85,9 @@ for (const [name, device] of SCREENS) {
     await dice.getByRole("button", { name: /^Roll/u }).click();
     await closeSheet(page, "Dice");
 
-    const strip = page.getByRole("button", { exact: true, name: "Close" });
-    await expectClearOf(page, strip, "the dice strip");
-    await page.screenshot({ path: `${SHOTS}/watermark-${name}-strip.png` });
+    const toast = page.getByRole("button", { exact: true, name: "Close" });
+    await expectClearOf(page, toast, "the dice toast");
+    await page.screenshot({ path: `${SHOTS}/watermark-${name}-toast.png` });
     await context.close();
   });
 }
