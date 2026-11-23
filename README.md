@@ -1,4 +1,7 @@
-# littletable-top
+# Little Table
+
+The repository and package are `littletable-top`; its own deployment is
+Little Table, at [littletable.top](https://littletable.top).
 
 A shared whiteboard with dice for tabletop games: a [tldraw](https://tldraw.dev)
 canvas that everyone at the table draws on, a dice tray whose rolls the
@@ -18,9 +21,24 @@ The tabletop runs in one of two modes, chosen by configuration:
   accounts (signed in through WorkOS AuthKit) and boards, and signs its
   own passes; guests join by link with a name. See "Standalone mode".
 
-No licence has been chosen for this repository yet. The Outfit font in
-`client/src/theme/fonts/` is under the SIL Open Font License (`OFL.txt`
-beside it); tldraw is an ordinary npm dependency under its own licence.
+## Licence
+
+No licence has been chosen for this repository's own code yet, and there is
+no `LICENSE` file. The Outfit font in `client/src/theme/fonts/` is under the
+SIL Open Font License (`OFL.txt` beside it).
+
+The board is built on the [tldraw SDK](https://tldraw.dev), an ordinary npm
+dependency under tldraw's own licence, not this repository's. Off
+`localhost` the SDK runs only with a tldraw licence key (`licenseKey`,
+`TLDRAW_LICENSE_KEY`), and under the hobby licence Little Table uses it
+shows tldraw's "made with tldraw" mark, which the licence requires to stay
+visible, unobscured and open to interaction. tldraw 5.6 draws it in the
+bottom right corner of the canvas: the full mark (96 × 32 px) on a screen
+700 px wide or more, a narrow tab on the right edge on a phone. Nothing of
+the board hides or restyles it; `e2e/tests/watermark.spec.ts` checks at
+360, 390 and 430 px and on a desktop that the bottom bar's controls, every
+sheet and the dice strip leave it uncovered and reachable. A host that
+deploys the tabletop brings its own key and licence terms.
 
 ## Layout
 
@@ -509,9 +527,11 @@ opens a board in the other, even when both trust the same key.
 | `Files`                       | (made by the helper) | R2 bucket of the boards' images; in hosted mode too                   |
 | `Limiter`                     | (made by the helper) | Durable Object counting requests per client address                   |
 
-`alchemy.run.ts` deploys this repository's copy: stages `prod` (on
-`TABLETOP_DOMAIN`) and `staging` (on `staging.<TABLETOP_DOMAIN>`), any other
-stage a workers.dev preview. It reads `TABLETOP_DOMAIN`,
+`alchemy.run.ts` deploys this repository's copy, Little Table (the display
+name it sets; a host's default stays "Tabletop"): stages `prod` (on
+`TABLETOP_DOMAIN`, in production `littletable.top`) and `staging` (on
+`staging.<TABLETOP_DOMAIN>`), any other stage a workers.dev preview. Its
+Workers are `littletable` and `littletable-staging`. It reads `TABLETOP_DOMAIN`,
 `TABLETOP_SIGNING_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` and
 `TLDRAW_LICENSE_KEY` from the environment; none is committed.
 
@@ -589,8 +609,8 @@ Worker's outbound fetch in Vitest and as a server in Playwright.
 
 ## Deploying from GitHub
 
-`.github/workflows/deploy.yml` deploys this repository's standalone copy
-(`alchemy.run.ts`) with `alchemy deploy --stage <stage> --yes`, after the
+`.github/workflows/deploy.yml` deploys Little Table, this repository's
+standalone copy (`alchemy.run.ts`), with `alchemy deploy --stage <stage> --yes`, after the
 CI checks (`ci.yml`, called as a reusable workflow) pass:
 
 - every push to `main` deploys stage `staging`;
@@ -648,7 +668,7 @@ reviewers.
 | secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                     |
 | variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                    |
 | secret   | `TABLETOP_SIGNING_KEY`  | A key of this Environment's own: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` |
-| variable | `TABLETOP_DOMAIN`       | Optional. The apex the tabletop serves: `prod` on it, `staging` on `staging.<it>`               |
+| variable | `TABLETOP_DOMAIN`       | Optional. `littletable.top`: `prod` serves it, `staging` serves `staging.<it>`                  |
 | variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but see below. Public by design                                             |
 
 All but the two optional ones are required. Use WorkOS's staging environment
@@ -657,8 +677,8 @@ for `staging` and its production one for `production`.
 ### The first deploy, on workers.dev
 
 The custom domain can come later. Without `TABLETOP_DOMAIN`, `staging`
-serves `https://tabletop-staging.<account subdomain>.workers.dev` and `prod`
-`https://tabletop.<account subdomain>.workers.dev`. WorkOS needs that
+serves `https://littletable-staging.<account subdomain>.workers.dev` and
+`prod` `https://littletable.<account subdomain>.workers.dev`. WorkOS needs that
 address, which you only learn from the first deploy:
 
 1. Set the Environment's inputs and deploy (push to `main`, or run the

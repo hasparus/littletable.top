@@ -1,8 +1,8 @@
 name: Deploy
 
-# Deploys this repository's standalone tabletop with Alchemy (alchemy.run.ts)
-# after the CI checks pass: stage `staging` on every push to main, and any
-# stage by hand. `prod` is only ever a manual run from main.
+# Deploys Little Table, this repository's standalone tabletop, with Alchemy
+# (alchemy.run.ts) after the CI checks pass: stage `staging` on every push
+# to main, and any stage by hand. `prod` is only ever a manual run from main.
 #
 # `vars` and `secrets` come from the GitHub Environment the stage maps to:
 # `production` for `prod`, `staging` for `staging` and every preview stage.
