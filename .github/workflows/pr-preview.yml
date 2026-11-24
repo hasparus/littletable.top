@@ -3,29 +3,110 @@ name: PR Preview
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, closed]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number
+        required: true
+        type: number
+      reviewed_head:
+        description: Full SHA of the pull request head you reviewed
+        required: true
+        type: string
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
 
 concurrency:
-  group: pr-preview-${{ github.event.number }}
+  group: pr-preview-${{ github.event.number || inputs.pull_request }}
   cancel-in-progress: false
 
+env:
+  PULL_REQUEST: ${{ github.event.number || inputs.pull_request }}
+  STAGE: pr-${{ github.event.number || inputs.pull_request }}
+
 jobs:
-  preview:
-    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
-    # This workflow runs from main. Only the repository owner may trigger a
-    # build of PR code with preview credentials. Closing uses trusted code.
+  authorize:
+    name: Authorize preview
     if: >-
       ${{ github.ref == 'refs/heads/main' &&
           !github.event.repository.fork &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          (github.event.action == 'closed' ||
-           (github.event.sender.login == github.repository_owner &&
+          (github.event_name == 'workflow_dispatch' ||
+           github.event.action == 'closed' ||
+           (github.event.pull_request.head.repo.full_name == github.repository &&
             (github.event.action != 'edited' || github.event.changes.base.ref.from))) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.current.outputs.run }}
+      base: ${{ steps.current.outputs.base }}
+      head: ${{ steps.current.outputs.head }}
+    steps:
+      - name: Check permission and current PR state
+        id: current
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          REQUESTER: ${{ github.triggering_actor }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEWED_HEAD: ${{ inputs.reviewed_head }}
+        run: |
+          if [[ ! "$PULL_REQUEST" =~ ^[1-9][0-9]*$ ]]; then
+            echo '::error::Enter a positive pull request number.'
+            exit 1
+          fi
+
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST")
+          state=$(jq -r .state <<< "$pr")
+          if [[ "$ACTION" == closed ]]; then
+            if [[ "$state" == closed ]]; then
+              echo 'run=true' >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          if [[ "$state" != open ]]; then
+            echo '::notice::The pull request is closed.'
+            exit 0
+          fi
+
+          head=$(jq -er .head.sha <<< "$pr")
+          base=$(jq -er .base.sha <<< "$pr")
+          access=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$REQUESTER/permission")
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            if ! jq -e '.role_name == "maintain" or .permission == "admin"' <<< "$access" >/dev/null; then
+              echo '::error::Manual previews require Maintain or Admin access.'
+              exit 1
+            fi
+            if [[ "$head" != "${REVIEWED_HEAD,,}" ]]; then
+              echo '::error::The PR head has changed. Review the current commit before dispatching again.'
+              exit 1
+            fi
+          else
+            if ! jq -e '.permission == "write" or .permission == "admin"' <<< "$access" >/dev/null; then
+              echo '::notice::Automatic previews require Write access.'
+              exit 0
+            fi
+            base_ref=$(jq -er .base.ref <<< "$pr")
+            if [[ "$head" != "$EXPECTED_HEAD" || "$base" != "$EXPECTED_BASE" || "$base_ref" != "$EXPECTED_BASE_REF" ]]; then
+              echo '::notice::A newer PR event superseded this run.'
+              exit 0
+            fi
+          fi
+          printf 'run=true\nbase=%s\nhead=%s\n' "$base" "$head" >> "$GITHUB_OUTPUT"
+
+  preview:
+    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
+    needs: authorize
+    if: needs.authorize.outputs.run == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
     environment:
       name: preview
       url: ${{ steps.deploy.outputs.url }}
@@ -33,66 +114,40 @@ jobs:
       run:
         shell: bash
     env:
-      PULL_REQUEST: ${{ github.event.number }}
-      STAGE: pr-${{ github.event.number }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Check the current PR state
-        id: current
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ACTION: ${{ github.event.action }}
-          EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          pr=$(gh pr view "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --json state,headRefOid,baseRefName)
-          state=$(jq -r .state <<< "$pr")
-          head=$(jq -r .headRefOid <<< "$pr")
-          base=$(jq -r .baseRefName <<< "$pr")
-          if [[ "$ACTION" == closed && "$state" != OPEN ]] ||
-             [[ "$ACTION" != closed && "$state" == OPEN && "$base" == "$EXPECTED_BASE_REF" && "$head" == "$EXPECTED_HEAD" ]]; then
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-          else
-            echo '::notice::A newer PR event superseded this run.'
-          fi
-
       - uses: actions/checkout@v7.0.1
-        if: steps.current.outputs.run == 'true'
         with:
-          # On close the default branch has the preview stack, even when the
-          # PR conflicted or its branch predates previews.
-          ref: ${{ github.event.action == 'closed' && github.sha || format('refs/pull/{0}/merge', github.event.number) }}
+          # Cleanup runs from the default branch and uses only the PR number.
+          ref: ${{ github.event.action == 'closed' && github.sha || format('refs/pull/{0}/merge', env.PULL_REQUEST) }}
           fetch-depth: 2
           persist-credentials: false
 
       - name: Verify preview checkout
-        if: steps.current.outputs.run == 'true' && github.event.action != 'closed'
+        if: github.event.action != 'closed'
         env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ needs.authorize.outputs.head }}
+          EXPECTED_BASE: ${{ needs.authorize.outputs.base }}
         run: |
           if [[ "$(git show --no-patch --format=%P HEAD)" != "$EXPECTED_BASE $EXPECTED_HEAD" ]]; then
-            echo '::error::The preview merge ref parents no longer match the trusted event.'
+            echo '::error::The preview merge ref parents no longer match the authorized commits.'
             exit 1
           fi
 
       - uses: oven-sh/setup-bun@v2.2.0
-        if: steps.current.outputs.run == 'true'
         with:
           bun-version-file: package.json
 
       - uses: actions/setup-node@v7.1.0
-        if: steps.current.outputs.run == 'true'
         with:
           node-version-file: package.json
           package-manager-cache: false
 
-      - if: steps.current.outputs.run == 'true'
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
       - name: Deploy preview
         id: deploy
-        if: steps.current.outputs.run == 'true' && github.event.action != 'closed'
+        if: github.event.action != 'closed'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
@@ -121,7 +176,7 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Remove preview
-        if: steps.current.outputs.run == 'true' && github.event.action == 'closed'
+        if: github.event.action == 'closed'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
