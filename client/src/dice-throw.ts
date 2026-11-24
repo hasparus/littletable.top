@@ -16,7 +16,7 @@ import {
   sub,
   type Vec,
 } from "./dice-math";
-import { simulation, type Simulation, type Throw } from "./dice-physics";
+import { FRAME_STRIDE, simulation, type Simulation, type Throw } from "./dice-physics";
 import { type DieKind, type Feature, solid, type Solid } from "./dice-solids";
 
 export type Die = { sides: number; value: number };
@@ -91,6 +91,18 @@ export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
 }
 
 export type Planned = { bodies: ThrownDie[]; numbering: Quat[]; thrown: Throw };
+
+// The d100 is spherical. A fixed camera correction keeps its result at the
+// centre of its projection without changing which numerals are on each face.
+export function cameraFacingOf({ bodies, thrown }: Planned, eye: Vec): (Quat | null)[] {
+  return bodies.map((body, index) => {
+    if (!solid(body.kind).ball) return null;
+    const frames = thrown.frames[index]!;
+    const at = frames.length - FRAME_STRIDE;
+    const rest: Vec = [frames[at]!, frames[at + 1]!, frames[at + 2]!];
+    return rotationBetween([0, 1, 0], normalize(sub(eye, rest)));
+  });
+}
 
 export function finalRotation(thrown: Throw, index: number): Quat {
   const frames = thrown.frames[index]!;

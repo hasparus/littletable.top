@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DieKind } from "../client/src/dice-solids";
 
-import { multiply, rotate } from "../client/src/dice-math";
+import { dot, multiply, normalize, rotate, sub } from "../client/src/dice-math";
 import {
   FLICK_REACH_X,
   FLICK_REACH_Z,
@@ -12,8 +12,15 @@ import {
   TRAY_DEPTH,
   TRAY_WIDTH,
 } from "../client/src/dice-physics";
+import { EYE } from "../client/src/dice-renderer";
 import { solid } from "../client/src/dice-solids";
-import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dice-throw";
+import {
+  bodiesOf,
+  cameraFacingOf,
+  finalRotation,
+  numbering,
+  throwDice,
+} from "../client/src/dice-throw";
 
 // What can go wrong with the shared throw, and what guards it here:
 // - a die ends tilted, on an edge or leaning on another: "lies flat"
@@ -163,6 +170,18 @@ describe("the shared throw", () => {
       angles.push(rotate(multiply(rotation, turn), target.up!)[2]);
     }
     expect(angles.some((angle) => angle > 0)).toBe(true);
+  });
+
+  it("centres an off-axis d100's rolled face in the camera", () => {
+    const value = 63;
+    const run = throwDice([{ sides: 100, value }], 6);
+    run.advance(Infinity);
+    const planned = run.planned();
+    const spun = multiply(finalRotation(planned.thrown, 0), planned.numbering[0]!);
+    const shown = multiply(cameraFacingOf(planned, EYE)[0]!, spun);
+    const direction = normalize(sub(EYE, lastPosition(planned.thrown.frames[0]!)));
+    const face = solid("d100").features.find((feature) => feature.value === value)!;
+    expect(dot(rotate(shown, face.dir), direction)).toBeCloseTo(1, 9);
   });
 
   it("starts a flick at the release point and moves in the flick's direction", () => {

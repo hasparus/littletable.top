@@ -12,6 +12,7 @@ import { meshOf } from "./dice-mesh";
 import { FPS, FRAME_STRIDE } from "./dice-physics";
 import {
   createRenderer,
+  EYE,
   type Look,
   type Model,
   type Pose,
@@ -19,7 +20,7 @@ import {
   type Tier,
 } from "./dice-renderer";
 import { solid } from "./dice-solids";
-import { type Die, type Planned, throwDice } from "./dice-throw";
+import { cameraFacingOf, type Die, type Planned, throwDice } from "./dice-throw";
 
 type ThrowOptions = DiceControls & { kept: readonly boolean[]; launch?: DiceLaunch; seed: number };
 
@@ -113,6 +114,7 @@ function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)
 function posesAt(
   { bodies, numbering, thrown }: Planned,
   dimming: (number | null)[],
+  facing: (Quat | null)[],
   frame: number,
 ): Pose[] {
   return bodies.map((body, index) => {
@@ -130,11 +132,13 @@ function posesAt(
     ];
     const dim = dimming[index] ?? null;
     const shareIn = dim === null ? 0 : Math.min(Math.max((frame - dim) / SETTLE_FADE_FRAMES, 0), 1);
+    const spun = multiply(blend(rotation(from), rotation(to), share), numbering[index]!);
+    const correction = facing[index];
     return {
       dimmed: shareIn * shareIn * (3 - 2 * shareIn),
       model: modelOf(body.kind),
       position: lerp(position(from), position(to), share),
-      rotation: multiply(blend(rotation(from), rotation(to), share), numbering[index]!),
+      rotation: correction == null ? spun : multiply(correction, spun),
       size: thrown.sizes[index]!,
     };
   });
@@ -203,6 +207,7 @@ export async function createDiceThrow(
         const run = throwDice(dice, seed, launch);
         let planned: Planned | null = null;
         let dimming: (number | null)[] = [];
+        let facing: (Quat | null)[] = [];
         let startedAt = 0;
         let length = 0;
         const tick = (now: number) => {
@@ -214,6 +219,7 @@ export async function createDiceThrow(
               }
               planned = run.planned();
               dimming = dimFrom(planned, kept);
+              facing = cameraFacingOf(planned, EYE);
               startedAt = now;
               // Include the fades of dice that came to rest late.
               length = Math.max(
@@ -222,7 +228,7 @@ export async function createDiceThrow(
               );
             }
             const frame = Math.min(((now - startedAt) / 1000) * FPS, length);
-            shown = posesAt(planned, dimming, frame);
+            shown = posesAt(planned, dimming, facing, frame);
             redraw();
             if (frame < length) frameRequest = requestAnimationFrame(tick);
             else {

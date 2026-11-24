@@ -64,7 +64,8 @@ export function addDiceControls(
     const view = screen();
     const from = held.original.position;
     const origin = view.project(from);
-    const [x, y, z] = view.atHeight({ x: origin.x + dx, y: origin.y + dy }, from[1] + LIFT);
+    const pointer = view.atHeight({ x: origin.x + dx, y: origin.y + dy }, from[1] + LIFT);
+    const [x, y, z] = pointer;
     const position: Vec = [clamp(x, FLICK_REACH_X), y, clamp(z, FLICK_REACH_Z)];
     const tilt = rotationBetween(
       [0, 1, 0],
@@ -76,7 +77,7 @@ export function addDiceControls(
       rotation: multiply(tilt, held.original.rotation),
     };
     held.samples = held.samples.filter(({ at }) => at >= event.timeStamp - SPEED_SAMPLE_MS);
-    held.samples.push({ at: event.timeStamp, position });
+    held.samples.push({ at: event.timeStamp, position: pointer });
     redraw();
   }
 
@@ -86,10 +87,11 @@ export function addDiceControls(
     if (!held.moved) return;
     const [x, , z] = poses[held.index]!.position;
     const recent = held.samples[0];
+    const [pointerX, , pointerZ] = held.samples.at(-1)!.position;
     const seconds =
       recent === undefined ? 1 : Math.max(0.015, (event.timeStamp - recent.at) / 1000);
-    const speedX = (x - (recent?.position[0] ?? x)) / seconds;
-    const speedZ = (z - (recent?.position[2] ?? z)) / seconds;
+    const speedX = (pointerX - (recent?.position[0] ?? pointerX)) / seconds;
+    const speedZ = (pointerZ - (recent?.position[2] ?? pointerZ)) / seconds;
     void roll(
       held.index,
       {
@@ -113,12 +115,14 @@ export function addDiceControls(
       if (pending || grip !== null || event.button !== 0) return;
       event.preventDefault();
       const original = poses[index]!;
+      const view = screen();
+      const pointer = view.atHeight(view.project(original.position), original.position[1] + LIFT);
       grip = {
         index,
         moved: false,
         original,
         pointer: event.pointerId,
-        samples: [{ at: event.timeStamp, position: original.position }],
+        samples: [{ at: event.timeStamp, position: pointer }],
         x: event.clientX,
         y: event.clientY,
       };

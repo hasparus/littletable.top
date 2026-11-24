@@ -258,7 +258,7 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
 
 const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
 // Where the tray is seen from.
-const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
+export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
 
 // A camera above the tray, tilted a little toward the viewer, as one
 // column-major view-projection matrix. `across` and `down` are the shares of
