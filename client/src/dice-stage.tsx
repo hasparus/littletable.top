@@ -15,9 +15,11 @@ const GIVE_UP_MS = 12_000;
 const GAP = 8;
 // Narrower than this beside the menu, the toast drops below it instead.
 const ROW_MIN_WIDTH = 120;
-// Narrower than this, the toast leaves out the roller's name; the roll log
-// and the announcement still give it.
-const NAME_MIN_WIDTH = 200;
+// The dice and the total come first: the roller's name shows only where
+// every die fits beside it and the name keeps this much of itself (or all
+// of a shorter one). The roll log and the announcement always give it.
+const NAME_MIN_WIDTH = 56;
+const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 // How long the result reads at full contrast before it steps back.
 const RESTING_AFTER_MS = 4000;
 
@@ -96,6 +98,24 @@ const dropFrom = (place: Place): Keyframe[] => [
   { opacity: 1, transform: "none" },
 ];
 
+// Whether the roller's name fits beside every die and the total in a toast
+// of `width`: the dice row's and the total's own widths do not depend on
+// the name, so the answer does not flip once the name comes or goes.
+function nameFits(toast: HTMLElement, dice: HTMLElement, sum: HTMLElement | null, width: number) {
+  const style = getComputedStyle(toast);
+  const chrome = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"]
+    .map((side) => Number.parseFloat(style[side as "paddingLeft"]))
+    .reduce((all, one) => all + one, 0);
+  const probe = document.createElement("span");
+  probe.className = `${NAME_CLASS} invisible absolute`;
+  probe.textContent = toast.dataset.roller ?? "";
+  toast.append(probe);
+  const name = probe.scrollWidth;
+  probe.remove();
+  const room = width - chrome - dice.scrollWidth - (sum === null ? 0 : sum.offsetWidth + GAP) - GAP;
+  return room >= Math.min(name, NAME_MIN_WIDTH);
+}
+
 // The toast is laid out from the moment the roll arrives, so the tray below
 // it has its final place before the dice fly; it drops in once they settle.
 function ResultToast({
@@ -113,6 +133,8 @@ function ResultToast({
 }) {
   const toast = useRef<HTMLButtonElement>(null);
   const row = useRef<HTMLSpanElement>(null);
+  const sum = useRef<HTMLSpanElement>(null);
+  const [named, setNamed] = useState(false);
   const exiting = useRef<Animation | null>(null);
   const lastPlace = useRef<Place | null>(null);
   const [overflow, setOverflow] = useState<Overflow>("none");
@@ -147,6 +169,7 @@ function ResultToast({
         setPlace(next);
         onPlace(next.below);
       }
+      setNamed(nameFits(element, dice, sum.current, next.width));
       setOverflow(overflowOf(dice));
     };
     measure();
@@ -181,13 +204,13 @@ function ResultToast({
     );
   };
 
-  const named = place === null || place.width >= NAME_MIN_WIDTH;
   return (
     <button
       aria-label={copy.close}
       className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-[0_2px_10px_rgb(0_0_0/0.08)] backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
       data-dice-toast={place?.beside === false ? "below" : "beside"}
       data-resting={resting ? "" : undefined}
+      data-roller={roll.name}
       onClick={close}
       ref={toast}
       style={{
@@ -198,11 +221,7 @@ function ResultToast({
       type="button"
     >
       <span className="flex min-w-0 items-center gap-2 transition-opacity duration-700 group-data-resting:opacity-70 motion-reduce:transition-none">
-        {named && (
-          <span className="min-w-8 shrink-100 truncate text-xs font-medium text-foreground-secondary">
-            {roll.name}
-          </span>
-        )}
+        {named && <span className={NAME_CLASS}>{roll.name}</span>}
         <span
           className={`flex min-w-0 gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] ${FADES[overflow]}`}
           onScroll={(event) => setOverflow(overflowOf(event.currentTarget))}
@@ -220,7 +239,10 @@ function ResultToast({
           ))}
         </span>
         {roll.dice.length > 1 && (
-          <span className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums">
+          <span
+            className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums"
+            ref={sum}
+          >
             {total(roll)}
           </span>
         )}

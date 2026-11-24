@@ -681,9 +681,10 @@ tray on every screen, whatever its size.
 main menu and the page menu, whose width follows the page's name), centred
 on the menu button and reaching at most to the style panel tldraw keeps at
 the top right of a wide screen. It stays on one line: the dice scroll
-sideways with the total pinned at the end, the roller's name truncates
-first and is left out under 200 px (the roll log and the announcement keep
-it), and under 120 px of room beside the menus the toast drops below them.
+sideways with the total pinned at the end, and the dice come before the
+roller's name: it shows only when every die fits beside it (the roll log
+and the announcement always keep it). Under 120 px of room beside the
+menus the toast drops below them.
 
 A device that asks for reduced motion never loads the 3D code and gets the
 result toast at once; so does one without WebGL2, or after any error in the

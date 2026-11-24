@@ -378,3 +378,56 @@ test("the toast fits between the page menu and the style panel, on phones and a 
     await screen.context().close();
   }
 });
+
+// The dice and the total come before the roller's name: the name shows only
+// when every die fits beside it, never squeezing the seventh die into the
+// row's fade; with more dice than fit, the row scrolls and the total stays.
+test("the toast gives its row to the dice before the roller's name", async ({ browser, page }) => {
+  const boardUrl = await startBoard(page);
+  mkdirSync(SHOTS, { recursive: true });
+  const pools = {
+    3: [20, 6, 8],
+    7: [4, 6, 8, 10, 12, 20, 100],
+    20: [20, 20, 20, 20, 6, 6, 6, 6, 8, 8, 8, 8, 10, 10, 12, 12, 4, 4, 100, 100],
+  };
+  for (const width of [360, 390, 430]) {
+    const screen = await guestOn(browser, boardUrl, {
+      ...PHONE,
+      deviceScaleFactor: 2,
+      reducedMotion: "reduce",
+      viewport: { height: 844, width },
+    });
+    for (const [count, pool] of Object.entries(pools)) {
+      const dice = await openSheet(screen, "Dice");
+      const clear = dice.getByRole("button", { name: "Clear" });
+      if (await clear.isVisible()) await clear.click();
+      await closeSheet(screen, "Dice");
+      await roll(screen, pool);
+      await expect(toast(screen).getByRole("img")).toHaveCount(pool.length);
+      const box = await expectBesideMenu(screen);
+      const dies = await toast(screen)
+        .getByRole("img")
+        .evaluateAll((all) =>
+          all.map((die) => {
+            const { left, right, top } = die.getBoundingClientRect();
+            return { left, right, top };
+          }),
+        );
+      expect(new Set(dies.map((die) => die.top)).size, "one row").toBe(1);
+      const sum = await boxOf(toast(screen).getByText(/^\d+$/u).last());
+      expect(sum.x + sum.width).toBeLessThanOrEqual(box.x + box.width);
+      const row = await boxOf(toast(screen).getByRole("img").first().locator(".."));
+      const allFit = dies.every(
+        (die) => die.left >= row.x - 0.5 && die.right <= row.x + row.width + 0.5,
+      );
+      const named = (await toast(screen).textContent())!.includes("Bea");
+      if (named) expect(allFit, `${count} dice at ${width} px fit beside the name`).toBe(true);
+      if (count === "3") expect(named, `the name beside 3 dice at ${width} px`).toBe(true);
+      if (count === "20") expect(named, `no name beside 20 dice at ${width} px`).toBe(false);
+      await screen.screenshot({ path: `${SHOTS}/toast2-${width}-${count}.png` });
+      await toast(screen).click();
+      await expect(toast(screen)).toHaveCount(0);
+    }
+    await screen.context().close();
+  }
+});
