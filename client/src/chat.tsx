@@ -93,8 +93,8 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
 export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; shown: boolean }) {
   const { copy, locale, person } = useBoardUi();
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [submission, setSubmission] = useState<"idle" | "sending" | Refusal>("idle");
+  const busy = submission === "sending";
   const input = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -107,11 +107,9 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
 
   const send = async (message: string) => {
     input.current?.focus();
-    setBusy(true);
-    setRefusal(null);
+    setSubmission("sending");
     const result = await chat.send(message);
-    setBusy(false);
-    setRefusal(result);
+    setSubmission(result ?? "idle");
     if (result === null) {
       setText((current) => (current.trim() === message ? "" : current));
       follow.current = true;
@@ -194,9 +192,9 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
           {copy.chatSend}
         </button>
       </form>
-      {refusal !== null && (
+      {(submission === "failed" || submission === "too-fast") && (
         <p className="mt-2 text-sm text-danger-text" role="status">
-          {refusal === "too-fast" ? copy.chatTooFast : copy.chatFailed}
+          {submission === "too-fast" ? copy.chatTooFast : copy.chatFailed}
         </p>
       )}
     </Sheet>
