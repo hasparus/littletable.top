@@ -18,6 +18,7 @@ const GIVE_UP_MS = 12_000;
 const GAP = 8;
 // Narrower than this beside the menu, the toast drops below it instead.
 const ROW_MIN_WIDTH = 120;
+const WIDE_BOARD_WIDTH = 1024;
 // The dice and the total come first: the roller's name shows only where
 // every die fits beside it and the name keeps this much of itself (or all
 // of a shorter one). The roll log and the announcement always give it.
@@ -54,46 +55,54 @@ const FADES: Record<Overflow, string> = {
   start: "mask-[linear-gradient(to_right,transparent,black_1rem)]",
 };
 
-type Place = { below: number; beside: boolean; left: number; top: number; width: number };
+type Place = {
+  alignment: "below" | "beside" | "center";
+  below: number;
+  left: number;
+  top: number;
+  width: number;
+};
 
 const boxOf = (selector: string): DOMRect | null => {
   const box = document.querySelector(selector)?.getBoundingClientRect();
   return box === undefined || box.width === 0 ? null : box;
 };
 
-// Beside tldraw's top-left controls (the main menu, and the page menu on a
-// board of several pages), centred on the menu button, up to the controls
-// tldraw keeps at the top right of a wide screen, or the screen's edge.
-// Where that row is too narrow, below the controls instead. `below` is
-// where the toast and the controls end, for the tray.
-function placeBesideMenu(height: number): Place {
+// On wide boards the toast centres on the viewport while leaving room for
+// both sides' controls. On narrower boards it sits beside or below the menu.
+// `below` is where the toast and controls end, for the dice tray.
+function placeToast(height: number): Place {
   const zone = boxOf(".tlui-menu-zone") ?? new DOMRect();
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
   const publicControls = boxOf("[data-public-board-controls]");
+  const viewportWidth = document.documentElement.clientWidth;
   const sideRight = Math.min(
-    document.documentElement.clientWidth,
+    viewportWidth,
     ...[...document.querySelectorAll(".tlui-layout__top__right > *")]
       .map((element) => element.getBoundingClientRect())
       .filter((box) => box.width > 0)
       .map((box) => box.left),
   );
   const right = Math.min(sideRight, publicControls?.left ?? sideRight);
+  const center = viewportWidth / 2;
+  const centeredWidth = 2 * (Math.min(center - zone.right, right - center) - GAP);
+  const centered = viewportWidth >= WIDE_BOARD_WIDTH && centeredWidth >= ROW_MIN_WIDTH;
   const besideWidth = right - zone.right - 2 * GAP;
   const beside = besideWidth >= ROW_MIN_WIDTH;
   const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0);
   const top = beside ? button.top + (button.height - height) / 2 : rowBottom + GAP;
   return {
+    alignment: centered ? "center" : beside ? "beside" : "below",
     below: Math.max(rowBottom, top + height),
-    beside,
-    left: beside ? zone.right + GAP : GAP,
+    left: centered ? center : beside ? zone.right + GAP : GAP,
     top: Math.round(top),
-    width: beside ? besideWidth : sideRight - 2 * GAP,
+    width: centered ? centeredWidth : beside ? besideWidth : sideRight - 2 * GAP,
   };
 }
 
 const samePlace = (a: Place | null, b: Place) =>
   a !== null &&
-  a.beside === b.beside &&
+  a.alignment === b.alignment &&
   a.left === b.left &&
   a.top === b.top &&
   a.width === b.width &&
@@ -173,7 +182,7 @@ function ResultToast({
     const dice = row.current;
     if (element === null || dice === null) return;
     const measure = () => {
-      const next = placeBesideMenu(element.offsetHeight);
+      const next = placeToast(element.offsetHeight);
       if (!samePlace(lastPlace.current, next)) {
         lastPlace.current = next;
         setPlace(next);
@@ -220,7 +229,7 @@ function ResultToast({
     <button
       aria-label={copy.close}
       className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-toast backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
-      data-dice-toast={place?.beside === false ? "below" : "beside"}
+      data-dice-toast={place?.alignment ?? "beside"}
       data-resting={resting ? "" : undefined}
       data-roller={roll.name}
       onClick={close}
@@ -229,6 +238,8 @@ function ResultToast({
         left: place?.left ?? 0,
         maxWidth: place?.width,
         top: `max(${place?.top ?? 0}px, env(safe-area-inset-top))`,
+        translate: place?.alignment === "center" ? "-50%" : undefined,
+        width: place?.alignment === "center" ? "max-content" : undefined,
       }}
       type="button"
     >

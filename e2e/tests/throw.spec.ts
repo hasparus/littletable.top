@@ -272,9 +272,8 @@ const boxOf = async (target: Locator): Promise<Box> => (await target.boundingBox
 // screen undo, redo and the rest.
 const menuZone = (page: Page): Locator => page.locator(".tlui-menu-zone");
 
-// The toast drops in to the right of tldraw's top-left controls, centred on
-// the menu button's row, and never moves them or covers them.
-async function expectBesideMenu(page: Page): Promise<Box> {
+// The toast shares the menu button's row without moving or covering it.
+async function expectInMenuRow(page: Page): Promise<Box> {
   const button = await boxOf(page.getByTestId("main-menu.button"));
   const zone = await boxOf(menuZone(page));
   // Once its entrance is over.
@@ -285,9 +284,15 @@ async function expectBesideMenu(page: Page): Promise<Box> {
     })
     .toBe(0);
   const box = await boxOf(toast(page));
+  expect(overlap(box, zone)).toBe(false);
+  return box;
+}
+
+async function expectBesideMenu(page: Page): Promise<Box> {
+  const box = await expectInMenuRow(page);
+  const zone = await boxOf(menuZone(page));
   expect(box.x).toBeGreaterThanOrEqual(zone.x + zone.width);
   expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  expect(overlap(box, zone)).toBe(false);
   return box;
 }
 
@@ -468,9 +473,9 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
 });
 
 // tldraw's page menu shares the top row with the main menu, and its name
-// sets how wide that corner is; on a wide screen tldraw keeps its style
-// panel at the top right. The toast fits between, and the menus stay put.
-test("the toast fits between the page menu and the style panel, on phones and a desktop", async ({
+// sets how wide that corner is. On desktop the toast centres on the screen
+// while fitting between that corner and tldraw's style panel.
+test("the toast centres on desktop and fits beside the page menu on phones", async ({
   browser,
   page,
 }) => {
@@ -493,7 +498,10 @@ test("the toast fits between the page menu and the style panel, on phones and a 
     const atRest = await boxOf(menuZone(screen));
     await roll(screen, [20, 6]);
     await expect(toast(screen)).toBeVisible();
-    const box = await expectBesideMenu(screen);
+    const box = await (name === "desktop" ? expectInMenuRow(screen) : expectBesideMenu(screen));
+    if (name === "desktop") {
+      expect(box.x + box.width / 2).toBeCloseTo(screen.viewportSize()!.width / 2, 0);
+    }
     expect(await boxOf(menuZone(screen))).toEqual(atRest);
     for (const control of await screen.locator(".tlui-layout__top__right > *").all()) {
       expect(overlap(box, await boxOf(control))).toBe(false);
