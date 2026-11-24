@@ -445,7 +445,8 @@ One JSON object per image and engine version, in R2 beside the image as
 }
 ```
 
-Pixels are the source image's, lines in reading order, `q` a word's
+Pixels are the source image's as the board shows it (a photo's EXIF
+orientation applied, `client/src/text-worker.ts`), lines in reading order, `q` a word's
 corners clockwise from its top left as it reads (PP-OCR only); `source`
 is `uploader` or `peer`. The allowed engine keys are in
 `src/text-result.ts` (`tesseract-6.0.1`, `ppocr-v6tiny.1`); a new model or
@@ -462,8 +463,10 @@ new parameters get a new key, read beside the old.
 
 Reads take the pass or the files cookie, writes the pass. The Worker
 treats a result as untrusted text: the image must be one of the board's
-files and not an SVG; the stated size must be the stored image's, either
-way up (its header is read once by `src/image-size.ts`); boxes and quads
+files and not an SVG; the stated size must be the stored image's as it
+shows (its header is read once by `src/image-size.ts`, a JPEG's EXIF
+orientation applied; PNG and WebP EXIF and AVIF's rotation and crop are
+not read, so for those either way up is accepted); boxes and quads
 lie inside it with an area; confidences are in [0, 1]; the engine must be
 the allowed one its key names; words are NFC-normalised with control and
 format characters and spaces removed, 64 characters at most; at most

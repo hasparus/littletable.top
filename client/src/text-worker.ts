@@ -186,8 +186,23 @@ async function readPaddle(
   return paddleLines(words, scale, size);
 }
 
+// The image as the board shows it: a photo's EXIF orientation applied, so
+// the words' boxes are where they show. The Worker checks the size the
+// same way (src/image-size.ts).
+async function upright(blob: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" });
+  } catch (error) {
+    // NOTE: a browser from before "from-image" refuses the value. Its
+    // default may leave a JPEG sideways; the Worker then refuses the
+    // reading's size, and the image stays unread rather than misplaced.
+    if (!(error instanceof TypeError)) throw error;
+    return createImageBitmap(blob);
+  }
+}
+
 async function read({ bytes, engines, id }: ReadRequest): Promise<void> {
-  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const bitmap = await upright(new Blob([bytes]));
   const size = { height: bitmap.height, width: bitmap.width };
   const scale = Math.min(1, MAX_SIDE / Math.max(size.width, size.height));
   const picture = new OffscreenCanvas(

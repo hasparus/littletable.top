@@ -21,6 +21,7 @@ const SHA = "a".repeat(64);
 const EXPECTED: Expected = {
   createdAt: "2026-11-23T10:00:00.000Z",
   engine: "tesseract-6.0.1",
+  exact: true,
   height: 300,
   sha256: SHA,
   width: 400,
@@ -86,11 +87,16 @@ describe("a text result a browser sends", () => {
     });
   });
 
-  it("must state the image's own size, either way up", () => {
+  it("must state the image's size as it shows, either way up only where that is unknown", () => {
     expect(problem(sent([], { image: { height: 300, sha256: SHA, width: 401 } }))).toBe(
       "image size",
     );
-    expect(problem(sent([], { image: { height: 400, sha256: SHA, width: 300 } }))).toBeNull();
+    const turned = sent([], { image: { height: 400, sha256: SHA, width: 300 } });
+    expect(problem(turned)).toBe("image size");
+    expect(
+      "problem" in validateTextResult(turned, { ...EXPECTED, exact: false }),
+      "a PNG's or WebP's EXIF is not read",
+    ).toBe(false);
     expect(problem(sent([], { image: { height: 300, sha256: "b".repeat(64), width: 400 } }))).toBe(
       "image",
     );

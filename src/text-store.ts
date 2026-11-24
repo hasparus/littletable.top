@@ -6,7 +6,7 @@
 // in R2 next to their image.
 
 import { fileKey } from "./file-store";
-import { type Dimensions, imageDimensions, SIZE_PREFIX_BYTES } from "./image-size";
+import { imageDimensions, type Shown, SIZE_PREFIX_BYTES } from "./image-size";
 import {
   MAX_BOARD_FILE_BYTES,
   MAX_TEXT_CLAIMS_PER_MINUTE,
@@ -190,11 +190,15 @@ export class TextLedger {
     return held.map(({ engine, hash }) => ({ engine, hash }));
   }
 
-  // The image's size from its header in R2, read once and remembered.
-  private async dimensions(board: string, hash: string): Promise<Dimensions | null> {
-    const [row] = this.sql.exec("SELECT width, height FROM files WHERE hash = ?", hash).toArray();
-    if (row?.width !== null && row?.width !== undefined) {
-      return { height: row.height as number, width: row.width as number };
+  // The image's size as it shows, from its header in R2, read once and
+  // remembered.
+  private async dimensions(board: string, hash: string): Promise<Shown | null> {
+    const [row] = this.sql
+      .exec("SELECT width, height, type, upright FROM files WHERE hash = ?", hash)
+      .toArray();
+    if (row?.upright === 1 && row.width !== null) {
+      const exact = row.type === "image/jpeg" || row.type === "image/gif";
+      return { exact, height: row.height as number, width: row.width as number };
     }
     const object = await this.bucket.get(fileKey(board, hash), {
       range: { length: SIZE_PREFIX_BYTES, offset: 0 },
@@ -203,7 +207,7 @@ export class TextLedger {
     const size = imageDimensions(new Uint8Array(await object.arrayBuffer()));
     if (size !== null) {
       this.sql.exec(
-        "UPDATE files SET width = ?, height = ? WHERE hash = ?",
+        "UPDATE files SET width = ?, height = ?, upright = 1 WHERE hash = ?",
         size.width,
         size.height,
         hash,

@@ -116,6 +116,7 @@ describe("an image's text in the board's index", () => {
     const checked = validateTextResult(sent, {
       createdAt: sent.createdAt,
       engine: "tesseract-6.0.1",
+      exact: true,
       height: 1000,
       sha256: SHA,
       width: 1000,

@@ -129,6 +129,11 @@ export class FileLedger {
       sql.exec("ALTER TABLE files ADD COLUMN width INTEGER");
       sql.exec("ALTER TABLE files ADD COLUMN height INTEGER");
     }
+    // NOTE: sizes kept before a JPEG's EXIF orientation was applied are
+    // read again: only a row marked upright holds the size as it shows.
+    if (!columns.some((column) => column.name === "upright")) {
+      sql.exec("ALTER TABLE files ADD COLUMN upright INTEGER");
+    }
   }
 
   private spend(sub: string, at: number): boolean {

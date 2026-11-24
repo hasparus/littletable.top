@@ -1,8 +1,12 @@
 // How large an image is, read from the start of its bytes: PNG, JPEG,
 // WebP, GIF and AVIF. The Worker checks a text reading's stated size
-// against it (src/text-store.ts), so it never decodes an image.
+// against it (src/text-store.ts), so it never decodes an image. A JPEG's
+// size is as it shows: its EXIF orientation applied, as browsers apply it.
+// NOTE: PNG and WebP may carry EXIF too, and AVIF a rotation (irot, imir)
+// and a crop (clap); those are not read, so for them `exact` is false.
 
 export type Dimensions = { height: number; width: number };
+export type Shown = Dimensions & { exact: boolean };
 
 // The most of an image's start the reader needs: a JPEG's frame header can
 // sit behind tens of kilobytes of metadata and a thumbnail.
@@ -37,8 +41,33 @@ const [RST0, RST7, TEM, EOI, SOS] = [208, 215, 1, 217, 218];
 const isFrame = (marker: number) =>
   marker >= SOF0 && marker <= SOF15 && marker !== DHT && marker !== JPG && marker !== DAC;
 
+const APP1 = 225;
+const ORIENTATION_TAG = 274;
+// EXIF orientations 5 to 8 turn the image a quarter.
+const TURNS_QUARTER = 5;
+
+// The orientation an APP1 segment's EXIF block names, from its first IFD;
+// 1, upright, when it names none.
+function exifOrientation(view: DataView, bytes: Uint8Array, start: number, end: number): number {
+  if (ascii(bytes, start, start + 6) !== "Exif\u0000\u0000") return 1;
+  const tiff = start + 6;
+  const order = ascii(bytes, tiff, tiff + 2);
+  if (order !== "II" && order !== "MM") return 1;
+  const little = order === "II";
+  const ifd = tiff + view.getUint32(tiff + 4, little);
+  if (ifd + 2 > end) return 1;
+  const entries = view.getUint16(ifd, little);
+  for (let entry = 0; entry < entries; entry++) {
+    const at = ifd + 2 + entry * 12;
+    if (at + 12 > end) return 1;
+    if (view.getUint16(at, little) === ORIENTATION_TAG) return view.getUint16(at + 8, little);
+  }
+  return 1;
+}
+
 function jpeg(view: DataView, bytes: Uint8Array): Dimensions | null {
   let at = 2;
+  let orientation = 1;
   while (at + 4 <= bytes.length) {
     if (bytes[at] !== MARK) return null;
     const marker = bytes[at + 1]!;
@@ -54,9 +83,15 @@ function jpeg(view: DataView, bytes: Uint8Array): Dimensions | null {
     if (marker === EOI || marker === SOS) return null;
     const length = view.getUint16(at + 2);
     if (length < 2) return null;
+    if (marker === APP1 && orientation === 1) {
+      orientation = exifOrientation(view, bytes, at + 4, Math.min(at + 2 + length, bytes.length));
+    }
     if (isFrame(marker)) {
       if (at + 9 > bytes.length) return null;
-      return sized(view.getUint16(at + 7), view.getUint16(at + 5));
+      const [width, height] = [view.getUint16(at + 7), view.getUint16(at + 5)];
+      return orientation >= TURNS_QUARTER && orientation <= 8
+        ? sized(height, width)
+        : sized(width, height);
     }
     at += 2 + length;
   }
@@ -159,14 +194,21 @@ function avif(view: DataView, bytes: Uint8Array): Dimensions | null {
 // The size the image's header states, or null for anything else (an SVG
 // has none) or a header cut short. Orientation is not applied: a JPEG's
 // EXIF orientation or an AVIF's rotation can show it the other way up.
-export function imageDimensions(bytes: Uint8Array): Dimensions | null {
+const exactly = (size: Dimensions | null, exact: boolean): Shown | null =>
+  size === null ? null : { ...size, exact };
+
+export function imageDimensions(bytes: Uint8Array): Shown | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   try {
-    if (ascii(bytes, 0, 8) === "\u0089PNG\r\n\u001A\n") return png(view, bytes);
-    if (bytes[0] === MARK && bytes[1] === START) return jpeg(view, bytes);
-    if (ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a") return gif(view, bytes);
-    if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "WEBP") return webp(view, bytes);
-    if (ascii(bytes, 4, 8) === "ftyp") return avif(view, bytes);
+    if (ascii(bytes, 0, 8) === "\u0089PNG\r\n\u001A\n") return exactly(png(view, bytes), false);
+    if (bytes[0] === MARK && bytes[1] === START) return exactly(jpeg(view, bytes), true);
+    if (ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a") {
+      return exactly(gif(view, bytes), true);
+    }
+    if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "WEBP") {
+      return exactly(webp(view, bytes), false);
+    }
+    if (ascii(bytes, 4, 8) === "ftyp") return exactly(avif(view, bytes), false);
   } catch (error) {
     // A length that runs past the bytes: a damaged or cut-short header.
     if (error instanceof RangeError) return null;

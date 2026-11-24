@@ -400,10 +400,10 @@ const cropMap = (
 // the <img>: a marker per pixel, inside a box that copies the image's own
 // box and flip, so it goes through tldraw's crop, flip, shape and camera
 // transforms exactly as the picture does.
-const onScreen = (page: Page, pixels: { x: number; y: number }[]) =>
+const onScreen = (page: Page, pixels: { x: number; y: number }[], hash = MAP_HASH) =>
   page
     .getByTestId("canvas")
-    .locator(`img.tl-image[src$="${MAP_HASH}"]`)
+    .locator(`img.tl-image[src$="${hash}"]`)
     .evaluate(
       (img: HTMLImageElement, { pixels, size }) => {
         const box = document.createElement("div");
@@ -478,7 +478,7 @@ const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 180 - Math.abs
 // Bea chooses the result for "Śledziowa": the flash lies over the word as
 // the image shows it now (the ground truth's box through what the browser
 // draws), turned with the print and the image.
-async function expectFlashOnLabel(bea: Page): Promise<void> {
+async function expectFlashOnLabel(bea: Page, hash = MAP_HASH): Promise<void> {
   await openSheet(bea, "Search");
   await field(bea).fill("Śledziowa");
   await options(bea).filter({ hasText: "Śledziowa" }).first().click();
@@ -489,14 +489,11 @@ async function expectFlashOnLabel(bea: Page): Promise<void> {
   const radians = (word.angle * Math.PI) / 180;
   const along = { x: middle.x + 40 * Math.cos(radians), y: middle.y - 40 * Math.sin(radians) };
   const points = await flashPoints(bea);
-  const [labelMiddle, labelAlong, ...corners] = await onScreen(bea, [
-    middle,
-    along,
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x1, y: y1 },
-    { x: x0, y: y1 },
-  ]);
+  const [labelMiddle, labelAlong, ...corners] = await onScreen(
+    bea,
+    [middle, along, { x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }],
+    hash,
+  );
   expect(inside(labelMiddle!, points), "the word's middle is inside the flash").toBe(true);
   expect(inside(centre(points), corners), "the flash's middle is on the word").toBe(true);
   const printed = folded(
@@ -564,4 +561,30 @@ test("a label is found where an image shows it after it is turned, resized, crop
   expect(Math.abs(flashMiddle.y - (corners.top + corners.height / 2))).toBeLessThan(4);
   await shot(bea.page, "flash-hidden-desktop");
   for (const each of [ada, bea]) await each.page.context().close();
+});
+
+// map_pl_sideways.jpg is map_pl.jpg with its pixels turned a quarter to
+// the left and EXIF orientation 6, as a phone held upright writes a photo:
+// shown upright, stored sideways, and small enough not to be redrawn.
+const SIDEWAYS = "text/map_pl_sideways.jpg";
+
+test("a sideways photo's text is found where the board shows it upright", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const ada = await member(browser, "Ada");
+  await ada.page.getByRole("button", { name: "New board" }).click();
+  await expect(ada.page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+  const bea = await guest(browser, ada.page.url(), "Bea", DESKTOP);
+  await uploadImage(ada.page, SIDEWAYS);
+  await openSheet(bea.page, "Search");
+  await field(bea.page).fill("Śledziowa");
+  await expect(options(bea.page).filter({ hasText: "Śledziowa" }).first()).toBeVisible({
+    timeout: READ_MS,
+  });
+  await closeSheet(bea.page, "Search");
+  await expectFlashOnLabel(bea.page, sha256(readFileSync(fixture(SIDEWAYS))));
+  await shot(bea.page, "flash-sideways-desktop");
+  for (const each of [ada, bea]) {
+    await expectNoCspViolations(each.page);
+    await each.page.context().close();
+  }
 });

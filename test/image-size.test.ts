@@ -10,15 +10,37 @@ import { IMAGES_37_BY_21 } from "./image-samples";
 // that reads past the bytes or loops, and a type with no size (SVG).
 
 describe("an image's size, from the start of its bytes", () => {
-  it.each(Object.keys(IMAGES_37_BY_21))("reads %s", (name) => {
-    const bytes = IMAGES_37_BY_21[name as keyof typeof IMAGES_37_BY_21];
-    expect(imageDimensions(bytes)).toEqual({ height: 21, width: 37 });
+  it.each(Object.keys(IMAGES_37_BY_21).filter((name) => name !== "size-exif.jpg"))(
+    "reads %s",
+    (name) => {
+      const bytes = IMAGES_37_BY_21[name as keyof typeof IMAGES_37_BY_21];
+      expect(imageDimensions(bytes)).toMatchObject({ height: 21, width: 37 });
+    },
+  );
+
+  // NOTE: the sample's EXIF block (big-endian) names orientation 6, a
+  // quarter turn clockwise, as a phone held upright writes it.
+  it("turns a JPEG as its EXIF orientation says, as browsers show it", () => {
+    const jpeg = IMAGES_37_BY_21["size-exif.jpg"];
+    expect(imageDimensions(jpeg)).toEqual({ exact: true, height: 37, width: 21 });
+    const upright = jpeg.slice();
+    const tag = upright.findIndex((byte, at) => byte === 0x01 && upright[at + 1] === 0x12);
+    upright[tag + 9] = 1;
+    expect(imageDimensions(upright)).toEqual({ exact: true, height: 21, width: 37 });
+  });
+
+  it("says when the size could be either way up", () => {
+    expect(imageDimensions(IMAGES_37_BY_21["size-lossy.webp"])).toMatchObject({ exact: false });
   });
 
   it("reads it from a prefix of the file, as the Worker fetches it", () => {
     const jpeg = IMAGES_37_BY_21["size-exif.jpg"];
     const frame = jpeg.findIndex((byte, at) => byte === 0xff && jpeg[at + 1] === 0xc0);
-    expect(imageDimensions(jpeg.subarray(0, frame + 9))).toEqual({ height: 21, width: 37 });
+    expect(imageDimensions(jpeg.subarray(0, frame + 9))).toEqual({
+      exact: true,
+      height: 37,
+      width: 21,
+    });
   });
 
   it("says nothing of a header cut short", () => {

@@ -132,11 +132,13 @@ function params(value: unknown): TextResult["engine"]["params"] {
   return Object.fromEntries(entries) as TextResult["engine"]["params"];
 }
 
-// The image's size as its header states it; a browser may show it the
-// other way up (EXIF orientation), so both ways are accepted.
+// The image's size as it shows (src/image-size.ts). When that is not
+// `exact` (an orientation the Worker does not read), either way up is
+// accepted.
 export type Expected = {
   createdAt: string;
   engine: EngineKey;
+  exact: boolean;
   height: number;
   sha256: string;
   width: number;
@@ -155,7 +157,7 @@ export function validateTextResult(
     const size = { height: image.height, width: image.width };
     check(
       (size.width === expected.width && size.height === expected.height) ||
-        (size.width === expected.height && size.height === expected.width),
+        (!expected.exact && size.width === expected.height && size.height === expected.width),
       "image size",
     );
     const known = TEXT_ENGINES[expected.engine];
