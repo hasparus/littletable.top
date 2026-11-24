@@ -148,6 +148,37 @@
   outline-offset: 2px;
 }
 
+[data-secret-layer-toggle] {
+  position: fixed;
+  z-index: 20;
+  top: max(4px, env(safe-area-inset-top));
+  right: max(4px, env(safe-area-inset-right));
+  min-height: 44px;
+  padding-inline: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-bg-secondary);
+  color: var(--color-foreground);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+[data-secret-layer-toggle]:hover {
+  background: var(--color-bg-tertiary);
+}
+
+[data-secret-layer-toggle][aria-pressed="true"] {
+  border-color: var(--color-primary-strong);
+  background: var(--color-primary-light);
+  color: var(--color-primary-strong);
+}
+
+[data-secret-layer-toggle]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
 [data-public-board-note] {
   top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
   left: var(--board-left);

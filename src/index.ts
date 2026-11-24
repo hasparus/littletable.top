@@ -17,6 +17,7 @@ import {
   verifyLinkReset,
   verifyPass,
 } from "./pass";
+import { isSecretLayer, secretLayerOf } from "./secret-layer";
 import { aliasRedirect, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
@@ -71,14 +72,6 @@ async function verifiersFor(config: Config): Promise<Verifiers> {
 const bearer = (request: Request) =>
   request.headers.get("Authorization")?.replace(/^Bearer /u, "") ?? null;
 
-async function passFor(request: Request, verifier: Verifier, board: string) {
-  return verifiedPass(
-    bearer(request) ?? new URL(request.url).searchParams.get("pass"),
-    verifier,
-    board,
-  );
-}
-
 async function verifiedPass(token: string | null, verifier: Verifier, board: string) {
   if (token === null) return null;
   try {
@@ -113,7 +106,8 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 const ROOMS = /^\/rooms\//u;
 // A board's files: its images and their text readings, the cookie, and
 // people's pictures (src/files.ts tells them apart).
-const FILES = /^\/rooms\/([\w-]{1,64})\/files(?:\/([\w./-]{1,160}))?$/u;
+const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
+const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(connect|delete|link|rolls?)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -128,6 +122,23 @@ async function rooms(
 ): Promise<Response> {
   const url = new URL(request.url);
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
+  const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
+  if (board === undefined) return new Response("Not found", { status: 404 });
+  const secret = isSecretLayer(board);
+  if (secret && (config.mode !== "standalone" || board === secretLayerOf(PUBLIC_BOARD))) {
+    return new Response("Not found", { status: 404 });
+  }
+  if (
+    (action === "delete" || action === "link") &&
+    (secret || (config.mode === "standalone" && board === PUBLIC_BOARD))
+  ) {
+    return new Response("Not found", { status: 404 });
+  }
+  const passOf = async (token: string | null) => {
+    const pass = await verifiedPass(token, verifiers.pass, board);
+    return secret && pass?.owner !== true ? null : pass;
+  };
+  const room = env.BoardRoom.get(env.BoardRoom.idFromName(board));
   if (filesOf !== undefined) {
     return serveFiles(
       request,
@@ -136,23 +147,13 @@ async function rooms(
         board: filesOf,
         bucket: env.Files,
         config,
-        passOf: (token) => verifiedPass(token, verifiers.pass, filesOf),
-        room: env.BoardRoom.get(env.BoardRoom.idFromName(filesOf)),
+        passOf,
+        room,
+        secret,
       },
       file,
     );
   }
-  const [, board, action] =
-    /^\/rooms\/([\w-]{1,64})\/(connect|delete|link|rolls?)$/u.exec(url.pathname) ?? [];
-  if (
-    board === undefined ||
-    (config.mode === "standalone" &&
-      board === PUBLIC_BOARD &&
-      (action === "delete" || action === "link"))
-  ) {
-    return new Response("Not found", { status: 404 });
-  }
-  const room = env.BoardRoom.get(env.BoardRoom.idFromName(board));
   if (action === "delete") {
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
     if (!(await mayDelete(request, verifiers.deletion, board))) {
@@ -168,7 +169,7 @@ async function rooms(
     await room.moveLink(board, link);
     return new Response(null, { status: 204 });
   }
-  const pass = await passFor(request, verifiers.pass, board);
+  const pass = await passOf(bearer(request) ?? url.searchParams.get("pass"));
   if (pass === null) return new Response("Forbidden", { status: 403 });
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {

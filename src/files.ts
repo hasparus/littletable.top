@@ -31,6 +31,7 @@ type FileRoute = {
   // cookie, or null when there is none for this board.
   passOf: (token: string | null) => Promise<Pass | null>;
   room: DurableObjectStub<BoardRoom>;
+  secret: boolean;
 };
 
 const UPLOAD_STATUS = {
@@ -145,7 +146,13 @@ function contentRange(range: R2Range | undefined, size: number): string | null {
 // served through it too.
 export async function serveStored(
   request: Request,
-  { bucket, config, key, name }: { bucket: R2Bucket; config: Config; key: string; name: string },
+  {
+    bucket,
+    config,
+    key,
+    name,
+    secret = false,
+  }: { bucket: R2Bucket; config: Config; key: string; name: string; secret?: boolean },
 ): Promise<Response> {
   let object: R2Object | R2ObjectBody | null;
   try {
@@ -161,8 +168,8 @@ export async function serveStored(
   object.writeHttpMetadata(headers);
   headers.set("ETag", object.httpEtag);
   headers.set("Accept-Ranges", "bytes");
-  // Content-addressed: the bytes at this address never change.
-  headers.set("Cache-Control", "private, max-age=31536000, immutable");
+  // Content-addressed files can be cached, except where each read requires an owner pass.
+  headers.set("Cache-Control", secret ? "no-store" : "private, max-age=31536000, immutable");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
   const type = object.httpMetadata?.contentType ?? "application/octet-stream";
   headers.set(
@@ -203,6 +210,7 @@ async function read(request: Request, route: FileRoute, hash: string): Promise<R
     config: route.config,
     key: fileKey(route.board, hash),
     name: hash,
+    secret: route.secret,
   });
 }
 
@@ -215,6 +223,7 @@ async function readAvatar(request: Request, route: FileRoute, hash: string): Pro
     config: route.config,
     key: avatarKey(hash),
     name: hash,
+    secret: route.secret,
   });
 }
 
@@ -367,6 +376,7 @@ async function readText(
     config: route.config,
     key: textKey(route.board, hash, engine),
     name: hash,
+    secret: route.secret,
   });
 }
 

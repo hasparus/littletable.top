@@ -1,3 +1,5 @@
+import type { Editor } from "tldraw";
+
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -15,6 +17,7 @@ import { BoardCanvas } from "./canvas";
 import { type Copy, fill } from "./copy";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
+import { captureSharedView, type SharedView } from "./secret-backdrop";
 
 type Stage =
   | { ending: Ending; exit: Exit; kind: "ended" }
@@ -35,6 +38,69 @@ type Mount = {
   language: string;
   licenseKey: string;
 };
+
+function ReadyBoard({
+  copy,
+  exit,
+  keeper,
+  landing,
+  language,
+  licenseKey,
+}: Pick<Mount, "copy" | "landing" | "language" | "licenseKey"> & {
+  exit: Exit;
+  keeper: PassKeeper;
+}) {
+  const [shared, setShared] = useState<Editor | null>(null);
+  const [secret, setSecret] = useState<PassKeeper>();
+  const [view, setView] = useState<SharedView>();
+  const editingSecret = view !== undefined;
+  const canEnterSecret = keeper.bootstrap.secretPass !== undefined;
+  useEffect(() => () => view?.store.dispose(), [view]);
+  return (
+    <>
+      <BoardCanvas
+        active={!editingSecret}
+        copy={copy}
+        exit={exit}
+        keeper={keeper}
+        landing={landing}
+        language={language}
+        licenseKey={licenseKey}
+        onEditor={canEnterSecret ? setShared : undefined}
+      />
+      {/* NOTE: the room's connection keeps sending pending edits when its editor is out of view. */}
+      {secret !== undefined && (
+        <BoardCanvas
+          active={editingSecret}
+          backdrop={view}
+          copy={copy}
+          exit={exit}
+          keeper={secret}
+          language={language}
+          licenseKey={licenseKey}
+        />
+      )}
+      {canEnterSecret && (
+        <button
+          aria-pressed={editingSecret}
+          data-secret-layer-toggle
+          disabled={!editingSecret && shared === null}
+          onClick={() => {
+            if (editingSecret) {
+              setView(undefined);
+            } else if (shared !== null) {
+              setView(captureSharedView(shared));
+              if (secret === undefined) setSecret(keeper.forSecret());
+            }
+          }}
+          type="button"
+        >
+          {copy.secretLayer}
+        </button>
+      )}
+    </>
+  );
+}
 
 // Where a person goes from the board: their boards for a member, the place
 // the board belongs to for a guest.
@@ -120,7 +186,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
       );
     case "ready":
       return (
-        <BoardCanvas
+        <ReadyBoard
           copy={copy}
           exit={stage.exit}
           keeper={stage.keeper}

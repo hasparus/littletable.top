@@ -51,6 +51,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
+const RETIRED = "retired";
 
 export const PASS_HEADER = "X-Board-Pass";
 // The person's picture as personAvatar settled it, beside the pass.
@@ -75,10 +76,12 @@ export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<TLRecord, Person>;
   private drawing!: SQLiteSyncStorage<TLRecord>;
   private publicExpiryEnabled = false;
+  private retired = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
   private readonly textUploads = new Map<string, number>();
+  private readonly pendingUploads = new Set<Promise<unknown>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -103,6 +106,7 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
     this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
+    this.retired = this.ctx.storage.kv.get(RETIRED) === true;
     this.drawing = new SQLiteSyncStorage({
       sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
     });
@@ -136,6 +140,7 @@ export class BoardRoom extends DurableObject<Env> {
   // A newer pass also moves the room forward if the host has yet to
   // notify it of the reset.
   private admit(pass: Pass): "link-reset" | null {
+    if (this.retired) return "link-reset";
     const current = this.link();
     if (pass.link < current) return "link-reset";
     if (pass.link > current) this.moveLink(pass.board, pass.link);
@@ -146,7 +151,7 @@ export class BoardRoom extends DurableObject<Env> {
   // in by an older one. The host's reset request, a newer pass or the
   // standalone owner's reset can all advance it.
   moveLink(board: string, link: number): void {
-    if (link <= this.link()) return;
+    if (this.retired || link <= this.link()) return;
     this.ctx.storage.sql.exec(
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
@@ -171,7 +176,10 @@ export class BoardRoom extends DurableObject<Env> {
       log("board.refused", { board: pass.board, person: kind(pass.sub), reason: refusal });
       const { 0: client, 1: server } = new WebSocketPair();
       server.accept();
-      server.close(TLSyncErrorCloseEventCode, SOCKET_REFUSAL[refusal]);
+      server.close(
+        TLSyncErrorCloseEventCode,
+        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[refusal],
+      );
       return new Response(null, { status: 101, webSocket: client });
     }
     const { 0: client, 1: server } = new WebSocketPair();
@@ -286,7 +294,16 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
-    return this.admit(pass) ?? this.files.store(pass.board, pass.sub, body);
+    return this.admit(pass) ?? this.trackUpload(this.files.store(pass.board, pass.sub, body));
+  }
+
+  private async trackUpload<T>(upload: Promise<T>): Promise<T> {
+    this.pendingUploads.add(upload);
+    try {
+      return await upload;
+    } finally {
+      this.pendingUploads.delete(upload);
+    }
   }
 
   // Tells everyone on the board how the reading of an image moved on, as
@@ -336,10 +353,10 @@ export class BoardRoom extends DurableObject<Env> {
     if (refusal !== null) return refusal;
     this.textUploads.set(hash, (this.textUploads.get(hash) ?? 0) + 1);
     try {
-      const stored = await this.texts.store(
-        { board: pass.board, engine, hash, sub: pass.sub },
-        body,
-        { bytesNow: () => this.files.storedBytes() },
+      const stored = await this.trackUpload(
+        this.texts.store({ board: pass.board, engine, hash, sub: pass.sub }, body, {
+          bytesNow: () => this.files.storedBytes(),
+        }),
       );
       if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
         this.announceText([{ engine, hash }], "stored");
@@ -411,6 +428,13 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
+  async retire(board: string): Promise<void> {
+    // SAFETY: a pass issued before deletion cannot reopen a private room.
+    this.retired = true;
+    this.ctx.storage.kv.put(RETIRED, true);
+    await this.destroy(board);
+  }
+
   async destroy(board: string) {
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
@@ -419,12 +443,15 @@ export class BoardRoom extends DurableObject<Env> {
     // Leave the document intact if deleting its files fails.
     let files: number;
     try {
+      if (this.retired) await Promise.allSettled(this.pendingUploads);
       files = await this.files.wipe(board);
     } catch (error) {
       this.open();
       throw error;
     }
-    await this.ctx.storage.deleteAll();
+    const cleared = this.ctx.storage.deleteAll();
+    if (this.retired) this.ctx.storage.kv.put(RETIRED, true);
+    await cleared;
     this.open();
     log("board.deleted", { board, files });
   }

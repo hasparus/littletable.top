@@ -1,4 +1,5 @@
 import { TLRemoteSyncError, TLSyncErrorCloseEventReason, useSync } from "@tldraw/sync";
+import { getDefaultUserPresence } from "@tldraw/tlschema";
 import { useEffect, useMemo, useState } from "react";
 import { atom, createUserId, type TLUserStore, UserRecordType } from "tldraw";
 
@@ -27,11 +28,13 @@ const FULL_RETRY_MS = 15_000;
 // The board's tldraw store, synced through the Worker. A reset link or a
 // deleted board ends the board for this person; a full one waits.
 export function useBoardStore({
+  active,
   color,
   files,
   keeper,
   rolls,
 }: {
+  active: boolean;
   color: string;
   files: BoardFiles;
   keeper: PassKeeper;
@@ -61,7 +64,10 @@ export function useBoardStore({
       users,
     };
   }, [attempt, color, files, keeper, person, receive]);
-  const store = useSync(syncOptions);
+  const store = useSync({
+    ...syncOptions,
+    getUserPresence: active ? getDefaultUserPresence : () => null,
+  });
   const refusal = store.status === "error" ? refusalOf(store.error) : null;
 
   useEffect(() => {

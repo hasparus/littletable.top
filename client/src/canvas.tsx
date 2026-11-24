@@ -14,6 +14,7 @@ import "./board.css";
 import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
+import type { SharedView } from "./secret-backdrop";
 
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
@@ -31,6 +32,7 @@ import { PublicBoardIntro, type PublicLanding } from "./public-landing";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
+import { useSharedBackdrop } from "./secret-backdrop";
 import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel } from "./ui";
@@ -79,26 +81,32 @@ function ConnectionBanner({ copy }: { copy: Copy }) {
 }
 
 export function BoardCanvas({
+  active,
+  backdrop,
   copy,
   exit,
   keeper,
   landing,
   language,
   licenseKey,
+  onEditor,
 }: {
+  active: boolean;
+  backdrop?: SharedView;
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
   landing?: PublicLanding;
   language: string;
   licenseKey: string;
+  onEditor?: (editor: Editor | null) => void;
 }) {
   const { board, person } = keeper.bootstrap;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
   const files = useMemo(() => new BoardFiles(keeper), [keeper]);
-  const { refusal, store } = useBoardStore({ color, files, keeper, rolls });
-  const usable = store.status === "synced-remote";
+  const { refusal, store } = useBoardStore({ active, color, files, keeper, rolls });
+  const usable = active && store.status === "synced-remote";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
   // The cookie the board's pictures load with, before anyone opens a sheet
   // that shows them.
@@ -108,7 +116,7 @@ export function BoardCanvas({
   // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
   // a while the person is told why nothing shows.
   const [stalled, setStalled] = useState(false);
-  const connecting = store.status === "loading";
+  const connecting = active && store.status === "loading";
   useEffect(() => {
     setStalled(false);
     if (!connecting) return;
@@ -117,6 +125,7 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  const setBackdropEditor = useSharedBackdrop(editor);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
@@ -183,11 +192,16 @@ export function BoardCanvas({
     ],
   );
   const { open } = ui;
-  useEffect(() => (editor === null ? undefined : searchFromKeyboard(open)), [editor, open]);
+  useEffect(
+    () => (active && editor !== null ? searchFromKeyboard(open) : undefined),
+    [active, editor, open],
+  );
   const canvasComponents = useMemo(
     () =>
       landing === undefined
-        ? components
+        ? backdrop === undefined
+          ? components
+          : { ...components, Background: null }
         : {
             ...components,
             Background: () => (
@@ -198,9 +212,10 @@ export function BoardCanvas({
             ),
             MainMenu: () => <BoardMainMenu hideExit />,
           },
-    [landing],
+    [backdrop, landing],
   );
 
+  if (!active) return null;
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
   if (refusal === "full") return <Notice action={exit} text={copy.boardFull} />;
@@ -226,6 +241,31 @@ export function BoardCanvas({
         data-board-shell
         data-public-board={landing === undefined ? undefined : ""}
       >
+        {backdrop !== undefined && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            data-board-editor
+            inert
+          >
+            <Tldraw
+              assetUrls={assetUrls}
+              autoFocus={false}
+              hideUi
+              licenseKey={licenseKey === "" ? undefined : licenseKey}
+              locale={language}
+              onMount={(mounted) => {
+                mounted.updateInstanceState({ isReadonly: true });
+                mounted.setCurrentPage(backdrop.page.id);
+                mounted.setCamera(backdrop.camera);
+                setBackdropEditor(mounted);
+                return () => setBackdropEditor(null);
+              }}
+              shapeUtils={SHAPE_UTILS}
+              store={backdrop.store}
+            />
+          </div>
+        )}
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
         <div className="absolute inset-0 isolate" data-board-editor>
           <Tldraw
@@ -241,13 +281,30 @@ export function BoardCanvas({
               // their language from the person's preferences, not this prop.
               mounted.user.updateUserPreferences({ locale: language });
               if (landing !== undefined) rememberExistingArrows(mounted);
+              if (backdrop !== undefined) {
+                const { camera, page } = backdrop;
+                if (mounted.getPage(page.id) === undefined) {
+                  mounted.createPage({ id: page.id, name: page.name });
+                }
+                if (mounted.getPage(page.id) !== undefined) {
+                  mounted.setCurrentPage(page.id);
+                  mounted.setCamera(camera);
+                }
+              }
               setEditor(mounted);
+              onEditor?.(mounted);
+              return () => {
+                setEditor(null);
+                onEditor?.(null);
+              };
             }}
             shapeUtils={SHAPE_UTILS}
             store={store}
           >
             <BoardFileHandlers />
-            {landing === undefined && <PageKeeper board={board} copy={copy} />}
+            {landing === undefined && backdrop === undefined && (
+              <PageKeeper board={board} copy={copy} />
+            )}
             <ThemeKeeper />
           </Tldraw>
         </div>

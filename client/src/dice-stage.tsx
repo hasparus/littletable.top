@@ -57,6 +57,8 @@ const boxOf = (selector: string): DOMRect | null => {
   return box === undefined || box.width === 0 ? null : box;
 };
 
+const TOP_RIGHT_CONTROLS = ".tlui-layout__top__right > *, [data-secret-layer-toggle]";
+
 // Beside tldraw's top-left controls (the main menu, and the page menu on a
 // board of several pages), centred on the menu button, up to the controls
 // tldraw keeps at the top right of a wide screen, or the screen's edge.
@@ -67,7 +69,7 @@ function placeBesideMenu(height: number): Place {
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
   const right = Math.min(
     document.documentElement.clientWidth,
-    ...[...document.querySelectorAll(".tlui-layout__top__right > *")]
+    ...[...document.querySelectorAll(TOP_RIGHT_CONTROLS)]
       .map((element) => element.getBoundingClientRect())
       .filter((box) => box.width > 0)
       .map((box) => box.left),
@@ -175,7 +177,9 @@ function ResultToast({
     measure();
     const resized = new ResizeObserver(measure);
     resized.observe(dice);
-    for (const zone of document.querySelectorAll(".tlui-menu-zone, .tlui-layout__top__right")) {
+    for (const zone of document.querySelectorAll(
+      ".tlui-menu-zone, .tlui-layout__top__right, [data-secret-layer-toggle]",
+    )) {
       resized.observe(zone);
     }
     globalThis.addEventListener("resize", measure);
