@@ -219,7 +219,7 @@ describe("the public board", () => {
           x: 102,
           y: 33,
         });
-        expect(store.get(page)).toBeDefined();
+        expect(store.get(page)).toMatchObject({ name: "Landing Page" });
         expect(store.get(binding.id)).toBeUndefined();
         expect(store.get(arrow.id)).toMatchObject({ props: { end: endpoint } });
         expect(store.get(orphan.id)).toBeDefined();

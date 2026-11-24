@@ -8,6 +8,7 @@ import {
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
 import { isShape } from "@tldraw/tlschema";
+import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
@@ -49,6 +50,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 // Standalone account board IDs are alphanumeric and cannot collide with this room.
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
+const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
 
 export const PASS_HEADER = "X-Board-Pass";
 // The person's picture as personAvatar settled it, beside the pass.
@@ -350,7 +352,22 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
+  private namePublicLandingPage(): void {
+    const { kv } = this.ctx.storage;
+    if (kv.get(PUBLIC_LANDING_PAGE_NAMED) === true) return;
+    const found = this.drawing.transaction((store) => {
+      const first = [...store.values()]
+        .filter((record) => record.typeName === "page")
+        .sort(sortByIndex)[0];
+      if (first === undefined) return false;
+      if (first.name !== "Landing Page") store.set(first.id, { ...first, name: "Landing Page" });
+      return true;
+    }).result;
+    if (found) kv.put(PUBLIC_LANDING_PAGE_NAMED, true);
+  }
+
   async schedulePublicExpiry(): Promise<void> {
+    this.namePublicLandingPage();
     if (!this.publicExpiryEnabled) {
       // Give existing shapes a starting age when this board first adopts expiry.
       const now = Date.now();

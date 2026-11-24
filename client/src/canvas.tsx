@@ -1,6 +1,13 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { type Editor, EmbedShapeUtil, Tldraw, useEditor, useValue } from "tldraw";
+import {
+  DefaultBackground,
+  type Editor,
+  EmbedShapeUtil,
+  Tldraw,
+  useEditor,
+  useValue,
+} from "tldraw";
 
 import "./board.css";
 
@@ -14,7 +21,7 @@ import { BoardMainMenu, components } from "./chrome";
 import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
-import { FoundHighlight, makeHighlight } from "./highlight";
+import { makeHighlight } from "./highlight";
 import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
@@ -183,10 +190,10 @@ export function BoardCanvas({
         ? components
         : {
             ...components,
-            InFrontOfTheCanvas: () => (
+            Background: () => (
               <>
+                <DefaultBackground />
                 <PublicBoardIntro {...landing} />
-                <FoundHighlight />
               </>
             ),
             MainMenu: () => <BoardMainMenu hideExit />,
