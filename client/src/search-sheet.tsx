@@ -322,6 +322,13 @@ export function SearchSheet() {
           setActive(0);
         }}
         onKeyDown={(event) => {
+          // Escape clears what was typed first; the sheet closes on the next.
+          if (event.key === "Escape" && query !== "") {
+            event.preventDefault();
+            setQuery("");
+            setActive(0);
+            return;
+          }
           if (hits === null || hits.length === 0) return;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();

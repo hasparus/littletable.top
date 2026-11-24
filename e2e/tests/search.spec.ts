@@ -140,7 +140,7 @@ test("someone on another page finds what was typed, goes there and sees it flash
   await bea.context().close();
 });
 
-test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape returns", async ({
+test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape clears, then returns", async ({
   browser,
 }) => {
   const context = await browser.newContext(DESKTOP);
@@ -179,6 +179,18 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   );
   const chosen = (await last.textContent())!;
   await shot(page, "desktop");
+
+  // Escape clears what was typed and stays; pressed again, it closes.
+  await page.keyboard.press("Escape");
+  await expect(field(page)).toHaveValue("");
+  await expect(field(page)).toBeFocused();
+  await expect(options(page)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(sheet(page, "Search")).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+f");
+  await page.keyboard.type("drag");
+  await page.keyboard.press("ArrowUp");
+  await expect(last).toHaveAttribute("aria-selected", "true");
 
   // Pressed again while open, Ctrl+F goes back to the field.
   await page.getByRole("dialog", { name: "Search" }).getByRole("button", { name: "Close" }).focus();

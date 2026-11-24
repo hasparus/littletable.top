@@ -340,7 +340,8 @@ The bottom bar's Search (Ctrl+F or ⌘F on a keyboard) finds text across
 every page of the board. With nothing typed the sheet lists the board's
 places; typing turns the list into what matches, ranked. Choosing a
 result switches to its page, brings it into view and flashes its outline
-for a moment. All of it happens in the person's own browser: neither the
+for a moment. Escape clears what was typed, and closes the sheet once the
+field is empty. All of it happens in the person's own browser: neither the
 query nor the flash is synced or sent anywhere.
 
 - **What is found.** What tldraw's own shape utils say a shape reads as
