@@ -7,6 +7,7 @@
 // stack's own TypeScript but leaves everything under node_modules to Node.
 
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
@@ -48,6 +49,13 @@ const observability = {
 
 /** @param {string | Redacted.Redacted<string>} value */
 const secret = (value) => (Redacted.isRedacted(value) ? value : Redacted.make(value));
+
+/** @param {string | Redacted.Redacted<string>} value */
+function signingSecret(value) {
+  const key = secret(value);
+  refuseDevKey(createPrivateKey(pem(Redacted.value(key))), "signingKey");
+  return key;
+}
 
 /**
  * @param {import("./index.js").TabletopProps} props
@@ -93,8 +101,9 @@ function configure(props) {
       },
     };
   }
-  const signingKey = secret(props.signingKey);
-  refuseDevKey(createPrivateKey(pem(Redacted.value(signingKey))), "signingKey");
+  const signingKey = Output.isOutput(props.signingKey)
+    ? props.signingKey.pipe(Output.map(signingSecret))
+    : signingSecret(props.signingKey);
   return {
     client,
     env: {
@@ -148,10 +157,11 @@ export const Tabletop = (id, props) =>
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};
-    // The boards' images, one bucket per deployment and stage (Alchemy
-    // names it app-stage-id). NOTE: a bucket with objects in it is never
-    // destroyed with the stack; the boards' images are not disposable.
-    const files = yield* Cloudflare.R2.Bucket(`${id}Files`);
+    // Only explicitly disposable deployments may empty their image bucket.
+    const files = yield* Cloudflare.R2.Bucket(
+      `${id}Files`,
+      props.forceDestroyFiles ? { forceDestroy: true } : undefined,
+    );
     const worker = yield* Cloudflare.Worker(id, {
       assets: {
         directory: assets,

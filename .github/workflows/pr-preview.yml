@@ -1,0 +1,107 @@
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-preview-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
+    if: ${{ !github.event.repository.fork && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PULL_REQUEST: ${{ github.event.number }}
+      STAGE: pr-${{ github.event.number }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the current PR state
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pr=$(gh pr view "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --json state,headRefOid)
+          state=$(jq -r .state <<< "$pr")
+          head=$(jq -r .headRefOid <<< "$pr")
+          if [[ "$ACTION" == closed && "$state" != OPEN ]] ||
+             [[ "$ACTION" != closed && "$state" == OPEN && "$head" == "$HEAD" ]]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::A newer PR event superseded this run.'
+          fi
+
+      - uses: actions/checkout@v7.0.1
+        if: steps.current.outputs.run == 'true'
+        with:
+          # The PR merge ref may disappear on close. Use its recorded head to
+          # load the same stack definition and provider versions for cleanup.
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        if: steps.current.outputs.run == 'true'
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        if: steps.current.outputs.run == 'true'
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - if: steps.current.outputs.run == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Deploy preview
+        id: deploy
+        if: steps.current.outputs.run == 'true' && github.event.action != 'closed'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+          WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID || secrets.WORKOS_CLIENT_ID }}
+          TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
+          : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
+          : "${WORKOS_API_KEY:?Set preview secret WORKOS_API_KEY}"
+          : "${WORKOS_CLIENT_ID:?Set preview variable WORKOS_CLIENT_ID}"
+          if [ -z "$TLDRAW_LICENSE_KEY" ]; then
+            echo '::warning::Set preview variable TLDRAW_LICENSE_KEY to enable the board editor.'
+          fi
+
+          log="$RUNNER_TEMP/alchemy-preview.log"
+          ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"
+          url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://littletable-${STAGE}\.[a-z0-9-]+\.workers\.dev)'.*#\1#p" | tail -n 1)
+          if [ -z "$url" ]; then
+            echo '::error::Alchemy did not return the expected workers.dev preview URL.'
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 "$url/" --output /dev/null
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Remove preview
+        if: steps.current.outputs.run == 'true' && github.event.action == 'closed'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
+          : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
+          ./node_modules/.bin/alchemy destroy --config alchemy.preview.ts --stage "$STAGE" --yes

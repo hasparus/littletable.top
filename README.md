@@ -90,36 +90,53 @@ the CI checks (`ci.yml`) pass:
   database and R2 bucket on workers.dev.
 
 The deploy runs `./node_modules/.bin/alchemy deploy --stage <stage> --yes`.
-Each stage gets the Worker with the client as static assets, the
-`BoardRoom` and `Limiter` Durable Objects, the D1 database with
-`migrations/` applied, the R2 bucket of the boards' images, and the custom
-domain. The Workers are `littletable` and `littletable-staging`. A bucket
-with images in it is never destroyed with its stage, so empty a preview's
-by hand.
+Each stage gets a Worker with the client as static assets, `BoardRoom` and
+`Limiter` Durable Objects, a D1 database with `migrations/` applied, and an
+R2 bucket for board images. The production and staging Workers are
+`littletable` and `littletable-staging`. Alchemy protects their non-empty R2
+buckets from deletion.
 
 One deploy per stage runs at a time. While an Environment lacks a required
 input, a deploy to it changes nothing and ends green with a notice that
 lists what is missing.
 
+### Pull request previews
+
+The [PR Preview workflow](.github/workflows/pr-preview.yml) deploys each
+same-repository PR to its own Alchemy stage `pr-<number>` when it is opened,
+updated, or reopened. It updates one PR comment and sets the deployment URL
+in GitHub. The URL is `https://littletable-pr-<number>.hasparus.workers.dev`.
+
+Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
+belong to that stage. The workflow uses the Cloudflare and WorkOS credentials
+from the `preview` GitHub Environment. Closing the PR destroys that stage,
+including its image files, and removes the preview comment. Each open PR
+consumes one Worker and one D1 database from the Cloudflare account's limits.
+
+Cloudflare [Worker Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
+share their version's bindings and are unavailable for Workers implementing
+Durable Objects. Each PR goes to a separate Worker with its own bindings.
+
 ### GitHub Environments
 
-Settings, Environments: `production` for `prod`, and `staging` for
-`staging` and every preview. Give `production` a deployment branch rule for
-`main`.
+In GitHub Settings under Environments, use `production` for `prod`,
+`staging` for manual non-production deploys, and `preview` for pull
+requests. Give `production` a deployment branch rule for `main`.
 
-| Kind     | Name                    | Value                                                                                           |
-| -------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| secret   | `CLOUDFLARE_API_TOKEN`  | The token below                                                                                 |
-| variable | `CLOUDFLARE_ACCOUNT_ID` | The account's id (the dashboard's URL, or Workers & Pages, Account details)                     |
-| secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                     |
-| variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                    |
-| secret   | `TABLETOP_SIGNING_KEY`  | A key of this Environment's own: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` |
-| variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but boards do not work without it. Public by design                         |
+| Kind     | Name                    | Value                                                                                                             |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| secret   | `CLOUDFLARE_API_TOKEN`  | The token below                                                                                                   |
+| variable | `CLOUDFLARE_ACCOUNT_ID` | The account's id (the dashboard's URL, or Workers & Pages, Account details)                                       |
+| secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                                       |
+| variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                                      |
+| secret   | `TABLETOP_SIGNING_KEY`  | For `deploy.yml`: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`. PR previews generate their own. |
+| variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but boards do not work without it. Public by design                                           |
 
-All but `TLDRAW_LICENSE_KEY` are required. Use WorkOS's staging environment
-for `staging` and its production one for `production`. A tldraw licence key
-is tied to domains, so get one that covers every host the Environment
-deploys to. The workflow sets `TABLETOP_DOMAIN` to `littletable.top`.
+Use the Little Table WorkOS Staging application for `preview` and
+`staging`, and WorkOS Production for `production`. For the PR board editor,
+the `preview` tldraw licence key must include `*.hasparus.workers.dev`.
+tldraw supports wildcard subdomains in
+[licence keys](https://tldraw.dev/sdk-features/license-key#domain-validation).
 
 ### Cloudflare API token
 
@@ -145,8 +162,16 @@ if there is none); an account that already has one reuses it.
 
 In the WorkOS environment of each stage, before anyone signs in, add
 `https://<host>/auth/callback` as a redirect URI and `https://<host>/` as a
-sign-out redirect. `prod` is `littletable.top` and `staging` is
-`staging.littletable.top`. Register a preview's workers.dev host too.
+sign-out redirect. `prod` is `littletable.top`.
+
+The Little Table WorkOS Staging application uses these destinations:
+
+| Type         | Default                                         | Pull requests                                                 |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------- |
+| Redirect URI | `https://staging.littletable.top/auth/callback` | `https://littletable-pr-*.hasparus.workers.dev/auth/callback` |
+| Sign-out URI | `https://staging.littletable.top/`              | `https://littletable-pr-*.hasparus.workers.dev/`              |
+
+Register other manually deployed workers.dev hosts individually.
 
 ## More
 
