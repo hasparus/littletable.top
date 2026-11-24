@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { chromium } from "@playwright/test";
 // Run with Bun and Playwright Chromium installed:
-// bun scripts/open-graph.tsx shared-board client/open-graph.png
+// bun scripts/open-graph.tsx map-notes client/open-graph.png
 // bun scripts/open-graph.tsx gallery /tmp/littletable-open-graph.html
 import { readFile, writeFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -228,53 +228,37 @@ function DiceNight() {
 
 function MapNotes() {
   return (
-    <Card name="Little Table next to a hand-drawn tabletop map on paper">
-      <defs>
-        <pattern height="31" id="map-notes-grid" patternUnits="userSpaceOnUse" width="31">
-          <path d="M31 0H0V31" fill="none" stroke="#e0d4c2" strokeWidth="1.3" />
-        </pattern>
-      </defs>
-      <rect fill="#f3e9da" height={HEIGHT} width={WIDTH} />
-      <path d="M628 0H1200V630H685L555 484Z" fill="#e8dbca" />
-      <Logo size={58} x={69} y={114} />
-      <text fill={INK} fontSize="92" fontWeight="710" letterSpacing="-5" x="66" y="300">
-        Little Table
-      </text>
-      <text fill="#574a3b" fontSize="35" fontWeight="500" x="72" y="370">
-        A shared whiteboard for
-      </text>
-      <text fill="#574a3b" fontSize="35" fontWeight="500" x="72" y="413">
-        tabletop games.
-      </text>
-      <g transform="translate(648 121) rotate(-8 229 196)">
-        <rect fill="#d6c8b5" height="384" rx="18" width="456" x="8" y="12" />
-        <rect fill="#fdf6e9" height="384" rx="18" stroke="#d0beaa" strokeWidth="2" width="456" />
-        <rect fill="url(#map-notes-grid)" height="352" rx="10" width="424" x="16" y="16" />
+    <Card name="Little Table on a sketched map with a rolled d20">
+      <image
+        height={HEIGHT}
+        href={`data:image/png;base64,${mapBoard.toString("base64")}`}
+        width={WIDTH}
+      />
+      {/* Cover the local editor's license notice in the static share image. */}
+      <rect fill="#f7f6f3" height="45" width="110" x="1090" y="585" />
+      <g transform="translate(64 189) scale(.62)">
+        <rect fill={CORAL} height="112" rx="28" width="112" x="4" y="4" />
         <path
-          d="M29 282c85 26 83-76 153-71s54 64 124 34c44-19 32-83 120-109"
+          d="M26 62v25m56-25v25m12-36v19"
           fill="none"
-          stroke="#748b74"
-          strokeDasharray="8 12"
+          stroke="white"
           strokeLinecap="round"
-          strokeWidth="5"
+          strokeWidth="8"
         />
-        <g
-          fill="none"
-          stroke="#615949"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="4"
-        >
-          <path d="M48 161 96 79l52 82m-69-51 17 13 17-14M123 136l30-51 44 76m-56-59 12 11 13-10" />
-          <path d="M267 143V89h20v17h22V89h20v54m-71 0h79m-41 0v-16q8-12 17 0v16" />
-          <path d="M86 306c14-17 38-19 49-4-14 17-38 19-49 4Zm10 0h29" />
-          <path d="M333 305h15m-7-7v15m37-33h13m-6-7v13" />
+        <path d="M33 34q2-4 8-4h53q8 0 5 6L87 61q-2 5-9 5H25q-8 0-5-7z" fill="white" />
+        <g fill={CORAL}>
+          <ellipse cx="42" cy="55" rx="6" ry="4.4" />
+          <ellipse cx="60" cy="48" rx="6" ry="4.4" />
+          <ellipse cx="78" cy="41" rx="6" ry="4.4" />
         </g>
-        <circle cx="183" cy="211" fill={CORAL} r="8" />
-        <circle cx="386" cy="152" fill="#748b74" r="8" />
       </g>
-      <g transform="rotate(12 1005 421)">
-        <TwentySidedDie size={152} x={923} y={338} />
+      <g fontFamily="Google Sans Flex, sans-serif">
+        <text fill="#252220" fontSize="76" fontWeight="748" letterSpacing="-2.7" x="64" y="350">
+          little table
+        </text>
+        <text fill="#5c534a" fontSize="24" x="64" y="397">
+          A shared whiteboard for tabletop games.
+        </text>
       </g>
     </Card>
   );
@@ -296,11 +280,14 @@ if (
     "Usage: bun scripts/open-graph.tsx <shared-board|dice-night|map-notes|gallery> <output>",
   );
 }
-const font = await readFile(
-  new URL("../client/src/theme/fonts/outfit-latin.woff2", import.meta.url),
-);
+const [font, googleSansFlex, mapBoard] = await Promise.all([
+  readFile(new URL("../client/src/theme/fonts/outfit-latin.woff2", import.meta.url)),
+  readFile(new URL("../client/src/theme/fonts/google-sans-flex-latin.woff2", import.meta.url)),
+  readFile(new URL("open-graph-map.png", import.meta.url)),
+]);
 const documentCss = `
   @font-face { font-family: Outfit; src: url(data:font/woff2;base64,${font.toString("base64")}) format("woff2"); font-weight: 100 900; }
+  @font-face { font-family: "Google Sans Flex"; src: url(data:font/woff2;base64,${googleSansFlex.toString("base64")}) format("woff2"); font-weight: 100 900; }
   body { margin: 0; }
   svg { display: block; width: 100%; height: auto; }
 `;
