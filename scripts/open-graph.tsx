@@ -257,7 +257,7 @@ function MapNotes() {
           little table
         </text>
         <text fill="#5c534a" fontSize="24" x="64" y="397">
-          A shared whiteboard for tabletop games.
+          draw, roll dice, chat, pretend to be an elf
         </text>
       </g>
     </Card>
