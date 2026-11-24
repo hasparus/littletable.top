@@ -1,40 +1,42 @@
-import { DefaultBackground, useEditor, useValue } from "tldraw";
+import { useEditor, useValue } from "tldraw";
 
 import type { FrontCopy } from "./front-copy";
 
-export type PublicLanding = { copy: FrontCopy; name: string };
+export type PublicLanding = { copy: FrontCopy };
 
-// This lives in canvas coordinates, outside the room's editable records.
-export function PublicBoardIntro({ copy, name }: PublicLanding) {
+// The note is rendered in canvas coordinates, outside the shared document.
+export function PublicBoardIntro({ copy }: PublicLanding) {
   const editor = useEditor();
   const position = useValue(
     "public board introduction",
     () => {
       if (editor.getCurrentPageId() !== editor.getPages()[0]?.id) return null;
-      const { x, y } = editor.pageToViewport({ x: 16, y: 96 });
-      return { x, y, zoom: editor.getZoomLevel() };
+      const { x, y } = editor.pageToViewport({ x: 12, y: 68 });
+      return {
+        width: Math.min(502, Math.max(232, editor.getViewportScreenBounds().w - 24)),
+        x,
+        y,
+        zoom: editor.getZoomLevel(),
+      };
     },
     [editor],
   );
+  if (position === null) return null;
+  const { width, x, y, zoom } = position;
   return (
-    <>
-      <DefaultBackground />
-      {position !== null && (
-        <section
-          aria-label={copy.publicBoard}
-          className="pointer-events-none absolute top-0 left-0 w-[288px] origin-top-left rounded-2xl border border-border bg-bg-secondary p-5 text-foreground shadow-md"
-          style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${position.zoom})`,
-          }}
-        >
-          <p className="text-sm font-medium text-foreground-muted">{copy.publicBoard}</p>
-          <h1 className="mt-1 text-3xl leading-tight font-semibold">{name}</h1>
-          <p className="mt-3 text-base leading-snug">{copy.publicDescription}</p>
-          <p className="mt-3 text-sm leading-snug text-foreground-secondary">
-            {copy.publicInvitation}
-          </p>
-        </section>
-      )}
-    </>
+    <section
+      aria-label={copy.publicBoard}
+      className="pointer-events-none absolute top-0 left-0 origin-top-left"
+      data-public-board-note
+      style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, width }}
+    >
+      <h1>
+        {copy.publicGreeting} <span data-public-board-wave>👋</span>
+      </h1>
+      {copy.publicStory.map((paragraph) => (
+        <p key={paragraph}>{paragraph}</p>
+      ))}
+      <footer>{copy.publicReset}</footer>
+    </section>
   );
 }

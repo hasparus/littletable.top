@@ -145,11 +145,17 @@ function BoardToolbar() {
   const { copy, editor, person } = useBoardUi();
   const people = usePresent(editor).filter(({ id }) => id !== person.id).length + 1;
   return (
-    <div className="flex w-full grow-2 items-end gap-1.5 pr-4 pl-1 sm:justify-center sm:px-2 [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 [&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]">
+    <div
+      className="flex w-full grow-2 items-end sm:justify-center [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 sm:[&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]"
+      data-board-toolbar
+    >
       <DefaultToolbar {...TOOLBAR_FIT}>
         <BoardTools />
       </DefaultToolbar>
-      <div className="pointer-events-auto mb-[calc(var(--tl-space-3)+var(--tl-sab))] flex shrink-0 items-center rounded-2xl bg-bg-secondary p-0.5 shadow-[0_1px_3px_rgb(37_34_32/0.18),0_4px_16px_rgb(37_34_32/0.1)]">
+      <div
+        className="pointer-events-auto mb-[calc(var(--tl-space-3)+var(--tl-sab))] flex shrink-0 items-center p-0.5"
+        data-board-toolbar-actions
+      >
         <PanelButton icon="MagnifyingGlass" label={copy.search} panel="search" />
         <PanelButton badge={people} icon="Group" label={copy.people} panel="people" />
         <PanelButton icon="Dice" label={copy.dice} panel="dice" />
@@ -194,17 +200,19 @@ function PlaceMenuItems() {
 }
 
 // tldraw's menu, with the way out of the board on top.
-function BoardMainMenu() {
+export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
   const { exit } = useBoardUi();
   return (
     <DefaultMainMenu>
-      <TldrawUiMenuGroup id="board-exit">
-        <TldrawUiMenuItem
-          id="board-exit"
-          label={exit.label}
-          onSelect={() => location.assign(exit.href)}
-        />
-      </TldrawUiMenuGroup>
+      {!hideExit && (
+        <TldrawUiMenuGroup id="board-exit">
+          <TldrawUiMenuItem
+            id="board-exit"
+            label={exit.label}
+            onSelect={() => location.assign(exit.href)}
+          />
+        </TldrawUiMenuGroup>
+      )}
       <BoardFileMenuItems />
       <DefaultMainMenuContent />
     </DefaultMainMenu>
@@ -235,7 +243,7 @@ export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,
   InFrontOfTheCanvas: FoundHighlight,
-  MainMenu: BoardMainMenu,
+  MainMenu: () => <BoardMainMenu />,
   QuickActions: BoardQuickActions,
   SharePanel: null,
   Toolbar: BoardToolbar,

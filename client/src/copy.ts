@@ -27,7 +27,7 @@ const EN = {
   cancel: "Cancel",
   clearPool: "Clear",
   close: "Close",
-  connectionLost: "Connection lost. Reconnecting…",
+  connectionLost: "Reconnecting…",
   dice: "Dice",
   die: "d%(sides)s",
   follow: "Follow",
@@ -109,7 +109,7 @@ const PL: Copy = {
   cancel: "Anuluj",
   clearPool: "Wyczyść",
   close: "Zamknij",
-  connectionLost: "Utracono połączenie. Łączymy ponownie…",
+  connectionLost: "Łączymy ponownie…",
   // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   die: "k%(sides)s",

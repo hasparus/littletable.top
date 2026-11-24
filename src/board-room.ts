@@ -36,6 +36,10 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
+// Standalone account board IDs are alphanumeric and cannot collide with this room.
+export const PUBLIC_BOARD = "public-lobby";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export const PASS_HEADER = "X-Board-Pass";
 // The person's picture as personAvatar settled it, beside the pass.
 export const AVATAR_HEADER = "X-Board-Avatar";
@@ -318,22 +322,48 @@ export class BoardRoom extends DurableObject<Env> {
     return stored;
   }
 
-  async destroy(board: string) {
-    for (const session of this.room.getSessions()) {
-      this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
+  async schedulePublicClear(): Promise<void> {
+    if ((await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Math.floor(Date.now() / DAY_MS) * DAY_MS + DAY_MS);
     }
-    this.room.close();
-    // NOTE: the images go first: if that fails the board's document is
-    // still there, the room opens again, and deleting again finishes.
+  }
+
+  override async alarm(): Promise<void> {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const files = await this.clear(PUBLIC_BOARD, false);
+      await this.schedulePublicClear();
+      log("board.public_cleared", { board: PUBLIC_BOARD, files });
+    });
+  }
+
+  async destroy(board: string): Promise<void> {
+    const files = await this.clear(board, true);
+    log("board.deleted", { board, files });
+  }
+
+  private async clear(board: string, permanent: boolean): Promise<number> {
+    if (permanent) {
+      for (const session of this.room.getSessions()) {
+        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
+      }
+      this.room.close();
+    }
+    // Leave the document intact if deleting its files fails.
     let files: number;
     try {
       files = await this.files.wipe(board);
     } catch (error) {
-      this.open();
+      if (permanent) this.open();
       throw error;
+    }
+    if (!permanent) {
+      for (const session of this.room.getSessions()) {
+        this.room.sendCustomMessage(session.sessionId, { type: "public-board-cleared" });
+      }
+      this.room.close();
     }
     await this.ctx.storage.deleteAll();
     this.open();
-    log("board.deleted", { board, files });
+    return files;
   }
 }

@@ -200,7 +200,11 @@ keeps what is listed or looked up across boards: `accounts`, `sessions`,
 `boards` and `visits`. A link names a board by its share code, and
 looking up a code needs an index across all accounts. D1 has that index.
 The public board uses a fixed room ID outside the account board ID space.
-It has no owner or D1 row.
+It has no owner or D1 row. Its first bootstrap schedules a Durable Object
+alarm for midnight UTC, and each clear schedules the next. The alarm clears
+visitor content and files and reopens the same room, so connected visitors
+can reconnect. The landing note is rendered by the client and never enters
+the shared document.
 
 ### Sessions and CSRF
 

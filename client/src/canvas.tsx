@@ -10,11 +10,11 @@ import type { Copy } from "./copy";
 
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
-import { components } from "./chrome";
+import { BoardMainMenu, components } from "./chrome";
 import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
-import { makeHighlight } from "./highlight";
+import { FoundHighlight, makeHighlight } from "./highlight";
 import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
@@ -180,7 +180,16 @@ export function BoardCanvas({
     () =>
       landing === undefined
         ? components
-        : { ...components, Background: () => <PublicBoardIntro {...landing} /> },
+        : {
+            ...components,
+            InFrontOfTheCanvas: () => (
+              <>
+                <PublicBoardIntro {...landing} />
+                <FoundHighlight />
+              </>
+            ),
+            MainMenu: () => <BoardMainMenu hideExit />,
+          },
     [landing],
   );
 
@@ -204,7 +213,11 @@ export function BoardCanvas({
 
   return (
     <BoardUiContext.Provider value={ui}>
-      <div className="fixed inset-0 overflow-hidden">
+      <div
+        className="fixed inset-0 overflow-hidden"
+        data-board-shell
+        data-public-board={landing === undefined ? undefined : ""}
+      >
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
         <div className="absolute inset-0 isolate">
           <Tldraw
@@ -229,10 +242,7 @@ export function BoardCanvas({
           </Tldraw>
         </div>
         {landing !== undefined && (
-          <a
-            className="btn btn-secondary absolute top-[max(0.75rem,env(safe-area-inset-top))] right-[max(0.75rem,env(safe-area-inset-right))] z-10 min-h-10 shadow-sm"
-            href={exit.href}
-          >
+          <a className="absolute z-10" data-public-board-account href={exit.href}>
             {exit.label}
           </a>
         )}

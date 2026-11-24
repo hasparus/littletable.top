@@ -3,12 +3,12 @@
 // host's does (docs/hosting.md, "The host contract") so the client cannot tell the
 // two apart. Passes are signed with the Worker's own key.
 
-import type { BoardRoom } from "../board-room";
 import type { StandaloneConfig } from "../config";
 import type { Limiter } from "../limiter";
 import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
+import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
 import { serveStored } from "../files";
 import { addressKey } from "../limiter";
 import {
@@ -36,8 +36,6 @@ const SESSION_COOKIE = "__Host-tabletop-session";
 const SIGN_IN_COOKIE = "__Host-tabletop-sign-in";
 const GUEST_COOKIE = "__Host-tabletop-guest";
 const PUBLIC_GUEST_COOKIE = "__Host-tabletop-public-guest";
-// Account boards have random alphanumeric IDs, so their rooms cannot collide.
-const PUBLIC_BOARD = "public-lobby";
 
 const SESSION_LIFETIME_S = 30 * 24 * 60 * 60;
 const SIGN_IN_LIFETIME_S = 10 * 60;
@@ -384,6 +382,10 @@ export class Standalone {
     const saved = code === null ? null : await this.store.byShareCode(code);
     if (code !== null && saved === null) return refuse(404, "not-found");
     const board = saved ?? { id: PUBLIC_BOARD, linkVersion: 0, title: this.config.displayName };
+    if (code === null) {
+      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(PUBLIC_BOARD));
+      await room.schedulePublicClear();
+    }
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });
     let person: { avatar: string | null; id: string; name: string; owner: boolean };

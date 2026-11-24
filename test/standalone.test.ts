@@ -1,4 +1,5 @@
 import { TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason } from "@tldraw/sync-core";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
 import { createPublicKey } from "node:crypto";
@@ -12,6 +13,40 @@ import { pass as hostedPass } from "./support";
 type Answer = { board: string; pass: string; person: { id: string; name: string; owner: boolean } };
 
 const hostedEnv = env as unknown as Env;
+
+describe("the public board", () => {
+  it("automatically clears visitor data and reopens the same room", async () => {
+    const guest = new Browser();
+    const initial = await guest.post("/api/public-board/bootstrap");
+    expect(initial.status).toBe(200);
+    const { board, pass } = (await initial.json()) as Answer;
+    const namespace = standaloneEnv.BoardRoom;
+    const room = namespace.get(namespace.idFromName(board));
+    const alarmOf = () => runInDurableObject(room, (_room, state) => state.storage.getAlarm());
+    const firstAlarm = await alarmOf();
+    expect(firstAlarm).toBeGreaterThan(Date.now());
+    expect(firstAlarm! % (24 * 60 * 60 * 1000)).toBe(0);
+
+    const rolled = await roomCall(`/rooms/${board}/roll`, pass, {
+      body: JSON.stringify({ dice: [6] }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    expect(rolled.ok).toBe(true);
+    const imageKey = `boards/${board}/example`;
+    await standaloneEnv.Files.put(imageKey, "an image");
+    expect(await runDurableObjectAlarm(room)).toBe(true);
+    expect(await alarmOf()).toBeGreaterThan(Date.now());
+    expect(await standaloneEnv.Files.head(imageKey)).toBeNull();
+
+    const history = await roomCall(`/rooms/${board}/rolls`, pass);
+    expect(await history.json()).toEqual([]);
+    const next = (await (await guest.post("/api/public-board/bootstrap")).json()) as Answer;
+    expect(next.board).toBe(board);
+    expect((await openSocket(board, next.pass)).response.status).toBe(101);
+    expect((await guest.post(`/rooms/${board}/delete`)).status).toBe(404);
+  });
+});
 
 describe("signing in", () => {
   it("makes an account and a session from the provider's answer", async () => {

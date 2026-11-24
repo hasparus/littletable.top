@@ -31,11 +31,11 @@ test("the home page is one editable public board for anonymous visitors", async 
 
   const intro = guest.getByRole("region", { name: "Public whiteboard" });
   await expect(intro.getByRole("heading", { level: 1 })).toBeInViewport();
-  await expect(intro.getByText("Draw maps, plan your game", { exact: false })).toBeInViewport();
+  await expect(intro.getByText("So I made Little Table.", { exact: false })).toBeInViewport();
   await expect(guest.getByRole("link", { name: "Sign in" })).toBeVisible();
   await expect(guest.getByLabel("Your name")).toHaveCount(0);
 
-  await putNote(page, { at: { x: 200, y: 390 }, text: "A note from the public board" });
+  await putNote(page, { at: { x: 200, y: 648 }, text: "A note from the public board" });
   await expect(onBoard(guest, "A note from the public board")).toBeInViewport();
   await expectNoCspViolations(guest);
   await guest.context().close();
