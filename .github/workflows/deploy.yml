@@ -95,16 +95,24 @@ jobs:
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         if: steps.configured.outputs.ready == 'true'
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         if: steps.configured.outputs.ready == 'true'
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        if: steps.configured.outputs.ready == 'true'
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
 
       - if: steps.configured.outputs.ready == 'true'
-        run: aube install
+        run: bun install --frozen-lockfile
 
       - name: Deploy
         id: deploy
@@ -118,7 +126,9 @@ jobs:
           TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY }}
         run: |
           log="$RUNNER_TEMP/alchemy-deploy.log"
-          aube exec -- alchemy deploy --stage "$STAGE" --yes 2>&1 | tee "$log"
+          # NOTE: not `bun run alchemy`, which runs the alchemy/ folder and
+          # exits 0, nor `bunx alchemy`, which runs the CLI under Bun.
+          ./node_modules/.bin/alchemy deploy --stage "$STAGE" --yes 2>&1 | tee "$log"
           # The stack's output prints as `{ url: 'https://...' }`.
           url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://[^']+)'.*#\1#p" | tail -n 1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
