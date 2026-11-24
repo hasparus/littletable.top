@@ -1,7 +1,7 @@
 # Internals
 
-Facts the code does not say quickly: formats, invariants, and the reasons
-behind the security choices. Limits live in `src/limits.ts`.
+This file covers what the code does not say quickly: formats, invariants,
+and why the security choices were made. Limits are in `src/limits.ts`.
 
 ## Images
 
@@ -15,7 +15,7 @@ A board's images live in one R2 bucket per deployment (`Files`) as
 - An `<img>` cannot send an Authorization header, so
   `POST /rooms/<board>/files/access` trades the pass for a cookie:
   `tabletop-files=<the pass>; Path=/rooms/<board>/files; Secure; HttpOnly;
-SameSite=Strict`, living as long as the pass. It is read only on
+SameSite=Strict`. It lasts as long as the pass and is read only on
   `GET`/`HEAD` of that path, so uploads still need the header and a page
   elsewhere cannot spend it. A signed URL would change every four minutes
   and defeat the browser's cache; the cookie keeps one address per image.
@@ -38,11 +38,12 @@ Pictures are never hot-linked. The Worker copies each into the bucket as
 `avatars/<sha256>` and serves it itself, so images stay `'self'` and no
 player's browser contacts the identity provider or the host.
 
-- The copy (`src/avatars.ts`): `https` only, no address literals or local
-  names, every redirect hop checked again. PNG, JPEG, GIF, WebP or AVIF; an
-  SVG is refused. Any failure leaves an initial and never fails the request.
-- Hosted: the board's Durable Object copies the pass's `avatar` claim, only
-  from `HOST_ORIGIN`, again only when the claim changes.
+- The copy (`src/avatars.ts`) is `https` only, refuses address literals and
+  local names, and checks every redirect hop again. It takes PNG, JPEG,
+  GIF, WebP or AVIF, not SVG. If the copy fails, the person keeps an
+  initial and the request still succeeds.
+- Hosted mode: the board's Durable Object copies the pass's `avatar` claim
+  from `HOST_ORIGIN` only, and again only when the claim changes.
 - `GET /rooms/<board>/files/avatars/<sha256>` answers only for someone who
   has been on that board; any other hash is a 404.
 - The room overwrites the user id, name and `meta.avatar` of every presence
@@ -166,12 +167,12 @@ The server draws every value (`src/dice.ts`) and gives each roll a 32-bit
 `seed`. The seed shapes only the animation: every client simulates the same
 throw and then turns each die so the server's value is on top.
 
-**The determinism rule.** From the seed to the last frame the simulation
-uses only `+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`,
-`Math.floor` and `Math.imul`, with a fixed step (1/240 s), solver iteration
-count and body order. Those are exact in every JavaScript engine; `sin`,
-`cos`, `atan2`, `pow` and the rest are not. A physics engine in
-WebAssembly would also need a wider Content-Security-Policy.
+The simulation keeps one rule from the seed to the last frame: it uses only
+`+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`, `Math.floor`
+and `Math.imul`, with a fixed step (1/240 s), solver iteration count and
+body order. Those are exact in every JavaScript engine; `sin`, `cos`,
+`atan2`, `pow` and the rest are not. A physics engine in WebAssembly would
+also need a wider Content-Security-Policy.
 
 - `test/dice-exact.test.ts` runs a throw with every other `Math` function
   stubbed to throw.
@@ -182,7 +183,7 @@ WebAssembly would also need a wider Content-Security-Policy.
   the failing test prints. Clients on old and new builds see different
   throws until they reload.
 
-The renderer is free of the rule: nothing it computes feeds the frames.
+The rule does not bind the renderer: nothing it computes feeds the frames.
 Numerals are centred by their ink, from `client/src/dice-numeral-centres.ts`;
 after changing the font, `node e2e/numeral-centres.ts` rewrites it.
 
@@ -196,8 +197,8 @@ code>/bootstrap` on its own origin, with passes signed by its own key
 
 Live board state stays in the board's Durable Object. D1 (`migrations/`)
 keeps what is listed or looked up across boards: `accounts`, `sessions`,
-`boards` and `visits`. A link names a board by its share code, and finding
-a board from a code needs an index across all accounts, which D1 gives.
+`boards` and `visits`. A link names a board by its share code, and
+looking up a code needs an index across all accounts. D1 has that index.
 
 ### Sessions and CSRF
 

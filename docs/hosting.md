@@ -52,7 +52,7 @@ The host answers only the tabletop's origin, with
 `Access-Control-Allow-Credentials: true` and `Vary: Origin`, and answers the
 preflight with `Access-Control-Allow-Methods: POST` and
 `Access-Control-Allow-Headers: Content-Type`. The JSON content type forces
-the preflight, which stands in for a CSRF token. The cookie reaches the
+a preflight, which takes the place of a CSRF token. The cookie reaches the
 host only when the two hosts are the same site (`board.example.org` and
 `example.org`) and its `SameSite` allows it.
 
@@ -99,7 +99,7 @@ board has seen moves the board on and closes every connection with a lower
 one; a lower `link` is refused. To reset a link, the host gives the board a
 new share code and signs later passes with `link + 1`.
 
-A **deletion token** is a JWT with `aud` = `DELETION_AUDIENCE`, the same key
+A deletion token is a JWT with `aud` = `DELETION_AUDIENCE`, the same key
 and issuer, and the claims `board` and `exp`. The host sends it server to
 server: `POST /rooms/<board>/delete` with `Authorization: Bearer <token>`,
 answered 204, repeatable. It removes the document, roll log, link version
@@ -122,12 +122,12 @@ delete, and a deletion token cannot open a socket or roll.
 | `GET /rooms/<board>/files/avatars/<sha256>` | The picture of someone who has been on the board      |
 
 The rooms API is same-origin with the client and sends no CORS headers.
-The room draws every die (d4, d6, d8, d10, d12, d20, d100; up to 20 at once, one roll
-per person per 500 ms) and sends it to each connection as a sync custom
-message, so no client can edit one.
+The room draws every die (d4, d6, d8, d10, d12, d20, d100; up to 20 at
+once, one roll per person per 500 ms). It sends each roll to every
+connection as a sync custom message, so no client can edit one.
 
-A socket whose pass is valid but must be refused is accepted and closed at
-once with code 4099, which tldraw treats as final:
+A socket with a valid pass that must still be refused is accepted, then
+closed at once with code 4099, which tldraw treats as final:
 
 | Why                                   | Close reason |
 | ------------------------------------- | ------------ |
@@ -177,14 +177,14 @@ boards' images (`<app>-<stage>-<id>Files`, returned as `files`; never
 destroyed while it holds images) and the custom domains. It refuses the
 committed dev key. `alchemy`, `@alchemy.run/cloudflare` and `effect` are
 peer dependencies, so the stack and the helper share one copy of each. The
-helper is plain JavaScript with a hand-written `index.d.ts` because
+helper is plain JavaScript with a hand-written `index.d.ts`, because
 Alchemy's loader does not transpile TypeScript under `node_modules`.
 
 ### As a dependency
 
-Nothing is published yet. A git dependency works today:
+The package is not published yet. Use a git dependency:
 `"littletable-top": "github:<owner>/<repo>#<commit>"`. The repository is
-private, so the install needs a token that can read it. No build runs at
-install; the helper builds the client at deploy time. To publish to a
-registry, drop `"private": true` and choose a licence; `files` in
+private, so the install needs a token that can read it. Installing builds
+nothing; the helper builds the client at deploy time. To publish to a
+registry, drop `"private": true` and choose a licence. `files` in
 `package.json` already lists what a deploy needs.
