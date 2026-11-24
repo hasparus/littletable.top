@@ -43,39 +43,105 @@
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
   --board-top: max(var(--board-gutter), env(safe-area-inset-top));
   --board-bottom-gap: 8px;
+  /* Reserve the tldraw watermark's edge tab, or its full badge at 700px. */
+  --board-watermark-width: 10px;
+  --board-toolbar-right: max(
+    var(--board-right),
+    calc(env(safe-area-inset-right) + var(--board-watermark-width))
+  );
+  --board-toolbar-gap: 8px;
+  --board-toolbar-bottom: calc(var(--board-bottom-gap) + env(safe-area-inset-bottom));
+  --board-tool-size: 48px;
+  --board-sheet-bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 8px);
   --board-control-radius: 11px;
   --board-top-control-size: 44px;
 }
 
+/* Let tldraw's Zoom and minimap take their own space in the bottom row. */
+[data-board-editor] .tlui-navigation-panel {
+  position: relative;
+  flex: none;
+}
+
 [data-board-toolbar] {
-  gap: var(--tl-space-3);
-  padding-inline: var(--board-left) var(--board-right);
+  position: relative;
+  gap: var(--board-toolbar-gap);
+  padding-inline: var(--board-left) var(--board-toolbar-right);
 }
 
 [data-board-toolbar] > .tlui-main-toolbar--horizontal {
-  padding-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
+  padding-bottom: var(--board-toolbar-bottom);
+}
+
+[data-board-toolbar] .tlui-main-toolbar__tools.tlui-row,
+[data-board-toolbar] .tlui-main-toolbar__tools > .tlui-row {
+  padding-inline: 0;
+}
+
+/* tldraw's row offsets its children by 2px on both sides. */
+[data-board-toolbar] .tlui-main-toolbar__tools > .tlui-row {
+  margin-inline: 0;
+}
+
+[data-board-toolbar] .tlui-main-toolbar__tools .tlui-button__tool {
+  width: var(--board-tool-size);
+  min-width: var(--board-tool-size);
+  height: var(--board-tool-size);
+  margin-inline: 0;
+  padding-inline: 0;
 }
 
 [data-board-toolbar-actions] {
-  margin-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
-  background: var(--tl-color-panel);
-  border-radius: var(--tl-radius-4);
-  box-shadow: var(--tl-shadow-2);
+  margin-bottom: var(--board-toolbar-bottom);
 }
 
-@media (max-width: 639px) {
+/* tldraw reserves a slot for the last tool used from More. Keep the four
+   main tools fixed on phones and show overflow selections inside More. */
+[data-board-toolbar="compact"] .tlui-main-toolbar__tools > .tlui-row > :nth-child(n + 5) {
+  display: none;
+}
+
+[data-board-toolbar="compact"]
+  .tlui-main-toolbar__tools:has(> .tlui-row > :nth-child(n + 5)[aria-pressed="true"])
+  > .tlui-main-toolbar__overflow {
+  color: var(--tl-color-selected-contrast);
+}
+
+[data-board-toolbar="compact"]
+  .tlui-main-toolbar__tools:has(> .tlui-row > :nth-child(n + 5)[aria-pressed="true"])
+  > .tlui-main-toolbar__overflow::after {
+  background: var(--tl-color-selected);
+  opacity: 1;
+}
+
+@media (width < 640px) {
   [data-board-shell] {
     --board-gutter: 4px;
     --board-bottom-gap: 4px;
-  }
-
-  [data-board-toolbar] {
-    /* Leave the small tldraw tab on the right edge room to be tapped. */
-    padding-right: max(var(--board-right), calc(env(safe-area-inset-right) + 10px));
+    --board-tool-size: min(
+      44px,
+      calc((100dvw - var(--board-left) - var(--board-toolbar-right) - var(--board-toolbar-gap)) / 8)
+    );
   }
 
   [data-board-toolbar] > .tlui-main-toolbar {
     justify-content: flex-start;
+  }
+
+  [data-board-toolbar] .tlui-main-toolbar__inner {
+    position: static;
+  }
+
+  [data-board-toolbar] .tlui-main-toolbar__mobile-style-panel {
+    position: absolute;
+    right: calc(var(--board-toolbar-right) + 2 * var(--board-tool-size));
+    bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 4px);
+  }
+}
+
+@media (width >= 700px) {
+  [data-board-shell] {
+    --board-watermark-width: 108px;
   }
 }
 
@@ -152,29 +218,18 @@
   top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
   left: var(--board-left);
   width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
+  padding-inline: 2px;
   color: var(--color-foreground);
   font-family: var(--tl-font-draw);
   font-size: 15px;
   line-height: 1.35;
 }
 
-[data-public-board-note] h1 {
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-[data-public-board-note] p {
+[data-public-board-note] p + p {
   margin-top: 12px;
 }
 
 [data-public-board-note] footer {
   margin-top: 16px;
   color: var(--color-foreground-muted);
-  font-size: 13px;
-}
-
-[data-public-board-wave] {
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-  font-size: 0.8em;
 }

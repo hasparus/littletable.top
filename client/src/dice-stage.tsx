@@ -4,7 +4,8 @@ import type { Roll } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { DiceThrow } from "./dice-scene";
 
-import { total } from "./dice";
+import { type RollResult, rollResult } from "../../src/dice-notation";
+import { modifierLabel } from "./dice";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
 import { DieShape } from "./die-shape";
 
@@ -122,12 +123,14 @@ function ResultToast({
   copy,
   onClose,
   onPlace,
+  result,
   roll,
   shown,
 }: {
   copy: Copy;
   onClose: () => void;
   onPlace: (below: number) => void;
+  result: RollResult;
   roll: Roll;
   shown: boolean;
 }) {
@@ -141,6 +144,7 @@ function ResultToast({
   const [place, setPlace] = useState<Place | null>(null);
   const [resting, setResting] = useState(false);
   const placed = place !== null;
+  const modifier = result.notation?.modifier ?? null;
 
   useEffect(() => {
     // A newer roll takes the toast over from one on its way out.
@@ -207,7 +211,7 @@ function ResultToast({
   return (
     <button
       aria-label={copy.close}
-      className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-[0_2px_10px_rgb(0_0_0/0.08)] backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
+      className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-toast backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
       data-dice-toast={place?.beside === false ? "below" : "beside"}
       data-resting={resting ? "" : undefined}
       data-roller={roll.name}
@@ -230,6 +234,7 @@ function ResultToast({
           {roll.dice.map((die, index) => (
             <DieShape
               copy={copy}
+              dropped={!result.kept[index]}
               key={index}
               sides={die.sides}
               size="xs"
@@ -238,12 +243,15 @@ function ResultToast({
             />
           ))}
         </span>
-        {roll.dice.length > 1 && (
+        {(roll.dice.length > 1 || modifier !== null || result.kept.includes(false)) && (
           <span
             className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums"
             ref={sum}
           >
-            {total(roll)}
+            {modifier !== null && (
+              <span className="mr-1 text-xs font-normal">{modifierLabel(modifier)} =</span>
+            )}
+            {result.total}
           </span>
         )}
       </span>
@@ -263,6 +271,7 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
   const [rowBottom, setRowBottom] = useState<number | null>(null);
   const [, setFailures] = useState(0);
   const still = useMemo(prefersStill, []);
+  const result = useMemo(() => rollResult(roll), [roll]);
   const unavailable = isDice3dDown();
   const showToast = still || unavailable || settledId === roll.id;
 
@@ -280,7 +289,9 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
     thrown.current
       // NOTE: a roll logged before seeds existed never arrives live; its id
       // stands in so that every screen would still throw alike.
-      .then(async (dice) => (current ? dice.roll(roll.dice, roll.seed ?? roll.id) : undefined))
+      .then(async (dice) =>
+        current ? dice.roll(roll.dice, roll.seed ?? roll.id, result.kept) : undefined,
+      )
       .then(() => current && setSettledId(roll.id))
       .catch((error: unknown) => {
         dropDice3d(error);
@@ -290,7 +301,7 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
       current = false;
       clearTimeout(giveUpTimer);
     };
-  }, [roll, still]);
+  }, [result, roll, still]);
 
   useEffect(
     () => () => {
@@ -318,6 +329,7 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
         copy={copy}
         onClose={onSettled}
         onPlace={setRowBottom}
+        result={result}
         roll={roll}
         shown={showToast}
       />

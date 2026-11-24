@@ -324,7 +324,10 @@ export class Standalone {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
     const owner = found.session.account.id;
-    const body = (await request.json().catch(() => null)) as { title?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      language?: unknown;
+      title?: unknown;
+    } | null;
     const title = cleanTitle(body?.title);
     if (title === null) return refuse(400, "title-invalid");
     if ((await this.store.countBoards(owner)) >= MAX_BOARDS_PER_ACCOUNT) {
@@ -333,9 +336,15 @@ export class Standalone {
     if ((await this.store.boardsCreatedSince(owner, now() - 3600)) >= MAX_BOARDS_PER_HOUR) {
       return refuse(429, "too-many-requests");
     }
+    const id = randomCode(12);
+    if (body?.language === "pl") {
+      // Seed the drawing before the share code can be used to enter the room.
+      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+      await room.initializeDrawing("Strona 1");
+    }
     const board = await this.store.createBoard({
       createdAt: now(),
-      id: randomCode(12),
+      id,
       ownerId: owner,
       shareCode: randomCode(22),
       title,

@@ -8,6 +8,7 @@ import {
 } from "./board-room";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
+import { notationPool, parseNotation } from "./dice-notation";
 import { serveFiles } from "./files";
 import {
   type Pass,
@@ -183,7 +184,16 @@ async function rooms(
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));
   if (action === "roll" && request.method === "POST") {
-    const pool = parsePool(await request.json().catch(() => null));
+    const body = await request.json().catch(() => null);
+    if (typeof body === "object" && body !== null && "expression" in body) {
+      if (typeof body.expression !== "string") return new Response("Bad request", { status: 400 });
+      const notation = parseNotation(body.expression);
+      if (typeof notation === "string") {
+        return Response.json({ error: notation }, { status: 400 });
+      }
+      return answer(await room.roll(pass, notationPool(notation), body.expression.trim()));
+    }
+    const pool = parsePool(body);
     if (pool === null) return new Response("Bad request", { status: 400 });
     return answer(await room.roll(pass, pool));
   }

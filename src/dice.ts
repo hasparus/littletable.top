@@ -1,15 +1,6 @@
 import { DIE_SIDES, MAX_DICE } from "./limits";
 
-export type Roll = {
-  at: number;
-  dice: { sides: number; value: number }[];
-  id: number;
-  name: string;
-  // Shapes the throw every client animates; null on rolls logged before
-  // seeds existed. Values never derive from it.
-  seed: number | null;
-  sub: string;
-};
+export type { Roll } from "./dice-notation";
 
 export function parsePool(body: unknown): number[] | null {
   const dice = (body as { dice?: unknown } | null)?.dice;
@@ -33,11 +24,13 @@ export function drawSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]!;
 }
 
-// Rooms created before seeds keep their log: the column is added in place
-// and their rows read back with a null seed.
-export function addSeedColumn(sql: SqlStorage) {
-  const columns = sql.exec("SELECT name FROM pragma_table_info('rolls')").toArray();
-  if (!columns.some((column) => column.name === "seed")) {
-    sql.exec("ALTER TABLE rolls ADD COLUMN seed INTEGER");
-  }
+export function addRollColumns(sql: SqlStorage) {
+  const columns = new Set(
+    sql
+      .exec("SELECT name FROM pragma_table_info('rolls')")
+      .toArray()
+      .map(({ name }) => name),
+  );
+  if (!columns.has("seed")) sql.exec("ALTER TABLE rolls ADD COLUMN seed INTEGER");
+  if (!columns.has("expression")) sql.exec("ALTER TABLE rolls ADD COLUMN expression TEXT");
 }

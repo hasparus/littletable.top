@@ -167,6 +167,30 @@ The server draws every value (`src/dice.ts`) and gives each roll a 32-bit
 `seed`. The seed shapes only the animation: every client simulates the same
 throw and then turns each die so the server's value is on top.
 
+Enter an expression in the dice tray. Join groups with `+` and put an optional
+integer bonus or penalty at the end, as in `2d6 + d20 + 3`. A die uses `d` or
+Polish `k`, so `3d6kh2` and `3k6kh2` mean the same thing. The letters can be
+uppercase or lowercase, and spaces are allowed around the operators.
+
+| Expression          | Rule                                    |
+| ------------------- | --------------------------------------- |
+| `3d6kh2` or `3d6k2` | Keep the two highest                    |
+| `2d20kl1`           | Keep the lowest                         |
+| `4d6dl1`            | Drop the lowest, equivalent to `4d6kh3` |
+| `4d6dh1`            | Drop the highest                        |
+
+A roll has 1–20 dice and up to 256 characters, with a modifier from −1,000 to
++1,000. Each rule applies to one group and may keep or drop between one die
+and the entire group. When a rule splits tied results, it keeps the earlier
+dice in the group. `adv`, `dis`, exploding dice, rerolls and success counting
+are outside the grammar. Chat commands `/roll` and `/rzut` can use the same
+parser when chat is added ([#1](https://github.com/hasparus/littletable.top/issues/1)).
+
+The Worker validates the expression and stores it alongside the raw dice.
+`src/dice-notation.ts` derives the kept dice and total from those two inputs.
+Dropped dice are dimmed as they settle, using the d100 result mark's timing.
+Rolls without an expression count every die.
+
 The simulation keeps one rule from the seed to the last frame: it uses only
 `+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`, `Math.floor`
 and `Math.imul`, with a fixed step (1/240 s), solver iteration count and
@@ -245,6 +269,8 @@ note outside the shared document.
 | `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                         |
 | `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
 | `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
+
+Board creation also accepts `"language": "pl"` to start with a Polish page name.
 
 ### The sign-in provider
 

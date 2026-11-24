@@ -120,7 +120,7 @@ export function BoardCanvas({
   const [panel, setPanel] = useState<Panel | null>(null);
   const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
-  const [pool, setPool] = useState<number[]>([]);
+  const [rollDraft, setRollDraft] = useState<BoardUi["rollDraft"]>({ expression: "", pool: [] });
   const highlight = useMemo(makeHighlight, []);
   const [search, setSearch] = useState<BoardSearch | null>(null);
   useEffect(() => {
@@ -156,11 +156,11 @@ export function BoardCanvas({
       },
       panel,
       person,
-      pool,
+      rollDraft,
       rolls,
       search,
       setNaming,
-      setPool,
+      setRollDraft,
       typing,
     }),
     [
@@ -176,7 +176,7 @@ export function BoardCanvas({
       naming,
       panel,
       person,
-      pool,
+      rollDraft,
       rolls,
       search,
       typing,

@@ -29,9 +29,6 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
       data-public-board-note
       style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})` }}
     >
-      <h1>
-        {copy.publicGreeting} <span data-public-board-wave>👋</span>
-      </h1>
       {copy.publicStory.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
       ))}

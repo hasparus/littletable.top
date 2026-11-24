@@ -69,7 +69,13 @@ export async function putNote(
   page: Page,
   { at, text }: { at: { x: number; y: number }; text: string },
 ): Promise<void> {
-  await page.getByTestId("tools.note").click();
+  const note = page.getByTestId("tools.note");
+  if (await note.isVisible()) {
+    await note.click();
+  } else {
+    await page.getByTestId("tools.more-button").click();
+    await page.getByTestId("tools.more.note").click();
+  }
   await page.mouse.click(at.x, at.y);
   await page.keyboard.type(text);
   // NOTE: not Escape. tldraw ignores an Escape it believes is still held,

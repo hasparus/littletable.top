@@ -268,7 +268,27 @@ test("on a phone, in Polish, the results stand above the keyboard and leave tldr
   await withKeyboard(bea, KEYBOARD_PX);
   await bea.keyboard.type("smok");
   const list = results(bea, "Wyniki");
-  await expect(list.getByRole("option")).toHaveCount(3);
+  const matches = list.getByRole("option");
+  await expect(matches).toHaveCount(3);
+  const input = field(bea, "Szukaj na tablicy");
+  const match = matches.first();
+  const inputBox = (await input.boundingBox())!;
+  const matchBox = (await match.boundingBox())!;
+  const closeBox = (await search.locator("header button").boundingBox())!;
+  expect(matchBox.x).toBeCloseTo(inputBox.x, 0);
+  expect(matchBox.x + matchBox.width).toBeCloseTo(closeBox.x + closeBox.width, 0);
+  expect((await match.locator("svg").boundingBox())!.x).toBeCloseTo(
+    (await search.locator("header svg").first().boundingBox())!.x,
+    0,
+  );
+  const textStart = await input.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).paddingLeft),
+  );
+  expect((await match.locator("svg + span").boundingBox())!.x).toBeCloseTo(
+    inputBox.x + textStart,
+    0,
+  );
+
   const { height } = bea.viewportSize()!;
   await expect
     .poll(async () => below((await search.boundingBox())!))

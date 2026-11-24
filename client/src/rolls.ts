@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { RollRequest } from "../../src/dice-notation";
 import type { PassKeeper, Roll } from "./bootstrap";
 
 // The Worker keeps the latest 50 (src/limits.ts).
@@ -12,7 +13,7 @@ export type Rolls = {
   arrived: Roll | null;
   log: Roll[];
   receive: (message: unknown) => void;
-  roll: (pool: number[]) => Promise<RollRefusal | null>;
+  roll: (roll: RollRequest) => Promise<RollRefusal | null>;
   settle: () => void;
 };
 
@@ -65,10 +66,10 @@ export function useRolls(keeper: PassKeeper): Rolls {
   }, [add, keeper, request]);
 
   const roll = useCallback(
-    async (pool: number[]): Promise<RollRefusal | null> => {
+    async (roll: RollRequest): Promise<RollRefusal | null> => {
       try {
         const response = await request("/roll", {
-          body: JSON.stringify({ dice: pool }),
+          body: JSON.stringify(roll),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });

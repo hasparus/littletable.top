@@ -76,7 +76,7 @@ const ROUNDING: Record<Polyhedron, number> = {
 const BALL = { faces: 100, r: 0.035, size: 1.2 };
 // NOTE: cos and sin of the golden angle, π(3 - √5), as literals: Math.cos
 // and Math.sin may differ between engines.
-const GOLDEN: [number, number] = [-0.737_368_878_078_319_7, 0.675_490_294_261_523_8];
+const GOLDEN: [number, number] = [-0.7373688780783197, 0.6754902942615238];
 
 const SIGNS = [1, -1];
 const cube = (): Vec[] =>
