@@ -234,9 +234,10 @@ function MapNotes() {
         href={`data:image/png;base64,${mapBoard.toString("base64")}`}
         width={WIDTH}
       />
-      {/* Cover the local editor's license notice in the static share image. */}
+      {/* Cover the local editor's zoom display and license notice in the share image. */}
+      <rect fill="#f7f6f3" height="45" width="96" x="0" y="585" />
       <rect fill="#f7f6f3" height="45" width="110" x="1090" y="585" />
-      <g transform="translate(64 189) scale(.62)">
+      <g transform="translate(64 195) scale(.52)">
         <rect fill={CORAL} height="112" rx="28" width="112" x="4" y="4" />
         <path
           d="M26 62v25m56-25v25m12-36v19"
@@ -256,8 +257,11 @@ function MapNotes() {
         <text fill="#252220" fontSize="76" fontWeight="748" letterSpacing="-2.7" x="64" y="350">
           little table
         </text>
-        <text fill="#5c534a" fontSize="24" x="64" y="397">
-          draw, roll dice, chat, pretend to be an elf
+        <text fill="#5c534a" fontSize="24" fontWeight="430" x="64" y="397">
+          <tspan>{"draw, roll dice, chat, find text in images, "}</tspan>
+          <tspan x="64" dy="30">
+            pretend to be an elf
+          </tspan>
         </text>
       </g>
     </Card>
