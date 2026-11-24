@@ -31,10 +31,9 @@ export default Alchemy.Stack(
     const { url } = yield* Tabletop("Tabletop", {
       displayName: "Little Table",
       forceDestroyFiles: true,
-      licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
+      prebuilt: yield* Config.String("PREVIEW_BUNDLE_DIR"),
       signingKey: signing.privateKey,
-      sourceDir: yield* Config.String("PREVIEW_SOURCE_DIR"),
       workerName: `littletable-${stage}`,
       workOs: {
         apiKey: yield* Config.Redacted("WORKOS_API_KEY"),

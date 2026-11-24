@@ -12,9 +12,10 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+
+import { buildClient } from "./build-client.js";
 
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
@@ -116,43 +117,27 @@ function configure(props) {
 }
 
 /**
- * The client is built per deployment: it carries the host's pass endpoint,
- * the brand and tldraw's licence key, which tldraw checks against the domain.
- * @param {string} id
- * @param {import("../client/settings.ts").ClientSettings} settings
- * @param {string} configFile
- * @param {string | undefined} iconsDir
- */
-const buildClient = (id, settings, configFile, iconsDir) =>
-  Effect.promise(async () => {
-    const vite = createRequire(configFile).resolve("vite");
-    const { build } = await import(pathToFileURL(vite).href);
-    const outDir = resolve(".alchemy", "tabletop", id);
-    await build({
-      build: { outDir },
-      configFile,
-      define: { __TABLETOP__: JSON.stringify(settings) },
-      logLevel: "warn",
-      ...(iconsDir === undefined ? {} : { publicDir: resolve(iconsDir) }),
-    });
-    return outDir;
-  });
-
-/**
  * @param {string} id
  * @param {import("./index.js").TabletopProps} props
  */
 export const Tabletop = (id, props) =>
   Effect.gen(function* () {
-    const { sourceDir } = props;
+    const { prebuilt } = props;
     const sourceFile =
-      sourceDir === undefined
+      prebuilt === undefined
         ? packageFile
-        : (/** @type {string} */ path) => resolve(sourceDir, path);
+        : (/** @type {string} */ path) => resolve(prebuilt, path);
     /** @type {{ compatibility_date: string }} */
     const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);
-    const assets = yield* buildClient(id, client, sourceFile("vite.config.ts"), props.iconsDir);
+    // The client carries the deployment's brand, pass endpoint and tldraw key.
+    const assets =
+      prebuilt === undefined ? resolve(".alchemy", "tabletop", id) : sourceFile("client");
+    if (prebuilt === undefined) {
+      yield* Effect.promise(() =>
+        buildClient(packageFile("vite.config.ts"), assets, client, props.iconsDir),
+      );
+    }
     // Standalone mode's accounts, sessions, boards and visits, and the
     // per-address rate limiter.
     const standalone =
@@ -183,7 +168,10 @@ export const Tabletop = (id, props) =>
         // NOTE: Alchemy switches Workers to the new module registry unless
         // told otherwise, and the tests run the legacy one this date
         // defaults to. nodejs_compat is on by default from 2026-08-04.
-        flags: ["legacy_module_registry"],
+        flags:
+          prebuilt === undefined
+            ? ["legacy_module_registry"]
+            : ["legacy_module_registry", "nodejs_compat"],
       },
       // NOTE: the aliases are attached for DNS and TLS only; the Worker
       // answers each with a 308 to the primary host (src/site.ts).
@@ -197,7 +185,9 @@ export const Tabletop = (id, props) =>
         BoardRoom: Cloudflare.DurableObject("BoardRoom"),
         Files: files,
       },
-      main: sourceFile("src/index.ts"),
+      ...(prebuilt === undefined
+        ? { main: packageFile("src/index.ts") }
+        : { bundle: false, main: sourceFile("worker/index.js") }),
       name: props.workerName,
       observability,
     });

@@ -98,28 +98,24 @@ jobs:
           fi
           printf 'run=true\nbase=%s\nhead=%s\n' "$base" "$head" >> "$GITHUB_OUTPUT"
 
-  preview:
-    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
+  build:
+    name: Build preview
     needs: authorize
     if: >-
-      ${{ needs.authorize.outputs.run == 'true' &&
+      ${{ needs.authorize.outputs.run == 'true' && github.event.action != 'closed' &&
           (github.event_name != 'workflow_dispatch' || github.actor == github.triggering_actor) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
-    environment:
-      name: preview
-      url: ${{ steps.deploy.outputs.url }}
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
     defaults:
       run:
         shell: bash
         working-directory: deployment
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Check out deployment code
+      - name: Check out build helper
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -127,7 +123,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out preview source
-        if: github.event.action != 'closed'
+        id: source
         uses: actions/checkout@v7.0.1
         with:
           ref: refs/pull/${{ env.PULL_REQUEST }}/merge
@@ -136,7 +132,6 @@ jobs:
           persist-credentials: false
 
       - name: Verify preview checkout
-        if: github.event.action != 'closed'
         working-directory: source
         env:
           EXPECTED_HEAD: ${{ needs.authorize.outputs.head }}
@@ -156,12 +151,98 @@ jobs:
           node-version-file: deployment/package.json
           package-manager-cache: false
 
-      - run: bun install --frozen-lockfile
-
       - name: Install preview source dependencies
-        if: github.event.action != 'closed'
         working-directory: source
         run: bun install --frozen-lockfile
+
+      - name: Bundle preview
+        env:
+          TLDRAW_LICENSE_KEY: ${{ vars.PREVIEW_TLDRAW_LICENSE_KEY }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          if [ -z "$TLDRAW_LICENSE_KEY" ]; then
+            echo '::warning::Set repository variable PREVIEW_TLDRAW_LICENSE_KEY to enable the preview board editor.'
+          fi
+          export PREVIEW_BUNDLE_DIR="$RUNNER_TEMP/preview-bundle"
+          mkdir "$PREVIEW_BUNDLE_DIR"
+          node --input-type=module <<'JS'
+          import { resolve } from 'node:path';
+          import { buildClient } from './alchemy/build-client.js';
+          import { DEFAULT_SETTINGS } from './client/settings.ts';
+
+          await buildClient(resolve('../source/vite.config.ts'), resolve(process.env.PREVIEW_BUNDLE_DIR, 'client'), {
+            ...DEFAULT_SETTINGS,
+            licenseKey: process.env.TLDRAW_LICENSE_KEY ?? '',
+            name: 'Little Table',
+            shortName: 'Little Table',
+          });
+          JS
+          cd ../source
+          ./node_modules/.bin/wrangler deploy src/index.ts --dry-run \
+            --outdir "$PREVIEW_BUNDLE_DIR/worker" --assets "$PREVIEW_BUNDLE_DIR/client"
+          cp -R migrations "$PREVIEW_BUNDLE_DIR/"
+          jq '{compatibility_date}' wrangler.json > "$PREVIEW_BUNDLE_DIR/wrangler.json"
+          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" client worker migrations wrangler.json
+
+      - name: Upload preview bundle
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/preview.tar.gz
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+
+  preview:
+    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
+    needs: [authorize, build]
+    if: >-
+      ${{ !cancelled() && needs.authorize.outputs.run == 'true' &&
+          (github.event.action == 'closed' || needs.build.result == 'success') &&
+          (github.event_name != 'workflow_dispatch' || github.actor == github.triggering_actor) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out deployment code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download preview bundle
+        if: github.event.action != 'closed'
+        uses: actions/download-artifact@v8
+        with:
+          name: preview.tar.gz
+          path: ${{ runner.temp }}/preview-download
+          skip-decompress: true
+
+      - name: Validate preview files
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p .alchemy
+          python3 .github/scripts/unpack-preview.py "$RUNNER_TEMP/preview-download/preview.tar.gz" .alchemy/preview-bundle
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - run: bun install --frozen-lockfile
 
       - name: Deploy preview
         id: deploy
@@ -170,20 +251,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID || secrets.WORKOS_CLIENT_ID }}
-          TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
+          PREVIEW_COMMIT: ${{ needs.build.outputs.commit }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
           : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
           : "${WORKOS_API_KEY:?Set preview secret WORKOS_API_KEY}"
           : "${WORKOS_CLIENT_ID:?Set preview variable WORKOS_CLIENT_ID}"
-          if [ -z "$TLDRAW_LICENSE_KEY" ]; then
-            echo '::warning::Set preview variable TLDRAW_LICENSE_KEY to enable the board editor.'
+          if [[ ! "$PREVIEW_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Missing verified preview commit.'
+            exit 1
           fi
-
-          export PREVIEW_SOURCE_DIR="$GITHUB_WORKSPACE/source"
-          export PREVIEW_COMMIT
-          PREVIEW_COMMIT=$(git -C "$PREVIEW_SOURCE_DIR" rev-parse HEAD)
+          export PREVIEW_BUNDLE_DIR="$PWD/.alchemy/preview-bundle"
           log="$RUNNER_TEMP/alchemy-preview.log"
           ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"
           url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://littletable-${STAGE}\.[a-z0-9-]+\.workers\.dev)'.*#\1#p" | tail -n 1)

@@ -107,22 +107,20 @@ same-repository PRs to their own Alchemy stages `pr-<number>` when a
 collaborator with Write access opens, updates, retargets, or reopens them.
 For a PR from a fork, a maintainer with Maintain or Admin access can run
 **PR Preview** from `main` and enter the PR number and the full head SHA
-they reviewed. The checked-out code runs with preview credentials, so
-review that commit before dispatching. Both paths verify the PR merge
-commit's parents, then build the app from that checkout using the
-deployment stack from `main`. The workflow updates one PR comment and
+they reviewed. Both paths verify the PR merge commit's parents, then build
+the app with its own dependencies on a runner without deploy credentials.
+A separate runner uses deployment code from `main` to upload the compiled
+Worker, assets, and migrations. The workflow updates one PR comment and
 sets the deployment URL in GitHub. The URL is
 `https://littletable-pr-<number>.<preview-subdomain>.workers.dev`.
 
 Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
-belong to that stage. Give the `preview` GitHub Environment a token scoped
-to a separate Cloudflare account that holds only preview resources. Alchemy
-creates Workers, so its token needs Workers permissions across that account.
-Closing the PR uses the workflow from `main` to destroy that stage,
-including its image files, and remove
-the preview comment. Cleanup also runs for conflicted PRs and for PRs
-closed after changing their target branch. Each open PR
-consumes one Worker and one D1 database from the Cloudflare account's limits.
+belong to that stage. Previews can use the same Cloudflare account as
+production. The deploy runner treats the build archive as data and provides
+the Worker only with its own stage's bindings. Closing the PR destroys that
+stage, including its image files, and removes the preview comment. Cleanup
+also runs for conflicted PRs and for PRs closed after retargeting. Each open
+PR consumes one Worker and one D1 database from the account's limits.
 
 Cloudflare [Worker Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
 share their version's bindings and are unavailable for Workers implementing
@@ -136,8 +134,9 @@ requests. Protect `main` against direct pushes from collaborators and
 restrict the `production` and `preview` environments to the `main` branch
 before giving additional users Write access. For previews the environment
 rule matches the workflow's ref, so it permits PRs with any target branch.
-The preview job gets credentials after a separate read-only job verifies
-the trigger and authorizes the checked-out commits.
+Only the deploy job gets the Cloudflare API token. Set the `preview` token's
+account permissions for Workers, D1, R2, and the Alchemy state store. The
+preview job uses workers.dev, so it needs no zone permissions.
 
 | Kind     | Name                    | Value                                                                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -146,13 +145,14 @@ the trigger and authorizes the checked-out commits.
 | secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                                       |
 | variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                                      |
 | secret   | `TABLETOP_SIGNING_KEY`  | For `deploy.yml`: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`. PR previews generate their own. |
-| variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but boards do not work without it. Public by design                                           |
+| variable | `TLDRAW_LICENSE_KEY`    | For `deploy.yml`. Optional to deploy, but boards do not work without it. Public by design.                        |
 
 Use the Little Table WorkOS Staging application for `preview` and
 `staging`, and WorkOS Production for `production`. Code on a PR preview
-has access to the WorkOS Staging key and data. For the PR board editor, the
-`preview` tldraw licence key must cover the preview account's workers.dev
-subdomain, for example `*.preview-subdomain.workers.dev`.
+has access to the WorkOS Staging key and data. For the PR board editor, set
+`PREVIEW_TLDRAW_LICENSE_KEY` as a repository Actions variable so the build
+can read it without entering the `preview` environment. The public key must
+cover the account's workers.dev subdomain, for example `*.hasparus.workers.dev`.
 tldraw supports wildcard subdomains in
 [licence keys](https://tldraw.dev/sdk-features/license-key#domain-validation).
 
