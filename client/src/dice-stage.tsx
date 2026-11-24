@@ -211,7 +211,7 @@ function ResultToast({
   return (
     <button
       aria-label={copy.close}
-      className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-[0_2px_10px_rgb(0_0_0/0.08)] backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
+      className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-toast backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
       data-dice-toast={place?.beside === false ? "below" : "beside"}
       data-resting={resting ? "" : undefined}
       data-roller={roll.name}

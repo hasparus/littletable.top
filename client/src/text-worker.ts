@@ -156,8 +156,8 @@ async function readTesseract(
 function paddleLines(words: PaddleWord[], scale: number, size: Size): TextLine[] {
   const lines = new Map<number, PaddleWord[]>();
   for (const word of words) lines.set(word.line, [...(lines.get(word.line) ?? []), word]);
+  const up = (word: PaddleWord) => word.quad.map(([x, y]) => [x / scale, y / scale] as const);
   return [...lines.values()].flatMap((line): TextLine[] => {
-    const up = (word: PaddleWord) => word.quad.map(([x, y]) => [x / scale, y / scale] as const);
     const kept = line.flatMap((word): TextWord[] => {
       const corners = up(word);
       const b = boxIn(size, boundsOf(corners));
