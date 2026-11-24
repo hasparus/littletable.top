@@ -2,6 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 import { type Env, handle } from "../src/index";
+import { Browser, ORIGIN, standaloneEnv } from "./standalone-support";
 
 const worker = (exports as unknown as { default: { fetch: typeof fetch } }).default;
 const testEnv = env as unknown as { PRIMARY_HOST?: string };
@@ -144,6 +145,46 @@ describe("the built files", () => {
     const response = await get("https://board.test/index.html");
 
     expect(directives(response).get("script-src")).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+  });
+});
+
+describe("standalone link previews", () => {
+  const config = { ...standaloneEnv, DISPLAY_NAME: "Little Table" };
+
+  it("describes the public board without running the client", async () => {
+    const response = await new Browser().fetch("/?lang=en&utm_source=share", {}, config);
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    const html = await response.text();
+    expect(html).toContain('<meta property="og:title" content="Little Table">');
+    expect(html).toContain(
+      '<meta property="og:description" content="Draw maps, roll dice, and play tabletop games together on a shared whiteboard.">',
+    );
+    expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/open-graph.png">`);
+    expect(html).toContain(`<meta property="og:url" content="${ORIGIN}/">`);
+  });
+
+  it("uses the shared board's escaped title and the same image for a guest", async () => {
+    const owner = new Browser();
+    await owner.signIn("Preview test owner");
+    const board = await owner.createBoard('Keep & "Guests" <Map>');
+    const guest = new Browser();
+    const share = await guest.fetch(`/b/${board.shareCode}/?lang=pl`, {}, config);
+    const html = await share.text();
+    const title = "Keep &amp; &quot;Guests&quot; &lt;Map&gt;";
+    expect(html).toContain(`<meta property="og:title" content="${title} · Little Table">`);
+    expect(html).toContain(
+      `<meta property="og:description" content="Join ${title} on Little Table.`,
+    );
+    expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/open-graph.png">`);
+    expect(html).toContain(`<meta property="og:url" content="${ORIGIN}/b/${board.shareCode}">`);
+    expect(html).not.toContain("<Map>");
+    expect(html).not.toContain("Preview test owner");
+
+    const accountLink = await guest.fetch(`/b/${board.id}`, {}, config);
+    const unshared = await accountLink.text();
+    expect(unshared).toContain('<meta property="og:title" content="Little Table">');
+    expect(unshared).not.toContain(title);
   });
 });
 

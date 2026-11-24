@@ -15,6 +15,8 @@
 
 .tl-theme__light {
   --tl-color-focus: var(--brand-primary-hover);
+  --tl-shadow-2: var(--shadow-board-control), inset 0 0 0 1px var(--tl-color-panel-contrast);
+  --tl-shadow-3: var(--shadow-sheet), inset 0 0 0 1px var(--tl-color-panel-contrast);
 }
 
 .tl-theme__dark {
@@ -38,6 +40,8 @@
 }
 
 [data-board-shell] {
+  /* One-finger scrolling remains available. The canvas handles its own pinch. */
+  touch-action: pan-x pan-y;
   --board-gutter: 12px;
   --board-left: max(var(--board-gutter), env(safe-area-inset-left));
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
@@ -78,8 +82,9 @@
   padding-inline: 0;
 }
 
-/* tldraw's row offsets its children by 2px on both sides. */
-[data-board-toolbar] .tlui-main-toolbar__tools > .tlui-row {
+/* tldraw's row offsets its children by 2px on both sides, including
+   the popover that wraps More. Keep the edge highlights evenly inset. */
+[data-board-toolbar] .tlui-main-toolbar__tools > :is(.tlui-row, .tlui-popover) {
   margin-inline: 0;
 }
 
@@ -128,6 +133,10 @@
     justify-content: flex-start;
   }
 
+  [data-board-toolbar="compact"] {
+    container: board-toolbar / inline-size;
+  }
+
   [data-board-toolbar] .tlui-main-toolbar__inner {
     position: static;
   }
@@ -136,6 +145,20 @@
     position: absolute;
     right: calc(var(--board-toolbar-right) + 2 * var(--board-tool-size));
     bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 4px);
+  }
+
+  /* Nine 44px buttons and two 8px gaps. The query measures the usable
+     width inside the safe-area and watermark gutters. */
+  @container board-toolbar (min-width: 412px) {
+    [data-board-toolbar] .tlui-main-toolbar__inner {
+      width: 100%;
+      gap: var(--board-toolbar-gap);
+      justify-content: space-between;
+    }
+
+    [data-board-toolbar] .tlui-main-toolbar__mobile-style-panel {
+      position: static;
+    }
   }
 }
 
@@ -191,12 +214,14 @@
   min-height: var(--board-top-control-size);
 }
 
-[data-public-board-account] {
+[data-public-board-controls] {
   inset: var(--board-top) var(--board-right) auto auto;
+}
+
+[data-public-board-controls] > :is(a, button) {
   display: grid;
   min-height: var(--board-top-control-size);
   align-items: center;
-  padding-inline: 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--board-control-radius);
   background: var(--color-bg-secondary);
@@ -205,11 +230,20 @@
   font-weight: 600;
 }
 
-[data-public-board-account]:hover {
+[data-public-board-account] {
+  padding-inline: 14px;
+}
+
+[data-public-board-chat] {
+  width: var(--board-top-control-size);
+}
+
+[data-public-board-controls] > :is(a, button):hover,
+[data-public-board-chat][aria-expanded="true"] {
   background: var(--color-bg-tertiary);
 }
 
-[data-public-board-account]:focus-visible {
+[data-public-board-controls] > :is(a, button):focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }

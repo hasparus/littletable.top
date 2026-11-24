@@ -35,7 +35,7 @@ async function expectClearOf(page: Page, other: Locator, what: string): Promise<
   expect(await onTop(page), `the mark is on top beside ${what}`).toBe(true);
 }
 
-async function expectPhoneToolbar(page: Page) {
+async function expectPhoneToolbar(page: Page, inlineStyles: boolean) {
   const tools = page.getByRole("toolbar", { exact: true, name: "Tools" });
   await expect(tools.locator("button:visible")).toHaveCount(5);
   expect(
@@ -63,7 +63,38 @@ async function expectPhoneToolbar(page: Page) {
   expect(toolBounds.x + toolBounds.width).toBeLessThan(actionBounds.x);
 
   const styles = (await page.getByTestId("mobile-styles.button").boundingBox())!;
-  expect(styles.y + styles.height).toBeLessThan(toolBounds.y);
+  if (inlineStyles) {
+    const search = (await page.getByRole("button", { exact: true, name: "Search" }).boundingBox())!;
+    expect(styles.y + styles.height / 2).toBeCloseTo(search.y + search.height / 2, 0);
+    expect(styles.x + styles.width).toBeLessThan(search.x);
+  } else {
+    expect(styles.y + styles.height).toBeLessThan(toolBounds.y);
+  }
+
+  const more = tools.getByTestId("tools.more-button");
+  const moreTools = page.getByTestId("tools.more-content");
+  await more.click();
+  await expect(moreTools).toBeVisible();
+  const button = (await more.boundingBox())!;
+  const inset = await more.evaluate((element) => {
+    const highlight = getComputedStyle(element, "::after");
+    return {
+      bottom: Number.parseFloat(highlight.bottom),
+      right: Number.parseFloat(highlight.right),
+      top: Number.parseFloat(highlight.top),
+    };
+  });
+  const right = toolBounds.x + toolBounds.width - (button.x + button.width) + inset.right;
+  expect(right, "More highlight has an even right inset").toBeCloseTo(
+    button.y - toolBounds.y + inset.top,
+    0,
+  );
+  expect(right, "More highlight has an even bottom inset").toBeCloseTo(
+    toolBounds.y + toolBounds.height - (button.y + button.height) + inset.bottom,
+    0,
+  );
+  await more.click();
+  await expect(moreTools).toBeHidden();
 }
 
 const SCREENS = [
@@ -103,7 +134,7 @@ for (const [name, device] of SCREENS) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
     const phone = name.startsWith("phone");
-    if (phone) await expectPhoneToolbar(page);
+    if (phone) await expectPhoneToolbar(page, name === "phone-430");
     if (name.startsWith("tablet")) {
       await page.getByTestId("minimap.zoom-menu-button").click();
       await expect(page.getByRole("menu")).toBeVisible();
@@ -131,7 +162,7 @@ for (const [name, device] of SCREENS) {
     await reviewShot(page, `watermark-${name}-sheet`);
     await dice.getByRole("button", { exact: true, name: "Add d20" }).click();
     await dice.getByRole("button", { name: /^Roll/u }).click();
-    await closeSheet(page, "Dice");
+    await expect(dice).toBeHidden();
 
     const toast = page.getByRole("button", { exact: true, name: "Close" });
     await expectClearOf(page, toast, "the dice toast");

@@ -135,7 +135,7 @@ function notationMessage(copy: Copy, error: NotationError, example: string): str
 }
 
 export function DiceSheet() {
-  const { copy, locale, person, rollDraft, rolls, setRollDraft } = useBoardUi();
+  const { close, copy, locale, person, rollDraft, rolls, setRollDraft } = useBoardUi();
   const { expression, pool } = rollDraft;
   const expressionId = useId();
   const [busy, setBusy] = useState(false);
@@ -164,6 +164,7 @@ export function DiceSheet() {
     setRefusal(answer);
     if (answer === null) {
       setRollDraft((current) => (current === rollDraft ? { expression: "", pool: [] } : current));
+      close("dice");
     }
   };
 
@@ -284,16 +285,20 @@ export function DiceSheet() {
         </p>
       )}
 
-      <h3 className="mt-5 text-sm font-semibold text-foreground-muted">{copy.rollLog}</h3>
-      {newestFirst.length === 0 ? (
-        <p className="py-3 text-sm text-foreground-muted">{copy.noRollsYet}</p>
-      ) : (
-        <ol className="divide-y divide-border">
-          {newestFirst.map((entry) => (
-            <LogEntry copy={copy} key={entry.id} locale={locale} roll={entry} />
-          ))}
-        </ol>
-      )}
+      <details className="mt-4 border-t border-border">
+        <summary className="cursor-pointer rounded-sm py-2 text-sm font-semibold text-foreground-muted focus-visible:outline-2 focus-visible:outline-border-focus">
+          {copy.rollLog}
+        </summary>
+        {newestFirst.length === 0 ? (
+          <p className="pb-1 text-sm text-foreground-muted">{copy.noRollsYet}</p>
+        ) : (
+          <ol className="divide-y divide-border">
+            {newestFirst.map((entry) => (
+              <LogEntry copy={copy} key={entry.id} locale={locale} roll={entry} />
+            ))}
+          </ol>
+        )}
+      </details>
     </Sheet>
   );
 }

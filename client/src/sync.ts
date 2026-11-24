@@ -30,11 +30,13 @@ export function useBoardStore({
   color,
   files,
   keeper,
+  receiveChat,
   rolls,
 }: {
   color: string;
   files: BoardFiles;
   keeper: PassKeeper;
+  receiveChat: (message: unknown) => void;
   rolls: Rolls;
 }) {
   const { person } = keeper.bootstrap;
@@ -55,12 +57,13 @@ export function useBoardStore({
       attempt,
       onCustomMessageReceived: (message: unknown) => {
         receive(message);
+        receiveChat(message);
         files.onTextNotice?.(message);
       },
       uri: async () => keeper.socketUri(),
       users,
     };
-  }, [attempt, color, files, keeper, person, receive]);
+  }, [attempt, color, files, keeper, person, receive, receiveChat]);
   const store = useSync(syncOptions);
   const refusal = store.status === "error" ? refusalOf(store.error) : null;
 

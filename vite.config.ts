@@ -100,6 +100,13 @@ function tabletop(): Plugin {
     },
     generateBundle() {
       this.emitFile({ fileName: "manifest.webmanifest", source: manifest(), type: "asset" });
+      if (settings.mode === "standalone") {
+        this.emitFile({
+          fileName: "open-graph.png",
+          source: readFileSync(new URL("client/open-graph.png", import.meta.url)),
+          type: "asset",
+        });
+      }
     },
     load(id) {
       return id === `\0${BRAND_MODULE}` ? brandCss(settings.brand) : null;

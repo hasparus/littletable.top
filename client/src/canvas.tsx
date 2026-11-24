@@ -17,11 +17,13 @@ import type { Copy } from "./copy";
 
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
+import { ChatSheet, useChat } from "./chat";
 import { BoardMainMenu, components } from "./chrome";
 import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
 import { makeHighlight } from "./highlight";
+import { Icon } from "./icons";
 import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
@@ -33,7 +35,7 @@ import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
-import { type BoardUi, BoardUiContext, type Panel } from "./ui";
+import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
 
 // NOTE: fonts, icons and tldraw's own translations ship in our build: the
 // Content-Security-Policy allows no host but ours.
@@ -53,6 +55,25 @@ const loadDice = () => {
     void import("./dice-scene");
   }
 };
+
+// Trackpad pinches can arrive as modified wheel events or Safari gesture
+// events. Cancel browser zoom without intercepting the canvas handlers.
+const cancelPinchZoom = (event: Event) => event.preventDefault();
+const cancelWheelZoom = (event: WheelEvent) => {
+  if (event.ctrlKey || event.metaKey) cancelPinchZoom(event);
+};
+
+function keepBoardZoom(shell: HTMLDivElement | null) {
+  if (shell === null) return;
+  shell.addEventListener("gesturestart", cancelPinchZoom);
+  shell.addEventListener("gesturechange", cancelPinchZoom);
+  shell.addEventListener("wheel", cancelWheelZoom, { passive: false });
+  return () => {
+    shell.removeEventListener("gesturestart", cancelPinchZoom);
+    shell.removeEventListener("gesturechange", cancelPinchZoom);
+    shell.removeEventListener("wheel", cancelWheelZoom);
+  };
+}
 
 // Fetches the dice code while the page is idle, so the first roll does not
 // wait for it. Safari has no requestIdleCallback.
@@ -96,9 +117,17 @@ export function BoardCanvas({
   const { board, person } = keeper.bootstrap;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
+  const chat = useChat(keeper, landing !== undefined);
   const files = useMemo(() => new BoardFiles(keeper), [keeper]);
-  const { refusal, store } = useBoardStore({ color, files, keeper, rolls });
+  const { refusal, store } = useBoardStore({
+    color,
+    files,
+    keeper,
+    receiveChat: chat.receive,
+    rolls,
+  });
   const usable = store.status === "synced-remote";
+  const online = store.status === "synced-remote" && store.connectionStatus === "online";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
   // The cookie the board's pictures load with, before anyone opens a sheet
   // that shows them.
@@ -118,6 +147,18 @@ export function BoardCanvas({
 
   const [editor, setEditor] = useState<Editor | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [readChat, setReadChat] = useState(0);
+  const { refresh } = chat;
+  const openOfflineChat = !online && panel === "chat";
+  useEffect(() => {
+    if (!online && !openOfflineChat) return;
+    const pending = new AbortController();
+    void refresh(pending.signal);
+    return () => pending.abort();
+  }, [online, openOfflineChat, refresh]);
+  useEffect(() => {
+    if (panel === "chat") setReadChat(chat.latestIncoming);
+  }, [chat.latestIncoming, panel]);
   const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
   const [rollDraft, setRollDraft] = useState<BoardUi["rollDraft"]>({ expression: "", pool: [] });
@@ -140,6 +181,7 @@ export function BoardCanvas({
   const ui = useMemo<BoardUi>(
     () => ({
       board,
+      close: (name) => setPanel((current) => (current === name ? null : current)),
       color,
       copy,
       editor,
@@ -225,6 +267,7 @@ export function BoardCanvas({
         className="fixed inset-0 overflow-hidden"
         data-board-shell
         data-public-board={landing === undefined ? undefined : ""}
+        ref={keepBoardZoom}
       >
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
         <div className="absolute inset-0 isolate" data-board-editor>
@@ -252,17 +295,43 @@ export function BoardCanvas({
           </Tldraw>
         </div>
         {landing !== undefined && (
-          <a className="absolute z-10" data-public-board-account href={exit.href}>
-            {exit.label}
-          </a>
+          <div className="absolute z-10 flex gap-1" data-public-board-controls>
+            <button
+              aria-controls={panel === "chat" ? PANEL_ID.chat : undefined}
+              aria-expanded={panel === "chat"}
+              aria-label={copy.chat}
+              className="relative place-items-center"
+              data-public-board-chat
+              onClick={() => open(panel === "chat" ? null : "chat")}
+              title={copy.chat}
+              type="button"
+            >
+              <Icon name="Chat" />
+              {panel !== "chat" && chat.latestIncoming > readChat && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary"
+                />
+              )}
+            </button>
+            <a data-public-board-account href={exit.href}>
+              {exit.label}
+            </a>
+          </div>
         )}
         {offline && <ConnectionBanner copy={copy} />}
+        {landing !== undefined && <ChatSheet chat={chat} shown={panel === "chat"} />}
         {panel === "dice" && <DiceSheet />}
         {panel === "search" && <SearchSheet />}
         {panel === "people" && <PeopleSheet />}
         {rolls.arrived !== null && (
           <Suspense fallback={null}>
-            <DiceStage copy={copy} onSettled={rolls.settle} roll={rolls.arrived} />
+            <DiceStage
+              copy={copy}
+              onRoll={rolls.roll}
+              onSettled={rolls.settle}
+              roll={rolls.arrived}
+            />
           </Suspense>
         )}
         <div aria-live="polite" className="sr-only">

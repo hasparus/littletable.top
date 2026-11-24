@@ -3,18 +3,23 @@ import { DIE_SIDES, MAX_DICE } from "./limits";
 export const MAX_EXPRESSION_LENGTH = 256;
 export const MAX_MODIFIER = 1000;
 
+// Release point and velocity, each expressed relative to the tray.
+export type DiceLaunch = { vx: number; vz: number; x: number; z: number };
+
 export type Roll = {
   at: number;
   dice: { sides: number; value: number }[];
   expression?: string;
   id: number;
+  // Used in the live animation. History only stores the roll's result.
+  launch?: DiceLaunch;
   name: string;
   // Shapes the shared throw. Rolls logged before seeds have a null seed.
   seed: number | null;
   sub: string;
 };
 
-export type RollRequest = { dice: number[] } | { expression: string };
+export type RollRequest = { dice: number[]; launch?: DiceLaunch } | { expression: string };
 
 type Rule = { count: number; kind: "dh" | "dl" | "kh" | "kl" };
 type Group = { count: number; rule: Rule | null; sides: number };

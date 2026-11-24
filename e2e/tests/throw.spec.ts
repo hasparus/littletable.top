@@ -1,4 +1,12 @@
-import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  type Browser,
+  devices,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  test,
+} from "@playwright/test";
 
 import { HOST } from "../ports";
 import {
@@ -6,6 +14,7 @@ import {
   collectCspViolations,
   expectNoCspViolations,
   joinAs,
+  openRollLog,
   openSheet,
   PHONE,
   reviewShot,
@@ -27,6 +36,8 @@ const dieLabels = (container: Locator) =>
   container
     .getByRole("img")
     .evaluateAll((dice) => dice.map((die) => die.getAttribute("aria-label")));
+const isRollRequest = (request: Request) =>
+  request.method() === "POST" && new URL(request.url()).pathname.endsWith("/roll");
 
 // NOTE: without animations, so nothing passing over the tray, such as a
 // button's fade, can make two shots of the same dice differ.
@@ -71,10 +82,8 @@ async function fillPool(page: Page, pool: number[]): Promise<Locator> {
 
 async function roll(page: Page, pool: number[]): Promise<void> {
   const dice = await fillPool(page, pool);
-  const before = await dice.getByRole("listitem").count();
   await dice.getByRole("button", { name: /^Roll/u }).click();
-  await expect(dice.getByRole("listitem")).toHaveCount(before + 1);
-  await closeSheet(page, "Dice");
+  await expect(dice).toBeHidden();
 }
 
 test("a roll lands the same on two screens and leaves with its toast", async ({
@@ -107,11 +116,15 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   }
   expect(shots[0]!.equals(shots[1]!), "both screens show the same tray").toBe(true);
 
-  // A tap in the middle of the tray reaches the board under it.
+  // A tap away from the dice reaches the board under the tray.
   const reachesBoard = await tray(page).evaluate((element) => {
     const box = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return hit !== null && !element.contains(hit) && hit.closest(".tl-container") !== null;
+    return [0.25, 0.5, 0.75].some((x) =>
+      [0.25, 0.5, 0.75].some((y) => {
+        const hit = document.elementFromPoint(box.x + box.width * x, box.y + box.height * y);
+        return hit !== null && !element.contains(hit) && hit.closest(".tl-container") !== null;
+      }),
+    );
   });
   expect(reachesBoard).toBe(true);
 
@@ -122,7 +135,9 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   // The log does not throw again on load.
   await page.reload();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-  const log = await openSheet(page, "Dice");
+  const dice = await openSheet(page, "Dice");
+  await expect(dice.locator("details")).not.toHaveAttribute("open", "");
+  const log = await openRollLog(dice);
   await expect(log.getByRole("listitem")).toHaveCount(1);
   await closeSheet(page, "Dice");
   await expect(tray(page)).toHaveCount(0);
@@ -131,6 +146,48 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);
   await guest.context().close();
+});
+
+test("a settled die can be dragged and thrown with the pointer", async ({ page }) => {
+  await startBoard(page);
+  await roll(page, [6]);
+  const die = tray(page).locator("[data-die-object]");
+  await expect(die).toBeVisible();
+  const before = (await die.boundingBox())!;
+  const x = before.x + before.width / 2;
+  const y = before.y + before.height / 2;
+  const dx = x < page.viewportSize()!.width / 2 ? 56 : -56;
+  const requests: Request[] = [];
+  page.on("request", (request) => {
+    if (isRollRequest(request)) requests.push(request);
+  });
+
+  await page.mouse.click(x, y);
+  await expect(die).toBeVisible();
+  expect(requests).toHaveLength(0);
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y - 24, { steps: 4 });
+  await expect
+    .poll(async () => Math.abs((await die.boundingBox())!.x - before.x))
+    .toBeGreaterThan(4);
+
+  const thrown = page.waitForRequest(isRollRequest);
+  await page.mouse.up();
+  const request = await thrown;
+  expect(request.postDataJSON()).toMatchObject({
+    dice: [6],
+    launch: {
+      vx: expect.any(Number),
+      vz: expect.any(Number),
+      x: expect.any(Number),
+      z: expect.any(Number),
+    },
+  });
+  const log = await openRollLog(await openSheet(page, "Dice"));
+  await expect(log.getByRole("listitem")).toHaveCount(2);
+  expect(requests).toEqual([request]);
 });
 
 test("two phones show the same kept dice, modifier and total in the tray, toast and log", async ({
@@ -148,7 +205,8 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
   await expect(dice.getByRole("status")).toHaveText(
     "Keep or drop at least one die and at most the number of dice in the group.",
   );
-  await expect(dice.getByRole("listitem")).toHaveCount(0);
+  const emptyLog = await openRollLog(dice);
+  await expect(emptyLog.getByRole("listitem")).toHaveCount(0);
 
   await notation.fill("2d20kl1 − 2");
   await closeSheet(page, "Dice");
@@ -161,6 +219,8 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
   await notation.fill("3d6kh2 + 3");
   await reviewShot(page, "dice-notation-keep-highest-phone");
   await notation.press("Enter");
+  await expect(dice).toBeHidden();
+  await openSheet(page, "Dice");
   await expect(dice.getByRole("button", { name: "Roll 3d6kh2 + 3 again" })).toBeVisible();
   await closeSheet(page, "Dice");
 
@@ -189,7 +249,7 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
     shots.push(shot);
     await setVisibility(screen.locator(".tl-container"), "");
 
-    const log = await openSheet(screen, "Dice");
+    const log = await openRollLog(await openSheet(screen, "Dice"));
     const entry = log.getByRole("listitem").first();
     await expect(entry.getByText("3d6kh2 + 3", { exact: true })).toBeVisible();
     await expect(entry.getByText(`Total: ${total}`, { exact: false })).toBeAttached();

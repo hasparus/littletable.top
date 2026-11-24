@@ -95,12 +95,21 @@ export async function joinAs(page: Page, name: string): Promise<void> {
 
 // The newest roll log entry as it reads, without its last line: the time,
 // which each screen formats from its own clock.
-export async function newestRoll(dialog: Locator): Promise<string> {
-  const entry = dialog.getByRole("listitem").first();
+async function newestRoll(log: Locator): Promise<string> {
+  const entry = log.getByRole("listitem").first();
   await expect(entry).toBeVisible();
   const [text = ""] = await entry.allInnerTexts();
   const lines = text.split("\n").map((line) => line.trim());
   return lines.slice(0, -1).filter(Boolean).join(" ");
+}
+
+export async function openRollLog(dialog: Locator): Promise<Locator> {
+  const log = dialog.locator("details").filter({ hasText: "Roll log" });
+  if ((await log.getAttribute("open")) === null) {
+    await log.getByText("Roll log", { exact: true }).click();
+  }
+  await expect(log).toHaveAttribute("open", "");
+  return log;
 }
 
 // One person rolls 2d6; the other's log shows the very same roll.
@@ -109,12 +118,14 @@ export async function rollTwoD6(roller: Page, watcher: Page, name: string): Prom
   await dice.getByRole("button", { name: "Add d6" }).click();
   await dice.getByRole("button", { name: "Add d6" }).click();
   await dice.getByRole("button", { name: "Roll 2d6" }).click();
-  await expect(dice.getByRole("listitem").first()).toContainText(name);
-  const rolled = await newestRoll(dice);
+  await expect(dice).toBeHidden();
+  const log = await openRollLog(await openSheet(roller, "Dice"));
+  await expect(log.getByRole("listitem").first()).toContainText(name);
+  const rolled = await newestRoll(log);
   const total = Number(/Total:\s*(\d+)/u.exec(rolled)?.[1]);
   expect(total).toBeGreaterThanOrEqual(2);
   expect(total).toBeLessThanOrEqual(12);
-  const watched = await openSheet(watcher, "Dice");
+  const watched = await openRollLog(await openSheet(watcher, "Dice"));
   await expect.poll(async () => newestRoll(watched)).toBe(rolled);
   await closeSheet(roller, "Dice");
   await closeSheet(watcher, "Dice");

@@ -33,23 +33,13 @@ export type Model = {
   rounding: number;
   smooth: number;
 };
-// A face told apart as the result: its colours swapped and its numeral
-// larger, by `amount` from 0 to 1. `x` and `y`: where its numeral is centred
-// in the atlas, in cells; `columns`: the atlas's.
-export type Mark = { amount: number; columns: number; x: number; y: number };
-// One face's numeral drawn turned on its face, about its own centre: `x` and
-// `y` are that centre in the atlas, in cells, `columns` the atlas's, `cos`
-// and `sin` the turn's, clockwise as the face is read.
-export type Turn = { columns: number; cos: number; sin: number; x: number; y: number };
 // `size`: the die as a share of its model.
 export type Pose = {
   dimmed: number;
-  mark: Mark | null;
   model: Model;
   position: Vec;
   rotation: Quat;
   size: number;
-  turn: Turn | null;
 };
 
 export type Renderer = {
@@ -75,8 +65,6 @@ const PENUMBRA = { atFloor: 0.05, perHeight: 0.22 };
 // above the die's lowest point, and with the height of the die off the floor.
 const PALING = { lifted: 0.35, within: 0.5 };
 
-// How much larger the result's numeral is drawn on a marked face.
-const MARK_GROWTH = "0.3";
 const MATERIAL = { bump: 1.3, coat: 0.8, coatRoughness: 0.12, roughness: 0.42 };
 
 // The tray's rectangle in a host of `width` by `height` CSS pixels: as large
@@ -115,8 +103,7 @@ in vec3 vPos; in vec3 vNor; in vec2 vUv;
 uniform sampler2D uAtlas;
 uniform vec3 uCam, uLight, uBody, uInk;
 uniform float uRough, uCoat, uCoatRough, uBump, uSmooth;
-uniform vec4 uTurn, uMark;
-uniform float uColumns, uDimmed;
+uniform float uDimmed;
 uniform vec3 uP;
 out vec4 frag;
 const float PI = 3.14159265;
@@ -132,28 +119,7 @@ vec3 env(vec3 r, float rough) {
 float ggx(float nh, float a) { float a2 = a * a; float d = nh * nh * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 float schlick(float c) { return 0.04 + 0.96 * pow(1.0 - c, 5.0); }
 void main() {
-  // The turned face: uTurn.xy is its numeral's centre in cells from the
-  // atlas's top left, uTurn.zw the turn's cosine and sine, uColumns the
-  // atlas's columns. What the turn would bring in from a neighbouring cell
-  // is left blank.
-  vec2 uv = vUv;
-  float blank = 0.0;
-  vec2 at = vec2(vUv.x, 1.0 - vUv.y) * uColumns;
-  if (floor(at) == floor(uTurn.xy)) {
-    vec2 d = at - uTurn.xy;
-    vec2 from = uTurn.xy + vec2(uTurn.z * d.x + uTurn.w * d.y, uTurn.z * d.y - uTurn.w * d.x);
-    blank = floor(from) == floor(uTurn.xy) ? 0.0 : 1.0;
-    uv = vec2(from.x, uColumns - from.y) / uColumns;
-  }
-  // The marked face: uMark.xy is its numeral's centre in cells, uMark.z the
-  // atlas's columns, uMark.w how far the mark has come in. Its numeral
-  // grows about its centre and its ink and body swap.
-  vec2 cell = vec2(vUv.x, 1.0 - vUv.y) * uMark.z;
-  float marked = floor(cell) == floor(uMark.xy) ? uMark.w : 0.0;
-  vec2 grown = uMark.xy + (cell - uMark.xy) / (1.0 + ${MARK_GROWTH} * marked);
-  if (marked > 0.0) uv = vec2(grown.x, uMark.z - grown.y) / uMark.z;
-  float paper = max(texture(uAtlas, uv).r, blank);
-  paper = mix(paper, 1.0 - paper, marked);
+  float paper = texture(uAtlas, vUv).r;
   vec3 base = pow(mix(uInk, uBody, paper), vec3(2.2));
   vec3 n = normalize(mix(normalize(vNor), normalize(vPos - uP), uSmooth));
   // Engraved numerals: the normal leans along the ink's edge on screen.
@@ -205,6 +171,7 @@ void main() { frag = uTint * (vShade.y * (1.0 - smoothstep(0.0, 1.0, vShade.x)))
 type Program = { program: WebGLProgram; uniform: (name: string) => WebGLUniformLocation | null };
 type Uploaded = { atlas: WebGLTexture; count: number; die: WebGLVertexArrayObject };
 type Point = [number, number];
+type ScreenPoint = { x: number; y: number };
 
 // The key light on the floor: the way shadows fall, how far per unit of
 // height, and the sine of its elevation.
@@ -213,15 +180,11 @@ const SUN = (() => {
   return { lean: flat / LIGHT[1], squash: LIGHT[1], x: -LIGHT[0] / flat, z: -LIGHT[2] / flat };
 })();
 
-// A point of an outline, how wide the penumbra is there and how strong the
-// shadow.
-type Spot = { soft: number; strength: number; x: number; y: number };
-
 // The convex outline of `spots`, counter-clockwise (a monotone chain).
-function hullOf(spots: Spot[]): Spot[] {
+function hullOf<T extends ScreenPoint>(spots: T[]): T[] {
   const sorted = spots.toSorted((a, b) => a.x - b.x || a.y - b.y);
-  const chain = (list: Spot[]) => {
-    const kept: Spot[] = [];
+  const chain = (list: T[]) => {
+    const kept: T[] = [];
     for (const p of list) {
       while (kept.length >= 2) {
         const o = kept.at(-2)!;
@@ -238,7 +201,7 @@ function hullOf(spots: Spot[]): Spot[] {
 }
 
 // Per edge of `outline`, its outward normal.
-const normalsOf = (outline: Spot[]) =>
+const normalsOf = (outline: ScreenPoint[]) =>
   outline.map(({ x, y }, index): Point => {
     const next = outline[(index + 1) % outline.length]!;
     const reach = Math.max(Math.hypot(next.x - x, next.y - y), 1e-6);
@@ -246,7 +209,11 @@ const normalsOf = (outline: Spot[]) =>
   });
 
 // `outline` pushed out by `offset(spot)`, each corner as three points of its arc.
-function grown(outline: Spot[], normals: Point[], offset: (spot: Spot) => number): Point[] {
+function grown<T extends ScreenPoint>(
+  outline: T[],
+  normals: Point[],
+  offset: (spot: T) => number,
+): Point[] {
   return outline.flatMap((spot, index) => {
     const before = normals[(index + outline.length - 1) % outline.length]!;
     const after = normals[index]!;
@@ -291,13 +258,14 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
 
 const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
 // Where the tray is seen from.
-export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
+const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
 
 // A camera above the tray, tilted a little toward the viewer, as one
 // column-major view-projection matrix. `across` and `down` are the shares of
 // the canvas the tray's rectangle takes, so the whole canvas is drawn on and
 // a die in flight is not cut off at the tray's edge.
-function camera(across: number, down: number, aspect: number) {
+function camera(width: number, height: number) {
+  const tray = trayRect(width, height);
   const eye = EYE;
   const size = Math.hypot(...eye);
   const forward: Vec = [0, -eye[1] / size, -eye[2] / size];
@@ -305,8 +273,8 @@ function camera(across: number, down: number, aspect: number) {
   const up: Vec = [0, -forward[2], forward[1]];
   const near = 1;
   const far = 200;
-  const sx = across / (TAN_HALF_FOV * aspect);
-  const sy = down / TAN_HALF_FOV;
+  const sx = tray.height / (width * TAN_HALF_FOV);
+  const sy = tray.height / (height * TAN_HALF_FOV);
   const depth = (far + near) / (near - far);
   const along = (axis: Vec) => -(axis[1] * eye[1] + axis[2] * eye[2]);
   // Rows of the view matrix: right (1 0 0), up, -forward; then the projection.
@@ -329,6 +297,39 @@ function camera(across: number, down: number, aspect: number) {
     along(forward),
   ]);
   return { eye, viewProj };
+}
+
+// The same projection drives the canvas and the interactive silhouette of
+// each die. Projecting the rounded outline leaves the board usable between
+// dice, even when there are several in the tray.
+export function diceScreen(width: number, height: number) {
+  const { viewProj: m } = camera(width, height);
+  const project = ([x, y, z]: Vec): ScreenPoint => {
+    const w = m[7]! * y + m[11]! * z + m[15]!;
+    return {
+      x: ((1 + (m[0]! * x) / w) * width) / 2,
+      y: ((1 - (m[5]! * y + m[9]! * z + m[13]!) / w) * height) / 2,
+    };
+  };
+  return {
+    atHeight({ x, y }: ScreenPoint, up: number): Vec {
+      const across = (2 * x) / width - 1;
+      const down = 1 - (2 * y) / height;
+      const base = m[7]! * up + m[15]!;
+      const depth = (m[5]! * up + m[13]! - down * base) / (down * m[11]! - m[9]!);
+      return [(across * (base + m[11]! * depth)) / m[0]!, up, depth];
+    },
+    outline(pose: Pose): Point[] {
+      const { model, position, rotation, size } = pose;
+      const corners = model.core.map((corner) =>
+        project(add(position, rotate(rotation, scale(corner, size)))),
+      );
+      const hull = hullOf(corners);
+      const pad = project(add(position, [model.rounding * size, 0, 0])).x - project(position).x;
+      return grown(hull, normalsOf(hull), () => pad + 1);
+    },
+    project,
+  };
 }
 
 // Software rendering, or a device that reports little memory or few cores,
@@ -526,12 +527,7 @@ export function createRenderer(
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const tray = trayRect(width, height);
-    const { eye, viewProj } = camera(
-      tray.width / width,
-      tray.height / height,
-      tray.width / tray.height,
-    );
+    const { eye, viewProj } = camera(width, height);
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     const { program, uniform } = gpu.die;
@@ -554,12 +550,6 @@ export function createRenderer(
       gl.uniform1f(uniform("uSize"), pose.size);
       gl.uniform1f(uniform("uDimmed"), pose.dimmed);
       gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
-      const { mark, turn } = pose;
-      if (turn === null) gl.uniform4f(uniform("uTurn"), -1, -1, 1, 0);
-      else gl.uniform4f(uniform("uTurn"), turn.x, turn.y, turn.cos, turn.sin);
-      gl.uniform1f(uniform("uColumns"), turn?.columns ?? 1);
-      if (mark === null) gl.uniform4f(uniform("uMark"), -1, -1, 1, 0);
-      else gl.uniform4f(uniform("uMark"), mark.x, mark.y, mark.columns, mark.amount);
       gl.uniform1f(uniform("uSmooth"), pose.model.smooth);
       gl.drawArrays(gl.TRIANGLES, 0, model.count);
     }

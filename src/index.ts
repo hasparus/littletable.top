@@ -6,10 +6,13 @@ import {
   PUBLIC_BOARD,
   type Refusal,
 } from "./board-room";
+import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
-import { parsePool } from "./dice";
+import { parseLaunch, parsePool } from "./dice";
 import { notationPool, parseNotation } from "./dice-notation";
+import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
+import { addressKey } from "./limiter";
 import {
   type Pass,
   publicKeyFrom,
@@ -144,9 +147,10 @@ async function rooms(
     );
   }
   const [, board, action] =
-    /^\/rooms\/([\w-]{1,64})\/(connect|delete|link|rolls?)$/u.exec(url.pathname) ?? [];
+    /^\/rooms\/([\w-]{1,64})\/(chat|connect|delete|link|rolls?)$/u.exec(url.pathname) ?? [];
   if (
     board === undefined ||
+    (action === "chat" && (config.mode !== "standalone" || board !== PUBLIC_BOARD)) ||
     (config.mode === "standalone" &&
       board === PUBLIC_BOARD &&
       (action === "delete" || action === "link"))
@@ -172,6 +176,25 @@ async function rooms(
   const pass = await passFor(request, verifiers.pass, board);
   if (pass === null) return new Response("Forbidden", { status: 403 });
 
+  if (action === "chat") {
+    if (request.method === "GET") return answer(await room.chatHistory(pass));
+    if (request.method !== "POST" || env.Limiter === undefined)
+      return new Response(null, { status: 404 });
+    const key = await addressKey(request);
+    const limiter = env.Limiter.get(env.Limiter.idFromName(key));
+    if (!(await limiter.take("public-chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
+      return answer("too-fast");
+    }
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: 4 * MAX_CHAT_LENGTH,
+    });
+    if (body === "too-large") return new Response(null, { status: 413 });
+    const text = new TextDecoder().decode(body).trim();
+    if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
+    return answer(await room.sendChat(pass, text));
+  }
+
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
     if (url.searchParams.get("sessionId") === null) {
       return new Response("Bad request", { status: 400 });
@@ -195,7 +218,12 @@ async function rooms(
     }
     const pool = parsePool(body);
     if (pool === null) return new Response("Bad request", { status: 400 });
-    return answer(await room.roll(pass, pool));
+    const requestedLaunch = (body as { launch?: unknown } | null)?.launch;
+    const launch = requestedLaunch === undefined ? undefined : parseLaunch(requestedLaunch);
+    if (launch === null || (launch !== undefined && pool.length !== 1)) {
+      return new Response("Bad request", { status: 400 });
+    }
+    return answer(await room.roll(pass, pool, undefined, launch));
   }
   return new Response("Not found", { status: 404 });
 }
@@ -228,7 +256,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     ).route(request);
     if (own !== null) return own;
   }
-  return serveSite(request, env.ASSETS, config);
+  return serveSite(request, env.ASSETS, config, env.DB);
 }
 
 export default { fetch: handle } satisfies ExportedHandler<Env>;

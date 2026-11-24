@@ -3,6 +3,8 @@
 // host's does (docs/hosting.md, "The host contract") so the client cannot tell the
 // two apart. Passes are signed with the Worker's own key.
 
+import { animals, colors, uniqueNamesGenerator } from "unique-names-generator";
+
 import type { StandaloneConfig } from "../config";
 import type { Limiter } from "../limiter";
 import type { SignInProvider } from "./provider";
@@ -14,6 +16,7 @@ import { addressKey } from "../limiter";
 import {
   MAX_BOARDS_PER_ACCOUNT,
   MAX_BOARDS_PER_HOUR,
+  MAX_NAME_LENGTH,
   MAX_PASSES_PER_MINUTE,
   MAX_SIGN_INS_PER_MINUTE,
 } from "../limits";
@@ -42,6 +45,9 @@ const SIGN_IN_LIFETIME_S = 10 * 60;
 const GUEST_LIFETIME_S = 365 * 24 * 60 * 60;
 const SIGN_IN_AUDIENCE = "tabletop-sign-in";
 const GUEST_AUDIENCE = "tabletop-guest";
+
+const PUBLIC_GUEST_COLORS = colors.filter((word) => word.length <= 12);
+const PUBLIC_GUEST_ANIMALS = animals.filter((word) => word.length < MAX_NAME_LENGTH - 12);
 
 const ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -409,7 +415,16 @@ export class Standalone {
       }
       if (name === null && code !== null) return refuse(422, "name-required");
       const id = typeof guest?.sub === "string" ? guest.sub : `g:${randomCode(16)}`;
-      name ??= `Guest ${id.slice(2, 6)}`;
+      const oldDefault = `Guest ${id.slice(2, 6)}`;
+      if (name === null || (code === null && body.name === undefined && name === oldDefault)) {
+        name = uniqueNamesGenerator({
+          dictionaries: [PUBLIC_GUEST_COLORS, PUBLIC_GUEST_ANIMALS],
+          length: 2,
+          seed: id,
+          separator: " ",
+          style: "capital",
+        });
+      }
       person = { avatar: null, id, name, owner: false };
       const sealed = await seal(this.keys, GUEST_AUDIENCE, { name, sub: id }, GUEST_LIFETIME_S);
       headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));

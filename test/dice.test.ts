@@ -53,6 +53,34 @@ describe("rolling", () => {
     expect(await log.json()).toEqual([rolled]);
   });
 
+  it("shares a flick's bounded launch and records the result as a normal roll", async () => {
+    const board = "flick";
+    const token = await pass({ board });
+    const watcher = await seat(board, await pass({ board, sub: "g:1" }));
+    const launch = { vx: 0.5, vz: -0.75, x: -0.5, z: 0.25 };
+    const post = (body: unknown) =>
+      call(`/rooms/${board}/roll`, token, {
+        body: JSON.stringify(body),
+        method: "POST",
+      });
+    expect((await post({ dice: [20], launch: { ...launch, vz: -1.01 } })).status).toBe(400);
+    expect((await post({ dice: [6, 20], launch })).status).toBe(400);
+
+    const response = await post({ dice: [20], launch });
+    expect(response.ok).toBe(true);
+    const rolled: Roll = await response.json();
+    expect(rolled.launch).toEqual(launch);
+    expect(rolled.dice).toEqual([{ sides: 20, value: expect.any(Number) }]);
+    await until(() => watcher.received.some((message) => message.type === "custom"));
+    expect(watcher.received.find((message) => message.type === "custom")?.data).toEqual({
+      roll: rolled,
+      type: "roll",
+    });
+    const { launch: _liveLaunch, ...result } = rolled;
+    const log = await call(`/rooms/${board}/rolls`, token);
+    expect(await log.json()).toEqual([result]);
+  });
+
   it("rejects invalid notation without falling back to dice or creating a log entry", async () => {
     const board = "bad-notation";
     const token = await pass({ board });

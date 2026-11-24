@@ -1,7 +1,9 @@
 // The tabletop's pages and files: the names it answers to, the SPA shell at
 // /b/<share code>, and the headers every page and file leaves with.
 
-import type { Config, Hosts } from "./config";
+import type { Config, Hosts, StandaloneConfig } from "./config";
+
+import { Store } from "./standalone/store";
 
 // A request to an alias moves to the same path on the primary host, before
 // anything else runs: no page, file, API or socket is served there.
@@ -72,23 +74,79 @@ export function harden(response: Response, request: Request, config: Config): Re
   return hardened;
 }
 
-const SHELL = /^\/b\/[A-Za-z0-9]{1,64}\/?$/u;
+const SHELL = /^\/b\/([A-Za-z0-9]{1,64})\/?$/u;
+const WEBSITE_DESCRIPTION =
+  "Draw maps, roll dice, and play tabletop games together on a shared whiteboard.";
 // Vite names every built script, style and font after its content, and
 // the text engines' files (WebAssembly, models, language data) carry the
 // hash of theirs in their name or their folder's (vite.config.ts).
 const HASHED = /^\/assets\//u;
 
 async function shell(request: Request, assets: Fetcher, config: Config): Promise<Response> {
-  const page = harden(await assets.fetch(new URL("/index.html", request.url)), request, config);
+  const page = harden(
+    await assets.fetch(new URL("/index.html", request.url), { method: request.method }),
+    request,
+    config,
+  );
   page.headers.set("Cache-Control", "no-cache");
   page.headers.set("X-Robots-Tag", "noindex, nofollow");
   return page;
+}
+
+const htmlAttribute = (text: string) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+
+// Social previews are read before any JavaScript runs. Use the public name
+// a board already returns to people with its current share link.
+function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, boardTitle?: string) {
+  if (!page.ok || page.body === null) return page;
+  const title =
+    boardTitle === undefined ? config.displayName : `${boardTitle} · ${config.displayName}`;
+  const description =
+    boardTitle === undefined
+      ? WEBSITE_DESCRIPTION
+      : `Join ${boardTitle} on ${config.displayName}. ${WEBSITE_DESCRIPTION}`;
+  const graph = {
+    description,
+    image: new URL("/open-graph.png", url).href,
+    "image:alt": "Little Table logo and tabletop dice",
+    "image:height": "630",
+    "image:type": "image/png",
+    "image:width": "1200",
+    site_name: config.displayName,
+    title,
+    type: "website",
+    url: new URL(url.pathname.replace(/\/$/u, "") || "/", url).href,
+  };
+  return new HTMLRewriter()
+    .on("head", {
+      element: (head) => {
+        const tags = Object.entries(graph).map(
+          ([name, value]) => `<meta property="og:${name}" content="${htmlAttribute(value)}">`,
+        );
+        head.append(
+          `<meta name="description" content="${htmlAttribute(description)}">${tags.join("")}`,
+          { html: true },
+        );
+      },
+    })
+    .on("head title", {
+      element: (element) => {
+        element.setInnerContent(title);
+      },
+    })
+    .transform(page);
 }
 
 export async function serveSite(
   request: Request,
   assets: Fetcher,
   config: Config,
+  database?: D1Database,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -100,11 +158,17 @@ export async function serveSite(
     if (config.mode === "hosted") {
       return harden(Response.redirect(config.homeUrl, 302), request, config);
     }
-    return shell(request, assets, config);
+    return withOpenGraph(await shell(request, assets, config), url, config);
   }
   if (url.pathname === "/boards" && config.mode === "standalone")
     return shell(request, assets, config);
-  if (SHELL.test(url.pathname)) return shell(request, assets, config);
+  const shareCode = SHELL.exec(url.pathname)?.[1];
+  if (shareCode !== undefined) {
+    const page = await shell(request, assets, config);
+    if (config.mode === "hosted" || !page.ok || page.body === null) return page;
+    const board = database === undefined ? null : await new Store(database).byShareCode(shareCode);
+    return withOpenGraph(page, url, config, board?.title);
+  }
   const file = harden(await assets.fetch(request), request, config);
   if (file.ok && HASHED.test(url.pathname)) {
     file.headers.set("Cache-Control", "public, max-age=31536000, immutable");
