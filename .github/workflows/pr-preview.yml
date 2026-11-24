@@ -2,7 +2,6 @@ name: PR Preview
 
 on:
   pull_request_target:
-    branches: [main]
     types: [opened, synchronize, reopened, closed]
 
 permissions:
@@ -19,9 +18,11 @@ jobs:
     # This workflow runs from main. Only the repository owner may trigger a
     # build of PR code with preview credentials. Closing uses trusted code.
     if: >-
-      ${{ !github.event.repository.fork &&
+      ${{ github.ref == 'refs/heads/main' &&
+          !github.event.repository.fork &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          (github.event.action == 'closed' || github.event.sender.login == github.repository_owner) }}
+          (github.event.action == 'closed' ||
+           (github.event.pull_request.base.ref == 'main' && github.event.sender.login == github.repository_owner)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -40,13 +41,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ github.event.action }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          pr=$(gh pr view "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --json state,headRefOid)
+          pr=$(gh pr view "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --json state,headRefOid,baseRefName)
           state=$(jq -r .state <<< "$pr")
           head=$(jq -r .headRefOid <<< "$pr")
+          base=$(jq -r .baseRefName <<< "$pr")
           if [[ "$ACTION" == closed && "$state" != OPEN ]] ||
-             [[ "$ACTION" != closed && "$state" == OPEN && "$head" == "$HEAD" ]]; then
+             [[ "$ACTION" != closed && "$state" == OPEN && "$base" == main && "$head" == "$EXPECTED_HEAD" ]]; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo '::notice::A newer PR event superseded this run.'
@@ -65,9 +67,10 @@ jobs:
         if: steps.current.outputs.run == 'true' && github.event.action != 'closed'
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$(git rev-parse HEAD^2)" != "$EXPECTED_HEAD" ]]; then
-            echo '::error::The preview merge ref changed before checkout.'
+          if [[ "$(git show --no-patch --format=%P HEAD)" != "$EXPECTED_BASE $EXPECTED_HEAD" ]]; then
+            echo '::error::The preview merge ref parents no longer match the trusted event.'
             exit 1
           fi
 
@@ -103,6 +106,8 @@ jobs:
             echo '::warning::Set preview variable TLDRAW_LICENSE_KEY to enable the board editor.'
           fi
 
+          export PREVIEW_COMMIT
+          PREVIEW_COMMIT=$(git rev-parse HEAD)
           log="$RUNNER_TEMP/alchemy-preview.log"
           ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"
           url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://littletable-${STAGE}\.[a-z0-9-]+\.workers\.dev)'.*#\1#p" | tail -n 1)

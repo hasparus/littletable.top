@@ -111,7 +111,8 @@ Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
 belong to that stage. The workflow uses the Cloudflare and WorkOS credentials
 from the `preview` GitHub Environment. Closing the PR uses the workflow
 from `main` to destroy that stage, including its image files, and remove
-the preview comment. Cleanup also runs for conflicted PRs. Each open PR
+the preview comment. Cleanup also runs for conflicted PRs and for PRs
+closed after changing their target branch. Each open PR
 consumes one Worker and one D1 database from the Cloudflare account's limits.
 
 Cloudflare [Worker Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
@@ -124,7 +125,8 @@ In GitHub Settings under Environments, use `production` for `prod`,
 `staging` for manual non-production deploys, and `preview` for pull
 requests. Give both `production` and `preview` deployment branch rules
 that allow only `main`. The preview workflow runs from `main` and checks
-out the tested merge ref only for owner-triggered deployments.
+out the merge ref only for owner-triggered deployments. It checks both
+parents against the PR event before running the checkout with credentials.
 
 | Kind     | Name                    | Value                                                                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |

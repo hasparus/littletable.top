@@ -41,6 +41,7 @@ export default Alchemy.Stack(
       },
     });
 
+    const commit = yield* Config.String("PREVIEW_COMMIT");
     yield* GitHub.Comment("PreviewComment", {
       owner: github.owner,
       repository: github.repository,
@@ -51,7 +52,7 @@ export default Alchemy.Stack(
 
         [Open the preview](${url})
 
-        Built from \`${github.sha.slice(0, 7)}\`.
+        Built from \`${commit.slice(0, 7)}\`.
       `,
     });
     return { url };
