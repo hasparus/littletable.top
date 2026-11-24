@@ -33,6 +33,32 @@ async function expectClearOf(page: Page, other: Locator, what: string): Promise<
   expect(await onTop(page), `the mark is on top beside ${what}`).toBe(true);
 }
 
+async function expectPhoneToolbar(page: Page) {
+  const tools = page.getByRole("toolbar", { exact: true, name: "Tools" });
+  await expect(tools.locator("button:visible")).toHaveCount(5);
+  expect(
+    await tools
+      .locator("button:visible")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => (button as HTMLButtonElement).dataset.testid),
+      ),
+  ).toEqual(["tools.select", "tools.hand", "tools.draw", "tools.text", "tools.more-button"]);
+
+  const toolBounds = (await tools.boundingBox())!;
+  const actionBounds = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
+  expect(toolBounds.y).toBeCloseTo(actionBounds.y, 0);
+  const buttons = page.locator("[data-board-toolbar] .tlui-button__tool:visible");
+  for (const button of await buttons.all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.width).toBeCloseTo(box.height, 0);
+    expect(box.width).toBeCloseTo(actionBounds.height, 0);
+  }
+  expect(toolBounds.x + toolBounds.width).toBeLessThan(actionBounds.x);
+
+  const styles = (await page.getByTestId("mobile-styles.button").boundingBox())!;
+  expect(styles.y + styles.height).toBeLessThan(toolBounds.y);
+}
+
 const SCREENS = [
   ["phone-360", { ...PHONE, viewport: { height: 740, width: 360 } }],
   ["phone-390", { ...PHONE, viewport: { height: 844, width: 390 } }],
@@ -67,11 +93,23 @@ for (const [name, device] of SCREENS) {
     for (const control of ["Search", "People", "Dice"]) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
+    const phone = name !== "desktop";
+    if (phone) await expectPhoneToolbar(page);
     await reviewShot(page, `watermark-${name}`);
 
     for (const sheet of ["Search", "People"]) {
       const dialog = await openSheet(page, sheet);
       await expectClearOf(page, dialog, `the ${sheet} sheet`);
+      if (phone) {
+        const dialogBounds = (await dialog.boundingBox())!;
+        const tools = (await page
+          .getByRole("toolbar", { exact: true, name: "Tools" })
+          .boundingBox())!;
+        const actions = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
+        expect(dialogBounds.x).toBeCloseTo(tools.x, 0);
+        expect(dialogBounds.x + dialogBounds.width).toBeCloseTo(actions.x + actions.width, 0);
+        expect(actions.y - dialogBounds.y - dialogBounds.height).toBeCloseTo(8, 0);
+      }
       await closeSheet(page, sheet);
     }
     const dice = await openSheet(page, "Dice");

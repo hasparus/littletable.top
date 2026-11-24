@@ -82,13 +82,13 @@ export function Sheet({
     <>
       <div
         aria-hidden="true"
-        className="fixed inset-x-0 top-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 bg-ink/20 sm:hidden"
+        className="fixed inset-x-0 top-0 bottom-(--board-sheet-bottom) z-40 bg-ink/20 sm:hidden"
         onClick={() => open(null)}
       />
       <section
         aria-label={field === undefined ? undefined : title}
         aria-labelledby={field === undefined ? heading : undefined}
-        className="fixed inset-x-2 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-[0_8px_32px_rgb(37_34_32/0.22)] ring-1 ring-border outline-none sm:inset-x-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:w-88 sm:-translate-x-1/2"
+        className="fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-[0_8px_32px_rgb(37_34_32/0.22)] ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:w-88 sm:-translate-x-1/2"
         id={PANEL_ID[panel]}
         ref={sheet}
         role="dialog"
