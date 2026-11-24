@@ -32,7 +32,7 @@ export default defineConfig({
   forbidOnly: isCI,
   // NOTE: CI shards the suite by test, so one spec's tests can land on
   // different runners, each with its own servers.
-  fullyParallel: true,
+  fullyParallel: isCI,
   outputDir: "test-results",
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
