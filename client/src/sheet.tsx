@@ -83,7 +83,7 @@ export function Sheet({
     <>
       <div
         aria-hidden="true"
-        className="fixed inset-x-0 top-0 bottom-(--board-sheet-bottom) z-40 bg-ink/20 sm:hidden"
+        className="fixed inset-x-0 top-0 bottom-[max(var(--board-sheet-bottom),calc(max(4px,env(safe-area-inset-bottom))+52px))] z-40 bg-ink/20 sm:hidden"
         onClick={() => open(null)}
       />
       <section

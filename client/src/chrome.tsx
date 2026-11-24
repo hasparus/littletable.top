@@ -136,11 +136,11 @@ function BoardActionsMenu() {
 // tldraw's licence watermark, which must never be covered.
 function BoardToolbar() {
   const { copy, editor, person } = useBoardUi();
-  const compact = useBreakpoint() <= PORTRAIT_BREAKPOINT.TABLET_SM;
+  const compact = usePhone();
   const people = usePresent(editor).filter(({ id }) => id !== person.id).length + 1;
   return (
     <div
-      className="flex w-full grow-2 items-end sm:justify-center [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 sm:[&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]"
+      className="flex w-full min-w-0 grow-2 items-end sm:justify-center [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 sm:[&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]"
       data-board-toolbar={compact ? "compact" : ""}
     >
       <DefaultToolbar {...(compact ? PHONE_TOOLBAR_FIT : TOOLBAR_FIT)}>

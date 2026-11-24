@@ -43,13 +43,24 @@
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
   --board-top: max(var(--board-gutter), env(safe-area-inset-top));
   --board-bottom-gap: 8px;
-  --board-toolbar-right: var(--board-right);
+  /* Reserve the tldraw watermark's edge tab, or its full badge at 700px. */
+  --board-watermark-width: 10px;
+  --board-toolbar-right: max(
+    var(--board-right),
+    calc(env(safe-area-inset-right) + var(--board-watermark-width))
+  );
   --board-toolbar-gap: 8px;
   --board-toolbar-bottom: calc(var(--board-bottom-gap) + env(safe-area-inset-bottom));
   --board-tool-size: 48px;
   --board-sheet-bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 8px);
   --board-control-radius: 11px;
   --board-top-control-size: 44px;
+}
+
+/* Let tldraw's Zoom and minimap take their own space in the bottom row. */
+[data-board-editor] .tlui-navigation-panel {
+  position: relative;
+  flex: none;
 }
 
 [data-board-toolbar] {
@@ -84,10 +95,6 @@
   margin-bottom: var(--board-toolbar-bottom);
 }
 
-[data-board-toolbar="compact"] > .tlui-main-toolbar {
-  justify-content: flex-start;
-}
-
 /* tldraw reserves a slot for the last tool used from More. Keep the four
    main tools fixed on phones and show overflow selections inside More. */
 [data-board-toolbar="compact"] .tlui-main-toolbar__tools > .tlui-row > :nth-child(n + 5) {
@@ -111,12 +118,14 @@
   [data-board-shell] {
     --board-gutter: 4px;
     --board-bottom-gap: 4px;
-    /* Leave the small tldraw tab on the right edge room to be tapped. */
-    --board-toolbar-right: max(var(--board-right), calc(env(safe-area-inset-right) + 10px));
     --board-tool-size: min(
       44px,
       calc((100dvw - var(--board-left) - var(--board-toolbar-right) - var(--board-toolbar-gap)) / 8)
     );
+  }
+
+  [data-board-toolbar] > .tlui-main-toolbar {
+    justify-content: flex-start;
   }
 
   [data-board-toolbar] .tlui-main-toolbar__inner {
@@ -127,6 +136,12 @@
     position: absolute;
     right: calc(var(--board-toolbar-right) + 2 * var(--board-tool-size));
     bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 4px);
+  }
+}
+
+@media (width >= 700px) {
+  [data-board-shell] {
+    --board-watermark-width: 108px;
   }
 }
 

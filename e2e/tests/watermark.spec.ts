@@ -18,12 +18,14 @@ type Box = { height: number; width: number; x: number; y: number };
 const overlap = (a: Box, b: Box) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-// Whether the mark is what a tap in its middle would reach.
+// Check the visible height, including the top edge beside an open sheet.
 const onTop = (page: Page) =>
   watermark(page).evaluate((mark) => {
     const box = mark.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return hit !== null && mark.contains(hit);
+    const x = box.x + box.width / 2;
+    return [box.y + 0.5, box.y + box.height / 2, box.bottom - 0.5].every((y) =>
+      mark.contains(document.elementFromPoint(x, y)),
+    );
   });
 
 async function expectClearOf(page: Page, other: Locator, what: string): Promise<void> {
@@ -68,6 +70,8 @@ const SCREENS = [
   ["phone-360", { ...PHONE, viewport: { height: 740, width: 360 } }],
   ["phone-390", { ...PHONE, viewport: { height: 844, width: 390 } }],
   ["phone-430", { ...PHONE, viewport: { height: 932, width: 430 } }],
+  ["tablet-660", { ...devices["Desktop Chrome"], viewport: { height: 740, width: 660 } }],
+  ["tablet-740", { ...devices["Desktop Chrome"], viewport: { height: 820, width: 740 } }],
   ["desktop", devices["Desktop Chrome"]],
 ] as const;
 
@@ -98,8 +102,13 @@ for (const [name, device] of SCREENS) {
     for (const control of ["Search", "People", "Dice"]) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
-    const phone = name !== "desktop";
+    const phone = name.startsWith("phone");
     if (phone) await expectPhoneToolbar(page);
+    if (name.startsWith("tablet")) {
+      await page.getByTestId("minimap.zoom-menu-button").click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await page.keyboard.press("Escape");
+    }
     await reviewShot(page, `watermark-${name}`);
 
     for (const sheet of ["Search", "People"]) {
