@@ -45,15 +45,16 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   const host = await page.context().newPage();
   await host.goto(`${HOST}/boards/`);
   await host.getByRole("button", { exact: true, name: `Reset link of ${title}` }).click();
+  await expect(
+    guest.getByText("The board's link was reset. Ask its creator for the new one."),
+  ).toBeVisible({ timeout: 1000 });
+  await expect(guest.getByRole("link", { name: "Back to Fake host" })).toBeVisible();
+
   await page.goto(
     await host.getByRole("link", { exact: true, name: title }).getAttribute("href").then(String),
   );
   await expect(page).not.toHaveURL(boardUrl);
   await expect(onBoard(page, "Hello table")).toBeVisible();
-  await expect(
-    guest.getByText("The board's link was reset. Ask its creator for the new one."),
-  ).toBeVisible();
-  await expect(guest.getByRole("link", { name: "Back to Fake host" })).toBeVisible();
 
   // The host deletes the board: the member is put out and the room is wiped.
   await host.getByRole("button", { exact: true, name: `Delete ${title}` }).click();

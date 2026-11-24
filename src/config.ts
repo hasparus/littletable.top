@@ -7,10 +7,11 @@ export type ConfigEnv = {
   // tabletop signs its own).
   TABLETOP_MODE?: string;
   // Hosted: the issuer's public key (SPKI PEM, "\n" escapes allowed), its
-  // `iss`, and the audiences of passes and deletion tokens.
+  // `iss`, and the audiences of passes, deletion tokens and link reset tokens.
   DELETION_AUDIENCE?: string;
   ISSUER?: string;
   ISSUER_PUBLIC_KEY?: string;
+  LINK_RESET_AUDIENCE?: string;
   PASS_AUDIENCE?: string;
   // Hosted: the host's origin, which the client asks for passes, and where a
   // person typing the tabletop's bare name goes.
@@ -44,6 +45,7 @@ export type HostedConfig = {
   hostOrigin: string;
   hosts: Hosts;
   issuer: string;
+  linkResetAudience: string;
   mode: "hosted";
   passAudience: string;
   publicKey: string;
@@ -119,13 +121,17 @@ function hosted(env: ConfigEnv): HostedConfig {
   const deletionAudience = present(env.DELETION_AUDIENCE)
     ? env.DELETION_AUDIENCE
     : "board-deletion";
-  if (passAudience === deletionAudience) {
-    throw new ConfigError("PASS_AUDIENCE and DELETION_AUDIENCE must differ");
+  const linkResetAudience = present(env.LINK_RESET_AUDIENCE)
+    ? env.LINK_RESET_AUDIENCE
+    : "board-link-reset";
+  const audiences = new Set([deletionAudience, linkResetAudience, passAudience]);
+  if (audiences.size !== 3) {
+    throw new ConfigError("PASS_AUDIENCE, DELETION_AUDIENCE and LINK_RESET_AUDIENCE must differ");
   }
   if (env.ISSUER === STANDALONE_ISSUER) {
     throw new ConfigError(`ISSUER "${STANDALONE_ISSUER}" is the standalone mode's own`);
   }
-  if ([deletionAudience, passAudience].includes(STANDALONE_AUDIENCE)) {
+  if (audiences.has(STANDALONE_AUDIENCE)) {
     throw new ConfigError(`the audience "${STANDALONE_AUDIENCE}" is the standalone mode's own`);
   }
   const hostOrigin = origin(env.HOST_ORIGIN!, "HOST_ORIGIN");
@@ -135,6 +141,7 @@ function hosted(env: ConfigEnv): HostedConfig {
     hostOrigin,
     hosts: hostsOf(env),
     issuer: env.ISSUER!,
+    linkResetAudience,
     mode: "hosted",
     passAudience,
     publicKey: pem(env.ISSUER_PUBLIC_KEY!),
@@ -148,6 +155,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     "ISSUER",
     "PASS_AUDIENCE",
     "DELETION_AUDIENCE",
+    "LINK_RESET_AUDIENCE",
     "HOST_ORIGIN",
     "HOME_URL",
   ]);

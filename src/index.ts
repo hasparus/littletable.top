@@ -8,7 +8,14 @@ import {
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parsePool } from "./dice";
 import { serveFiles } from "./files";
-import { type Pass, publicKeyFrom, type Verifier, verifyDeletion, verifyPass } from "./pass";
+import {
+  type Pass,
+  publicKeyFrom,
+  type Verifier,
+  verifyDeletion,
+  verifyLinkReset,
+  verifyPass,
+} from "./pass";
 import { aliasRedirect, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
@@ -35,15 +42,19 @@ function answer(result: Refusal | object): Response {
     : Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
-type Verifiers = { deletion: Verifier | null; keys: Keys | null; pass: Verifier };
+type Verifiers = {
+  deletion: Verifier | null;
+  keys: Keys | null;
+  linkReset: Verifier | null;
+  pass: Verifier;
+};
 
 async function verifiersFor(config: Config): Promise<Verifiers> {
   if (config.mode === "standalone") {
     const keys = await keysFrom(config.signingKey).catch(() => {
       throw new ConfigError("SIGNING_KEY is not an RSA private key in PKCS#8 PEM form");
     });
-    // NOTE: standalone mode deletes boards itself; no token can.
-    return { deletion: null, keys, pass: passVerifier(keys) };
+    return { deletion: null, keys, linkReset: null, pass: passVerifier(keys) };
   }
   const key = await publicKeyFrom(config.publicKey).catch(() => {
     throw new ConfigError("ISSUER_PUBLIC_KEY is not a public key in SPKI PEM form");
@@ -51,6 +62,7 @@ async function verifiersFor(config: Config): Promise<Verifiers> {
   return {
     deletion: { audience: config.deletionAudience, issuer: config.issuer, key },
     keys: null,
+    linkReset: { audience: config.linkResetAudience, issuer: config.issuer, key },
     pass: { audience: config.passAudience, issuer: config.issuer, key },
   };
 }
@@ -83,6 +95,17 @@ async function mayDelete(request: Request, verifier: Verifier | null, board: str
     return (await verifyDeletion(token, verifier)) === board;
   } catch {
     return false;
+  }
+}
+
+async function newLinkOf(request: Request, verifier: Verifier | null, board: string) {
+  const token = bearer(request);
+  if (token === null || verifier === null) return null;
+  try {
+    const reset = await verifyLinkReset(token, verifier);
+    return reset.board === board ? reset.link : null;
+  } catch {
+    return null;
   }
 }
 
@@ -119,7 +142,7 @@ async function rooms(
     );
   }
   const [, board, action] =
-    /^\/rooms\/([\w-]{1,64})\/(connect|delete|rolls?)$/u.exec(url.pathname) ?? [];
+    /^\/rooms\/([\w-]{1,64})\/(connect|delete|link|rolls?)$/u.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
   const room = env.BoardRoom.get(env.BoardRoom.idFromName(board));
   if (action === "delete") {
@@ -128,6 +151,13 @@ async function rooms(
       return new Response("Forbidden", { status: 403 });
     }
     await room.destroy(board);
+    return new Response(null, { status: 204 });
+  }
+  if (action === "link") {
+    if (request.method !== "POST") return new Response("Not found", { status: 404 });
+    const link = await newLinkOf(request, verifiers.linkReset, board);
+    if (link === null) return new Response("Forbidden", { status: 403 });
+    await room.moveLink(board, link);
     return new Response(null, { status: 204 });
   }
   const pass = await passFor(request, verifiers.pass, board);

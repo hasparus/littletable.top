@@ -104,8 +104,8 @@ export class BoardRoom extends DurableObject<Env> {
     return row === undefined ? 0 : (row.link as number);
   }
 
-  // A reset link carries a higher version. The first pass that shows it
-  // moves the board on and puts out everyone who came in by the old link.
+  // A newer pass also moves the room forward if the host has yet to
+  // notify it of the reset.
   private admit(pass: Pass): "link-reset" | null {
     const current = this.link();
     if (pass.link < current) return "link-reset";
@@ -114,8 +114,8 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   // Moves the board to a newer link version and puts out everyone who came
-  // in by an older one. Standalone mode calls it as the owner resets the
-  // link; a host's newer pass does the same on arrival.
+  // in by an older one. The host's reset request, a newer pass or the
+  // standalone owner's reset can all advance it.
   moveLink(board: string, link: number): void {
     if (link <= this.link()) return;
     this.ctx.storage.sql.exec(

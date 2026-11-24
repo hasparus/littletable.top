@@ -65,15 +65,26 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
   return { avatar: picture, board, link: link as number, name, owner, sub };
 }
 
-// NOTE: its own audience keeps the two kinds apart: a pass cannot delete a
-// board, and a deletion token cannot open a socket or roll.
-export async function verifyDeletion(token: string, verifier: Verifier): Promise<string> {
+async function verifyBoardCommand(token: string, verifier: Verifier) {
   const { payload } = await jwtVerify(token, verifier.key, {
     algorithms: ["RS256"],
     audience: verifier.audience,
     issuer: verifier.issuer,
     requiredClaims: ["exp"],
   });
-  if (typeof payload.board !== "string") throw new Error("Invalid deletion token");
-  return payload.board;
+  if (typeof payload.board !== "string") throw new Error("Invalid board command");
+  return { board: payload.board, link: payload.link };
+}
+
+export async function verifyDeletion(token: string, verifier: Verifier): Promise<string> {
+  const { board } = await verifyBoardCommand(token, verifier);
+  return board;
+}
+
+export async function verifyLinkReset(token: string, verifier: Verifier) {
+  const { board, link } = await verifyBoardCommand(token, verifier);
+  if (typeof link !== "number" || !Number.isSafeInteger(link) || link < 1) {
+    throw new Error("Invalid link version");
+  }
+  return { board, link };
 }
