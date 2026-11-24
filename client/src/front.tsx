@@ -218,7 +218,7 @@ function SignedIn({
     const title = fill(copy.newBoardTitle, {
       date: new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).format(new Date()),
     });
-    const response = await post("/api/boards", { title });
+    const response = await post("/api/boards", { language: locale, title });
     if (response.status === 201) {
       const board = (await response.json()) as Owned;
       location.assign(`/b/${board.shareCode}`);

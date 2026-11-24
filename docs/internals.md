@@ -270,6 +270,8 @@ note outside the shared document.
 | `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
 | `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
 
+Board creation also accepts `"language": "pl"` to start with a Polish page name.
+
 ### The sign-in provider
 
 `src/standalone/provider.ts` is the one seam; `src/standalone/workos.ts`

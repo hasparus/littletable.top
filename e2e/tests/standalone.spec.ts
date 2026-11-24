@@ -13,8 +13,10 @@ import {
   onBoard,
   openSheet,
   phone,
+  PHONE,
   putNote,
   reachEditor,
+  reviewShot,
   rollTwoD6,
   sheet,
 } from "./helpers";
@@ -93,6 +95,46 @@ test("a public arrow saves its moved endpoint for the expiry sweep", async ({ pa
     editor.updateShape({ id: target as TLShapeId, type: "geo", x: 500 });
   }, ids.target);
   await expect.poll(rememberedEnd).toBeGreaterThan(initial);
+});
+
+test("a board created in Polish opens with Strona 1 for its first guest in English", async ({
+  browser,
+  page,
+}) => {
+  await page.goto(`${STANDALONE}/boards?lang=pl`);
+  await page.getByRole("link", { name: "Zaloguj się" }).click();
+  await page.getByLabel("Name").fill("Ada");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // Stop the creator's navigation from loading the canvas so the guest opens the room first.
+  await page.route(`${STANDALONE}/b/*`, (route) => route.fulfill({ body: "" }), { times: 1 });
+  await page.getByRole("button", { name: "Nowa tablica" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+
+  const context = await browser.newContext({
+    ...PHONE,
+    colorScheme: "dark",
+    locale: "en-US",
+    viewport: { height: 844, width: 390 },
+  });
+  try {
+    const guest = await context.newPage();
+    await guest.goto(page.url());
+    const join = guest.getByRole("button", { name: "Join the board" });
+    await expect(join).toBeDisabled();
+    await expect(join).toHaveCSS("background-image", "none");
+    await expect(join).toHaveCSS("opacity", "1");
+    await reviewShot(guest, "standalone-dark-guest-name-disabled");
+
+    await guest.getByLabel("Your name").fill("Bea");
+    await expect(join).toBeEnabled();
+    await expect(join).not.toHaveCSS("background-image", "none");
+    await reviewShot(guest, "standalone-dark-guest-name-enabled");
+    await join.click();
+    await expect(guest.getByTestId("page-menu.button")).toHaveText("Strona 1");
+  } finally {
+    await context.close();
+  }
 });
 
 test("an owner signs in and makes a board; a guest joins by link and plays", async ({
