@@ -14,7 +14,7 @@ import { fixture, sha256, uploadImage } from "./tldr";
 // ground truth. Floors sit a little below what both engines measured
 // (README, "Text in images"), so a regression in the pipeline, a model
 // or a parameter fails here. Slow (a cold start of both engines and six
-// images): `aube run e2e -- --grep @accuracy` runs it alone. The
+// images): `bun run e2e -- --grep @accuracy` runs it alone. The
 // artifact is accuracy.json, every score.
 
 type Floor = { diacritics: number; names: number; tesseractLocated: number };

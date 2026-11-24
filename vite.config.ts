@@ -14,9 +14,9 @@ import {
 } from "./client/settings";
 
 // The tabletop's client in client/, built into dist/, which the Worker
-// serves (wrangler.json "assets"). `aube run dev` serves it here with hot
+// serves (wrangler.json "assets"). `bun run dev` serves it here with hot
 // reload and sends the API and the rooms socket on to the Worker that
-// `aube run dev:worker` runs.
+// `bun run dev:worker` runs.
 
 const WORKER_DEV_PORT = 8789;
 

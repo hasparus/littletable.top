@@ -2,8 +2,8 @@
 
 Little Table: a tldraw tabletop on Cloudflare Workers. React, Vite, Tailwind. README has the rest.
 
-- Tools: mise, aube. Green before push: `aube run typecheck`, `lint`, `format:check`, `build`, `test` (one script per `aube run`).
-- E2E: `E2E_PORT_OFFSET=<n> aube run e2e`. Checkouts share ports. Never kill processes by pattern.
+- Tools: Bun installs and runs scripts, Node runs the tools; both pinned in `package.json`. Green before push: `bun run typecheck`, `lint`, `format:check`, `build`, `test` (one script per `bun run`).
+- E2E: `E2E_PORT_OFFSET=<n> bun run e2e`. Checkouts share ports. Never kill processes by pattern.
 - Push to `main`. Signed commits, environment identity, no trailers. Issues track what is left; #11 is the status page.
 - Comments only for what code cannot say: `NOTE:`, `SAFETY:`, `HACK:`, `TODO:`.
 - No lint or type suppressions. No single-line files.

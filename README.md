@@ -603,16 +603,26 @@ The package is `littletable-top`; nothing is published yet.
 
 ## Local development
 
-Tools come from `mise.toml` (Node and aube): `mise install`, then
-`aube install`.
+Bun installs the packages and runs the scripts; Node runs the tools. Both
+are pinned in `package.json`: Bun in `packageManager`, Node in
+`devEngines.runtime`. Install those two versions, then `bun install`.
+`bun run <script>` starts each script's tool under Node, from its
+`#!/usr/bin/env node` line: Vite, wrangler, Vitest with the Workers pool,
+Playwright, Alchemy, TypeScript, oxlint and oxfmt; Bun runs none of the
+project's code. Run Alchemy through the `plan:*` and `deploy:*` scripts or
+`./node_modules/.bin/alchemy`: `bun run alchemy` runs the `alchemy/`
+folder instead and exits 0, and `bunx alchemy` runs it under Bun, which it
+refuses. Install scripts run only for esbuild and workerd
+(`trustedDependencies`), and `bunfig.toml` keeps new releases out of an
+install for a week.
 
-| Command                                      | Does                                                    |
-| -------------------------------------------- | ------------------------------------------------------- |
-| `aube run dev` and `aube run dev:worker`     | Vite on :8788 with hot reload, the Worker on :8789      |
-| `aube run build && aube run serve`           | The built client from the Worker on :8788, real headers |
-| `aube run test`                              | The Vitest suite in workerd, against `test/assets`      |
-| `aube run e2e`                               | Playwright, against Workers it builds and starts itself |
-| `aube run typecheck`, `lint`, `format:check` | What CI checks besides                                  |
+| Command                                     | Does                                                    |
+| ------------------------------------------- | ------------------------------------------------------- |
+| `bun run dev` and `bun run dev:worker`      | Vite on :8788 with hot reload, the Worker on :8789      |
+| `bun run build && bun run serve`            | The built client from the Worker on :8788, real headers |
+| `bun run test`                              | The Vitest suite in workerd, against `test/assets`      |
+| `bun run e2e`                               | Playwright, against Workers it builds and starts itself |
+| `bun run typecheck`, `lint`, `format:check` | What CI checks besides                                  |
 
 A laptop's build is a hosted client of `TABLETOP_HOST_ORIGIN` (default
 `http://localhost:8000`, where `node e2e/fake-host.ts` runs a reference
@@ -622,7 +632,7 @@ standalone mode, build with `TABLETOP_MODE=standalone`, run
 and start `wrangler dev --env-file e2e/standalone.env`; the e2e config does
 exactly this on :8790.
 
-`aube run e2e` starts its four servers on :8000 (the fake host), :8001
+`bun run e2e` starts its four servers on :8000 (the fake host), :8001
 (the fake WorkOS), :8788 (hosted) and :8790 (standalone), and with `CI`
 unset reuses any already listening there. A second checkout on the same
 machine sets `E2E_PORT_OFFSET` (a multiple of 10, say `100`) to move all
