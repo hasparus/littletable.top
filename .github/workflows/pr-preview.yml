@@ -1,7 +1,8 @@
 name: PR Preview
 
 on:
-  pull_request:
+  pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened, closed]
 
 permissions:
@@ -15,7 +16,12 @@ concurrency:
 jobs:
   preview:
     name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
-    if: ${{ !github.event.repository.fork && github.event.pull_request.head.repo.full_name == github.repository }}
+    # This workflow runs from main. Only the repository owner may trigger a
+    # build of PR code with preview credentials. Closing uses trusted code.
+    if: >-
+      ${{ !github.event.repository.fork &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          (github.event.action == 'closed' || github.event.sender.login == github.repository_owner) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -49,10 +55,21 @@ jobs:
       - uses: actions/checkout@v7.0.1
         if: steps.current.outputs.run == 'true'
         with:
-          # The PR merge ref may disappear on close. Use its recorded head to
-          # load the same stack definition and provider versions for cleanup.
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.head.sha || github.sha }}
+          # On close the base revision has the preview stack, even when the
+          # PR conflicted or its branch predates previews.
+          ref: ${{ github.event.action == 'closed' && github.sha || format('refs/pull/{0}/merge', github.event.number) }}
+          fetch-depth: 2
           persist-credentials: false
+
+      - name: Verify preview checkout
+        if: steps.current.outputs.run == 'true' && github.event.action != 'closed'
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$(git rev-parse HEAD^2)" != "$EXPECTED_HEAD" ]]; then
+            echo '::error::The preview merge ref changed before checkout.'
+            exit 1
+          fi
 
       - uses: oven-sh/setup-bun@v2.2.0
         if: steps.current.outputs.run == 'true'

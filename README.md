@@ -103,14 +103,15 @@ lists what is missing.
 ### Pull request previews
 
 The [PR Preview workflow](.github/workflows/pr-preview.yml) deploys each
-same-repository PR to its own Alchemy stage `pr-<number>` when it is opened,
-updated, or reopened. It updates one PR comment and sets the deployment URL
-in GitHub. The URL is `https://littletable-pr-<number>.hasparus.workers.dev`.
+same-repository PR targeting `main` to its own Alchemy stage `pr-<number>`
+when the repository owner opens, updates, or reopens it. It updates one
+PR comment and sets the deployment URL in GitHub. The URL is `https://littletable-pr-<number>.hasparus.workers.dev`.
 
 Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
 belong to that stage. The workflow uses the Cloudflare and WorkOS credentials
-from the `preview` GitHub Environment. Closing the PR destroys that stage,
-including its image files, and removes the preview comment. Each open PR
+from the `preview` GitHub Environment. Closing the PR uses the workflow
+from `main` to destroy that stage, including its image files, and remove
+the preview comment. Cleanup also runs for conflicted PRs. Each open PR
 consumes one Worker and one D1 database from the Cloudflare account's limits.
 
 Cloudflare [Worker Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
@@ -121,7 +122,9 @@ Durable Objects. Each PR goes to a separate Worker with its own bindings.
 
 In GitHub Settings under Environments, use `production` for `prod`,
 `staging` for manual non-production deploys, and `preview` for pull
-requests. Give `production` a deployment branch rule for `main`.
+requests. Give both `production` and `preview` deployment branch rules
+that allow only `main`. The preview workflow runs from `main` and checks
+out the tested merge ref only for owner-triggered deployments.
 
 | Kind     | Name                    | Value                                                                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
