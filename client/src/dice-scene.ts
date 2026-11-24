@@ -184,6 +184,7 @@ function posesAt(
       model: modelOf(body.kind),
       position: lerp(position(from), position(to), share),
       rotation: toCamera === null ? turned : multiply(toCamera, turned),
+      size: thrown.sizes[index]!,
       upsideDown: upsideDown[index]!,
     };
   });

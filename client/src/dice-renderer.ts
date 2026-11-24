@@ -14,7 +14,7 @@
 
 import type { DieMesh } from "./dice-mesh";
 
-import { add, type Quat, rotate, type Vec } from "./dice-math";
+import { add, type Quat, rotate, scale, type Vec } from "./dice-math";
 import { TRAY_DEPTH, TRAY_WIDTH } from "./dice-physics";
 
 // "low": one device pixel per CSS pixel, no clearcoat.
@@ -40,13 +40,14 @@ export type Model = {
 // larger, by `amount` from 0 to 1. `x` and `y`: where its numeral is centred
 // in the atlas, in cells; `columns`: the atlas's.
 export type Mark = { amount: number; columns: number; x: number; y: number };
-// `upsideDown`: every numeral of the die is drawn turned half round on its
-// spot.
+// `size`: the die as a share of its model. `upsideDown`: every numeral of
+// the die is drawn turned half round on its spot.
 export type Pose = {
   mark: Mark | null;
   model: Model;
   position: Vec;
   rotation: Quat;
+  size: number;
   upsideDown: boolean;
 };
 
@@ -98,11 +99,11 @@ vec3 rot(vec4 q, vec3 v) { vec3 t = 2.0 * cross(q.xyz, v); return v + q.w * t + 
 
 const DIE_VS = `#version 300 es
 in vec3 aPos; in vec3 aNor; in vec2 aUv;
-uniform mat4 uViewProj; uniform vec4 uQ; uniform vec3 uP;
+uniform mat4 uViewProj; uniform vec4 uQ; uniform vec3 uP; uniform float uSize;
 out vec3 vPos; out vec3 vNor; out vec2 vUv;
 ${ROTATE}
 void main() {
-  vec3 w = rot(uQ, aPos) + uP;
+  vec3 w = rot(uQ, aPos * uSize) + uP;
   vPos = w; vNor = rot(uQ, aNor); vUv = aUv;
   gl_Position = uViewProj * vec4(w, 1.0);
 }`;
@@ -538,6 +539,7 @@ export function createRenderer(
       gl.bindTexture(gl.TEXTURE_2D, model.atlas);
       gl.uniform4fv(uniform("uQ"), pose.rotation);
       gl.uniform3fv(uniform("uP"), pose.position);
+      gl.uniform1f(uniform("uSize"), pose.size);
       gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
       const { spot } = pose.model;
       if (spot !== null && pose.upsideDown)
@@ -558,9 +560,9 @@ export function createRenderer(
     const [red, green, blue, alpha] = dark ? SHADOW_TINT.dark : SHADOW_TINT.light;
     const shaded = poses.map((pose) => {
       const corners = pose.model.core.map((corner) =>
-        add(rotate(pose.rotation, corner), pose.position),
+        add(rotate(pose.rotation, scale(corner, pose.size)), pose.position),
       );
-      const { rounding } = pose.model;
+      const rounding = pose.model.rounding * pose.size;
       const bottom = Math.max(0, Math.min(...corners.map((corner) => corner[1])) - rounding);
       return { bottom, corners, rounding };
     });

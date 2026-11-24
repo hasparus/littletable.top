@@ -660,6 +660,16 @@ resistance that does not weaken with speed, so it stops rather than creeps.
 Seen from anywhere a ball is the same, so its numbering turns freely: the
 value ends straight up, upright, tipped to face the camera.
 
+Twenty full-size balls are all the tray's floor holds, and only in rows: a
+third of such throws were still moving at the cap, with a ball left on top of
+others and then cut into them. So a crowd is thrown smaller: once the dice
+would cover more than 45% of the tray (`CROWD` in `dice-physics.ts`), every
+ball of the throw shrinks to fit, down to five sixths of its size for twenty,
+and the renderer draws it at that size. Up to thirteen balls alone, or a
+handful among other dice, stay full size and throw exactly as before. The
+cap of 3.2 s grows by four frames for each ball beyond five, to 4.2 s for
+twenty, which is the time a crowd takes to come to rest by itself.
+
 **Numerals** are drawn on a canvas and centred by where their ink is, not
 by their box: across, by the ink's centre of mass (a 1 is heavy on its
 right); up and down, by the height all digits share. The centres of mass
