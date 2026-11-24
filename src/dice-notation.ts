@@ -28,7 +28,7 @@ export type RollResult = {
 };
 
 const GROUP = /^(\d*)[dk](\d+)(?:(kh|kl|dh|dl|k)(\d+))?\s*/iu;
-const SIGNED_NUMBER = /^([+-])\s*(\d+)\s*$/u;
+const SIGNED_NUMBER = /^([+−-])\s*(\d+)\s*$/u;
 const SIDES: readonly number[] = DIE_SIDES;
 
 export function parseNotation(expression: string): Notation | NotationError {
@@ -59,7 +59,7 @@ export function parseNotation(expression: string): Notation | NotationError {
     if (remaining === "") return { groups, modifier: null };
     const bonus = SIGNED_NUMBER.exec(remaining);
     if (bonus !== null) {
-      const modifier = Number(bonus[1] + bonus[2]);
+      const modifier = Number(bonus[2]) * (bonus[1] === "+" ? 1 : -1);
       return Math.abs(modifier) <= MAX_MODIFIER ? { groups, modifier } : "modifier";
     }
     if (!remaining.startsWith("+")) return "syntax";

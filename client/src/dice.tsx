@@ -135,10 +135,10 @@ function notationMessage(copy: Copy, error: NotationError, example: string): str
 }
 
 export function DiceSheet() {
-  const { copy, locale, person, pool, rolls, setPool } = useBoardUi();
+  const { copy, locale, person, rollDraft, rolls, setRollDraft } = useBoardUi();
+  const { expression, pool } = rollDraft;
   const expressionId = useId();
   const [busy, setBusy] = useState(false);
-  const [expression, setExpression] = useState("");
   const [notationError, setNotationError] = useState<NotationError | null>(null);
   const [refusal, setRefusal] = useState<RollRefusal | null>(null);
   const last = rolls.log.findLast(({ sub }) => sub === person.id);
@@ -163,8 +163,7 @@ export function DiceSheet() {
     setBusy(false);
     setRefusal(answer);
     if (answer === null) {
-      setExpression("");
-      setPool([]);
+      setRollDraft((current) => (current === rollDraft ? { expression: "", pool: [] } : current));
     }
   };
 
@@ -182,7 +181,7 @@ export function DiceSheet() {
                 })}
                 className="grid h-11 min-w-11 touch-manipulation place-items-center rounded-xl focus-visible:outline-2 focus-visible:outline-border-focus active:scale-95"
                 key={index}
-                onClick={() => setPool(pool.toSpliced(index, 1))}
+                onClick={() => setRollDraft({ expression, pool: pool.toSpliced(index, 1) })}
                 type="button"
               >
                 <DieShape copy={copy} sides={sides} tone="soft" />
@@ -191,7 +190,7 @@ export function DiceSheet() {
             {pool.length > 1 && (
               <button
                 className="ml-auto h-11 rounded-full px-3 text-sm text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
-                onClick={() => setPool([])}
+                onClick={() => setRollDraft({ expression, pool: [] })}
                 type="button"
               >
                 {copy.clearPool}
@@ -209,9 +208,8 @@ export function DiceSheet() {
             disabled={pool.length >= MAX_DICE}
             key={sides}
             onClick={() => {
-              setExpression("");
               setNotationError(null);
-              setPool([...pool, sides]);
+              setRollDraft({ expression: "", pool: [...pool, sides] });
             }}
             type="button"
           >
@@ -248,9 +246,8 @@ export function DiceSheet() {
           id={expressionId}
           onChange={(event) => {
             const { value } = event.target;
-            setExpression(value);
+            setRollDraft({ expression: value, pool: value.trim() === "" ? pool : [] });
             setNotationError(null);
-            if (value.trim() !== "" && pool.length > 0) setPool([]);
           }}
           placeholder={example}
           spellCheck={false}

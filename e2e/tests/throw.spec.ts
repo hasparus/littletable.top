@@ -150,7 +150,13 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
   );
   await expect(dice.getByRole("listitem")).toHaveCount(0);
 
-  await notation.fill("2d20kl1 - 2");
+  await notation.fill("2d20kl1 − 2");
+  await closeSheet(page, "Dice");
+  await openSheet(page, "People");
+  await closeSheet(page, "People");
+  await openSheet(page, "Dice");
+  await expect(notation).toHaveValue("2d20kl1 − 2");
+  await expect(dice.getByRole("button", { name: "Roll 2d20kl1 − 2" })).toBeEnabled();
   await reviewShot(page, "dice-notation-keep-lowest-phone");
   await notation.fill("3d6kh2 + 3");
   await reviewShot(page, "dice-notation-keep-highest-phone");

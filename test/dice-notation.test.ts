@@ -11,6 +11,7 @@ describe("dice notation", () => {
   it.each([
     ["3d6kh2", [6, 6, 6], "kh", 2, null],
     ["2d20kl1", [20, 20], "kl", 1, null],
+    ["2d20kl1 − 2", [20, 20], "kl", 1, -2],
     ["4d6dl1", [6, 6, 6, 6], "dl", 1, null],
     ["4d6dh1", [6, 6, 6, 6], "dh", 1, null],
     ["2d6 + d20 + 3", [6, 6, 20], null, null, 3],
