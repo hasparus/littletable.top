@@ -21,6 +21,8 @@ export type Pass = {
   link: number;
   name: string;
   owner: boolean;
+  // Only a standalone secret-layer pass is bound to an account session.
+  sessionHash?: string;
   sub: string;
 };
 
@@ -44,7 +46,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     issuer: verifier.issuer,
     requiredClaims: ["exp", "iat", "sub"],
   });
-  const { avatar, board, link, name, owner, sub } = payload;
+  const { avatar, board, link, name, owner, sessionHash, sub } = payload;
   if (
     typeof sub !== "string" ||
     typeof board !== "string" ||
@@ -62,7 +64,15 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     typeof avatar === "string" && avatar.length > 0 && avatar.length <= MAX_AVATAR_CLAIM
       ? avatar
       : null;
-  return { avatar: picture, board, link: link as number, name, owner, sub };
+  return {
+    avatar: picture,
+    board,
+    link: link as number,
+    name,
+    owner,
+    ...(typeof sessionHash === "string" ? { sessionHash } : {}),
+    sub,
+  };
 }
 
 async function verifyBoardCommand(token: string, verifier: Verifier) {

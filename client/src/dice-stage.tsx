@@ -54,9 +54,14 @@ const FADES: Record<Overflow, string> = {
 type Place = { below: number; beside: boolean; left: number; top: number; width: number };
 
 const boxOf = (selector: string): DOMRect | null => {
-  const box = document.querySelector(selector)?.getBoundingClientRect();
-  return box === undefined || box.width === 0 ? null : box;
+  return (
+    [...document.querySelectorAll(selector)]
+      .map((element) => element.getBoundingClientRect())
+      .find((box) => box.width > 0) ?? null
+  );
 };
+
+const TOP_RIGHT_CONTROLS = ".tlui-layout__top__right > *, [data-secret-layer-toggle]";
 
 // Beside tldraw's top-left controls (the main menu, and the page menu on a
 // board of several pages), centred on the menu button, up to the controls
@@ -68,7 +73,7 @@ function placeBesideMenu(height: number): Place {
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
   const right = Math.min(
     document.documentElement.clientWidth,
-    ...[...document.querySelectorAll(".tlui-layout__top__right > *")]
+    ...[...document.querySelectorAll(TOP_RIGHT_CONTROLS)]
       .map((element) => element.getBoundingClientRect())
       .filter((box) => box.width > 0)
       .map((box) => box.left),
@@ -179,7 +184,9 @@ function ResultToast({
     measure();
     const resized = new ResizeObserver(measure);
     resized.observe(dice);
-    for (const zone of document.querySelectorAll(".tlui-menu-zone, .tlui-layout__top__right")) {
+    for (const zone of document.querySelectorAll(
+      ".tlui-menu-zone, .tlui-layout__top__right, [data-secret-layer-toggle]",
+    )) {
       resized.observe(zone);
     }
     globalThis.addEventListener("resize", measure);

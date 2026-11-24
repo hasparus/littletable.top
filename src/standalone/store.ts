@@ -41,6 +41,15 @@ const board = (row: BoardRow): Board => ({
   title: row.title,
 });
 
+export async function hasActiveSession(db: D1Database | undefined, hash: string | undefined) {
+  if (db === undefined || hash === undefined) return false;
+  const found = await db
+    .prepare("SELECT 1 FROM sessions WHERE token_hash = ? AND expires_at > ?")
+    .bind(hash, Math.floor(Date.now() / 1000))
+    .first();
+  return found !== null;
+}
+
 export class Store {
   constructor(private readonly db: D1Database) {}
 

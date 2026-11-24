@@ -265,7 +265,7 @@ export function isOtherBoardsFile(src: unknown, ownPath: string): src is string 
   }
   return (
     url.origin === location.origin &&
-    /^\/rooms\/[^/]+\/files\//u.test(url.pathname) &&
+    /^\/rooms\/[^/]+(?:\/secret)?\/files\//u.test(url.pathname) &&
     !url.pathname.startsWith(`${ownPath}/`)
   );
 }
