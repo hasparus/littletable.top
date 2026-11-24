@@ -15,15 +15,13 @@ const PAPER = "#fff9ef";
 
 function Logo({ size = 66, x, y }: { size?: number; x: number; y: number }) {
   return (
-    <g transform={`translate(${x} ${y}) scale(${size / 120})`}>
-      <rect fill={CORAL} height="112" rx="28" width="112" x="4" y="4" />
-      <rect fill="#fff" height="64" rx="14" width="64" x="28" y="28" />
-      <g fill={CORAL}>
-        <circle cx="44" cy="44" r="7" />
-        <circle cx="60" cy="60" r="7" />
-        <circle cx="76" cy="76" r="7" />
-      </g>
-    </g>
+    <image
+      height={size}
+      href={`data:image/svg+xml;base64,${mark.toString("base64")}`}
+      width={size}
+      x={x}
+      y={y}
+    />
   );
 }
 
@@ -237,22 +235,7 @@ function MapNotes() {
       {/* Cover the local editor's zoom display and license notice in the share image. */}
       <rect fill="#f7f6f3" height="45" width="96" x="0" y="585" />
       <rect fill="#f7f6f3" height="45" width="110" x="1090" y="585" />
-      <g transform="translate(64 195) scale(.52)">
-        <rect fill={CORAL} height="112" rx="28" width="112" x="4" y="4" />
-        <path
-          d="M26 62v25m56-25v25m12-36v19"
-          fill="none"
-          stroke="white"
-          strokeLinecap="round"
-          strokeWidth="8"
-        />
-        <path d="M33 34q2-4 8-4h53q8 0 5 6L87 61q-2 5-9 5H25q-8 0-5-7z" fill="white" />
-        <g fill={CORAL}>
-          <ellipse cx="42" cy="55" rx="6" ry="4.4" />
-          <ellipse cx="60" cy="48" rx="6" ry="4.4" />
-          <ellipse cx="78" cy="41" rx="6" ry="4.4" />
-        </g>
-      </g>
+      <Logo size={82} x={54} y={185} />
       <g fontFamily="Google Sans Flex, sans-serif">
         <text fill="#252220" fontSize="76" fontWeight="748" letterSpacing="-2.7" x="64" y="350">
           little table
@@ -284,10 +267,11 @@ if (
     "Usage: bun scripts/open-graph.tsx <shared-board|dice-night|map-notes|gallery> <output>",
   );
 }
-const [font, googleSansFlex, mapBoard] = await Promise.all([
+const [font, googleSansFlex, mapBoard, mark] = await Promise.all([
   readFile(new URL("../client/src/theme/fonts/outfit-latin.woff2", import.meta.url)),
   readFile(new URL("../client/src/theme/fonts/google-sans-flex-latin.woff2", import.meta.url)),
   readFile(new URL("open-graph-map.png", import.meta.url)),
+  readFile(new URL("../client/public/favicon.svg", import.meta.url)),
 ]);
 const documentCss = `
   @font-face { font-family: Outfit; src: url(data:font/woff2;base64,${font.toString("base64")}) format("woff2"); font-weight: 100 900; }
@@ -329,7 +313,10 @@ if (concept === "gallery") {
 } else {
   const browser = await chromium.launch({ args: ["--ozone-platform=headless"] });
   try {
-    const page = await browser.newPage({ viewport: { height: HEIGHT, width: WIDTH } });
+    const page = await browser.newPage({
+      colorScheme: "light",
+      viewport: { height: HEIGHT, width: WIDTH },
+    });
     await page.setContent(
       documentOf(renderToStaticMarkup(concepts[concept as keyof typeof concepts].render)),
     );

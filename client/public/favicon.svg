@@ -1,1 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect x="4" y="4" width="112" height="112" rx="28" fill="#f85a3c"/><rect x="28" y="28" width="64" height="64" rx="14" fill="#fff"/><g fill="#f85a3c"><circle cx="44" cy="44" r="7"/><circle cx="60" cy="60" r="7"/><circle cx="76" cy="76" r="7"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <style>
+    .seats { fill: #252220; }
+    @media (prefers-color-scheme: dark) {
+      .seats { fill: #fafafa; }
+    }
+  </style>
+  <defs>
+    <path id="cutout" d="M43 17H77C77 36 43 36 43 17Z" />
+    <path id="seat" d="M47.5 17H72.5C72.5 30 47.5 30 47.5 17Z" />
+    <mask id="table" x="0" y="0" width="120" height="120" maskUnits="userSpaceOnUse">
+      <path fill="white" d="M60 17C97 17 103 23 103 60C103 97 97 103 60 103C23 103 17 97 17 60C17 23 23 17 60 17Z" />
+      <g fill="black">
+        <use href="#cutout" />
+        <use href="#cutout" transform="rotate(90 60 60)" />
+        <use href="#cutout" transform="rotate(180 60 60)" />
+        <use href="#cutout" transform="rotate(270 60 60)" />
+        <circle cx="60" cy="60" r="9" />
+      </g>
+    </mask>
+  </defs>
+  <rect width="120" height="120" fill="#f85a3c" mask="url(#table)" />
+  <g class="seats">
+    <use href="#seat" />
+    <use href="#seat" transform="rotate(90 60 60)" />
+    <use href="#seat" transform="rotate(180 60 60)" />
+    <use href="#seat" transform="rotate(270 60 60)" />
+  </g>
+</svg>
