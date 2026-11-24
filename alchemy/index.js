@@ -7,6 +7,7 @@
 // stack's own TypeScript but leaves everything under node_modules to Node.
 
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
@@ -14,11 +15,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildClient } from "./build-client.js";
+
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
-
-/** @type {{ compatibility_date: string }} */
-const testedRuntime = JSON.parse(readFileSync(packageFile("wrangler.json"), "utf8"));
 
 const pem = (/** @type {string} */ value) => value.replaceAll(String.raw`\n`, "\n");
 
@@ -48,6 +48,13 @@ const observability = {
 
 /** @param {string | Redacted.Redacted<string>} value */
 const secret = (value) => (Redacted.isRedacted(value) ? value : Redacted.make(value));
+
+/** @param {string | Redacted.Redacted<string>} value */
+function signingSecret(value) {
+  const key = secret(value);
+  refuseDevKey(createPrivateKey(pem(Redacted.value(key))), "signingKey");
+  return key;
+}
 
 /**
  * @param {import("./index.js").TabletopProps} props
@@ -93,8 +100,9 @@ function configure(props) {
       },
     };
   }
-  const signingKey = secret(props.signingKey);
-  refuseDevKey(createPrivateKey(pem(Redacted.value(signingKey))), "signingKey");
+  const signingKey = Output.isOutput(props.signingKey)
+    ? props.signingKey.pipe(Output.map(signingSecret))
+    : signingSecret(props.signingKey);
   return {
     client,
     env: {
@@ -109,49 +117,43 @@ function configure(props) {
 }
 
 /**
- * The client is built per deployment: it carries the host's pass endpoint,
- * the brand and tldraw's licence key, which tldraw checks against the domain.
- * @param {string} id
- * @param {import("../client/settings.ts").ClientSettings} settings
- * @param {string | undefined} iconsDir
- */
-const buildClient = (id, settings, iconsDir) =>
-  Effect.promise(async () => {
-    const { build } = await import("vite");
-    const outDir = resolve(".alchemy", "tabletop", id);
-    await build({
-      build: { outDir },
-      configFile: packageFile("vite.config.ts"),
-      define: { __TABLETOP__: JSON.stringify(settings) },
-      logLevel: "warn",
-      ...(iconsDir === undefined ? {} : { publicDir: resolve(iconsDir) }),
-    });
-    return outDir;
-  });
-
-/**
  * @param {string} id
  * @param {import("./index.js").TabletopProps} props
  */
 export const Tabletop = (id, props) =>
   Effect.gen(function* () {
+    const { prebuilt } = props;
+    const sourceFile =
+      prebuilt === undefined
+        ? packageFile
+        : (/** @type {string} */ path) => resolve(prebuilt, path);
+    /** @type {{ compatibility_date: string }} */
+    const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);
-    const assets = yield* buildClient(id, client, props.iconsDir);
+    // The client carries the deployment's brand, pass endpoint and tldraw key.
+    const assets =
+      prebuilt === undefined ? resolve(".alchemy", "tabletop", id) : sourceFile("client");
+    if (prebuilt === undefined) {
+      yield* Effect.promise(() =>
+        buildClient(packageFile("vite.config.ts"), assets, client, props.iconsDir),
+      );
+    }
     // Standalone mode's accounts, sessions, boards and visits, and the
     // per-address rate limiter.
     const standalone =
       props.mode === "standalone"
         ? {
             DB: yield* Cloudflare.D1.Database(`${id}Accounts`, {
-              migrations: packageFile("migrations"),
+              migrations: sourceFile("migrations"),
             }),
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};
-    // The boards' images, one bucket per deployment and stage (Alchemy
-    // names it app-stage-id). NOTE: a bucket with objects in it is never
-    // destroyed with the stack; the boards' images are not disposable.
-    const files = yield* Cloudflare.R2.Bucket(`${id}Files`);
+    // Only explicitly disposable deployments may empty their image bucket.
+    const files = yield* Cloudflare.R2.Bucket(
+      `${id}Files`,
+      props.forceDestroyFiles ? { forceDestroy: true } : undefined,
+    );
     const worker = yield* Cloudflare.Worker(id, {
       assets: {
         directory: assets,
@@ -166,7 +168,10 @@ export const Tabletop = (id, props) =>
         // NOTE: Alchemy switches Workers to the new module registry unless
         // told otherwise, and the tests run the legacy one this date
         // defaults to. nodejs_compat is on by default from 2026-08-04.
-        flags: ["legacy_module_registry"],
+        flags:
+          prebuilt === undefined
+            ? ["legacy_module_registry"]
+            : ["legacy_module_registry", "nodejs_compat"],
       },
       // NOTE: the aliases are attached for DNS and TLS only; the Worker
       // answers each with a 308 to the primary host (src/site.ts).
@@ -180,7 +185,9 @@ export const Tabletop = (id, props) =>
         BoardRoom: Cloudflare.DurableObject("BoardRoom"),
         Files: files,
       },
-      main: packageFile("src/index.ts"),
+      ...(prebuilt === undefined
+        ? { main: packageFile("src/index.ts") }
+        : { bundle: false, main: sourceFile("worker/index.js") }),
       name: props.workerName,
       observability,
     });

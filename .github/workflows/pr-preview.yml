@@ -1,0 +1,284 @@
+name: PR Preview
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, closed]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number
+        required: true
+        type: number
+      reviewed_head:
+        description: Full SHA of the pull request head you reviewed
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: pr-preview-${{ github.event.number || inputs.pull_request }}
+  cancel-in-progress: false
+
+env:
+  PULL_REQUEST: ${{ github.event.number || inputs.pull_request }}
+  STAGE: pr-${{ github.event.number || inputs.pull_request }}
+
+jobs:
+  authorize:
+    name: Authorize preview
+    if: >-
+      ${{ github.ref == 'refs/heads/main' &&
+          !github.event.repository.fork &&
+          ((github.event_name == 'workflow_dispatch' && github.actor == github.triggering_actor) ||
+           github.event.action == 'closed' ||
+           (github.event.pull_request.head.repo.full_name == github.repository &&
+            (github.event.action != 'edited' || github.event.changes.base.ref.from))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.current.outputs.run }}
+      base: ${{ steps.current.outputs.base }}
+      head: ${{ steps.current.outputs.head }}
+    steps:
+      - name: Check permission and current PR state
+        id: current
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          REQUESTER: ${{ github.actor }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEWED_HEAD: ${{ inputs.reviewed_head }}
+        run: |
+          if [[ ! "$PULL_REQUEST" =~ ^[1-9][0-9]*$ ]]; then
+            echo '::error::Enter a positive pull request number.'
+            exit 1
+          fi
+
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST")
+          state=$(jq -r .state <<< "$pr")
+          if [[ "$ACTION" == closed ]]; then
+            if [[ "$state" == closed ]]; then
+              echo 'run=true' >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          if [[ "$state" != open ]]; then
+            echo '::notice::The pull request is closed.'
+            exit 0
+          fi
+
+          head=$(jq -er .head.sha <<< "$pr")
+          base=$(jq -er .base.sha <<< "$pr")
+          access=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$REQUESTER/permission")
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            if ! jq -e '.role_name == "maintain" or .permission == "admin"' <<< "$access" >/dev/null; then
+              echo '::error::Manual previews require Maintain or Admin access.'
+              exit 1
+            fi
+            if [[ "$head" != "${REVIEWED_HEAD,,}" ]]; then
+              echo '::error::The PR head has changed. Review the current commit before dispatching again.'
+              exit 1
+            fi
+          else
+            if ! jq -e '.permission == "write" or .permission == "admin"' <<< "$access" >/dev/null; then
+              echo '::notice::Automatic previews require Write access.'
+              exit 0
+            fi
+            base_ref=$(jq -er .base.ref <<< "$pr")
+            if [[ "$head" != "$EXPECTED_HEAD" || "$base" != "$EXPECTED_BASE" || "$base_ref" != "$EXPECTED_BASE_REF" ]]; then
+              echo '::notice::A newer PR event superseded this run.'
+              exit 0
+            fi
+          fi
+          printf 'run=true\nbase=%s\nhead=%s\n' "$base" "$head" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build preview
+    needs: authorize
+    if: >-
+      ${{ needs.authorize.outputs.run == 'true' && github.event.action != 'closed' &&
+          (github.event_name != 'workflow_dispatch' || github.actor == github.triggering_actor) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: deployment
+    steps:
+      - name: Check out build helper
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: deployment
+          persist-credentials: false
+
+      - name: Check out preview source
+        id: source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/pull/${{ env.PULL_REQUEST }}/merge
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify preview checkout
+        working-directory: source
+        env:
+          EXPECTED_HEAD: ${{ needs.authorize.outputs.head }}
+          EXPECTED_BASE: ${{ needs.authorize.outputs.base }}
+        run: |
+          if [[ "$(git show --no-patch --format=%P HEAD)" != "$EXPECTED_BASE $EXPECTED_HEAD" ]]; then
+            echo '::error::The preview merge ref parents no longer match the authorized commits.'
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: deployment/package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: deployment/package.json
+          package-manager-cache: false
+
+      - name: Install preview source dependencies
+        working-directory: source
+        run: bun install --frozen-lockfile
+
+      - name: Bundle preview
+        env:
+          TLDRAW_LICENSE_KEY: ${{ vars.PREVIEW_TLDRAW_LICENSE_KEY }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          if [ -z "$TLDRAW_LICENSE_KEY" ]; then
+            echo '::warning::Set repository variable PREVIEW_TLDRAW_LICENSE_KEY to enable the preview board editor.'
+          fi
+          export PREVIEW_BUNDLE_DIR="$RUNNER_TEMP/preview-bundle"
+          mkdir "$PREVIEW_BUNDLE_DIR"
+          node --input-type=module <<'JS'
+          import { resolve } from 'node:path';
+          import { buildClient } from './alchemy/build-client.js';
+          import { DEFAULT_SETTINGS } from './client/settings.ts';
+
+          await buildClient(resolve('../source/vite.config.ts'), resolve(process.env.PREVIEW_BUNDLE_DIR, 'client'), {
+            ...DEFAULT_SETTINGS,
+            licenseKey: process.env.TLDRAW_LICENSE_KEY ?? '',
+            name: 'Little Table',
+            shortName: 'Little Table',
+          });
+          JS
+          cd ../source
+          ./node_modules/.bin/wrangler deploy src/index.ts --dry-run \
+            --outdir "$PREVIEW_BUNDLE_DIR/worker" --assets "$PREVIEW_BUNDLE_DIR/client"
+          cp -R migrations "$PREVIEW_BUNDLE_DIR/"
+          jq '{compatibility_date}' wrangler.json > "$PREVIEW_BUNDLE_DIR/wrangler.json"
+          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" client worker migrations wrangler.json
+
+      - name: Upload preview bundle
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/preview.tar.gz
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+
+  preview:
+    name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
+    needs: [authorize, build]
+    if: >-
+      ${{ !cancelled() && needs.authorize.outputs.run == 'true' &&
+          (github.event.action == 'closed' || needs.build.result == 'success') &&
+          (github.event_name != 'workflow_dispatch' || github.actor == github.triggering_actor) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out deployment code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download preview bundle
+        if: github.event.action != 'closed'
+        uses: actions/download-artifact@v8
+        with:
+          name: preview.tar.gz
+          path: ${{ runner.temp }}/preview-download
+          skip-decompress: true
+
+      - name: Validate preview files
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p .alchemy
+          python3 .github/scripts/unpack-preview.py "$RUNNER_TEMP/preview-download/preview.tar.gz" .alchemy/preview-bundle
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - run: bun install --frozen-lockfile
+
+      - name: Deploy preview
+        id: deploy
+        if: github.event.action != 'closed'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
+          WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID || secrets.WORKOS_CLIENT_ID }}
+          PREVIEW_COMMIT: ${{ needs.build.outputs.commit }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
+          : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
+          : "${WORKOS_API_KEY:?Set preview secret WORKOS_API_KEY}"
+          : "${WORKOS_CLIENT_ID:?Set preview variable WORKOS_CLIENT_ID}"
+          if [[ ! "$PREVIEW_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Missing verified preview commit.'
+            exit 1
+          fi
+          export PREVIEW_BUNDLE_DIR="$PWD/.alchemy/preview-bundle"
+          log="$RUNNER_TEMP/alchemy-preview.log"
+          ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"
+          url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://littletable-${STAGE}\.[a-z0-9-]+\.workers\.dev)'.*#\1#p" | tail -n 1)
+          if [ -z "$url" ]; then
+            echo '::error::Alchemy did not return the expected workers.dev preview URL.'
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 "$url/" --output /dev/null
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Remove preview
+        if: github.event.action == 'closed'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
+          : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
+          ./node_modules/.bin/alchemy destroy --config alchemy.preview.ts --stage "$STAGE" --yes

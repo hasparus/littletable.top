@@ -1,4 +1,5 @@
 import type * as Cloudflare from "@alchemy.run/cloudflare";
+import type * as Output from "alchemy/Output";
 import type * as Effect from "effect/Effect";
 import type * as Redacted from "effect/Redacted";
 
@@ -11,6 +12,8 @@ type Shared = {
   // The name and description on the page, the home screen and the manifest.
   description?: string;
   displayName?: string;
+  // Opt in for disposable deployments whose image buckets can be emptied on destroy.
+  forceDestroyFiles?: boolean;
   // The primary host and the hosts that 308 to it, attached as the Worker's
   // custom domains. Omit for a workers.dev preview.
   domain?: { aliases?: string[]; primary: string };
@@ -23,6 +26,8 @@ type Shared = {
   // tldraw's licence key, built into the client: public by design.
   licenseKey?: string;
   shortName?: string;
+  // Directory with compiled client assets, Worker, database migrations, and runtime metadata.
+  prebuilt?: string;
   // The Worker's script name; Alchemy derives one from the stack otherwise.
   workerName?: string;
 };
@@ -52,7 +57,7 @@ export type StandaloneProps = Shared & {
   mode: "standalone";
   // The private key (PKCS#8 PEM) the Worker signs its own passes with. The
   // committed dev key is refused.
-  signingKey: Redacted.Redacted<string> | string;
+  signingKey: Output.Output<Redacted.Redacted<string>> | Redacted.Redacted<string> | string;
   // The WorkOS application people sign in through: its client id and API
   // key. Its redirect URI is https://<domain.primary>/auth/callback.
   workOs: { apiKey: Redacted.Redacted<string> | string; clientId: string };

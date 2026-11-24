@@ -22,6 +22,7 @@
     "vitest.config.ts",
     "vite.config.ts",
     "alchemy.run.ts",
+    "alchemy.preview.ts",
     "alchemy/**/*.js",
     "alchemy/**/*.d.ts",
     "client/settings.ts"
