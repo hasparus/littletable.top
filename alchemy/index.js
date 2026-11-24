@@ -12,8 +12,9 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
@@ -124,7 +125,8 @@ function configure(props) {
  */
 const buildClient = (id, settings, configFile, iconsDir) =>
   Effect.promise(async () => {
-    const { build } = await import("vite");
+    const vite = createRequire(configFile).resolve("vite");
+    const { build } = await import(pathToFileURL(vite).href);
     const outDir = resolve(".alchemy", "tabletop", id);
     await build({
       build: { outDir },
