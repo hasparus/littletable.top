@@ -14,7 +14,7 @@
 
 import type { DieMesh } from "./dice-mesh";
 
-import { add, type Quat, rotate, type Vec } from "./dice-math";
+import { add, type Quat, rotate, scale, type Vec } from "./dice-math";
 import { TRAY_DEPTH, TRAY_WIDTH } from "./dice-physics";
 
 // "low": one device pixel per CSS pixel, no clearcoat.
@@ -24,9 +24,7 @@ export type Look = { body: Rgb; ink: Rgb };
 // `core` and `rounding`: the die is its core's corners swept by a ball.
 // `coat`: its share of the clearcoat. `smooth`: how far its faces are lit
 // as the sphere around them, which keeps one of a ball's many small faces
-// from outshining the rest. `spot`: for a die whose numerals may
-// be drawn upside down, the atlas's columns and where in its cell a numeral
-// is centred.
+// from outshining the rest.
 export type Model = {
   atlas: HTMLCanvasElement;
   coat: number;
@@ -34,20 +32,23 @@ export type Model = {
   mesh: DieMesh;
   rounding: number;
   smooth: number;
-  spot: { columns: number; x: number; y: number } | null;
 };
 // A face told apart as the result: its colours swapped and its numeral
 // larger, by `amount` from 0 to 1. `x` and `y`: where its numeral is centred
 // in the atlas, in cells; `columns`: the atlas's.
 export type Mark = { amount: number; columns: number; x: number; y: number };
-// `upsideDown`: every numeral of the die is drawn turned half round on its
-// spot.
+// One face's numeral drawn turned on its face, about its own centre: `x` and
+// `y` are that centre in the atlas, in cells, `columns` the atlas's, `cos`
+// and `sin` the turn's, clockwise as the face is read.
+export type Turn = { columns: number; cos: number; sin: number; x: number; y: number };
+// `size`: the die as a share of its model.
 export type Pose = {
   mark: Mark | null;
   model: Model;
   position: Vec;
   rotation: Quat;
-  upsideDown: boolean;
+  size: number;
+  turn: Turn | null;
 };
 
 export type Renderer = {
@@ -98,11 +99,11 @@ vec3 rot(vec4 q, vec3 v) { vec3 t = 2.0 * cross(q.xyz, v); return v + q.w * t + 
 
 const DIE_VS = `#version 300 es
 in vec3 aPos; in vec3 aNor; in vec2 aUv;
-uniform mat4 uViewProj; uniform vec4 uQ; uniform vec3 uP;
+uniform mat4 uViewProj; uniform vec4 uQ; uniform vec3 uP; uniform float uSize;
 out vec3 vPos; out vec3 vNor; out vec2 vUv;
 ${ROTATE}
 void main() {
-  vec3 w = rot(uQ, aPos) + uP;
+  vec3 w = rot(uQ, aPos * uSize) + uP;
   vPos = w; vNor = rot(uQ, aNor); vUv = aUv;
   gl_Position = uViewProj * vec4(w, 1.0);
 }`;
@@ -113,7 +114,8 @@ in vec3 vPos; in vec3 vNor; in vec2 vUv;
 uniform sampler2D uAtlas;
 uniform vec3 uCam, uLight, uBody, uInk;
 uniform float uRough, uCoat, uCoatRough, uBump, uSmooth;
-uniform vec4 uSpot, uMark;
+uniform vec4 uTurn, uMark;
+uniform float uColumns;
 uniform vec3 uP;
 out vec4 frag;
 const float PI = 3.14159265;
@@ -129,11 +131,19 @@ vec3 env(vec3 r, float rough) {
 float ggx(float nh, float a) { float a2 = a * a; float d = nh * nh * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 float schlick(float c) { return 0.04 + 0.96 * pow(1.0 - c, 5.0); }
 void main() {
-  // In cells from the atlas's top left; uSpot.w turns the cell half round
-  // on the numeral's spot.
-  vec2 at = vec2(vUv.x, 1.0 - vUv.y) * uSpot.x;
-  vec2 turned = 2.0 * (floor(at) + uSpot.yz) - at;
-  vec2 uv = uSpot.w > 0.5 ? vec2(turned.x, uSpot.x - turned.y) / uSpot.x : vUv;
+  // The turned face: uTurn.xy is its numeral's centre in cells from the
+  // atlas's top left, uTurn.zw the turn's cosine and sine, uColumns the
+  // atlas's columns. What the turn would bring in from a neighbouring cell
+  // is left blank.
+  vec2 uv = vUv;
+  float blank = 0.0;
+  vec2 at = vec2(vUv.x, 1.0 - vUv.y) * uColumns;
+  if (floor(at) == floor(uTurn.xy)) {
+    vec2 d = at - uTurn.xy;
+    vec2 from = uTurn.xy + vec2(uTurn.z * d.x + uTurn.w * d.y, uTurn.z * d.y - uTurn.w * d.x);
+    blank = floor(from) == floor(uTurn.xy) ? 0.0 : 1.0;
+    uv = vec2(from.x, uColumns - from.y) / uColumns;
+  }
   // The marked face: uMark.xy is its numeral's centre in cells, uMark.z the
   // atlas's columns, uMark.w how far the mark has come in. Its numeral
   // grows about its centre and its ink and body swap.
@@ -141,7 +151,7 @@ void main() {
   float marked = floor(cell) == floor(uMark.xy) ? uMark.w : 0.0;
   vec2 grown = uMark.xy + (cell - uMark.xy) / (1.0 + ${MARK_GROWTH} * marked);
   if (marked > 0.0) uv = vec2(grown.x, uMark.z - grown.y) / uMark.z;
-  float paper = texture(uAtlas, uv).r;
+  float paper = max(texture(uAtlas, uv).r, blank);
   paper = mix(paper, 1.0 - paper, marked);
   vec3 base = pow(mix(uInk, uBody, paper), vec3(2.2));
   vec3 n = normalize(mix(normalize(vNor), normalize(vPos - uP), uSmooth));
@@ -538,12 +548,12 @@ export function createRenderer(
       gl.bindTexture(gl.TEXTURE_2D, model.atlas);
       gl.uniform4fv(uniform("uQ"), pose.rotation);
       gl.uniform3fv(uniform("uP"), pose.position);
+      gl.uniform1f(uniform("uSize"), pose.size);
       gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
-      const { spot } = pose.model;
-      if (spot !== null && pose.upsideDown)
-        gl.uniform4f(uniform("uSpot"), spot.columns, spot.x, spot.y, 1);
-      else gl.uniform4f(uniform("uSpot"), 1, 0, 0, 0);
-      const { mark } = pose;
+      const { mark, turn } = pose;
+      if (turn === null) gl.uniform4f(uniform("uTurn"), -1, -1, 1, 0);
+      else gl.uniform4f(uniform("uTurn"), turn.x, turn.y, turn.cos, turn.sin);
+      gl.uniform1f(uniform("uColumns"), turn?.columns ?? 1);
       if (mark === null) gl.uniform4f(uniform("uMark"), -1, -1, 1, 0);
       else gl.uniform4f(uniform("uMark"), mark.x, mark.y, mark.columns, mark.amount);
       gl.uniform1f(uniform("uSmooth"), pose.model.smooth);
@@ -558,9 +568,9 @@ export function createRenderer(
     const [red, green, blue, alpha] = dark ? SHADOW_TINT.dark : SHADOW_TINT.light;
     const shaded = poses.map((pose) => {
       const corners = pose.model.core.map((corner) =>
-        add(rotate(pose.rotation, corner), pose.position),
+        add(rotate(pose.rotation, scale(corner, pose.size)), pose.position),
       );
-      const { rounding } = pose.model;
+      const rounding = pose.model.rounding * pose.size;
       const bottom = Math.max(0, Math.min(...corners.map((corner) => corner[1])) - rounding);
       return { bottom, corners, rounding };
     });

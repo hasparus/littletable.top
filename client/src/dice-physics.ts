@@ -7,7 +7,9 @@
 // sphere: they bounce it away and it slides off them, so no die comes to rest
 // leaning on a wall or on another die. The d100 is a sphere to the floor
 // too: it touches at one point, rolls, and is slowed by a rolling resistance
-// that does not weaken with speed, so it stops instead of creeping.
+// that does not weaken with speed, so it stops instead of creeping. Twenty
+// full-size balls are all the tray's floor holds, in rows; thrown, some would
+// end on top of others. A crowd of balls is therefore thrown smaller.
 
 import {
   add,
@@ -59,6 +61,15 @@ const SLEEP_SPEED2 = 0.04;
 const SLEEP_SPIN2 = 0.04;
 const SLEEP_SECONDS = 0.2;
 const MAX_SECONDS = 3.2;
+// Balls in a crowd take longer to find their places: frames added to the cap
+// per ball beyond the first `CALM_BALLS`, 4.2 s in all for twenty.
+const CROWD_FRAMES = 4;
+const CALM_BALLS = 5;
+// The floor the dice may fill before the balls among them shrink, as the sum
+// of their spheres' squared radii: 45% of the tray. Fuller, and a ball
+// comes to rest on top of others, where nothing can make room for it.
+const CROWD = 20;
+const SMALLEST_BALL = 1;
 const SNAP_FRAMES = 12;
 // Within about 2° of flat counts as lying on a face.
 const FLAT = 0.9994;
@@ -70,6 +81,7 @@ type Body = {
   invInertia: number;
   position: Vec;
   rotation: Quat;
+  size: number;
   solid: Solid;
   sphere: number;
   still: number;
@@ -100,8 +112,10 @@ const UP: Vec = [0, 1, 0];
 export type Throw = {
   // Per die, FRAME_STRIDE numbers per frame at FPS.
   frames: Float64Array[];
-  // Seconds until every die slept; MAX_SECONDS when the cap ended it.
+  // Seconds until every die slept; the cap's when it ended the throw.
   settledAt: number;
+  // Per die, its size as a share of its solid's: 1 but for balls in a crowd.
+  sizes: number[];
   // Dice eased onto a face at the end because they had not settled flat.
   snapped: number;
 };
@@ -112,11 +126,28 @@ function sphereOf(shape: Solid): number {
   return shape.kind === "d4" ? shape.radius * 0.72 : shape.radius * 0.93;
 }
 
+// The size of every ball of a throw, as a share of the solid's: what keeps
+// the dice within `CROWD`, and never under `SMALLEST_BALL` across.
+export function ballSize(kinds: DieKind[]): number {
+  let balls = 0;
+  let others = 0;
+  for (const kind of kinds) {
+    const shape = solid(kind);
+    if (shape.ball) balls += 1;
+    else others += sphereOf(shape) * sphereOf(shape);
+  }
+  if (balls === 0) return 1;
+  const radius = Math.max(SMALLEST_BALL, Math.sqrt(Math.max(CROWD - others, 0) / balls));
+  return Math.min(1, radius / solid("d100").inradius);
+}
+
 // Thrown from the lower right, where the roll button sits, up and to the left.
 function spawn(kinds: DieKind[], seed: number): Body[] {
   const random = generator(seed);
+  const ball = ballSize(kinds);
   return kinds.map((kind, i) => {
     const shape = solid(kind);
+    const size = shape.ball ? ball : 1;
     const column = i % 3;
     const layer = Math.floor(i / 3);
     const position: Vec = [
@@ -129,7 +160,7 @@ function spawn(kinds: DieKind[], seed: number): Body[] {
     const velocity: Vec = [-speed * sideways, -1 - random() * 2, -speed];
     const angular: Vec = [(random() - 0.5) * 36, (random() - 0.5) * 36, (random() - 0.5) * 36];
     // Platonic solids have isotropic inertia; I = 0.4 m R² over a mean radius.
-    const mean = (shape.inradius + shape.radius) / 2;
+    const mean = ((shape.inradius + shape.radius) / 2) * size;
     return {
       angular,
       asleep: false,
@@ -137,8 +168,9 @@ function spawn(kinds: DieKind[], seed: number): Body[] {
       invInertia: 1 / (0.4 * mean * mean),
       position,
       rotation: randomRotation(random),
+      size,
       solid: shape,
-      sphere: sphereOf(shape),
+      sphere: sphereOf(shape) * size,
       still: 0,
       velocity,
     };
@@ -151,7 +183,7 @@ function flatPose(body: Body): { dot: number; position: Vec; rotation: Quat } {
   if (body.ball) {
     return {
       dot: 1,
-      position: [body.position[0], body.solid.inradius, body.position[2]],
+      position: [body.position[0], body.sphere, body.position[2]],
       rotation: body.rotation,
     };
   }
@@ -372,7 +404,9 @@ export function simulation(kinds: DieKind[], seed: number): Simulation {
   };
   record();
   let frame = 0;
-  let settledAt = MAX_SECONDS;
+  const balls = bodies.filter((body) => body.ball).length;
+  const cap = MAX_SECONDS * FPS + CROWD_FRAMES * Math.max(0, balls - CALM_BALLS);
+  let settledAt = cap / FPS;
   let done = false;
   let snapped = 0;
 
@@ -400,12 +434,17 @@ export function simulation(kinds: DieKind[], seed: number): Simulation {
         for (let k = 0; k < SUBSTEPS; k += 1) step(bodies);
         record();
         if (bodies.every((body) => body.asleep)) settledAt = frame / FPS;
-        if (bodies.every((body) => body.asleep) || frame >= MAX_SECONDS * FPS) finish();
+        if (bodies.every((body) => body.asleep) || frame >= cap) finish();
         else if (performance.now() >= deadline) return false;
       }
       return true;
     },
-    result: () => ({ frames: frames.map((f) => Float64Array.from(f)), settledAt, snapped }),
+    result: () => ({
+      frames: frames.map((f) => Float64Array.from(f)),
+      settledAt,
+      sizes: bodies.map((body) => body.size),
+      snapped,
+    }),
   };
 }
 

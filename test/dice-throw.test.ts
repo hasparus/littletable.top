@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DieKind } from "../client/src/dice-solids";
 
-import { multiply, rotate } from "../client/src/dice-math";
+import { add, cross, multiply, rotate, scale } from "../client/src/dice-math";
 import {
   FRAME_STRIDE,
   hashThrow,
@@ -11,15 +11,25 @@ import {
   TRAY_WIDTH,
 } from "../client/src/dice-physics";
 import { solid } from "../client/src/dice-solids";
-import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dice-throw";
+import {
+  bodiesOf,
+  finalRotation,
+  numbering,
+  throwDice,
+  uprightTurn,
+} from "../client/src/dice-throw";
 
 // What can go wrong with the shared throw, and what guards it here:
 // - a die ends tilted, on an edge or leaning on another: "lies flat"
 // - a d100, a ball with no face to lie on, never stops or leaves the tray:
 //   "comes to rest", and "stays in the tray, apart" with its full radius
+// - a crowd of balls has no room on the floor, so one ends on top of others
+//   and is cut into them at the cap: "a crowd of balls"
 // - the top face is not the server's value: "shows the server's value"
 // - a die leaves the tray or ends inside another: "stays in the tray, apart"
 // - a throw that never settles is cut differently on two screens: "the cap"
+// - the number on top reads sideways, as a d10's would, whose numbering has
+//   one way to lie: "stands the result's numeral upright"
 // - the simulation changes by accident: the fixed-seed tripwire
 // - a transcendental function creeps back in: test/dice-exact.test.ts
 // - engines disagree: e2e/tests/dice-determinism.spec.ts runs the same
@@ -35,6 +45,13 @@ function pool(seed: number): number[] {
     (_, k) => SIDES[(seed * 7 + k * 3) % SIDES.length]!,
   );
 }
+
+// Pools whose balls are thrown smaller: twenty, and two mixed ones.
+const CROWDS: DieKind[][] = [
+  Array.from({ length: 20 }, (): DieKind => "d100"),
+  Array.from({ length: 20 }, (_, i): DieKind => (i % 4 === 3 ? "d20" : "d100")),
+  Array.from({ length: 20 }, (_, i): DieKind => (i % 2 === 0 ? "d100" : "d12")),
+];
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => Math.imul(i + 1, 2_654_435_761) >>> 0);
 
@@ -93,22 +110,38 @@ describe("the shared throw", () => {
     }
   });
 
-  it("throws twenty d100s as twenty balls that end apart, inside the tray", () => {
-    const dice = Array.from({ length: 20 }, (_, i) => ({ sides: 100, value: i * 5 + 1 }));
-    const run = throwDice(dice, 99);
-    run.advance(Number.POSITIVE_INFINITY);
-    const { bodies, thrown } = run.planned();
-    expect(bodies).toHaveLength(20);
-    const reach = solid("d100").inradius;
-    const ends = thrown.frames.map(lastPosition);
-    ends.forEach(([x, , z], i) => {
-      expect(Math.abs(x)).toBeLessThan(TRAY_WIDTH / 2 - reach + 0.01);
-      expect(Math.abs(z)).toBeLessThan(TRAY_DEPTH / 2 - reach + 0.01);
-      for (const other of ends.slice(i + 1)) {
-        expect(Math.hypot(x - other[0], z - other[2])).toBeGreaterThan(2 * reach * 0.9);
-      }
-    });
+  it("throws balls at their full size until they crowd the tray", () => {
+    const sizes = (kinds: DieKind[]) => simulate(kinds, 3).sizes;
+    expect(sizes(["d100", "d20"])).toEqual([1, 1]);
+    expect(sizes(Array.from({ length: 13 }, () => "d100"))).toEqual(Array(13).fill(1));
+    expect(sizes(Array.from({ length: 20 }, () => "d100"))[0]).toBeCloseTo(1 / 1.2, 12);
+    const mixed = sizes([...CROWDS[2]!]);
+    expect(mixed[0]).toBeGreaterThan(1 / 1.2);
+    expect(mixed[0]).toBeLessThan(1);
+    expect(mixed[1]).toBe(1);
   });
+
+  it.each(SEEDS.slice(0, 12))(
+    "with seed %i a crowd of balls comes to rest by itself, apart, on the floor",
+    (seed) => {
+      // Twenty balls have until 4.2 s.
+      expect(simulate(CROWDS[0]!, seed).settledAt).toBeLessThan(4.2);
+      for (const kinds of CROWDS) {
+        const thrown = simulate(kinds, seed);
+        const ends = thrown.frames.map(lastPosition);
+        const reach = kinds.map((kind, i) => solid(kind).inradius * thrown.sizes[i]!);
+        ends.forEach(([x, y, z], i) => {
+          expect(y).toBeCloseTo(reach[i]!, 9);
+          expect(Math.abs(x)).toBeLessThan(TRAY_WIDTH / 2 - reach[i]! + 0.01);
+          expect(Math.abs(z)).toBeLessThan(TRAY_DEPTH / 2 - reach[i]! + 0.01);
+          ends.slice(i + 1).forEach((other, k) => {
+            const touch = (reach[i]! + reach[i + 1 + k]!) * 0.98;
+            expect(Math.hypot(x - other[0], z - other[2])).toBeGreaterThan(touch);
+          });
+        });
+      }
+    },
+  );
 
   it.each(KINDS)("puts every value of a %s on top", (kind) => {
     const shape = solid(kind);
@@ -122,6 +155,31 @@ describe("the shared throw", () => {
       );
       expect(top.value).toBe(value);
       expect(rotate(shown, top.dir)[1]).toBeGreaterThan(0.999);
+    }
+  });
+
+  it.each(KINDS.slice(1, 6))("stands the result's numeral upright on a %s", (kind) => {
+    const shape = solid(kind);
+    for (const seed of SEEDS.slice(0, 10)) {
+      const rotation = finalRotation(simulate([kind], seed), 0);
+      const { value } = shape.features[seed % shape.features.length]!;
+      const turn = numbering(kind, rotation, value);
+      const upright = uprightTurn(kind, { rotation, turn, value })!;
+      const top = shape.features[upright.face]!;
+      expect(top.value).toBe(value);
+      // The numeral's up once turned by that much on its face; z runs down
+      // the screen.
+      const right = cross(top.up!, top.dir);
+      const up = add(scale(top.up!, upright.cos), scale(right, upright.sin));
+      expect(rotate(multiply(rotation, turn), up)[2]).toBeCloseTo(-1, 6);
+    }
+  });
+
+  it("turns no numeral of a d4 or of a ball", () => {
+    for (const kind of ["d4", "d100"] as const) {
+      const rotation = finalRotation(simulate([kind], 7), 0);
+      const turn = numbering(kind, rotation, 1);
+      expect(uprightTurn(kind, { rotation, turn, value: 1 })).toBeNull();
     }
   });
 
@@ -205,5 +263,11 @@ describe("the shared throw", () => {
     expect(hashThrow(simulate(["d100"], 2_026))).toBe("76bc62aa");
     expect(hashThrow(simulate(KINDS.slice(0, 6), 7))).toBe("2e06c497");
     expect(hashThrow(simulate(["d20"], 2_026))).toBe("e4fe3cb2");
+    // NOTE: crowds, whose balls are thrown smaller; pinned when that began.
+    expect(CROWDS.map((kinds) => hashThrow(simulate(kinds, 7)))).toEqual([
+      "6d78f8a6",
+      "239f70ee",
+      "7ebfc92c",
+    ]);
   });
 });

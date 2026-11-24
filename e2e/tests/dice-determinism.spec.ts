@@ -18,11 +18,12 @@ const THROWS = 200;
 // seed the server draws.
 const seeds = Uint32Array.from({ length: THROWS }, (_, i) => Math.imul(i + 1, 2_654_435_761));
 
-// Mixed pools of 1 to 20 dice, d100s among them.
+// Mixed pools of 1 to 20 dice, d100s among them; every fifth is a crowd of
+// 11 to 20 dice, mostly d100s, whose balls are thrown smaller.
 const cases = Array.from(seeds, (seed, i) => ({
   kinds: bodiesOf(
-    Array.from({ length: 1 + (i % 20) }, (_, k) => ({
-      sides: SIDES[(i * 7 + k * 3) % SIDES.length]!,
+    Array.from({ length: i % 5 === 4 ? 11 + (i % 10) : 1 + (i % 20) }, (_, k) => ({
+      sides: i % 5 === 4 && k % 4 !== i % 4 ? 100 : SIDES[(i * 7 + k * 3) % SIDES.length]!,
       value: 1,
     })),
   ).map((body) => body.kind),
