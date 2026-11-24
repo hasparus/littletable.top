@@ -1,4 +1,6 @@
+import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -230,7 +232,13 @@ export default defineConfig({
   // NOTE: the dependency pre-bundler cannot follow @tldraw/assets' `?url`
   // imports; Vite serves the package as it is instead.
   optimizeDeps: { exclude: ["@tldraw/assets"] },
-  plugins: [tailwindcss(), tabletop(), textEngineFiles()],
+  plugins: [
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+    tabletop(),
+    textEngineFiles(),
+  ],
   publicDir: fileURLToPath(new URL("client/public", import.meta.url)),
   // NOTE: the text worker is a module worker (client/src/text-worker.ts),
   // built with the plugin that hands it the engines' files.
