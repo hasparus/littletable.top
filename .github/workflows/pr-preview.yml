@@ -30,7 +30,7 @@ jobs:
     if: >-
       ${{ github.ref == 'refs/heads/main' &&
           !github.event.repository.fork &&
-          (github.event_name == 'workflow_dispatch' ||
+          ((github.event_name == 'workflow_dispatch' && github.actor == github.triggering_actor) ||
            github.event.action == 'closed' ||
            (github.event.pull_request.head.repo.full_name == github.repository &&
             (github.event.action != 'edited' || github.event.changes.base.ref.from))) }}
@@ -49,7 +49,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ github.event.action }}
-          REQUESTER: ${{ github.triggering_actor }}
+          REQUESTER: ${{ github.actor }}
           EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
           EXPECTED_BASE_REF: ${{ github.event.pull_request.base.ref }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -101,7 +101,9 @@ jobs:
   preview:
     name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
     needs: authorize
-    if: needs.authorize.outputs.run == 'true'
+    if: >-
+      ${{ needs.authorize.outputs.run == 'true' &&
+          (github.event_name != 'workflow_dispatch' || github.actor == github.triggering_actor) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -113,18 +115,29 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: deployment
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Check out deployment code
+        uses: actions/checkout@v7.0.1
         with:
-          # Cleanup runs from the default branch and uses only the PR number.
-          ref: ${{ github.event.action == 'closed' && github.sha || format('refs/pull/{0}/merge', env.PULL_REQUEST) }}
+          ref: ${{ github.sha }}
+          path: deployment
+          persist-credentials: false
+
+      - name: Check out preview source
+        if: github.event.action != 'closed'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/pull/${{ env.PULL_REQUEST }}/merge
+          path: source
           fetch-depth: 2
           persist-credentials: false
 
       - name: Verify preview checkout
         if: github.event.action != 'closed'
+        working-directory: source
         env:
           EXPECTED_HEAD: ${{ needs.authorize.outputs.head }}
           EXPECTED_BASE: ${{ needs.authorize.outputs.base }}
@@ -136,14 +149,19 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version-file: package.json
+          bun-version-file: deployment/package.json
 
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version-file: package.json
+          node-version-file: deployment/package.json
           package-manager-cache: false
 
       - run: bun install --frozen-lockfile
+
+      - name: Install preview source dependencies
+        if: github.event.action != 'closed'
+        working-directory: source
+        run: bun install --frozen-lockfile
 
       - name: Deploy preview
         id: deploy
@@ -163,8 +181,9 @@ jobs:
             echo '::warning::Set preview variable TLDRAW_LICENSE_KEY to enable the board editor.'
           fi
 
+          export PREVIEW_SOURCE_DIR="$GITHUB_WORKSPACE/source"
           export PREVIEW_COMMIT
-          PREVIEW_COMMIT=$(git rev-parse HEAD)
+          PREVIEW_COMMIT=$(git -C "$PREVIEW_SOURCE_DIR" rev-parse HEAD)
           log="$RUNNER_TEMP/alchemy-preview.log"
           ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"
           url=$(sed -E 's/\x1b\[[0-9;]*m//g' "$log" | sed -nE "s#.*url: '(https://littletable-${STAGE}\.[a-z0-9-]+\.workers\.dev)'.*#\1#p" | tail -n 1)

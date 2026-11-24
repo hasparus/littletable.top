@@ -18,9 +18,6 @@ import { fileURLToPath } from "node:url";
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
 
-/** @type {{ compatibility_date: string }} */
-const testedRuntime = JSON.parse(readFileSync(packageFile("wrangler.json"), "utf8"));
-
 const pem = (/** @type {string} */ value) => value.replaceAll(String.raw`\n`, "\n");
 
 // The committed dev pair's private half is public, so a Worker that trusts
@@ -122,15 +119,16 @@ function configure(props) {
  * the brand and tldraw's licence key, which tldraw checks against the domain.
  * @param {string} id
  * @param {import("../client/settings.ts").ClientSettings} settings
+ * @param {string} configFile
  * @param {string | undefined} iconsDir
  */
-const buildClient = (id, settings, iconsDir) =>
+const buildClient = (id, settings, configFile, iconsDir) =>
   Effect.promise(async () => {
     const { build } = await import("vite");
     const outDir = resolve(".alchemy", "tabletop", id);
     await build({
       build: { outDir },
-      configFile: packageFile("vite.config.ts"),
+      configFile,
       define: { __TABLETOP__: JSON.stringify(settings) },
       logLevel: "warn",
       ...(iconsDir === undefined ? {} : { publicDir: resolve(iconsDir) }),
@@ -144,15 +142,22 @@ const buildClient = (id, settings, iconsDir) =>
  */
 export const Tabletop = (id, props) =>
   Effect.gen(function* () {
+    const { sourceDir } = props;
+    const sourceFile =
+      sourceDir === undefined
+        ? packageFile
+        : (/** @type {string} */ path) => resolve(sourceDir, path);
+    /** @type {{ compatibility_date: string }} */
+    const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);
-    const assets = yield* buildClient(id, client, props.iconsDir);
+    const assets = yield* buildClient(id, client, sourceFile("vite.config.ts"), props.iconsDir);
     // Standalone mode's accounts, sessions, boards and visits, and the
     // per-address rate limiter.
     const standalone =
       props.mode === "standalone"
         ? {
             DB: yield* Cloudflare.D1.Database(`${id}Accounts`, {
-              migrations: packageFile("migrations"),
+              migrations: sourceFile("migrations"),
             }),
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
@@ -190,7 +195,7 @@ export const Tabletop = (id, props) =>
         BoardRoom: Cloudflare.DurableObject("BoardRoom"),
         Files: files,
       },
-      main: packageFile("src/index.ts"),
+      main: sourceFile("src/index.ts"),
       name: props.workerName,
       observability,
     });

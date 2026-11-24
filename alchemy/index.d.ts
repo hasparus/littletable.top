@@ -26,6 +26,8 @@ type Shared = {
   // tldraw's licence key, built into the client: public by design.
   licenseKey?: string;
   shortName?: string;
+  // Source checkout for the client, Worker, and database migrations.
+  sourceDir?: string;
   // The Worker's script name; Alchemy derives one from the stack otherwise.
   workerName?: string;
 };

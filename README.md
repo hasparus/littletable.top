@@ -108,15 +108,18 @@ collaborator with Write access opens, updates, retargets, or reopens them.
 For a PR from a fork, a maintainer with Maintain or Admin access can run
 **PR Preview** from `main` and enter the PR number and the full head SHA
 they reviewed. The checked-out code runs with preview credentials, so
-review that commit before dispatching. Both paths check out the PR's
-merge commit and verify its parents before deploying. The workflow
-updates one PR comment and sets the deployment URL in GitHub. The URL
-is `https://littletable-pr-<number>.hasparus.workers.dev`.
+review that commit before dispatching. Both paths verify the PR merge
+commit's parents, then build the app from that checkout using the
+deployment stack from `main`. The workflow updates one PR comment and
+sets the deployment URL in GitHub. The URL is
+`https://littletable-pr-<number>.<preview-subdomain>.workers.dev`.
 
 Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
-belong to that stage. The workflow uses the Cloudflare and WorkOS credentials
-from the `preview` GitHub Environment. Closing the PR uses the workflow
-from `main` to destroy that stage, including its image files, and remove
+belong to that stage. Give the `preview` GitHub Environment a token scoped
+to a separate Cloudflare account that holds only preview resources. Alchemy
+creates Workers, so its token needs Workers permissions across that account.
+Closing the PR uses the workflow from `main` to destroy that stage,
+including its image files, and remove
 the preview comment. Cleanup also runs for conflicted PRs and for PRs
 closed after changing their target branch. Each open PR
 consumes one Worker and one D1 database from the Cloudflare account's limits.
@@ -129,11 +132,12 @@ Durable Objects. Each PR goes to a separate Worker with its own bindings.
 
 In GitHub Settings under Environments, use `production` for `prod`,
 `staging` for manual non-production deploys, and `preview` for pull
-requests. Give `production` a deployment branch rule for `main`. A
-`preview` environment branch rule matches the preview workflow's default
-branch ref (`main`), so it can protect preview credentials for PRs with
-any target branch. The preview job gets credentials only after a separate
-read-only job verifies the trigger and authorizes the checked-out commits.
+requests. Protect `main` against direct pushes from collaborators and
+restrict the `production` and `preview` environments to the `main` branch
+before giving additional users Write access. For previews the environment
+rule matches the workflow's ref, so it permits PRs with any target branch.
+The preview job gets credentials after a separate read-only job verifies
+the trigger and authorizes the checked-out commits.
 
 | Kind     | Name                    | Value                                                                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -145,8 +149,10 @@ read-only job verifies the trigger and authorizes the checked-out commits.
 | variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but boards do not work without it. Public by design                                           |
 
 Use the Little Table WorkOS Staging application for `preview` and
-`staging`, and WorkOS Production for `production`. For the PR board editor,
-the `preview` tldraw licence key must include `*.hasparus.workers.dev`.
+`staging`, and WorkOS Production for `production`. Code on a PR preview
+has access to the WorkOS Staging key and data. For the PR board editor, the
+`preview` tldraw licence key must cover the preview account's workers.dev
+subdomain, for example `*.preview-subdomain.workers.dev`.
 tldraw supports wildcard subdomains in
 [licence keys](https://tldraw.dev/sdk-features/license-key#domain-validation).
 
@@ -178,10 +184,10 @@ sign-out redirect. `prod` is `littletable.top`.
 
 The Little Table WorkOS Staging application uses these destinations:
 
-| Type         | Default                                         | Pull requests                                                 |
-| ------------ | ----------------------------------------------- | ------------------------------------------------------------- |
-| Redirect URI | `https://staging.littletable.top/auth/callback` | `https://littletable-pr-*.hasparus.workers.dev/auth/callback` |
-| Sign-out URI | `https://staging.littletable.top/`              | `https://littletable-pr-*.hasparus.workers.dev/`              |
+| Type         | Default                                         | Pull requests                                                            |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------ |
+| Redirect URI | `https://staging.littletable.top/auth/callback` | `https://littletable-pr-*.<preview-subdomain>.workers.dev/auth/callback` |
+| Sign-out URI | `https://staging.littletable.top/`              | `https://littletable-pr-*.<preview-subdomain>.workers.dev/`              |
 
 Register other manually deployed workers.dev hosts individually.
 
