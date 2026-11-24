@@ -23,6 +23,8 @@ describe("a configuration", () => {
     ["the standalone issuer on a hosted Worker", { ISSUER: "tabletop" }],
     ["the standalone audience on a hosted Worker", { PASS_AUDIENCE: "tabletop-standalone" }],
     ["one audience for passes and deletion", { DELETION_AUDIENCE: "board" }],
+    ["one audience for passes and link resets", { LINK_RESET_AUDIENCE: "board" }],
+    ["one audience for deletion and link resets", { LINK_RESET_AUDIENCE: "board-deletion" }],
     ["aliases with no primary host", { ALIAS_HOSTS: "vtt.example.org" }],
   ])("with %s serves nothing", async (_label, overrides) => {
     const response = await withEnv(overrides);

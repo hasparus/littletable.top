@@ -45,12 +45,24 @@ export async function pass({
 
 const worker = (exports as unknown as { default: { fetch: typeof fetch } }).default;
 
-export async function deletion({
+export function deletion({
   audience = "board-deletion",
   board = "b1",
   issuedAt = now(),
 }: { audience?: string; board?: string; issuedAt?: number } = {}) {
-  return new SignJWT({ board })
+  return boardCommand({ board }, audience, issuedAt);
+}
+
+export function linkReset(claims: { board: string; link?: unknown }, issuedAt = now()) {
+  return boardCommand(claims, "board-link-reset", issuedAt);
+}
+
+async function boardCommand(
+  claims: { board: string; link?: unknown },
+  audience: string,
+  issuedAt: number,
+) {
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
     .setIssuer(DEV_ISSUER)

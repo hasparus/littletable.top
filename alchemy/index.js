@@ -87,6 +87,7 @@ function configure(props) {
         HOST_ORIGIN: hostOrigin,
         ISSUER: props.issuer,
         ISSUER_PUBLIC_KEY: props.issuerPublicKey,
+        LINK_RESET_AUDIENCE: props.linkResetAudience ?? "board-link-reset",
         PASS_AUDIENCE: props.passAudience ?? "board",
         TABLETOP_MODE: "hosted",
       },
