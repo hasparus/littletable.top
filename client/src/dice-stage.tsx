@@ -54,8 +54,11 @@ const FADES: Record<Overflow, string> = {
 type Place = { below: number; beside: boolean; left: number; top: number; width: number };
 
 const boxOf = (selector: string): DOMRect | null => {
-  const box = document.querySelector(selector)?.getBoundingClientRect();
-  return box === undefined || box.width === 0 ? null : box;
+  return (
+    [...document.querySelectorAll(selector)]
+      .map((element) => element.getBoundingClientRect())
+      .find((box) => box.width > 0) ?? null
+  );
 };
 
 const TOP_RIGHT_CONTROLS = ".tlui-layout__top__right > *, [data-secret-layer-toggle]";

@@ -28,6 +28,10 @@ type Stage =
 
 export type Exit = { href: string; label: string };
 
+type Layer =
+  | { kind: "full" | "manage" | "shared" | "unavailable" }
+  | { kind: "overlay"; view: SharedView };
+
 type Mount = {
   copy: Copy;
   door: Door;
@@ -52,9 +56,15 @@ function ReadyBoard({
 }) {
   const [shared, setShared] = useState<Editor | null>(null);
   const [secret, setSecret] = useState<PassKeeper>();
-  const [view, setView] = useState<SharedView>();
-  const editingSecret = view !== undefined;
-  const canEnterSecret = keeper.bootstrap.secretPass !== undefined;
+  const [layer, setLayer] = useState<Layer>({ kind: "shared" });
+  const view = layer.kind === "overlay" ? layer.view : undefined;
+  const editingSecret = view !== undefined || layer.kind === "manage";
+  const canEnterSecret = layer.kind !== "unavailable" && keeper.bootstrap.secretPass !== undefined;
+  const closeSecret = useCallback(() => {
+    setSecret(undefined);
+    setLayer({ kind: "unavailable" });
+  }, []);
+  const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
   useEffect(() => () => view?.store.dispose(), [view]);
   return (
     <>
@@ -78,6 +88,7 @@ function ReadyBoard({
           keeper={secret}
           language={language}
           licenseKey={licenseKey}
+          onLayerFull={refuseSecretPage}
         />
       )}
       {canEnterSecret && (
@@ -87,16 +98,24 @@ function ReadyBoard({
           disabled={!editingSecret && shared === null}
           onClick={() => {
             if (editingSecret) {
-              setView(undefined);
+              setLayer({ kind: "shared" });
             } else if (shared !== null) {
-              setView(captureSharedView(shared));
-              if (secret === undefined) setSecret(keeper.forSecret());
+              setLayer({ kind: "overlay", view: captureSharedView(shared) });
+              if (secret === undefined) setSecret(keeper.forSecret(closeSecret));
             }
           }}
           type="button"
         >
           {copy.secretLayer}
         </button>
+      )}
+      {layer.kind === "full" && (
+        <div className="fixed top-16 left-1/2 z-60 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl bg-bg-secondary px-4 py-2 text-sm shadow-toast">
+          <p role="status">{copy.secretLayerFull}</p>
+          <button className="underline" onClick={() => setLayer({ kind: "manage" })} type="button">
+            {copy.manageSecretPages}
+          </button>
+        </div>
       )}
     </>
   );

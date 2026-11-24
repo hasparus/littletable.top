@@ -1,5 +1,5 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   DefaultBackground,
   type Editor,
@@ -16,6 +16,7 @@ import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { SharedView } from "./secret-backdrop";
 
+import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
 import { BoardMainMenu, components } from "./chrome";
@@ -90,6 +91,7 @@ export function BoardCanvas({
   language,
   licenseKey,
   onEditor,
+  onLayerFull,
 }: {
   active: boolean;
   backdrop?: SharedView;
@@ -100,8 +102,10 @@ export function BoardCanvas({
   language: string;
   licenseKey: string;
   onEditor?: (editor: Editor | null) => void;
+  onLayerFull?: () => void;
 }) {
-  const { board, person } = keeper.bootstrap;
+  const { person } = keeper.bootstrap;
+  const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
   const files = useMemo(() => new BoardFiles(keeper), [keeper]);
@@ -125,6 +129,19 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  useLayoutEffect(() => {
+    if (editor === null || backdrop === undefined) return;
+    const { camera, page } = backdrop;
+    if (editor.getPage(page.id) === undefined) {
+      if (editor.getPages().length >= editor.options.maxPages) {
+        onLayerFull?.();
+        return;
+      }
+      editor.createPage({ id: page.id, name: page.name });
+    }
+    editor.setCurrentPage(page.id);
+    editor.setCamera(camera, { immediate: true });
+  }, [backdrop, editor, onLayerFull]);
   const setBackdropEditor = useSharedBackdrop(editor);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [typing, setTyping] = useState(false);
@@ -215,20 +232,19 @@ export function BoardCanvas({
     [backdrop, landing],
   );
 
-  if (!active) return null;
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
-  if (refusal === "full") return <Notice action={exit} text={copy.boardFull} />;
+  if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
   // NOTE: a reset link or a deleted board ends the board (keeper.end).
-  if (refusal !== null) return <Notice busy text={copy.loading} />;
+  if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
   // NOTE: tldraw logs the reason of any sync error itself.
   if (store.status === "error") {
-    return (
+    return active ? (
       <Notice
         action={{ label: copy.reload, run: () => location.reload() }}
         text={copy.bootstrapFailed}
       />
-    );
+    ) : null;
   }
   const offline =
     (store.status === "synced-remote" && store.connectionStatus === "offline") ||
@@ -240,6 +256,7 @@ export function BoardCanvas({
         className="fixed inset-0 overflow-hidden"
         data-board-shell
         data-public-board={landing === undefined ? undefined : ""}
+        hidden={!active}
       >
         {backdrop !== undefined && (
           <div
@@ -251,6 +268,7 @@ export function BoardCanvas({
             <Tldraw
               assetUrls={assetUrls}
               autoFocus={false}
+              colorScheme="system"
               hideUi
               licenseKey={licenseKey === "" ? undefined : licenseKey}
               locale={language}
@@ -271,9 +289,11 @@ export function BoardCanvas({
           <Tldraw
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
+            autoFocus={active}
             bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
             colorScheme="system"
             components={canvasComponents}
+            hideUi={!active}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
             onMount={(mounted) => {
@@ -281,16 +301,6 @@ export function BoardCanvas({
               // their language from the person's preferences, not this prop.
               mounted.user.updateUserPreferences({ locale: language });
               if (landing !== undefined) rememberExistingArrows(mounted);
-              if (backdrop !== undefined) {
-                const { camera, page } = backdrop;
-                if (mounted.getPage(page.id) === undefined) {
-                  mounted.createPage({ id: page.id, name: page.name });
-                }
-                if (mounted.getPage(page.id) !== undefined) {
-                  mounted.setCurrentPage(page.id);
-                  mounted.setCamera(camera);
-                }
-              }
               setEditor(mounted);
               onEditor?.(mounted);
               return () => {
@@ -301,10 +311,8 @@ export function BoardCanvas({
             shapeUtils={SHAPE_UTILS}
             store={store}
           >
-            <BoardFileHandlers />
-            {landing === undefined && backdrop === undefined && (
-              <PageKeeper board={board} copy={copy} />
-            )}
+            {active && <BoardFileHandlers />}
+            {landing === undefined && !keeper.secret && <PageKeeper board={board} copy={copy} />}
             <ThemeKeeper />
           </Tldraw>
         </div>
@@ -313,11 +321,11 @@ export function BoardCanvas({
             {exit.label}
           </a>
         )}
-        {offline && <ConnectionBanner copy={copy} />}
-        {panel === "dice" && <DiceSheet />}
-        {panel === "search" && <SearchSheet />}
-        {panel === "people" && <PeopleSheet />}
-        {rolls.arrived !== null && (
+        {active && offline && <ConnectionBanner copy={copy} />}
+        {active && panel === "dice" && <DiceSheet />}
+        {active && panel === "search" && <SearchSheet />}
+        {active && panel === "people" && <PeopleSheet />}
+        {active && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage copy={copy} onSettled={rolls.settle} roll={rolls.arrived} />
           </Suspense>

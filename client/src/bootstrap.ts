@@ -86,8 +86,8 @@ export class PassKeeper {
     return this.latest;
   }
 
-  forSecret(): PassKeeper {
-    const keeper = new PassKeeper(this.door, this.latest, this.onEnding, true);
+  forSecret(onEnding: (ending: Ending) => void): PassKeeper {
+    const keeper = new PassKeeper(this.door, this.latest, onEnding, true);
     keeper.issuedAt = this.issuedAt;
     return keeper;
   }

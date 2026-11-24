@@ -22,6 +22,7 @@ import { isSecretLayer, secretLayerOf } from "./secret-layer";
 import { aliasRedirect, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
+import { hasActiveSession } from "./standalone/store";
 
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
@@ -137,7 +138,8 @@ async function rooms(
   }
   const passOf = async (token: string | null) => {
     const pass = await verifiedPass(token, verifiers.pass, board);
-    return secret && pass?.owner !== true ? null : pass;
+    if (!secret) return pass;
+    return pass?.owner === true && (await hasActiveSession(env.DB, pass.sessionHash)) ? pass : null;
   };
   const room = env.BoardRoom.get(env.BoardRoom.idFromName(board));
   if (filesOf !== undefined) {

@@ -107,4 +107,23 @@ describe("the secret layer", () => {
       reason: "NOT_FOUND",
     });
   });
+
+  it("closes secret sockets and invalidates their passes when the owner signs out", async () => {
+    const { owner, board, secret, secretPass } = await accountBoard();
+    const open = await openSocket(secret, secretPass);
+    expect(open.response.status).toBe(101);
+
+    // A different session of the same owner keeps its own access.
+    await owner.signIn("Game master");
+    const second = (await (await owner.bootstrap(board.shareCode)).json()) as Bootstrap;
+    const current = await openSocket(secret, second.secretPass!);
+    expect(current.response.status).toBe(101);
+
+    expect((await owner.post("/auth/sign-out")).status).toBe(200);
+    expect(await current.closure).toEqual({ code: 4099, reason: "FORBIDDEN" });
+    expect((await openSocket(secret, second.secretPass!)).response.status).toBe(403);
+    expect((await roomCall(`/rooms/${secret}/rolls`, second.secretPass!)).status).toBe(403);
+    expect((await roomCall(`/rooms/${secret}/rolls`, secretPass)).status).toBe(200);
+    open.socket?.close();
+  });
 });

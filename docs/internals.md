@@ -12,7 +12,9 @@ zoom and position. Switch back to see live shared edits, or switch back and
 enter the layer again to refresh the snapshot.
 
 The standalone bootstrap issues a separate signed `secretPass` only when
-the account owns the board. Private sync, rolls, uploaded images and text
+the account owns the board. The pass is tied to the issuing account session.
+Signing out revokes its private access and closes its secret-layer sockets.
+Private sync, rolls, uploaded images and text
 readings use `/rooms/<board>/secret` with that pass. Its signed room ID and
 Durable Object name are `<board>/secret`, and the images and readings live
 under `boards/<board>/secret/`. Private image and reading responses use

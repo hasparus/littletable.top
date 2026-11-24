@@ -297,6 +297,13 @@ export class Standalone {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
     await this.store.closeSession(found.hash);
+    const { owned } = await this.store.list(found.session.account.id);
+    await Promise.all(
+      owned.map(({ id }) => {
+        const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
+        return this.env.BoardRoom.get(secret).disconnectSession(found.hash);
+      }),
+    );
     log("auth.signed_out", { account: found.session.account.id });
     const { origin } = new URL(request.url);
     const redirect =
@@ -439,7 +446,13 @@ export class Standalone {
     };
     const [pass, secretPass] = await Promise.all([
       signPass(this.keys, claims),
-      person.owner ? signPass(this.keys, { ...claims, board: secretLayerOf(board.id) }) : null,
+      person.owner && found !== null
+        ? signPass(this.keys, {
+            ...claims,
+            board: secretLayerOf(board.id),
+            sessionHash: found.hash,
+          })
+        : null,
     ]);
     log("pass.issued", {
       board: board.id,

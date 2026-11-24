@@ -28,6 +28,8 @@ import {
   publicFileReferences,
   stampPublicShape,
 } from "./public-board-expiry";
+import { isSecretLayer } from "./secret-layer";
+import { hasActiveSession } from "./standalone/store";
 import {
   type Claim,
   type ClaimRequest,
@@ -38,7 +40,7 @@ import {
   type TextRefusal,
 } from "./text-store";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -64,7 +66,9 @@ export const AVATAR_HEADER = "X-Board-Avatar";
 // the Worker made at sign-in.
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
-type Person = Pick<Pass, "link" | "name" | "owner" | "sub"> & { avatar: string | null };
+type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
+  avatar: string | null;
+};
 type DrawingRoom = { drawing: SQLiteSyncStorage<TLRecord>; room: TLSocketRoom<TLRecord, Person> };
 
 function log(event: string, fields: Record<string, unknown>) {
@@ -198,8 +202,30 @@ export class BoardRoom extends DurableObject<Env> {
 
   // NOTE: a socket cannot cross an RPC call, so the Worker forwards the
   // upgrade as a request and names the verified pass in PASS_HEADER.
-  override fetch(request: Request): Response {
+  override fetch(request: Request): Promise<Response> | Response {
     const pass: Pass = JSON.parse(request.headers.get(PASS_HEADER)!);
+    if (!isSecretLayer(pass.board)) return this.connectRoom(request, pass);
+
+    // Serialize the secret socket's final session check with disconnection.
+    return this.ctx.blockConcurrencyWhile(async () => {
+      if (!(await hasActiveSession(this.env.DB, pass.sessionHash))) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      return this.connectRoom(request, pass);
+    });
+  }
+
+  disconnectSession(hash: string): void {
+    const room = this.drawingRoom?.room;
+    if (room === undefined) return;
+    for (const session of room.getSessions()) {
+      if (session.meta.sessionHash === hash) {
+        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
+      }
+    }
+  }
+
+  private connectRoom(request: Request, pass: Pass): Response {
     const avatar = request.headers.get(AVATAR_HEADER) || null;
     const sessionId = new URL(request.url).searchParams.get("sessionId")!;
     const refusal =
@@ -217,7 +243,14 @@ export class BoardRoom extends DurableObject<Env> {
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
     this.room.handleSocketConnect({
-      meta: { avatar, link: pass.link, name: pass.name, owner: pass.owner, sub: pass.sub },
+      meta: {
+        avatar,
+        link: pass.link,
+        name: pass.name,
+        owner: pass.owner,
+        sessionHash: pass.sessionHash,
+        sub: pass.sub,
+      },
       sessionId,
       socket: server,
     });
