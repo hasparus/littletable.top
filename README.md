@@ -843,7 +843,7 @@ Worker's outbound fetch in Vitest and as a server in Playwright.
 standalone copy (`alchemy.run.ts`), with `alchemy deploy --stage <stage> --yes`, after the
 CI checks (`ci.yml`, called as a reusable workflow) pass:
 
-- every push to `main` deploys stage `staging`;
+- every push to `main` deploys stage `prod`, the production copy;
 - "Run workflow" on the Deploy workflow deploys the stage it is given:
   `staging`, `prod` (only from `main`), or a preview name (lowercase
   letters, digits and hyphens), which gets a Worker, a D1 database and an
@@ -911,8 +911,8 @@ serves `https://littletable-staging.<account subdomain>.workers.dev` and
 `prod` `https://littletable.<account subdomain>.workers.dev`. WorkOS needs that
 address, which you only learn from the first deploy:
 
-1. Set the Environment's inputs and deploy (push to `main`, or run the
-   workflow).
+1. Set the `production` Environment's inputs and deploy (push to `main`,
+   or run the workflow).
 2. Read the URL from the run's summary.
 3. In WorkOS, add `https://<that host>/auth/callback` as a redirect URI and
    `https://<that host>/` as a sign-out redirect. Sign-in works from then
