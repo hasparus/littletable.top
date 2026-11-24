@@ -22,7 +22,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
 import { createPublicKey } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Env } from "../src/index";
 
@@ -591,13 +591,20 @@ describe("a guest", () => {
     await ada.signIn("Ada");
     const board = await ada.createBoard();
     const guest = new Browser();
-    const statuses = [];
-    for (let attempt = 0; attempt < 31; attempt++) {
-      statuses.push((await guest.bootstrap(board.shareCode, { name: "Cy" })).status);
-    }
+    const windowMs = 60_000;
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(200);
+      }
+      expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(429);
 
-    expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
-    expect(statuses[30]).toBe(429);
+      clock.mockReturnValue(now + windowMs);
+      expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(200);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 
