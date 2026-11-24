@@ -79,15 +79,15 @@ variables (`SIGNING_KEY` in hosted mode), is refused: every request answers
 
 The client is built per deployment, from these helper props:
 
-| Helper prop                               | Meaning                                                                                                                                             |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hostOrigin` + `bootstrapPath`            | The pass endpoint. Default path `/b/{code}/bootstrap/`, `{code}` the share code                                                                     |
-| `exitUrl`                                 | Where "Back to the main page" leads before the host has answered. Default `hostOrigin/`                                                             |
-| `displayName`, `shortName`, `description` | The page title, the home-screen name and the manifest. Default "Tabletop"                                                                           |
-| `language`                                | `en` or `pl`, when neither `?lang=` nor the browser names one. Default `en`                                                                         |
-| `brand`                                   | Up to six hex colours: `primary`, `primaryHover`, `primaryLight`, `primaryStrong` (text on the light wash), `primaryLightDark`, `primaryStrongDark` |
-| `iconsDir`                                | A directory with `favicon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-1024.png`, `icon-maskable-512.png`                    |
-| `licenseKey`                              | tldraw's licence key. Public by design: tldraw ties it to the domain                                                                                |
+| Helper prop                               | Meaning                                                                                                                                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hostOrigin` + `bootstrapPath`            | The pass endpoint. Default path `/b/{code}/bootstrap/`, `{code}` the share code                                                                                                                         |
+| `exitUrl`                                 | Where "Back to the main page" leads before the host has answered. Default `hostOrigin/`                                                                                                                 |
+| `displayName`, `shortName`, `description` | The page title, the home-screen name and the manifest. Default "Tabletop"                                                                                                                               |
+| `language`                                | `en` or `pl`, when neither `?lang=` nor the browser names one. Default `en`                                                                                                                             |
+| `brand`                                   | Up to six hex colours: `primary`, `primaryHover`, `primaryLight`, `primaryStrong` (text on the light wash), `primaryLightDark`, `primaryStrongDark`. Unset, a warm coral (`client/src/theme/theme.css`) |
+| `iconsDir`                                | A directory with `favicon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-1024.png`, `icon-maskable-512.png`                                                                        |
+| `licenseKey`                              | tldraw's licence key. Public by design: tldraw ties it to the domain                                                                                                                                    |
 
 ### The pass request
 

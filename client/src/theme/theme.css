@@ -33,12 +33,14 @@
 }
 
 :root {
-  --brand-primary: #2f6fdf;
-  --brand-primary-hover: #1f57c0;
-  --brand-primary-light: #eef3fd;
-  --brand-primary-strong: #1a428f;
-  --brand-primary-light-dark: #1c2333;
-  --brand-primary-strong-dark: #a9c3f5;
+  /* A warm coral. It fails 4.5:1 as text on white (3.2:1): text takes
+     primary-strong, and a filled button darkens its face. */
+  --brand-primary: #f85a3c;
+  --brand-primary-hover: #e53e20;
+  --brand-primary-light: #fef5f3;
+  --brand-primary-strong: #9f2c18;
+  --brand-primary-light-dark: #292524;
+  --brand-primary-strong-dark: #ffab9a;
 }
 
 @theme {
@@ -50,7 +52,8 @@
 
   --color-background: #f0f1f3;
   --color-border: #e4ddd6;
-  --color-border-focus: var(--brand-primary);
+  /* The hover shade: the coral itself is under 3:1 on the page's grey. */
+  --color-border-focus: var(--brand-primary-hover);
 
   --color-foreground: #252220;
   --color-foreground-secondary: #5c534a;
@@ -88,6 +91,7 @@
   --color-foreground-secondary: #d4d4d4;
   --color-foreground-muted: #8c8c8c;
   --color-border: #404040;
+  --color-border-focus: var(--brand-primary);
   --color-primary-light: var(--brand-primary-light-dark);
   --color-primary-strong: var(--brand-primary-strong-dark);
   --color-secondary: #2dd4b3;

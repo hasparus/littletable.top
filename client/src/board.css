@@ -2,3 +2,21 @@
    unlayered, it would beat every utility class placed on tldraw's parts
    (the toolbar's width, the board's controls inside it). */
 @import "tldraw/tldraw.css" layer(components);
+
+/* tldraw's own theme variables, its supported way to recolour the editor:
+   selection, the chosen tool and focus follow the brand. */
+.tl-theme__light,
+.tl-theme__dark {
+  --tl-color-primary: var(--brand-primary);
+  --tl-color-selected: var(--brand-primary);
+  --tl-color-selection-stroke: var(--brand-primary);
+  --tl-color-selection-fill: color-mix(in srgb, var(--brand-primary) 22%, transparent);
+}
+
+.tl-theme__light {
+  --tl-color-focus: var(--brand-primary-hover);
+}
+
+.tl-theme__dark {
+  --tl-color-focus: var(--brand-primary-strong-dark);
+}
