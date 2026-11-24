@@ -31,11 +31,16 @@ const KEY_OF: Record<EngineName, EngineKey> = {
 };
 
 // How long the board must have been left alone before a browser that did
-// not upload an image starts reading it, how often a waiting browser asks
-// again, and how often a lease is renewed (the room keeps one 30 s).
+// not upload an image starts reading it, and how often a lease is renewed
+// (the room keeps one 30 s past its last renewal).
 const IDLE_MS = 4000;
-const POLL_MS = 20_000;
 const RENEW_MS = 10_000;
+// A browser asks for an image when the room's notices or a new image say
+// there may be one. Only a lease that ran out goes unannounced: while
+// someone else reads, it asks again once their lease could have lapsed.
+// The slow fallback covers notices missed on a dropped socket.
+const TAKEOVER_MS = 32_000;
+const FALLBACK_MS = 5 * 60_000;
 const SETTLE_MS = 500;
 // After a failed reading, the next waits this long, doubling to the most.
 const BACKOFF_MS = { first: 30_000, most: 10 * 60_000 };
@@ -153,10 +158,11 @@ export class ImageText {
     if (this.#settle !== null) return;
     this.#settle = setTimeout(() => {
       this.#settle = null;
+      const before = this.#images;
       this.#images = this.#boardImages();
       for (const hash of this.#images) this.#fetchStored(hash);
       this.#count();
-      this.#schedule(0);
+      if ([...this.#images].some((hash) => !before.has(hash))) this.#schedule(0);
     }, SETTLE_MS);
   }
 
@@ -224,7 +230,8 @@ export class ImageText {
     }
     for (const { hash } of message.readings) if (this.#images.has(hash)) this.#fetchStored(hash);
     this.#count();
-    this.#schedule(message.state === "idle" ? 0 : POLL_MS);
+    if (message.state === "idle") this.#schedule(0);
+    else if (message.state === "reading" && this.#reading === null) this.#wait();
   }
 
   #has(hash: string, key: EngineKey, list: keyof Listing): boolean {
@@ -250,6 +257,22 @@ export class ImageText {
     this.pending.set(pending);
   }
 
+  // Images this device could still read.
+  #candidates(): string[] {
+    return [...new Set([...this.#images, ...this.#own])].filter(
+      (hash) => this.#missing(hash).length > 0,
+    );
+  }
+
+  // Nothing to claim now: waits for a notice, or for someone else's lease
+  // to lapse when they may have left.
+  #wait(): void {
+    const othersReading = this.#candidates().some((hash) =>
+      this.#missing(hash).some((key) => this.#has(hash, key, "reading")),
+    );
+    this.#schedule(othersReading ? TAKEOVER_MS : FALLBACK_MS);
+  }
+
   #schedule(ms: number): void {
     if (this.#disposed) return;
     if (this.#timer !== null) clearTimeout(this.#timer);
@@ -264,9 +287,7 @@ export class ImageText {
     if (document.visibilityState === "hidden") return;
     // NOTE: an image someone else reads counts too: only the room knows
     // when their lease ran out, which no notice says.
-    const candidates = [...new Set([...this.#images, ...this.#own])].filter(
-      (hash) => this.#missing(hash).length > 0,
-    );
+    const candidates = this.#candidates();
     if (candidates.length === 0) return;
     const prefer = candidates.find((hash) => this.#own.has(hash)) ?? null;
     if (prefer === null) {
@@ -291,8 +312,8 @@ export class ImageText {
       return this.#schedule(this.#notBefore - performance.now());
     }
     if (claim === null) {
-      void this.#refresh(false);
-      return this.#schedule(POLL_MS);
+      await this.#refresh(false);
+      return this.#wait();
     }
     await this.#read(claim);
     this.#schedule(0);

@@ -389,7 +389,10 @@ read on a server or by an outside service.
   the person has left the board alone for 4 s, it claims one image from
   the board's Durable Object under a 30 s lease it renews every 10 s, so
   two browsers never read the same image and a browser that leaves gives
-  it up. A browser saving data (or on a cellular connection, where the
+  it up. A browser asks on load, then only when a new image appears or
+  the room says a reading ended; while someone else reads, it asks again
+  once their lease could have lapsed (32 s), and every 5 min in case a
+  notice was missed. A browser saving data (or on a cellular connection, where the
   browser says so) reads only what its person uploaded. A failed reading
   backs off from 30 s to 10 min; after three failures of an image with one
   engine version the board stops handing it out. An image an assistant

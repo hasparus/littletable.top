@@ -18,6 +18,7 @@ import {
   joinAs,
   openSheet,
   PHONE,
+  putNote,
   reviewShot,
   sheet,
 } from "./helpers";
@@ -286,8 +287,29 @@ test("when the uploader leaves mid-read, another browser reads the image once th
   // Bea is told the map is being read; Ada's browser holds it.
   await expect(reading(bea.page)).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => ada.network.engineFiles().length, { timeout: 30_000 }).toBeGreaterThan(0);
+  let claims = 0;
+  bea.page.on("request", (request) => {
+    if (request.url().endsWith("/files/text/claim")) claims++;
+  });
   const left = Date.now();
   await ada.page.context().close();
+
+  // While the lease lapses, Bea's drawing, a pause after each note, does
+  // not send her browser asking for the image again: it waits for a
+  // notice, or for the lease.
+  await closeSheet(bea.page, "Search");
+  for (const [at, text] of [
+    [200, "Port"],
+    [500, "Las"],
+    [800, "Wieża"],
+  ] as const) {
+    await putNote(bea.page, { at: { x: at, y: 500 }, text });
+    // NOTE: past the 4 s a browser waits after its person's last input.
+    await bea.page.waitForTimeout(5000);
+  }
+  await bea.page.waitForTimeout(Math.max(0, left + 25_000 - Date.now()));
+  expect(claims, "claims while someone else's lease lapses").toBeLessThanOrEqual(1);
+  await openSheet(bea.page, "Search");
 
   await field(bea.page).fill("sledziowa");
   await expect(options(bea.page).filter({ hasText: "Śledziowa" }).first()).toBeVisible({
