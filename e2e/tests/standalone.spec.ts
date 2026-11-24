@@ -36,12 +36,13 @@ test("the home page is one editable public board for anonymous visitors", async 
   const intro = guest.locator(".tl-background__wrapper").getByRole("region", {
     name: "Public whiteboard",
   });
-  const greeting = intro.getByRole("heading", { level: 1 });
-  await expect(greeting).toBeInViewport();
+  const firstParagraph = intro.locator("p").first();
+  await expect(firstParagraph).toBeInViewport();
+  await expect(intro.getByRole("heading")).toHaveCount(0);
   await expect(intro.getByText("Little Table is this app.", { exact: false })).toBeInViewport();
   await expect(intro).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(intro).toHaveCSS("padding", "0px 2px");
-  for (const text of [greeting, intro.locator("p").first(), intro.locator("footer")]) {
+  for (const text of [firstParagraph, intro.locator("footer")]) {
     await expect(text).toHaveCSS("font-size", "15px");
   }
   await expect

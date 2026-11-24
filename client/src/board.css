@@ -159,19 +159,11 @@
   line-height: 1.35;
 }
 
-[data-public-board-note] h1 {
-  font-weight: 700;
-}
-
-[data-public-board-note] p {
+[data-public-board-note] p + p {
   margin-top: 12px;
 }
 
 [data-public-board-note] footer {
   margin-top: 16px;
   color: var(--color-foreground-muted);
-}
-
-[data-public-board-wave] {
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
