@@ -129,7 +129,7 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   expect(assets).toEqual([`sha256:${sha256(MAP)}`, `sha256:${sha256(PORTRAIT)}`]);
 
   // What came out opens on a fresh board as the same document again.
-  await page.goto(`${STANDALONE}/`);
+  await page.goto(`${STANDALONE}/boards`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_BOARD);
   const chooser = page.waitForEvent("filechooser");

@@ -35,6 +35,9 @@ export type StandaloneEnv = {
 const SESSION_COOKIE = "__Host-tabletop-session";
 const SIGN_IN_COOKIE = "__Host-tabletop-sign-in";
 const GUEST_COOKIE = "__Host-tabletop-guest";
+const PUBLIC_GUEST_COOKIE = "__Host-tabletop-public-guest";
+// Account boards have random alphanumeric IDs, so their rooms cannot collide.
+const PUBLIC_BOARD = "public-lobby";
 
 const SESSION_LIFETIME_S = 30 * 24 * 60 * 60;
 const SIGN_IN_LIFETIME_S = 10 * 60;
@@ -143,6 +146,9 @@ export class Standalone {
     }
     if (pathname === "/api/boards" && method === "GET") return this.list(request);
     if (pathname === "/api/boards" && method === "POST") return this.create(request);
+    if (pathname === "/api/public-board/bootstrap" && method === "POST") {
+      return this.bootstrap(request, null);
+    }
     const action = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/(rename|reset|delete)$/u.exec(pathname);
     if (action !== null && method === "POST") return this.act(request, action[1]!, action[2]!);
     const door = /^\/api\/b\/([A-Za-z0-9]{1,64})\/bootstrap$/u.exec(pathname);
@@ -210,7 +216,10 @@ export class Standalone {
     const failed = (reason: string) => {
       log("auth.sign_in_failed", { reason });
       return new Response(null, {
-        headers: { Location: "/?sign-in=failed", "Set-Cookie": setCookie(SIGN_IN_COOKIE, "", 0) },
+        headers: {
+          Location: "/boards?sign-in=failed",
+          "Set-Cookie": setCookie(SIGN_IN_COOKIE, "", 0),
+        },
         status: 302,
       });
     };
@@ -365,36 +374,39 @@ export class Standalone {
   }
 
   // The host contract's pass endpoint, answered by the Worker itself.
-  private async bootstrap(request: Request, code: string): Promise<Response> {
+  private async bootstrap(request: Request, code: string | null): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
     if (!(await this.allowed(request, "pass", MAX_PASSES_PER_MINUTE))) {
       return refuse(429, "too-many-requests");
     }
     const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
     if (body === null || typeof body !== "object") return refuse(400, "invalid-request");
-    const board = await this.store.byShareCode(code);
-    if (board === null) return refuse(404, "not-found");
+    const saved = code === null ? null : await this.store.byShareCode(code);
+    if (code !== null && saved === null) return refuse(404, "not-found");
+    const board = saved ?? { id: PUBLIC_BOARD, linkVersion: 0, title: this.config.displayName };
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });
     let person: { avatar: string | null; id: string; name: string; owner: boolean };
     if (found === null) {
-      const kept = cookie(request, GUEST_COOKIE);
+      const guestCookie = code === null ? PUBLIC_GUEST_COOKIE : GUEST_COOKIE;
+      const kept = cookie(request, guestCookie);
       const guest = kept === null ? null : await unseal(this.keys, GUEST_AUDIENCE, kept);
       let name = typeof guest?.name === "string" ? guest.name : null;
       if (body.name !== undefined) {
         name = cleanName(body.name);
         if (name === null) return refuse(422, "name-invalid");
       }
-      if (name === null) return refuse(422, "name-required");
+      if (name === null && code !== null) return refuse(422, "name-required");
       const id = typeof guest?.sub === "string" ? guest.sub : `g:${randomCode(16)}`;
+      name ??= `Guest ${id.slice(2, 6)}`;
       person = { avatar: null, id, name, owner: false };
       const sealed = await seal(this.keys, GUEST_AUDIENCE, { name, sub: id }, GUEST_LIFETIME_S);
-      headers.append("Set-Cookie", setCookie(GUEST_COOKIE, sealed, GUEST_LIFETIME_S));
+      headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
-      const owner = board.ownerId === account.id;
+      const owner = saved?.ownerId === account.id;
       person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
-      if (!owner) await this.store.visit(account.id, board, now());
+      if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
     }
     const pass = await signPass(this.keys, {
       avatar: person.avatar,
@@ -412,7 +424,7 @@ export class Standalone {
     return Response.json(
       {
         board: board.id,
-        boardsUrl: found === null ? null : "/",
+        boardsUrl: found === null ? null : "/boards",
         home: { name: this.config.displayName, url: "/" },
         pass,
         person: { id: person.id, name: person.name, owner: person.owner },

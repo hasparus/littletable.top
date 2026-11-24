@@ -60,7 +60,7 @@ describe("signing in", () => {
 
     const back = await ada.fetch(callback.pathname + callback.search);
 
-    expect(back.headers.get("Location")).toBe("/?sign-in=failed");
+    expect(back.headers.get("Location")).toBe("/boards?sign-in=failed");
     expect(await (await ada.fetch("/api/me")).json()).toEqual({ account: null, csrf: null });
   });
 
@@ -68,7 +68,7 @@ describe("signing in", () => {
     const mallory = new Browser();
     const back = await mallory.fetch("/auth/callback?code=stolen&state=whatever");
 
-    expect(back.headers.get("Location")).toBe("/?sign-in=failed");
+    expect(back.headers.get("Location")).toBe("/boards?sign-in=failed");
     expect(mallory.cookies.has("__Host-tabletop-session")).toBe(false);
   });
 

@@ -199,6 +199,8 @@ Live board state stays in the board's Durable Object. D1 (`migrations/`)
 keeps what is listed or looked up across boards: `accounts`, `sessions`,
 `boards` and `visits`. A link names a board by its share code, and
 looking up a code needs an index across all accounts. D1 has that index.
+The public board uses a fixed room ID outside the account board ID space.
+It has no owner or D1 row.
 
 ### Sessions and CSRF
 
@@ -210,7 +212,9 @@ looking up a code needs an index across all accounts. D1 has that index.
   a JSON body, which no other origin sends without a preflight. Owner
   actions and sign-out also need `X-CSRF-Token`, from `GET /api/me`.
 - A guest's id and name live in `__Host-tabletop-guest`, signed under its
-  own audience.
+  own audience. The public board assigns guests a name immediately and keeps
+  it in `__Host-tabletop-public-guest`. Share links still ask new guests for
+  their names.
 - Board actions name the account in their queries, so someone else's board
   answers 404 and nothing changes.
 - The limits' client IP comes from `CF-Connecting-IP` only; the limiter
@@ -220,7 +224,8 @@ looking up a code needs an index across all accounts. D1 has that index.
 
 | Route                                     | Does                                                                           |
 | ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /`                                   | The front page: sign in, then the account's boards                             |
+| `GET /`                                   | Opens the shared public whiteboard                                             |
+| `GET /boards`                             | Sign-in and the account's boards                                               |
 | `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                           |
 | `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out              |
 | `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out     |
@@ -231,6 +236,7 @@ looking up a code needs an index across all accounts. D1 has that index.
 | `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only |
 | `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                         |
 | `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
+| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
 
 ### The sign-in provider
 

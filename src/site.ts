@@ -96,12 +96,14 @@ export async function serveSite(
   }
   if (url.pathname === "/") {
     // Hosted, nothing lives at the root: a person who types the name goes
-    // to the host. Standalone, the root is the tabletop's own front page.
+    // to the host. Standalone, the root opens the public board.
     if (config.mode === "hosted") {
       return harden(Response.redirect(config.homeUrl, 302), request, config);
     }
     return shell(request, assets, config);
   }
+  if (url.pathname === "/boards" && config.mode === "standalone")
+    return shell(request, assets, config);
   if (SHELL.test(url.pathname)) return shell(request, assets, config);
   const file = harden(await assets.fetch(request), request, config);
   if (file.ok && HASHED.test(url.pathname)) {

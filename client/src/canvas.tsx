@@ -19,6 +19,7 @@ import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
+import { PublicBoardIntro, type PublicLanding } from "./public-landing";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
@@ -73,12 +74,14 @@ export function BoardCanvas({
   copy,
   exit,
   keeper,
+  landing,
   language,
   licenseKey,
 }: {
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
+  landing?: PublicLanding;
   language: string;
   licenseKey: string;
 }) {
@@ -173,6 +176,13 @@ export function BoardCanvas({
   );
   const { open } = ui;
   useEffect(() => (editor === null ? undefined : searchFromKeyboard(open)), [editor, open]);
+  const canvasComponents = useMemo(
+    () =>
+      landing === undefined
+        ? components
+        : { ...components, Background: () => <PublicBoardIntro {...landing} /> },
+    [landing],
+  );
 
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
@@ -201,7 +211,7 @@ export function BoardCanvas({
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
             colorScheme="system"
-            components={components}
+            components={canvasComponents}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
             onMount={(mounted) => {
@@ -214,10 +224,18 @@ export function BoardCanvas({
             store={store}
           >
             <BoardFileHandlers />
-            <PageKeeper board={board} copy={copy} />
+            {landing === undefined && <PageKeeper board={board} copy={copy} />}
             <ThemeKeeper />
           </Tldraw>
         </div>
+        {landing !== undefined && (
+          <a
+            className="btn btn-secondary absolute top-[max(0.75rem,env(safe-area-inset-top))] right-[max(0.75rem,env(safe-area-inset-right))] z-10 min-h-10 shadow-sm"
+            href={exit.href}
+          >
+            {exit.label}
+          </a>
+        )}
         {offline && <ConnectionBanner copy={copy} />}
         {panel === "dice" && <DiceSheet />}
         {panel === "search" && <SearchSheet />}

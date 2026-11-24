@@ -22,6 +22,25 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+test("the home page is one editable public board for anonymous visitors", async ({
+  browser,
+  page,
+}) => {
+  await page.goto(`${STANDALONE}/`);
+  const guest = await phone(browser, `${STANDALONE}/`);
+
+  const intro = guest.getByRole("region", { name: "Public whiteboard" });
+  await expect(intro.getByRole("heading", { level: 1 })).toBeInViewport();
+  await expect(intro.getByText("Draw maps, plan your game", { exact: false })).toBeInViewport();
+  await expect(guest.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(guest.getByLabel("Your name")).toHaveCount(0);
+
+  await putNote(page, { at: { x: 200, y: 390 }, text: "A note from the public board" });
+  await expect(onBoard(guest, "A note from the public board")).toBeInViewport();
+  await expectNoCspViolations(guest);
+  await guest.context().close();
+});
+
 test("an owner signs in and makes a board; a guest joins by link and plays", async ({
   browser,
   page,
@@ -69,7 +88,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   // the guest, who has only the old link, is put out.
   const front = await page.context().newPage();
   await collectCspViolations(front);
-  await front.goto(`${STANDALONE}/`);
+  await front.goto(`${STANDALONE}/boards`);
   const row = front.getByRole("listitem").filter({ hasText: "Board" });
   await row.getByRole("button", { name: "Rename" }).click();
   await row.getByLabel("Board name").fill("Mörk Borg night");
@@ -88,6 +107,12 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await page.goto(`${STANDALONE}${newLink}`);
   await expect(onBoard(page, "Hello table")).toBeVisible();
   await expect(page).toHaveTitle("Mörk Borg night");
+
+  await front.getByRole("button", { name: "Sign out" }).click();
+  await expect(front).toHaveURL(`${STANDALONE}/`);
+  await expect(front.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await front.goto(`${STANDALONE}/boards`);
+  await expect(front.getByRole("link", { name: "Sign in" })).toBeVisible();
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(front);
