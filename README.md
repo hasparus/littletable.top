@@ -273,7 +273,10 @@ same-origin`. An image opened on its own therefore runs nothing and loads
 
 The client (`client/src/assets.ts`, `images.ts`, `file-flows.ts`) takes
 images from tldraw's picker (on a phone: the photo library or the camera),
-drops, pastes, several at once. A still JPEG, PNG or WebP whose long side
+drops, pastes, several at once. Images copied off a board (tldraw embeds
+them in what it copies) and images whose address is another board's file
+(a .tldr can carry one) are uploaded to this board; one this browser cannot
+read, not being on that board, is left out with a message. A still JPEG, PNG or WebP whose long side
 is over 4096 px, or that weighs over 10 MiB, is redrawn to fit (JPEG at
 quality 0.9, or WebP where transparency must stay; lower qualities and
 then smaller sizes only if still too heavy), with the phone's orientation

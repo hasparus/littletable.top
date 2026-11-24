@@ -105,7 +105,7 @@ function problemOf(error: TldrawFileParseError, newer: () => boolean): ImportPro
   }
 }
 
-function fileFromDataUrl(url: string, name: string): File {
+export function fileFromDataUrl(url: string, name: string): File {
   const comma = url.indexOf(",");
   const header = url.slice(5, comma);
   const type = header.split(";")[0] || "application/octet-stream";

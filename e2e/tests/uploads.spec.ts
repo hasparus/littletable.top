@@ -197,3 +197,118 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 
   await expectNoCspViolations(page);
 });
+
+// An image's address on another board opens only with that board's files
+// cookie, which a person holds while they are on it. Pasted from another
+// board's tab, or in a .tldr that points at one, the image is copied to
+// this board; what this person cannot read is left out, and they are told.
+test("an image from another board is copied over, or left out with a reason", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const first = await context.newPage();
+  await collectCspViolations(first);
+  await first.goto(`${HOST}/sign-in?name=Iris`);
+  await first.getByRole("button", { name: "New board" }).click();
+  await expect(first).toHaveURL(ON_TABLETOP);
+  await uploadImage(first, "map.png");
+  await expect.poll(() => loadedImages(first)).toEqual([expect.stringMatching(stored)]);
+  const [onFirst] = await loadedImages(first);
+
+  const second = await context.newPage();
+  await collectCspViolations(second);
+  await second.goto(`${HOST}/sign-in?name=Iris`);
+  await second.getByRole("button", { name: "New board" }).click();
+  await expect(second).toHaveURL(ON_TABLETOP);
+  const guest = await phone(browser, second.url());
+  await joinAs(guest, "Noor");
+
+  // Copied on the first board and pasted on the second: tldraw embeds the
+  // image in what it copies, and the second board stores its own copy,
+  // which its guest, who was never on the first, sees.
+  await first.bringToFront();
+  await first.getByTestId("canvas").focus();
+  await first.keyboard.press("ControlOrMeta+a");
+  await first.keyboard.press("ControlOrMeta+c");
+  // NOTE: tldraw writes the clipboard once it has embedded the images.
+  let html = "";
+  await expect
+    .poll(async () => {
+      html = await first.evaluate(async () => {
+        const [item] = await navigator.clipboard.read();
+        if (item?.types.includes("text/html") !== true) return "";
+        const blob = await item.getType("text/html");
+        return blob.text();
+      });
+      return html;
+    })
+    .toContain("data:image/png");
+  await second.bringToFront();
+  await second.getByTestId("canvas").focus();
+  // NOTE: a headless browser does not paste from its clipboard on Ctrl+V;
+  // the event carries what tldraw copied.
+  await second.evaluate((content) => {
+    const data = new DataTransfer();
+    data.setData("text/html", content);
+    document.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, clipboardData: data }));
+  }, html);
+  const copied = expect.stringMatching(stored);
+  await expect.poll(() => loadedImages(second)).toEqual([copied]);
+  const [onSecond] = await loadedImages(second);
+  expect(onSecond).not.toBe(onFirst);
+  await expect
+    .poll(async () => {
+      await zoomToFit(guest);
+      return loadedImages(guest);
+    })
+    .toEqual([onSecond]);
+
+  // A .tldr whose map points at the first board: the guest cannot read
+  // it, so the map is left out with a reason; the portrait comes in.
+  const file = JSON.parse(readFileSync(fixture("table.tldr"), "utf8")) as {
+    records: { id: string; props?: { src?: string } }[];
+  };
+  for (const record of file.records) {
+    if (record.id === "asset:map") record.props!.src = onFirst;
+  }
+  const pointing = { buffer: Buffer.from(JSON.stringify(file)), mimeType: "", name: "linked.tldr" };
+  const chooser = guest.waitForEvent("filechooser");
+  await guest.getByTestId("main-menu.button").click();
+  await guest.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  const picker = await chooser;
+  await picker.setFiles(pointing);
+  await expect(
+    toast(
+      guest,
+      "An image from another board could not be brought over. Open that board, then paste again.",
+    ),
+  ).toBeVisible();
+  // The pasted map stays; the file's own map is gone.
+  const left = documentOf(await downloadTldr(guest));
+  expect(left.assets.map((asset) => [asset.id, asset.props!.src])).toEqual([
+    [expect.not.stringMatching(/^asset:map$/u), `sha256:${sha256(MAP)}`],
+    ["asset:portrait", `sha256:${sha256(PORTRAIT)}`],
+  ]);
+  expectWhole(left);
+
+  // The same file opened by the first board's owner, who is on it: its
+  // map is copied over.
+  const opened = second.waitForEvent("filechooser");
+  await second.getByTestId("main-menu.button").click();
+  await second.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  const again = await opened;
+  await again.setFiles(pointing);
+  await expect(toast(second, "The file's pages were added to the board.").first()).toBeVisible();
+  await expect
+    .poll(async () => {
+      const loaded = await loadedImages(second);
+      return loaded.includes(onSecond!) && !loaded.includes(onFirst!);
+    })
+    .toBe(true);
+
+  for (const each of [first, second, guest]) await expectNoCspViolations(each);
+  await guest.context().close();
+  await context.close();
+});

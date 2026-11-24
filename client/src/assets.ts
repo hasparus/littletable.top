@@ -1,6 +1,18 @@
-import { AssetRecordType, atom, type Editor, getHashForString, type TLAssetStore } from "tldraw";
+import {
+  AssetRecordType,
+  atom,
+  defaultHandleExternalTldrawContent,
+  type Editor,
+  getHashForString,
+  type TLAsset,
+  type TLAssetId,
+  type TLAssetStore,
+  type TLShapeId,
+} from "tldraw";
 
 import type { PassKeeper } from "./bootstrap";
+
+import { fileFromDataUrl } from "./tldr";
 
 // A board's images live in the Worker's R2 bucket (README, "Images"): an
 // upload sends the bytes with the pass in its header, and the document keeps
@@ -237,4 +249,108 @@ export function keepLinksPlain(editor: Editor): void {
     type: "bookmark",
     typeName: "asset",
   }));
+}
+
+// An image's address that is a board's files on this origin, but not this
+// board's: a paste from another board's tab, or a .tldr that points at one.
+// Its bytes are readable only while this browser holds that board's files
+// cookie, so the document must not keep the address.
+export function isOtherBoardsFile(src: unknown, ownPath: string): src is string {
+  if (typeof src !== "string" || src.startsWith("data:") || src.startsWith("blob:")) return false;
+  let url: URL;
+  try {
+    url = new URL(src, location.origin);
+  } catch {
+    return false;
+  }
+  return (
+    url.origin === location.origin &&
+    /^\/rooms\/[^/]+\/files\//u.test(url.pathname) &&
+    !url.pathname.startsWith(`${ownPath}/`)
+  );
+}
+
+type Media = Extract<TLAsset, { type: "image" | "video" }>;
+
+type Read = () => Promise<File>;
+
+// The bytes behind another board's address, with what this browser may
+// read: that board's files cookie, held while the person is on it.
+const fetched =
+  (src: string, name: string): Read =>
+  async () => {
+    const response = await fetch(src, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`board: another board's image answered ${response.status}`);
+    const blob = await response.blob();
+    return new File([blob], name || "image", { type: blob.type });
+  };
+
+// Pasted images and images that point at another board's files land on
+// this board as its own uploads (README, "Images"):
+// - tldraw's copy embeds each image as a data: URL, and its paste reads
+//   one back with fetch, which the page's policy refuses; the board reads
+//   it itself instead;
+// - an address on another board (an image tldraw could not embed, or a
+//   .tldr pointing at one) opens only with that board's files cookie, so
+//   it is read now, while it can be, and uploaded here.
+// What cannot be read or uploaded is taken off the board with its shapes,
+// and `onDropped` says so (an upload refusal has said why already),
+// rather than leaving a picture that never loads. Answers the cleanup.
+export function bringImagesOver(
+  editor: Editor,
+  files: BoardFiles,
+  onDropped: () => void,
+): () => void {
+  const drop = (id: TLAssetId) => {
+    const using: TLShapeId[] = [];
+    for (const page of editor.getPages()) {
+      for (const shapeId of editor.getPageShapeIds(page)) {
+        const props = editor.getShape(shapeId)?.props as { assetId?: unknown } | undefined;
+        if (props?.assetId === id) using.push(shapeId);
+      }
+    }
+    editor.run(
+      () => {
+        editor.deleteShapes(using);
+        editor.deleteAssets([id]);
+      },
+      // NOTE: a map is often locked as the table's background.
+      { history: "ignore", ignoreShapeLock: true },
+    );
+  };
+  const settle = async (id: TLAssetId, read: Read) => {
+    try {
+      const file = await read();
+      const made = await editor.getAssetForExternalContent({ assetId: id, file, type: "file" });
+      if (made === undefined) throw new Error("board: the image made no asset");
+      if (editor.getAsset(id) === undefined) return;
+      editor.run(() => editor.updateAssets([{ ...made, id } as Media]), { history: "ignore" });
+    } catch (error) {
+      console.warn("board: an image brought from elsewhere was left out", error);
+      drop(id);
+      if (!(error instanceof UploadRefused)) onDropped();
+    }
+  };
+
+  editor.registerExternalContentHandler("tldraw", async ({ content, point }) => {
+    const pending: [TLAssetId, Read][] = [];
+    const assets = content.assets.map((asset) => {
+      if (editor.getAsset(asset.id) !== undefined) return asset;
+      if (asset.type !== "image" && asset.type !== "video") return asset;
+      const { name, src } = asset.props;
+      if (typeof src === "string" && src.startsWith("data:")) {
+        pending.push([asset.id, async () => fileFromDataUrl(src, name)]);
+      } else if (isOtherBoardsFile(src, files.path)) {
+        pending.push([asset.id, fetched(src, name)]);
+      } else return asset;
+      return { ...asset, props: { ...asset.props, src: null } } as Media;
+    });
+    await defaultHandleExternalTldrawContent(editor, { content: { ...content, assets }, point });
+    await Promise.all(pending.map(async ([id, read]) => settle(id, read)));
+  });
+  return editor.sideEffects.registerAfterCreateHandler("asset", (asset, source) => {
+    if (source !== "user" || (asset.type !== "image" && asset.type !== "video")) return;
+    if (!isOtherBoardsFile(asset.props.src, files.path)) return;
+    void settle(asset.id, fetched(asset.props.src, asset.props.name));
+  });
 }

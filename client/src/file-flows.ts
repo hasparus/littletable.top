@@ -2,7 +2,7 @@ import { defaultHandleExternalFileContent, type Editor, type TLUiToastsContextTy
 
 import type { Copy } from "./copy";
 
-import { type BoardFiles, keepLinksPlain, type UploadRefusal } from "./assets";
+import { type BoardFiles, bringImagesOver, keepLinksPlain, type UploadRefusal } from "./assets";
 import { fill } from "./copy";
 import { fitForUpload, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from "./images";
 import { exportTldr, ImportRefused, importTldr, isTldrFile, MAX_TLDR_BYTES } from "./tldr";
@@ -119,7 +119,8 @@ export function pickTldr(editor: Editor, flow: FileFlow): void {
 
 // Every way a file arrives (the picker, a drop, a paste) goes through one
 // handler, which opens .tldr files, redraws photos too large for the board,
-// and hands the rest to tldraw's own handling. A refused upload says why,
+// and hands the rest to tldraw's own handling. Pasted images and
+// those another board holds are uploaded to this one. A refused upload says why,
 // once. Answers the cleanup.
 export function handleFiles(
   editor: Editor,
@@ -145,6 +146,9 @@ export function handleFiles(
     },
   };
   keepLinksPlain(editor);
+  const stopBringing = bringImagesOver(editor, files, () =>
+    toasts.addToast({ severity: "error", title: copy.imageFromOtherBoard }),
+  );
   editor.registerExternalContentHandler("files", async (content) => {
     for (const file of content.files.filter(isTldrFile)) await openTldr(editor, file, flow);
     const images = content.files.filter((file) => !isTldrFile(file));
@@ -164,6 +168,7 @@ export function handleFiles(
     );
   });
   return () => {
+    stopBringing();
     files.onRefused = null;
   };
 }

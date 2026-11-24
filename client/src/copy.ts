@@ -34,6 +34,8 @@ const EN = {
   follow: "Follow",
   guest: "Guest",
   imageFailed: "The image did not upload. Check your connection and try again.",
+  imageFromOtherBoard:
+    "An image from another board could not be brought over. Open that board, then paste again.",
   imagesOverQuota: "This board has no room for more images.",
   imagesTooFast: "Too many images at once. Wait a minute, then try again.",
   imagesUploading: "Uploading images: %(done)s of %(count)s (%(percent)s%)",
@@ -117,6 +119,8 @@ const PL: Copy = {
   follow: "Obserwuj",
   guest: "Gość",
   imageFailed: "Nie udało się wysłać obrazu. Sprawdź połączenie i spróbuj ponownie.",
+  imageFromOtherBoard:
+    "Nie udało się przenieść obrazu z innej tablicy. Otwórz tamtą tablicę i wklej ponownie.",
   imagesOverQuota: "Na tej tablicy nie ma już miejsca na obrazy.",
   imagesTooFast: "Za dużo obrazów naraz. Zaczekaj minutę i spróbuj ponownie.",
   imagesUploading: "Wysyłamy obrazy: %(done)s z %(count)s (%(percent)s%)",
