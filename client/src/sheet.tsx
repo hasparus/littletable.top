@@ -56,6 +56,7 @@ export function Sheet({
   const heading = useId();
   const sheet = useRef<HTMLElement>(null);
   const aboveKeyboard = useAboveKeyboard();
+  const hasField = field !== undefined;
 
   // Focus moves in, and goes back to whatever opened the sheet.
   useEffect(() => {
@@ -82,22 +83,20 @@ export function Sheet({
     <>
       <div
         aria-hidden="true"
-        className="fixed inset-x-0 top-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 bg-ink/20 sm:hidden"
+        className="fixed inset-x-0 top-0 bottom-[max(var(--board-sheet-bottom),calc(max(4px,env(safe-area-inset-bottom))+52px))] z-40 bg-ink/20 sm:hidden"
         onClick={() => open(null)}
       />
       <section
-        aria-label={field === undefined ? undefined : title}
-        aria-labelledby={field === undefined ? heading : undefined}
-        className="fixed inset-x-2 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:inset-x-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:w-88 sm:-translate-x-1/2"
+        aria-label={hasField ? title : undefined}
+        aria-labelledby={hasField ? undefined : heading}
+        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:w-88 sm:-translate-x-1/2 ${hasField ? "gap-2 p-2" : ""}`}
         id={PANEL_ID[panel]}
         ref={sheet}
         role="dialog"
         style={aboveKeyboard}
         tabIndex={-1}
       >
-        <header
-          className={`flex items-center gap-2 py-1 pr-1 ${field === undefined ? "pl-4" : "pl-2"}`}
-        >
+        <header className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"}`}>
           {field ?? (
             <h2 className="flex-1 text-lg font-semibold outline-none" id={heading} tabIndex={-1}>
               {title}
@@ -112,7 +111,9 @@ export function Sheet({
             <Icon name="Close" />
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${hasField ? "" : "px-4 pb-4"}`}
+        >
           {children}
         </div>
       </section>

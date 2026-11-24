@@ -33,7 +33,7 @@ import { type Die, finalRotation, type Planned, throwDice, uprightTurn } from ".
 export type DiceThrow = {
   dispose: () => void;
   // Settles when the dice lie still, or at once when another roll replaces it.
-  roll: (dice: Die[], seed: number) => Promise<void>;
+  roll: (dice: Die[], seed: number, kept: readonly boolean[]) => Promise<void>;
 };
 
 // The dice wear the deployer's brand colour; "ivory" is the other look.
@@ -44,7 +44,7 @@ const FALLBACK_BODY: Rgb = [0.184, 0.435, 0.875];
 // How far a ball's faces are lit as a sphere, and the frames a result's mark
 // takes to come in.
 const BALL_SMOOTH = 0.5;
-const MARK_FRAMES = 15;
+const SETTLE_FADE_FRAMES = 15;
 // The simulation's share of a frame on a slow device, before it yields.
 const SLICE_MS = 6;
 // NOTE: for looking at a tier on a device that would pick the other one:
@@ -132,17 +132,23 @@ function turnsOf({ bodies, numbering, thrown }: Planned): (Turn | null)[] {
   });
 }
 
-// Per die, the face to mark as its result and the frame from which it lies
-// still. A ball shows a dozen numbers at once and the one that catches the
-// light is rarely the one on top, so its result is told apart once it has
-// stopped; while it rolls every face looks alike.
-type Result = { columns: number; from: number; x: number; y: number };
+// The d100 mark and the dimming of dropped dice begin when the die settles.
+type Appearance = {
+  dropped: boolean;
+  from: number;
+  mark: { columns: number; x: number; y: number } | null;
+};
 
-function resultsOf({ bodies, thrown }: Planned): (Result | null)[] {
+function appearancesOf(
+  { bodies, thrown }: Planned,
+  kept: readonly boolean[],
+): (Appearance | null)[] {
   return bodies.map((body, index) => {
     const shape = solid(body.kind);
     const face = shape.features.findIndex((feature) => feature.value === body.value);
-    if (!shape.ball || face === -1) return null;
+    const mark = shape.ball && face !== -1 ? faceSpot(body.kind, face) : null;
+    const dropped = kept[index] === false;
+    if (mark === null && !dropped) return null;
     const frames = thrown.frames[index]!;
     const last = frames.length - FRAME_STRIDE;
     // NOTE: the height is left out: the last frame alone sets it exactly.
@@ -150,16 +156,20 @@ function resultsOf({ bodies, thrown }: Planned): (Result | null)[] {
       [0, 2, 3, 4, 5, 6].every((k) => Math.abs(frames[at + k]! - frames[last + k]!) < 1e-9);
     let from = last;
     while (from >= FRAME_STRIDE && still(from - FRAME_STRIDE)) from -= FRAME_STRIDE;
-    return { ...faceSpot(body.kind, face), from: from / FRAME_STRIDE };
+    return { dropped, from: from / FRAME_STRIDE, mark };
   });
 }
 
-type Presented = { facing: (Quat | null)[]; results: (Result | null)[]; turns: (Turn | null)[] };
+type Presented = {
+  appearances: (Appearance | null)[];
+  facing: (Quat | null)[];
+  turns: (Turn | null)[];
+};
 
 // The dice between two recorded frames, each with its numbering turned.
 function posesAt(
   { bodies, numbering, thrown }: Planned,
-  { facing, results, turns }: Presented,
+  { appearances, facing, turns }: Presented,
   frame: number,
 ): Pose[] {
   return bodies.map((body, index) => {
@@ -177,11 +187,16 @@ function posesAt(
     ];
     const turned = multiply(blend(rotation(from), rotation(to), share), numbering[index]!);
     const toCamera = facing[index] ?? null;
-    const result = results[index] ?? null;
+    const appearance = appearances[index] ?? null;
     const shareIn =
-      result === null ? 0 : Math.min(Math.max((frame - result.from) / MARK_FRAMES, 0), 1);
+      appearance === null
+        ? 0
+        : Math.min(Math.max((frame - appearance.from) / SETTLE_FADE_FRAMES, 0), 1);
+    const amount = shareIn * shareIn * (3 - 2 * shareIn);
+    const mark = appearance?.mark ?? null;
     return {
-      mark: result === null ? null : { ...result, amount: shareIn * shareIn * (3 - 2 * shareIn) },
+      dimmed: appearance?.dropped ? amount : 0,
+      mark: mark === null ? null : { ...mark, amount },
       model: modelOf(body.kind),
       position: lerp(position(from), position(to), share),
       rotation: toCamera === null ? turned : multiply(toCamera, turned),
@@ -235,14 +250,14 @@ export async function createDiceThrow(
       renderer.dispose();
       canvas.remove();
     },
-    roll: async (dice, seed) =>
+    roll: async (dice, seed, kept) =>
       new Promise<void>((resolve, reject) => {
         current += 1;
         const mine = current;
         cancelAnimationFrame(frameRequest);
         const run = throwDice(dice, seed);
         let planned: Planned | null = null;
-        let presented: Presented = { facing: [], results: [], turns: [] };
+        let presented: Presented = { appearances: [], facing: [], turns: [] };
         let startedAt = 0;
         let length = 0;
         const tick = (now: number) => {
@@ -255,16 +270,16 @@ export async function createDiceThrow(
               }
               planned = run.planned();
               presented = {
+                appearances: appearancesOf(planned, kept),
                 facing: facingOf(planned),
-                results: resultsOf(planned),
                 turns: turnsOf(planned),
               };
               startedAt = now;
-              // The throw, and the marks of results that came to rest late.
+              // Include the fades of dice that came to rest late.
               length = Math.max(
                 planned.thrown.frames[0]!.length / FRAME_STRIDE - 1,
-                ...presented.results.map((result) =>
-                  result === null ? 0 : result.from + MARK_FRAMES,
+                ...presented.appearances.map((appearance) =>
+                  appearance === null ? 0 : appearance.from + SETTLE_FADE_FRAMES,
                 ),
               );
             }

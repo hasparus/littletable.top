@@ -128,7 +128,7 @@ delete, and a deletion token cannot open a socket or roll.
 | `GET /b/<share code>`                       | The client's shell                                    |
 | `GET /`                                     | 302 to `HOME_URL`                                     |
 | `GET /rooms/<board>/connect`                | The tldraw sync socket (`?sessionId=&pass=`)          |
-| `POST /rooms/<board>/roll`                  | Rolls `{"dice": [6, 6]}` for everyone                 |
+| `POST /rooms/<board>/roll`                  | Rolls a pool or dice expression for everyone          |
 | `GET /rooms/<board>/rolls`                  | The latest 50 rolls                                   |
 | `POST /rooms/<board>/link`                  | Advances the link version (link reset token)          |
 | `POST /rooms/<board>/delete`                | Deletes the board's data (deletion token)             |
@@ -141,6 +141,9 @@ The rooms API is same-origin with the client and sends no CORS headers.
 The room draws every die (d4, d6, d8, d10, d12, d20, d100; up to 20 at
 once, one roll per person per 500 ms). It sends each roll to every
 connection as a sync custom message, so no client can edit one.
+Post `{"dice": [6, 6]}` for a plain pool or `{"expression": "3d6kh2 + 3"}`
+for [dice notation](internals.md#dice). The roll includes the expression
+when provided, in addition to the raw die values and throw seed.
 
 A socket with a valid pass that must still be refused is accepted, then
 closed at once with code 4099, which tldraw treats as final:

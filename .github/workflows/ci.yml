@@ -24,19 +24,13 @@ jobs:
         with:
           node-version-file: package.json
           package-manager-cache: false
-      - uses: actions/cache@v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run format:check
       - run: bun run build
-      - run: bun run test
 
-  e2e:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -50,13 +44,34 @@ jobs:
         with:
           node-version-file: package.json
           package-manager-cache: false
-      - uses: actions/cache@v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      # The browser builds that match the pinned @playwright/test; the dice
-      # determinism spec runs the shared throw in all three engines.
-      - run: bun run playwright install --with-deps chromium firefox webkit
-      - run: bun run e2e
+      - run: bun run test
+
+  e2e:
+    name: e2e ${{ matrix.shard }}/${{ strategy.job-total }}
+    runs-on: ubuntu-latest
+    container:
+      # Match @playwright/test in package.json. The image supplies the browsers and system libraries.
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      options: --user 1001
+    timeout-minutes: 20
+    strategy:
+      # NOTE: every shard runs to the end and reports its own failures.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      # The Playwright image has npm but no unzip, which setup-bun requires.
+      - run: |
+          bun_package=$(node -p "require('./package.json').packageManager")
+          npm install --global --prefix "$RUNNER_TEMP/bun" "$bun_package"
+          echo "$RUNNER_TEMP/bun/bin" >> "$GITHUB_PATH"
+      - run: bun install --frozen-lockfile
+      - run: bun run e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --workers=2

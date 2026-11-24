@@ -1,12 +1,13 @@
 import type { Copy } from "./copy";
 
-import { dieLabel } from "./copy";
+import { dieLabel, fill } from "./copy";
 
 type Tone = "quiet" | "soft" | "solid";
 type Size = "lg" | "md" | "sm" | "xs";
 
 export type DieShapeProps = {
   copy: Copy;
+  dropped?: boolean;
   sides: number;
   size?: Size;
   tone?: Tone;
@@ -74,7 +75,14 @@ function Silhouette({ className, sides }: { className: string; sides: number }) 
 
 // A die's face count and value on its own flat silhouette, in the colours of
 // the theme. The name read aloud is "d20: 2"; only the number is drawn.
-export function DieShape({ copy, sides, size = "md", tone = "solid", value }: DieShapeProps) {
+export function DieShape({
+  copy,
+  dropped = false,
+  sides,
+  size = "md",
+  tone = "solid",
+  value,
+}: DieShapeProps) {
   const shown = String(value ?? sides);
   const colours = TONES[tone];
   const label = `${dieLabel(copy, sides)}: ${shown}`;
@@ -83,8 +91,9 @@ export function DieShape({ copy, sides, size = "md", tone = "solid", value }: Di
   const { text } = outline;
   return (
     <svg
-      aria-label={label}
-      className={`${SIZES[size]} aspect-square shrink-0`}
+      aria-label={dropped ? fill(copy.droppedDie, { die: label }) : label}
+      className={`${SIZES[size]} aspect-square shrink-0 data-dropped:opacity-60`}
+      data-dropped={dropped ? "" : undefined}
       role="img"
       viewBox="0 0 32 32"
     >
@@ -106,6 +115,9 @@ export function DieShape({ copy, sides, size = "md", tone = "solid", value }: Di
       >
         {shown}
       </text>
+      {dropped && (
+        <path className="stroke-foreground stroke-2" d={`M7 ${text.y}h18`} strokeLinecap="round" />
+      )}
     </svg>
   );
 }

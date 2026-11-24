@@ -1,6 +1,6 @@
 import type { Atom, Editor, TLShapeId } from "tldraw";
 
-import { createContext, useContext } from "react";
+import { createContext, type Dispatch, type SetStateAction, useContext } from "react";
 
 import type { BoardFiles } from "./assets";
 import type { Person } from "./bootstrap";
@@ -12,6 +12,8 @@ import type { BoardSearch } from "./search-board";
 
 // The search sheet is also where the board's places are listed.
 export type Panel = "dice" | "people" | "search";
+
+type RollDraft = { expression: string; pool: number[] };
 
 // What the board's own controls share: the buttons sit inside tldraw's
 // toolbar and the sheets beside the canvas, so both read it from here.
@@ -37,12 +39,12 @@ export type BoardUi = {
   open: (panel: Panel | null, options?: { typing: boolean }) => void;
   panel: Panel | null;
   person: Person;
-  pool: number[];
+  rollDraft: RollDraft;
   rolls: Rolls;
   // Null until the canvas is up.
   search: BoardSearch | null;
   setNaming: (id: TLShapeId | null) => void;
-  setPool: (pool: number[]) => void;
+  setRollDraft: Dispatch<SetStateAction<RollDraft>>;
   typing: boolean;
 };
 
