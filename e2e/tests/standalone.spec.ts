@@ -64,6 +64,47 @@ test("the home page is one editable public board for anonymous visitors", async 
   await guest.context().close();
 });
 
+test("two guests can chat live and see their messages after reloading", async ({
+  browser,
+  page,
+}) => {
+  await page.goto(`${STANDALONE}/`);
+  const guest = await phone(browser, `${STANDALONE}/`);
+  try {
+    const desktopChat = await openSheet(page, "Chat");
+    const phoneChat = await openSheet(guest, "Chat");
+    for (const chat of [desktopChat, phoneChat]) {
+      await expect(chat.getByText("Loading messages…")).toBeHidden();
+    }
+
+    const question = "Can I borrow a pencil?";
+    const reply = "There is one next to the map.";
+    const phoneMessage = phoneChat.getByRole("textbox", { exact: true, name: "Message" });
+    await phoneMessage.fill(question);
+    await phoneChat.getByRole("button", { exact: true, name: "Send" }).click();
+    await expect(desktopChat.getByRole("log").getByText(question, { exact: true })).toBeVisible();
+    await expect(phoneMessage).toHaveValue("");
+
+    const desktopMessage = desktopChat.getByRole("textbox", { exact: true, name: "Message" });
+    await desktopMessage.fill(reply);
+    await desktopMessage.press("Enter");
+    await expect(phoneChat.getByRole("log").getByText(reply, { exact: true })).toBeVisible();
+    for (const chat of [desktopChat, phoneChat]) {
+      await expect(chat.getByRole("log").getByText(question, { exact: true })).toHaveCount(1);
+      await expect(chat.getByRole("log").getByText(reply, { exact: true })).toHaveCount(1);
+    }
+
+    await guest.reload();
+    const reopened = await openSheet(guest, "Chat");
+    const history = reopened.getByRole("log");
+    await expect(history.getByText(question, { exact: true })).toBeVisible();
+    await expect(history.getByText(reply, { exact: true })).toBeVisible();
+    await expectNoCspViolations(guest);
+  } finally {
+    await guest.context().close();
+  }
+});
+
 test("a public arrow saves its moved endpoint for the expiry sweep", async ({ page }) => {
   await page.goto(`${STANDALONE}/`);
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();

@@ -11,6 +11,8 @@
 // full-size balls are all the tray's floor holds, in rows; thrown, some would
 // end on top of others. A crowd of balls is therefore thrown smaller.
 
+import type { DiceLaunch } from "../../src/dice-notation";
+
 import {
   add,
   blend,
@@ -34,6 +36,9 @@ import { type DieKind, solid, type Solid } from "./dice-solids";
 // the screen, y up.
 export const TRAY_WIDTH = 10;
 export const TRAY_DEPTH = 14;
+export const FLICK_REACH_X = TRAY_WIDTH / 2 - 1.3;
+export const FLICK_REACH_Z = TRAY_DEPTH / 2 - 1.3;
+export const FLICK_SPEED = 16;
 export const FPS = 60;
 // Seven numbers per die per frame: x y z, then the rotation qx qy qz qw.
 export const FRAME_STRIDE = 7;
@@ -396,8 +401,13 @@ export type Simulation = {
 
 // The throw as a resumable computation, so a slow device can spread it over
 // several frames. Where it pauses never changes the frames it makes.
-export function simulation(kinds: DieKind[], seed: number): Simulation {
+export function simulation(kinds: DieKind[], seed: number, launch?: DiceLaunch): Simulation {
   const bodies = spawn(kinds, seed);
+  const die = bodies[0];
+  if (launch !== undefined && bodies.length === 1 && die !== undefined) {
+    die.position = [launch.x * FLICK_REACH_X, die.sphere + 0.9, launch.z * FLICK_REACH_Z];
+    die.velocity = [launch.vx * FLICK_SPEED, 2, launch.vz * FLICK_SPEED];
+  }
   const frames: number[][] = bodies.map(() => []);
   const record = () => {
     for (const [i, body] of bodies.entries()) frames[i]!.push(...body.position, ...body.rotation);

@@ -22,9 +22,9 @@ layer over a snapshot of the shared board. Little Table runs standalone.
 ## Licence
 
 No licence has been chosen for this repository's own code yet, and there is
-no `LICENSE` file. The Outfit font in `client/src/theme/fonts/` is under the
-SIL Open Font License (`OFL.txt` beside it). The text engines and their
-models are under Apache-2.0 and MIT (see
+no `LICENSE` file. Outfit and Google Sans Flex in `client/src/theme/fonts/`
+are under the SIL Open Font License (see the licence files beside them).
+The text engines and their models are under Apache-2.0 and MIT (see
 [docs/internals.md](docs/internals.md#self-hosted-files)).
 
 The tldraw SDK is an npm dependency under tldraw's own licence. Off

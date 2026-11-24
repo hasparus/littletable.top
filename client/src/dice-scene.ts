@@ -2,19 +2,12 @@
 // from the roll's seed, turns each die's numbering so the server's value is
 // on top, and draws the recorded frames. Values never come from the physics.
 
+import type { DiceLaunch } from "../../src/dice-notation";
 import type { DieKind } from "./dice-solids";
 
-import { drawAtlas, faceSpot, NUMERAL_FONT } from "./dice-atlas";
-import {
-  blend,
-  lerp,
-  multiply,
-  normalize,
-  type Quat,
-  rotationBetween,
-  sub,
-  type Vec,
-} from "./dice-math";
+import { drawAtlas, NUMERAL_FONT } from "./dice-atlas";
+import { addDiceControls, type DiceControls } from "./dice-controls";
+import { blend, lerp, multiply, type Quat, type Vec } from "./dice-math";
 import { meshOf } from "./dice-mesh";
 import { FPS, FRAME_STRIDE } from "./dice-physics";
 import {
@@ -25,15 +18,16 @@ import {
   type Pose,
   type Rgb,
   type Tier,
-  type Turn,
 } from "./dice-renderer";
 import { solid } from "./dice-solids";
-import { type Die, finalRotation, type Planned, throwDice, uprightTurn } from "./dice-throw";
+import { cameraFacingOf, type Die, type Planned, throwDice } from "./dice-throw";
+
+type ThrowOptions = DiceControls & { kept: readonly boolean[]; launch?: DiceLaunch; seed: number };
 
 export type DiceThrow = {
   dispose: () => void;
   // Settles when the dice lie still, or at once when another roll replaces it.
-  roll: (dice: Die[], seed: number, kept: readonly boolean[]) => Promise<void>;
+  roll: (dice: Die[], options: ThrowOptions) => Promise<void>;
 };
 
 // The dice wear the deployer's brand colour; "ivory" is the other look.
@@ -41,8 +35,8 @@ const LOOK: "brand" | "ivory" = "brand";
 const IVORY: Look = { body: [0.945, 0.91, 0.847], ink: [0.165, 0.129, 0.114] };
 const LIGHT_INK: Rgb = [1, 0.973, 0.949];
 const FALLBACK_BODY: Rgb = [0.184, 0.435, 0.875];
-// How far a ball's faces are lit as a sphere, and the frames a result's mark
-// takes to come in.
+// How far a ball's faces are lit as a sphere, and the frames it takes to dim
+// dice dropped by the notation.
 const BALL_SMOOTH = 0.5;
 const SETTLE_FADE_FRAMES = 15;
 // The simulation's share of a frame on a slow device, before it yields.
@@ -101,75 +95,26 @@ function modelOf(kind: DieKind): Model {
   return made;
 }
 
-// Per die, a turn of the whole die that is kept through the throw. A ball's
-// value ends straight up, which from a camera over the tray's middle is off
-// the middle of a ball near the tray's edge, where a neighbouring number
-// would look like the result; the ball is tipped to face the camera from
-// where it comes to rest.
-function facingOf({ bodies, thrown }: Planned): (Quat | null)[] {
-  return bodies.map((body, index) => {
-    if (!solid(body.kind).ball) return null;
-    const frames = thrown.frames[index]!;
-    const at = frames.length - FRAME_STRIDE;
-    const rest: Vec = [frames[at]!, frames[at + 1]!, frames[at + 2]!];
-    return rotationBetween([0, 1, 0], normalize(sub(EYE, rest)));
-  });
-}
-
-// Per die, the turn of its result's numeral on its face that will have it
-// read upright where the die comes to rest. It is drawn turned from the
-// first frame: on a tumbling die nobody can tell, and nothing moves on a die
-// at rest.
-function turnsOf({ bodies, numbering, thrown }: Planned): (Turn | null)[] {
-  return bodies.map((body, index) => {
-    const turn = uprightTurn(body.kind, {
-      rotation: finalRotation(thrown, index),
-      turn: numbering[index]!,
-      value: body.value,
-    });
-    if (turn === null) return null;
-    return { ...faceSpot(body.kind, turn.face), cos: turn.cos, sin: turn.sin };
-  });
-}
-
-// The d100 mark and the dimming of dropped dice begin when the die settles.
-type Appearance = {
-  dropped: boolean;
-  from: number;
-  mark: { columns: number; x: number; y: number } | null;
-};
-
-function appearancesOf(
-  { bodies, thrown }: Planned,
-  kept: readonly boolean[],
-): (Appearance | null)[] {
-  return bodies.map((body, index) => {
-    const shape = solid(body.kind);
-    const face = shape.features.findIndex((feature) => feature.value === body.value);
-    const mark = shape.ball && face !== -1 ? faceSpot(body.kind, face) : null;
-    const dropped = kept[index] === false;
-    if (mark === null && !dropped) return null;
-    const frames = thrown.frames[index]!;
+// Dropped dice start to dim once they come to rest.
+function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)[] {
+  return thrown.frames.map((frames, index) => {
+    if (kept[index] !== false) return null;
     const last = frames.length - FRAME_STRIDE;
     // NOTE: the height is left out: the last frame alone sets it exactly.
     const still = (at: number) =>
       [0, 2, 3, 4, 5, 6].every((k) => Math.abs(frames[at + k]! - frames[last + k]!) < 1e-9);
     let from = last;
     while (from >= FRAME_STRIDE && still(from - FRAME_STRIDE)) from -= FRAME_STRIDE;
-    return { dropped, from: from / FRAME_STRIDE, mark };
+    return from / FRAME_STRIDE;
   });
 }
 
-type Presented = {
-  appearances: (Appearance | null)[];
-  facing: (Quat | null)[];
-  turns: (Turn | null)[];
-};
-
-// The dice between two recorded frames, each with its numbering turned.
+// The dice between two recorded frames. The mesh and its engraved numbers
+// move together for the entire throw.
 function posesAt(
   { bodies, numbering, thrown }: Planned,
-  { appearances, facing, turns }: Presented,
+  dimming: (number | null)[],
+  facing: (Quat | null)[],
   frame: number,
 ): Pose[] {
   return bodies.map((body, index) => {
@@ -185,23 +130,16 @@ function posesAt(
       frames[at + 5]!,
       frames[at + 6]!,
     ];
-    const turned = multiply(blend(rotation(from), rotation(to), share), numbering[index]!);
-    const toCamera = facing[index] ?? null;
-    const appearance = appearances[index] ?? null;
-    const shareIn =
-      appearance === null
-        ? 0
-        : Math.min(Math.max((frame - appearance.from) / SETTLE_FADE_FRAMES, 0), 1);
-    const amount = shareIn * shareIn * (3 - 2 * shareIn);
-    const mark = appearance?.mark ?? null;
+    const dim = dimming[index] ?? null;
+    const shareIn = dim === null ? 0 : Math.min(Math.max((frame - dim) / SETTLE_FADE_FRAMES, 0), 1);
+    const spun = multiply(blend(rotation(from), rotation(to), share), numbering[index]!);
+    const correction = facing[index];
     return {
-      dimmed: appearance?.dropped ? amount : 0,
-      mark: mark === null ? null : { ...mark, amount },
+      dimmed: shareIn * shareIn * (3 - 2 * shareIn),
       model: modelOf(body.kind),
       position: lerp(position(from), position(to), share),
-      rotation: toCamera === null ? turned : multiply(toCamera, turned),
+      rotation: correction == null ? spun : multiply(correction, spun),
       size: thrown.sizes[index]!,
-      turn: turns[index] ?? null,
     };
   });
 }
@@ -216,12 +154,15 @@ export async function createDiceThrow(
   // ready at that moment; this waits for Outfit's file.
   await document.fonts.load(NUMERAL_FONT, "0123456789");
   const canvas = document.createElement("canvas");
+  canvas.setAttribute("aria-hidden", "true");
   canvas.className = "pointer-events-none absolute inset-0 size-full";
   let shown: Pose[] = [];
+  let controls: ReturnType<typeof addDiceControls> | null = null;
   // NOTE: the board's own theme (tldraw's, a class on its container) decides
   // how strong the shadows are, not the device's.
   function redraw() {
     renderer.draw(shown, document.querySelector(".tl-theme__dark") !== null);
+    controls?.measure();
   }
   const redrawSafely = () => {
     try {
@@ -239,29 +180,37 @@ export async function createDiceThrow(
   host.dataset.diceTier = renderer.tier;
   const resized = new ResizeObserver(redrawSafely);
   resized.observe(host);
-  let current = 0;
   let frameRequest = 0;
+  let finish: (() => void) | null = null;
+  const stop = () => {
+    cancelAnimationFrame(frameRequest);
+    controls?.remove();
+    controls = null;
+    finish?.();
+    finish = null;
+  };
 
   return {
     dispose: () => {
-      current += 1;
-      cancelAnimationFrame(frameRequest);
+      stop();
       resized.disconnect();
       renderer.dispose();
       canvas.remove();
     },
-    roll: async (dice, seed, kept) =>
+    roll: async (dice, { kept, launch, seed, ...input }) =>
       new Promise<void>((resolve, reject) => {
-        current += 1;
-        const mine = current;
-        cancelAnimationFrame(frameRequest);
-        const run = throwDice(dice, seed);
+        const focus =
+          host.contains(document.activeElement) &&
+          document.activeElement?.matches(":focus-visible");
+        stop();
+        finish = resolve;
+        const run = throwDice(dice, seed, launch);
         let planned: Planned | null = null;
-        let presented: Presented = { appearances: [], facing: [], turns: [] };
+        let dimming: (number | null)[] = [];
+        let facing: (Quat | null)[] = [];
         let startedAt = 0;
         let length = 0;
         const tick = (now: number) => {
-          if (mine !== current) return resolve();
           try {
             if (planned === null) {
               if (!run.advance(performance.now() + SLICE_MS)) {
@@ -269,26 +218,28 @@ export async function createDiceThrow(
                 return;
               }
               planned = run.planned();
-              presented = {
-                appearances: appearancesOf(planned, kept),
-                facing: facingOf(planned),
-                turns: turnsOf(planned),
-              };
+              dimming = dimFrom(planned, kept);
+              facing = cameraFacingOf(planned, EYE);
               startedAt = now;
               // Include the fades of dice that came to rest late.
               length = Math.max(
                 planned.thrown.frames[0]!.length / FRAME_STRIDE - 1,
-                ...presented.appearances.map((appearance) =>
-                  appearance === null ? 0 : appearance.from + SETTLE_FADE_FRAMES,
-                ),
+                ...dimming.map((dim) => (dim === null ? 0 : dim + SETTLE_FADE_FRAMES)),
               );
             }
             const frame = Math.min(((now - startedAt) / 1000) * FPS, length);
-            shown = posesAt(planned, presented, frame);
+            shown = posesAt(planned, dimming, facing, frame);
             redraw();
             if (frame < length) frameRequest = requestAnimationFrame(tick);
-            else resolve();
+            else {
+              controls = addDiceControls(host, shown, redrawSafely, input);
+              controls.measure();
+              if (focus) controls.focus();
+              finish = null;
+              resolve();
+            }
           } catch (error) {
+            finish = null;
             reject(error instanceof Error ? error : new Error(String(error)));
           }
         };

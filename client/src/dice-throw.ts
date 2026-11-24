@@ -2,20 +2,21 @@
 // of the shared throw, and for each die the turn of its numbering that puts
 // the server's value on top. No rendering here.
 
+import type { DiceLaunch } from "../../src/dice-notation";
+
 import {
   cross,
   dot,
   fromBasis,
-  length,
-  multiply,
   normalize,
   type Quat,
   rotate,
+  rotationBetween,
   scale,
   sub,
   type Vec,
 } from "./dice-math";
-import { simulation, type Simulation, type Throw } from "./dice-physics";
+import { FRAME_STRIDE, simulation, type Simulation, type Throw } from "./dice-physics";
 import { type DieKind, type Feature, solid, type Solid } from "./dice-solids";
 
 export type Die = { sides: number; value: number };
@@ -38,8 +39,6 @@ const carry = (to: [Vec, Vec, Vec], from: [Vec, Vec, Vec], p: Vec): Vec => {
   ) as Vec;
 };
 
-const SCREEN_UP: Vec = [0, 0, -1];
-
 function landedFeature(shape: Solid, rotation: Quat): Feature {
   let best = shape.features[0]!;
   let height = -2;
@@ -52,28 +51,26 @@ function landedFeature(shape: Solid, rotation: Quat): Feature {
 
 // A rotation of the solid onto itself, applied to the mesh alone, that puts
 // the face showing `value` where the landed face is. The silhouette does not
-// change, so the recorded throw stays true. Of the candidates it picks the
-// one whose numeral reads most upright on screen. A ball is the same seen
-// from anywhere, so its numbering turns freely: the value goes straight up,
-// upright.
+// change, so the recorded throw stays true. All the numerals keep their
+// orientation on the mesh. A ball can use the shortest rotation to put
+// its result on top because it has no silhouette to preserve.
 export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
   const shape = solid(kind);
   if (shape.ball) {
     const target = shape.features.find((feature) => feature.value === value);
     if (target === undefined || target.up === null)
       throw new Error(`a ${kind} cannot show ${value}`);
+    const up = rotate([-rotation[0], -rotation[1], -rotation[2], rotation[3]], [0, 1, 0]);
+    if (dot(up, target.dir) > -0.999999) return rotationBetween(target.dir, up);
     const from = basis(target.dir, target.up);
-    const to = basis([0, 1, 0], SCREEN_UP);
-    const upright = fromBasis(
+    const to = basis(up, target.up);
+    return fromBasis(
       carry(to, from, [1, 0, 0]),
       carry(to, from, [0, 1, 0]),
       carry(to, from, [0, 0, 1]),
     );
-    return multiply([-rotation[0], -rotation[1], -rotation[2], rotation[3]], upright);
   }
   const landed = landedFeature(shape, rotation);
-  let pick: Quat | null = null;
-  let score = Number.NEGATIVE_INFINITY;
   for (const target of shape.features.filter((feature) => feature.value === value)) {
     const from = basis(target.dir, target.ring[0]!);
     for (const corner of landed.ring) {
@@ -83,44 +80,29 @@ export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
         return shape.verts.some((q) => dot(sub(q, moved), sub(q, moved)) < 1e-6);
       });
       if (!symmetric) continue;
-      const turn = fromBasis(
+      return fromBasis(
         carry(to, from, [1, 0, 0]),
         carry(to, from, [0, 1, 0]),
         carry(to, from, [0, 0, 1]),
       );
-      const upright =
-        target.up === null ? 0 : dot(rotate(rotation, rotate(turn, target.up)), SCREEN_UP);
-      if (upright > score) [score, pick] = [upright, turn];
     }
   }
-  if (pick === null) throw new Error(`a ${kind} cannot show ${value}`);
-  return pick;
-}
-
-// For the die that shows `value` on top once `turn` (its numbering) is
-// applied at rest in `rotation`: that face, and the cosine and sine of the
-// turn about its normal, clockwise seen from outside, that stands its
-// numeral upright on screen. A die's symmetries leave the numeral up to 36°
-// (d12), 45° (d6) or 60° (d8, d20) off upright, and a d10's kite has none to
-// choose from, so its numeral lands any way round. Null for a d4, read at
-// its corner, and for a ball, which `numbering` already turns upright.
-export function uprightTurn(
-  kind: DieKind,
-  { rotation, turn, value }: { rotation: Quat; turn: Quat; value: number },
-): { cos: number; face: number; sin: number } | null {
-  const shape = solid(kind);
-  const face = shape.features.findIndex((feature) => feature.value === value);
-  const up = shape.features[face]?.up ?? null;
-  if (shape.ball || up === null) return null;
-  const shown = multiply(rotation, turn);
-  const right = cross(up, shape.features[face]!.dir);
-  const cos = dot(rotate(shown, up), SCREEN_UP);
-  const sin = dot(rotate(shown, right), SCREEN_UP);
-  const size = length([cos, sin, 0]);
-  return { cos: cos / size, face, sin: sin / size };
+  throw new Error(`a ${kind} cannot show ${value}`);
 }
 
 export type Planned = { bodies: ThrownDie[]; numbering: Quat[]; thrown: Throw };
+
+// The d100 is spherical. A fixed camera correction keeps its result at the
+// centre of its projection without changing which numerals are on each face.
+export function cameraFacingOf({ bodies, thrown }: Planned, eye: Vec): (Quat | null)[] {
+  return bodies.map((body, index) => {
+    if (!solid(body.kind).ball) return null;
+    const frames = thrown.frames[index]!;
+    const at = frames.length - FRAME_STRIDE;
+    const rest: Vec = [frames[at]!, frames[at + 1]!, frames[at + 2]!];
+    return rotationBetween([0, 1, 0], normalize(sub(eye, rest)));
+  });
+}
 
 export function finalRotation(thrown: Throw, index: number): Quat {
   const frames = thrown.frames[index]!;
@@ -133,11 +115,13 @@ export function finalRotation(thrown: Throw, index: number): Quat {
 export function throwDice(
   dice: Die[],
   seed: number,
+  launch?: DiceLaunch,
 ): { advance: Simulation["advance"]; planned: () => Planned } {
   const bodies = bodiesOf(dice);
   const run = simulation(
     bodies.map((body) => body.kind),
     seed,
+    launch,
   );
   return {
     advance: run.advance,

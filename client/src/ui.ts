@@ -11,7 +11,7 @@ import type { Rolls } from "./rolls";
 import type { BoardSearch } from "./search-board";
 
 // The search sheet is also where the board's places are listed.
-export type Panel = "dice" | "people" | "search";
+export type Panel = "chat" | "dice" | "people" | "search";
 
 type RollDraft = { expression: string; pool: number[] };
 
@@ -19,6 +19,7 @@ type RollDraft = { expression: string; pool: number[] };
 // toolbar and the sheets beside the canvas, so both read it from here.
 export type BoardUi = {
   board: string;
+  close: (panel: Panel) => void;
   // This person's cursor colour.
   color: string;
   copy: Copy;
@@ -57,6 +58,7 @@ export function useBoardUi(): BoardUi {
 }
 
 export const PANEL_ID: Record<Panel, string> = {
+  chat: "board-chat",
   dice: "board-dice",
   people: "board-people",
   search: "board-search",

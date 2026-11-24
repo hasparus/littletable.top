@@ -2,21 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import type { DieKind } from "../client/src/dice-solids";
 
-import { add, cross, multiply, rotate, scale } from "../client/src/dice-math";
+import { dot, multiply, normalize, rotate, sub } from "../client/src/dice-math";
 import {
+  FLICK_REACH_X,
+  FLICK_REACH_Z,
   FRAME_STRIDE,
   hashThrow,
   simulate,
   TRAY_DEPTH,
   TRAY_WIDTH,
 } from "../client/src/dice-physics";
+import { EYE } from "../client/src/dice-renderer";
 import { solid } from "../client/src/dice-solids";
 import {
   bodiesOf,
+  cameraFacingOf,
   finalRotation,
   numbering,
   throwDice,
-  uprightTurn,
 } from "../client/src/dice-throw";
 
 // What can go wrong with the shared throw, and what guards it here:
@@ -28,8 +31,7 @@ import {
 // - the top face is not the server's value: "shows the server's value"
 // - a die leaves the tray or ends inside another: "stays in the tray, apart"
 // - a throw that never settles is cut differently on two screens: "the cap"
-// - the number on top reads sideways, as a d10's would, whose numbering has
-//   one way to lie: "stands the result's numeral upright"
+// - the numeral rotates to face the screen: "keeps engraved numerals"
 // - the simulation changes by accident: the fixed-seed tripwire
 // - a transcendental function creeps back in: test/dice-exact.test.ts
 // - engines disagree: e2e/tests/dice-determinism.spec.ts runs the same
@@ -158,29 +160,43 @@ describe("the shared throw", () => {
     }
   });
 
-  it.each(KINDS.slice(1, 6))("stands the result's numeral upright on a %s", (kind) => {
+  it.each(KINDS.slice(1))("keeps engraved numerals at their landing angle on a %s", (kind) => {
     const shape = solid(kind);
+    const target = shape.features.find(({ value }) => value === 1)!;
+    const angles = [];
     for (const seed of SEEDS.slice(0, 10)) {
       const rotation = finalRotation(simulate([kind], seed), 0);
-      const { value } = shape.features[seed % shape.features.length]!;
-      const turn = numbering(kind, rotation, value);
-      const upright = uprightTurn(kind, { rotation, turn, value })!;
-      const top = shape.features[upright.face]!;
-      expect(top.value).toBe(value);
-      // The numeral's up once turned by that much on its face; z runs down
-      // the screen.
-      const right = cross(top.up!, top.dir);
-      const up = add(scale(top.up!, upright.cos), scale(right, upright.sin));
-      expect(rotate(multiply(rotation, turn), up)[2]).toBeCloseTo(-1, 6);
+      const turn = numbering(kind, rotation, target.value);
+      angles.push(rotate(multiply(rotation, turn), target.up!)[2]);
     }
+    expect(angles.some((angle) => angle > 0)).toBe(true);
   });
 
-  it("turns no numeral of a d4 or of a ball", () => {
-    for (const kind of ["d4", "d100"] as const) {
-      const rotation = finalRotation(simulate([kind], 7), 0);
-      const turn = numbering(kind, rotation, 1);
-      expect(uprightTurn(kind, { rotation, turn, value: 1 })).toBeNull();
-    }
+  it("centres an off-axis d100's rolled face in the camera", () => {
+    const value = 63;
+    const run = throwDice([{ sides: 100, value }], 6);
+    run.advance(Infinity);
+    const planned = run.planned();
+    const spun = multiply(finalRotation(planned.thrown, 0), planned.numbering[0]!);
+    const shown = multiply(cameraFacingOf(planned, EYE)[0]!, spun);
+    const direction = normalize(sub(EYE, lastPosition(planned.thrown.frames[0]!)));
+    const face = solid("d100").features.find((feature) => feature.value === value)!;
+    expect(dot(rotate(shown, face.dir), direction)).toBeCloseTo(1, 9);
+  });
+
+  it("starts a flick at the release point and moves in the flick's direction", () => {
+    const launch = { vx: 0.5, vz: -0.25, x: 0.4, z: -0.35 };
+    const run = throwDice([{ sides: 6, value: 4 }], 7, launch);
+    run.advance(Number.POSITIVE_INFINITY);
+    const { numbering: turns, thrown } = run.planned();
+    const frames = thrown.frames[0]!;
+    expect(frames[0]).toBeCloseTo(launch.x * FLICK_REACH_X, 9);
+    expect(frames[2]).toBeCloseTo(launch.z * FLICK_REACH_Z, 9);
+    expect(frames[FRAME_STRIDE]).toBeGreaterThan(frames[0]!);
+    expect(frames[FRAME_STRIDE + 2]).toBeLessThan(frames[2]!);
+    const landed = multiply(finalRotation(thrown, 0), turns[0]!);
+    const target = solid("d6").features.find(({ value }) => value === 4)!;
+    expect(rotate(landed, target.dir)[1]).toBeCloseTo(1, 9);
   });
 
   it("reads a d4 at the corner that points up", () => {
@@ -193,7 +209,7 @@ describe("the shared throw", () => {
     }
   });
 
-  it("shows a d100's value straight up and upright, wherever the ball stopped", () => {
+  it("shows a d100's value straight up wherever the ball stopped", () => {
     for (const value of [1, 10, 63, 90, 100]) {
       const run = throwDice([{ sides: 100, value }], 5);
       run.advance(Number.POSITIVE_INFINITY);
@@ -202,8 +218,6 @@ describe("the shared throw", () => {
       const shown = multiply(finalRotation(thrown, 0), turns[0]!);
       const face = solid("d100").features.find((feature) => feature.value === value)!;
       expect(rotate(shown, face.dir)[1]).toBeCloseTo(1, 9);
-      // z runs down the screen.
-      expect(rotate(shown, face.up!)[2]).toBeCloseTo(-1, 9);
     }
   });
 

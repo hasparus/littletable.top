@@ -12,11 +12,12 @@ import { isShape } from "@tldraw/tlschema";
 import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
-import type { Roll } from "./dice-notation";
+import type { DiceLaunch, Roll } from "./dice-notation";
 import type { Pass } from "./pass";
 import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
+import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
@@ -262,7 +263,7 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  roll(pass: Pass, pool: number[], expression?: string): Refusal | Roll {
+  roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
     const at = Date.now();
@@ -286,6 +287,7 @@ export class BoardRoom extends DurableObject<Env> {
       dice,
       ...(expression === undefined ? {} : { expression }),
       id: row!.id as number,
+      ...(launch === undefined ? {} : { launch }),
       name: pass.name,
       seed,
       sub: pass.sub,
@@ -313,6 +315,42 @@ export class BoardRoom extends DurableObject<Env> {
         seed: row.seed as number | null,
         sub: row.sub as string,
       }));
+  }
+
+  private chatStorage(): SqlStorage {
+    const { sql } = this.ctx.storage;
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL)",
+    );
+    return sql;
+  }
+
+  chatHistory(pass: Pass): ChatMessage[] | Refusal {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    return this.chatStorage()
+      .exec<ChatMessage>("SELECT id, at, sub, name, text FROM chat ORDER BY id")
+      .toArray();
+  }
+
+  sendChat(pass: Pass, text: string): ChatMessage | Refusal {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    const sql = this.chatStorage();
+    const message = sql
+      .exec<ChatMessage>(
+        "INSERT INTO chat (at, sub, name, text) VALUES (?, ?, ?, ?) RETURNING id, at, sub, name, text",
+        Date.now(),
+        pass.sub,
+        pass.name,
+        text,
+      )
+      .one();
+    sql.exec("DELETE FROM chat WHERE id <= ?", message.id - CHAT_HISTORY_LENGTH);
+    for (const session of this.room.getSessions()) {
+      this.room.sendCustomMessage(session.sessionId, { message, type: "chat" });
+    }
+    return message;
   }
 
   // The picture the board shows for this pass's person: the hash of its

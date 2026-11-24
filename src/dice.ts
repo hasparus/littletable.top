@@ -1,3 +1,5 @@
+import type { DiceLaunch } from "./dice-notation";
+
 import { DIE_SIDES, MAX_DICE } from "./limits";
 
 export type { Roll } from "./dice-notation";
@@ -7,6 +9,14 @@ export function parsePool(body: unknown): number[] | null {
   if (!Array.isArray(dice) || dice.length === 0 || dice.length > MAX_DICE) return null;
   const sides: readonly number[] = DIE_SIDES;
   return dice.every((die) => sides.includes(die)) ? dice : null;
+}
+
+const fraction = (n: unknown): n is number => typeof n === "number" && Math.abs(n) <= 1;
+
+export function parseLaunch(value: unknown): DiceLaunch | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { vx, vz, x, z } = value as Partial<DiceLaunch>;
+  return fraction(vx) && fraction(vz) && fraction(x) && fraction(z) ? { vx, vz, x, z } : null;
 }
 
 // Rejection sampling: a plain modulo would favour the low faces.

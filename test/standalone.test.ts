@@ -22,10 +22,11 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
 import { createPublicKey } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Env } from "../src/index";
 
+import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
@@ -37,6 +38,86 @@ type Answer = { board: string; pass: string; person: { id: string; name: string;
 const hostedEnv = env as unknown as Env;
 
 describe("the public board", () => {
+  it("keeps a guest's generated name and lets guests and members share chat", async () => {
+    const guest = new Browser();
+    const member = new Browser();
+    await member.signIn("Ada Lovelace");
+
+    const bootstrap = "/api/public-board/bootstrap";
+    const initial = await guest.post(bootstrap);
+    expect(initial.status).toBe(200);
+    const anonymous = (await initial.json()) as Answer;
+    expect(anonymous.person).toMatchObject({
+      id: expect.stringMatching(/^g:/u),
+      name: expect.stringMatching(/^\S+\s+\S/u),
+      owner: false,
+    });
+    expect(anonymous.person.name).not.toMatch(/^Guest\s/u);
+    const refreshed = (await (await guest.post(bootstrap)).json()) as Answer;
+    expect(refreshed.person).toEqual(anonymous.person);
+    const signedIn = (await (await member.post(bootstrap)).json()) as Answer;
+    const chat = `/rooms/${anonymous.board}/chat`;
+
+    const sent = await guest.fetch(chat, {
+      body: "  Has anyone seen my map?  ",
+      headers: { Authorization: `Bearer ${anonymous.pass}` },
+      method: "POST",
+    });
+    expect(sent.status).toBe(200);
+    const first: ChatMessage = await sent.json();
+    expect(first).toMatchObject({
+      name: anonymous.person.name,
+      sub: anonymous.person.id,
+      text: "Has anyone seen my map?",
+    });
+    const reply = await member.fetch(chat, {
+      body: "It is by the dice.",
+      headers: { Authorization: `Bearer ${signedIn.pass}` },
+      method: "POST",
+    });
+    expect(reply.status).toBe(200);
+    const second: ChatMessage = await reply.json();
+    expect(second).toMatchObject({ name: "Ada Lovelace", text: "It is by the dice." });
+    expect(second.id).toBeGreaterThan(first.id);
+
+    for (const pass of [refreshed.pass, signedIn.pass]) {
+      const history = await roomCall(chat, pass);
+      expect(history.status).toBe(200);
+      const messages: ChatMessage[] = await history.json();
+      expect(messages.slice(-2)).toEqual([first, second]);
+    }
+  });
+
+  it("restricts chat to valid public-board passes and bounded text", async () => {
+    const guest = new Browser();
+    const { board, pass } = (await (
+      await guest.post("/api/public-board/bootstrap")
+    ).json()) as Answer;
+    const chat = `/rooms/${board}/chat`;
+    expect((await guest.fetch(chat)).status).toBe(403);
+    expect((await guest.fetch(chat, { body: "Hello", method: "POST" })).status).toBe(403);
+
+    const member = new Browser();
+    await member.signIn("Ania");
+    const { shareCode } = await member.createBoard();
+    const own = (await (await member.bootstrap(shareCode)).json()) as Answer;
+    expect((await roomCall(chat, own.pass)).status).toBe(403);
+    expect((await roomCall(`/rooms/${own.board}/chat`, own.pass)).status).toBe(404);
+
+    for (const [body, status] of [
+      ["   ", 400],
+      ["x".repeat(MAX_CHAT_LENGTH + 1), 400],
+      ["x".repeat(MAX_CHAT_LENGTH * 5), 413],
+    ] as const) {
+      const invalid = await guest.fetch(chat, {
+        body,
+        headers: { Authorization: `Bearer ${pass}` },
+        method: "POST",
+      });
+      expect(invalid.status).toBe(status);
+    }
+  });
+
   it("fades and expires shapes independently on its recurring alarm", async () => {
     const guest = new Browser();
     const initial = await guest.post("/api/public-board/bootstrap");
@@ -510,13 +591,20 @@ describe("a guest", () => {
     await ada.signIn("Ada");
     const board = await ada.createBoard();
     const guest = new Browser();
-    const statuses = [];
-    for (let attempt = 0; attempt < 31; attempt++) {
-      statuses.push((await guest.bootstrap(board.shareCode, { name: "Cy" })).status);
-    }
+    const windowMs = 60_000;
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(200);
+      }
+      expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(429);
 
-    expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
-    expect(statuses[30]).toBe(429);
+      clock.mockReturnValue(now + windowMs);
+      expect((await guest.bootstrap(board.shareCode, { name: "Cy" })).status).toBe(200);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 

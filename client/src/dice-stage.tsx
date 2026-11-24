@@ -3,9 +3,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Roll } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { DiceThrow } from "./dice-scene";
+import type { RollRefusal, Rolls } from "./rolls";
 
 import { type RollResult, rollResult } from "../../src/dice-notation";
-import { modifierLabel } from "./dice";
+import { dieLabel, fill } from "./copy";
+import { modifierLabel } from "./dice-labels";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
 import { DieShape } from "./die-shape";
 
@@ -16,6 +18,7 @@ const GIVE_UP_MS = 12_000;
 const GAP = 8;
 // Narrower than this beside the menu, the toast drops below it instead.
 const ROW_MIN_WIDTH = 120;
+const WIDE_BOARD_WIDTH = 1024;
 // The dice and the total come first: the roller's name shows only where
 // every die fits beside it and the name keeps this much of itself (or all
 // of a shorter one). The roll log and the announcement always give it.
@@ -26,6 +29,7 @@ const RESTING_AFTER_MS = 4000;
 
 export type DiceStageProps = {
   copy: Copy;
+  onRoll: Rolls["roll"];
   onSettled: () => void;
   roll: Roll;
 };
@@ -51,7 +55,13 @@ const FADES: Record<Overflow, string> = {
   start: "mask-[linear-gradient(to_right,transparent,black_1rem)]",
 };
 
-type Place = { below: number; beside: boolean; left: number; top: number; width: number };
+type Place = {
+  alignment: "below" | "beside" | "center";
+  below: number;
+  left: number;
+  top: number;
+  width: number;
+};
 
 const boxOf = (selector: string): DOMRect | null => {
   return (
@@ -61,38 +71,46 @@ const boxOf = (selector: string): DOMRect | null => {
   );
 };
 
-const TOP_RIGHT_CONTROLS = ".tlui-layout__top__right > *, [data-secret-layer-toggle]";
-
-// Beside tldraw's top-left controls (the main menu, and the page menu on a
-// board of several pages), centred on the menu button, up to the controls
-// tldraw keeps at the top right of a wide screen, or the screen's edge.
-// Where that row is too narrow, below the controls instead. `below` is
-// where the toast and the controls end, for the tray.
-function placeBesideMenu(height: number): Place {
+// On wide boards the toast centres on the viewport while leaving room for
+// both sides' controls. On narrower boards it sits beside or below the menu.
+// `below` is where the toast and controls end, for the dice tray.
+function placeToast(height: number): Place {
   const zone = boxOf(".tlui-menu-zone") ?? new DOMRect();
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
-  const right = Math.min(
-    document.documentElement.clientWidth,
-    ...[...document.querySelectorAll(TOP_RIGHT_CONTROLS)]
+  const publicControls = boxOf("[data-public-board-controls]");
+  const secretToggle = boxOf("[data-secret-layer-toggle]");
+  const viewportWidth = document.documentElement.clientWidth;
+  const sideRight = Math.min(
+    viewportWidth,
+    ...[...document.querySelectorAll(".tlui-layout__top__right > *")]
       .map((element) => element.getBoundingClientRect())
       .filter((box) => box.width > 0)
       .map((box) => box.left),
   );
+  const right = Math.min(
+    sideRight,
+    publicControls?.left ?? sideRight,
+    secretToggle?.left ?? sideRight,
+  );
+  const center = viewportWidth / 2;
+  const centeredWidth = 2 * (Math.min(center - zone.right, right - center) - GAP);
+  const centered = viewportWidth >= WIDE_BOARD_WIDTH && centeredWidth >= ROW_MIN_WIDTH;
   const besideWidth = right - zone.right - 2 * GAP;
   const beside = besideWidth >= ROW_MIN_WIDTH;
-  const top = beside ? button.top + (button.height - height) / 2 : zone.bottom + GAP;
+  const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0, secretToggle?.bottom ?? 0);
+  const top = beside ? button.top + (button.height - height) / 2 : rowBottom + GAP;
   return {
-    below: Math.max(zone.bottom, top + height),
-    beside,
-    left: beside ? zone.right + GAP : GAP,
+    alignment: centered ? "center" : beside ? "beside" : "below",
+    below: Math.max(rowBottom, top + height),
+    left: centered ? center : beside ? zone.right + GAP : GAP,
     top: Math.round(top),
-    width: beside ? besideWidth : right - 2 * GAP,
+    width: centered ? centeredWidth : beside ? besideWidth : sideRight - 2 * GAP,
   };
 }
 
 const samePlace = (a: Place | null, b: Place) =>
   a !== null &&
-  a.beside === b.beside &&
+  a.alignment === b.alignment &&
   a.left === b.left &&
   a.top === b.top &&
   a.width === b.width &&
@@ -172,7 +190,7 @@ function ResultToast({
     const dice = row.current;
     if (element === null || dice === null) return;
     const measure = () => {
-      const next = placeBesideMenu(element.offsetHeight);
+      const next = placeToast(element.offsetHeight);
       if (!samePlace(lastPlace.current, next)) {
         lastPlace.current = next;
         setPlace(next);
@@ -185,7 +203,7 @@ function ResultToast({
     const resized = new ResizeObserver(measure);
     resized.observe(dice);
     for (const zone of document.querySelectorAll(
-      ".tlui-menu-zone, .tlui-layout__top__right, [data-secret-layer-toggle]",
+      ".tlui-menu-zone, .tlui-layout__top__right, [data-public-board-controls], [data-secret-layer-toggle]",
     )) {
       resized.observe(zone);
     }
@@ -219,7 +237,7 @@ function ResultToast({
     <button
       aria-label={copy.close}
       className={`group fixed z-60 flex h-9 items-center rounded-xl border border-border/60 bg-bg-secondary/90 px-2.5 text-foreground shadow-toast backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${shown && placed ? "" : "invisible"}`}
-      data-dice-toast={place?.beside === false ? "below" : "beside"}
+      data-dice-toast={place?.alignment ?? "beside"}
       data-resting={resting ? "" : undefined}
       data-roller={roll.name}
       onClick={close}
@@ -228,6 +246,8 @@ function ResultToast({
         left: place?.left ?? 0,
         maxWidth: place?.width,
         top: `max(${place?.top ?? 0}px, env(safe-area-inset-top))`,
+        translate: place?.alignment === "center" ? "-50%" : undefined,
+        width: place?.alignment === "center" ? "max-content" : undefined,
       }}
       type="button"
     >
@@ -271,11 +291,12 @@ function ResultToast({
 // values. The toast names who rolled and gives the total once they settle.
 // The dice and the toast stay until the next roll or a tap on the toast,
 // which calls `onSettled`.
-export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
+export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);
   const [settledId, setSettledId] = useState<number | null>(null);
   const [rowBottom, setRowBottom] = useState<number | null>(null);
+  const [refusal, setRefusal] = useState<{ id: number; reason: RollRefusal } | null>(null);
   const [, setFailures] = useState(0);
   const still = useMemo(prefersStill, []);
   const result = useMemo(() => rollResult(roll), [roll]);
@@ -296,9 +317,22 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
     thrown.current
       // NOTE: a roll logged before seeds existed never arrives live; its id
       // stands in so that every screen would still throw alike.
-      .then(async (dice) =>
-        current ? dice.roll(roll.dice, roll.seed ?? roll.id, result.kept) : undefined,
-      )
+      .then(async (dice) => {
+        if (!current) return;
+        await dice.roll(roll.dice, {
+          kept: result.kept,
+          launch: roll.launch,
+          nameDie: (index) =>
+            fill(copy.rollDieAgain, { die: dieLabel(copy, roll.dice[index]!.sides) }),
+          reroll: async (index, launch) => {
+            setRefusal(null);
+            const reason = await onRoll({ dice: [roll.dice[index]!.sides], launch });
+            if (reason !== null && current) setRefusal({ id: roll.id, reason });
+            return reason === null;
+          },
+          seed: roll.seed ?? roll.id,
+        });
+      })
       .then(() => current && setSettledId(roll.id))
       .catch((error: unknown) => {
         dropDice3d(error);
@@ -308,7 +342,7 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
       current = false;
       clearTimeout(giveUpTimer);
     };
-  }, [result, roll, still]);
+  }, [copy, onRoll, result, roll, still]);
 
   useEffect(
     () => () => {
@@ -326,7 +360,6 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
     <>
       {!still && !unavailable && (
         <div
-          aria-hidden="true"
           className="pointer-events-none fixed inset-x-0 top-14 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10"
           ref={host}
           style={rowBottom === null ? undefined : { top: rowBottom + GAP }}
@@ -340,6 +373,15 @@ export function DiceStage({ copy, onSettled, roll }: DiceStageProps) {
         roll={roll}
         shown={showToast}
       />
+      {refusal?.id === roll.id && (
+        <p
+          className="pointer-events-none fixed z-60 rounded-lg bg-bg-secondary px-3 py-1.5 text-sm text-danger-text shadow-toast"
+          role="status"
+          style={{ left: GAP, top: (rowBottom ?? 48) + GAP }}
+        >
+          {refusal.reason === "too-fast" ? copy.rollTooFast : copy.rollFailed}
+        </p>
+      )}
     </>
   );
 }
