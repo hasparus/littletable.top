@@ -61,7 +61,7 @@ export function NameForm({
           </p>
         )}
         <button
-          className="btn btn-primary mt-4 min-h-12 w-full"
+          className="btn btn-primary btn-join mt-4 min-h-12 w-full"
           disabled={busy || name.trim().length === 0}
           type="submit"
         >

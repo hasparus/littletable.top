@@ -1,6 +1,7 @@
 import type { TLRecord } from "@tldraw/tlschema";
 
 import {
+  DEFAULT_INITIAL_SNAPSHOT,
   DurableObjectSqliteSyncWrapper,
   SQLiteSyncStorage,
   TLSocketRoom,
@@ -62,6 +63,7 @@ export const AVATAR_HEADER = "X-Board-Avatar";
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
 type Person = Pick<Pass, "link" | "name" | "owner" | "sub"> & { avatar: string | null };
+type DrawingRoom = { drawing: SQLiteSyncStorage<TLRecord>; room: TLSocketRoom<TLRecord, Person> };
 
 function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -72,8 +74,7 @@ function kind(sub: string): "guest" | "member" {
 }
 
 export class BoardRoom extends DurableObject<Env> {
-  private room!: TLSocketRoom<TLRecord, Person>;
-  private drawing!: SQLiteSyncStorage<TLRecord>;
+  private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
@@ -103,10 +104,38 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
     this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
-    this.drawing = new SQLiteSyncStorage({
-      sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
-    });
-    this.room = new TLSocketRoom<TLRecord, Person>({
+    this.drawingRoom = undefined;
+    this.lastRollAt = new Map();
+    // NOTE: the texts table first: the images' ledger counts it in the quota.
+    this.texts = new TextLedger(sql, this.env.Files);
+    this.files = new FileLedger(sql, this.env.Files);
+  }
+
+  private get drawing(): SQLiteSyncStorage<TLRecord> {
+    return this.openDrawing().drawing;
+  }
+
+  private get room(): TLSocketRoom<TLRecord, Person> {
+    return this.openDrawing().room;
+  }
+
+  // The first access can supply a page name. An existing snapshot is opened as saved.
+  private openDrawing(firstPageName?: string): DrawingRoom {
+    if (this.drawingRoom !== undefined) return this.drawingRoom;
+    const sql = new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" });
+    const snapshot =
+      firstPageName !== undefined && !SQLiteSyncStorage.hasBeenInitialized(sql)
+        ? {
+            ...DEFAULT_INITIAL_SNAPSHOT,
+            documents: DEFAULT_INITIAL_SNAPSHOT.documents.map((record) =>
+              record.state.typeName === "page"
+                ? { ...record, state: { ...record.state, name: firstPageName } }
+                : record,
+            ),
+          }
+        : undefined;
+    const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
+    const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
         shape: (write) => {
           if (write.type === "delete") return write.prev;
@@ -120,12 +149,14 @@ export class BoardRoom extends DurableObject<Env> {
       onAfterReceiveMessage: (received) => {
         stampPresence((received as { message?: unknown }).message, received.meta);
       },
-      storage: this.drawing,
+      storage: drawing,
     });
-    this.lastRollAt = new Map();
-    // NOTE: the texts table first: the images' ledger counts it in the quota.
-    this.texts = new TextLedger(sql, this.env.Files);
-    this.files = new FileLedger(sql, this.env.Files);
+    this.drawingRoom = { drawing, room };
+    return this.drawingRoom;
+  }
+
+  initializeDrawing(firstPageName: string): void {
+    this.openDrawing(firstPageName);
   }
 
   private link(): number {
