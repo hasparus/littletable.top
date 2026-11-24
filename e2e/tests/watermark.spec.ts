@@ -1,8 +1,7 @@
 import { devices, expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
-import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
+import { closeSheet, collectCspViolations, openSheet, PHONE, reviewShot } from "./helpers";
 
 // tldraw's licence asks that its "made with tldraw" mark stays visible,
 // unobscured and open to interaction. It sits in the bottom right corner
@@ -11,8 +10,6 @@ import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
 // bar's controls, a sheet, or the dice toast.
 // NOTE: without a licence key on localhost tldraw draws the same element in
 // the same place, with "Get a license for production" on wide screens.
-
-const SHOTS = "/home/user/ludamus/screenshots/board";
 
 const watermark = (page: Page): Locator => page.locator("[data-testid^='tl-watermark']");
 
@@ -70,8 +67,7 @@ for (const [name, device] of SCREENS) {
     for (const control of ["Search", "People", "Dice"]) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
-    mkdirSync(SHOTS, { recursive: true });
-    await page.screenshot({ path: `${SHOTS}/watermark-${name}.png` });
+    await reviewShot(page, `watermark-${name}`);
 
     for (const sheet of ["Search", "People"]) {
       const dialog = await openSheet(page, sheet);
@@ -80,14 +76,14 @@ for (const [name, device] of SCREENS) {
     }
     const dice = await openSheet(page, "Dice");
     await expectClearOf(page, dice, "the Dice sheet");
-    await page.screenshot({ path: `${SHOTS}/watermark-${name}-sheet.png` });
+    await reviewShot(page, `watermark-${name}-sheet`);
     await dice.getByRole("button", { exact: true, name: "Add d20" }).click();
     await dice.getByRole("button", { name: /^Roll/u }).click();
     await closeSheet(page, "Dice");
 
     const toast = page.getByRole("button", { exact: true, name: "Close" });
     await expectClearOf(page, toast, "the dice toast");
-    await page.screenshot({ path: `${SHOTS}/watermark-${name}-toast.png` });
+    await reviewShot(page, `watermark-${name}-toast`);
     await context.close();
   });
 }

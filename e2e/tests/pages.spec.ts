@@ -1,5 +1,5 @@
 import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 import { HOST } from "../ports";
 import {
@@ -11,6 +11,7 @@ import {
   openSheet,
   PHONE,
   putNote,
+  reviewShot,
 } from "./helpers";
 import { documentOf, downloadTldr, fixture, openTldr, toast } from "./tldr";
 
@@ -18,8 +19,6 @@ import { documentOf, downloadTldr, fixture, openTldr, toast } from "./tldr";
 // member at a desktop and a guest on a phone manage pages together, find
 // each other's places and each other across pages, and survive a page being
 // deleted under them. The artifacts are the assertions and the screenshots.
-
-const SHOTS = "/home/user/ludamus/screenshots/board";
 
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };
 const phoneAt = (width: number) => ({
@@ -29,8 +28,7 @@ const phoneAt = (width: number) => ({
 });
 
 async function shot(page: Page, name: string): Promise<void> {
-  mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: `${SHOTS}/pages-${name}.png` });
+  await reviewShot(page, `pages-${name}`);
 }
 
 const pageButton = (page: Page) => page.getByTestId("page-menu.button");

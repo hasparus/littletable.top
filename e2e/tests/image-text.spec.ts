@@ -6,7 +6,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import type { Truth } from "../text-score";
 
@@ -18,6 +18,7 @@ import {
   joinAs,
   openSheet,
   PHONE,
+  reviewShot,
   sheet,
 } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
@@ -35,7 +36,6 @@ import { fixture, sha256, uploadImage } from "./tldr";
 // searchable, the worst frame gap on the uploader's board while both
 // engines read, what the engines downloaded) and the screenshots.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };
 const PHONE_2X = { ...PHONE, deviceScaleFactor: 2 };
 
@@ -48,8 +48,7 @@ const READ_MS = 150_000;
 
 async function shot(page: Page, name: string): Promise<void> {
   if (test.info().project.name !== "chromium") return;
-  mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: `${SHOTS}/ocr-${name}.png` });
+  await reviewShot(page, `ocr-${name}`);
 }
 
 const field = (page: Page) => page.getByRole("combobox", { name: "Search the board" });

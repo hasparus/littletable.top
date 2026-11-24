@@ -1,5 +1,4 @@
 import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
 import {
@@ -9,6 +8,7 @@ import {
   joinAs,
   openSheet,
   PHONE,
+  reviewShot,
 } from "./helpers";
 
 // The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
@@ -335,8 +335,6 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
   await expectNoCspViolations(page);
 });
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
-
 // tldraw's page menu shares the top row with the main menu, and its name
 // sets how wide that corner is; on a wide screen tldraw keeps its style
 // panel at the top right. The toast fits between, and the menus stay put.
@@ -345,7 +343,6 @@ test("the toast fits between the page menu and the style panel, on phones and a 
   page,
 }) => {
   const boardUrl = await startBoard(page);
-  mkdirSync(SHOTS, { recursive: true });
   const screens = [
     ["phone-360", { ...PHONE, viewport: { height: 740, width: 360 } }],
     ["phone-390", { ...PHONE, viewport: { height: 844, width: 390 } }],
@@ -369,11 +366,11 @@ test("the toast fits between the page menu and the style panel, on phones and a 
     for (const control of await screen.locator(".tlui-layout__top__right > *").all()) {
       expect(overlap(box, await boxOf(control))).toBe(false);
     }
-    await screen.screenshot({ path: `${SHOTS}/toast-pages-${name}.png` });
+    await reviewShot(screen, `toast-pages-${name}`);
     await pageMenu.click();
     const list = screen.getByTestId("page-menu.list");
     await expect(list).toBeVisible();
-    await screen.screenshot({ path: `${SHOTS}/toast-pages-${name}-menu.png` });
+    await reviewShot(screen, `toast-pages-${name}-menu`);
     await expectNoCspViolations(screen);
     await screen.context().close();
   }
@@ -384,7 +381,6 @@ test("the toast fits between the page menu and the style panel, on phones and a 
 // row's fade; with more dice than fit, the row scrolls and the total stays.
 test("the toast gives its row to the dice before the roller's name", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
-  mkdirSync(SHOTS, { recursive: true });
   const pools = {
     3: [20, 6, 8],
     7: [4, 6, 8, 10, 12, 20, 100],
@@ -424,7 +420,7 @@ test("the toast gives its row to the dice before the roller's name", async ({ br
       if (named) expect(allFit, `${count} dice at ${width} px fit beside the name`).toBe(true);
       if (count === "3") expect(named, `the name beside 3 dice at ${width} px`).toBe(true);
       if (count === "20") expect(named, `no name beside 20 dice at ${width} px`).toBe(false);
-      await screen.screenshot({ path: `${SHOTS}/toast2-${width}-${count}.png` });
+      await reviewShot(screen, `toast2-${width}-${count}`);
       await toast(screen).click();
       await expect(toast(screen)).toHaveCount(0);
     }

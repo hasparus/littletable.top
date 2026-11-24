@@ -619,6 +619,10 @@ unset reuses any already listening there. A second checkout on the same
 machine sets `E2E_PORT_OFFSET` (a multiple of 10, say `100`) to move all
 four, so the two suites never talk to each other's servers.
 
+The specs write no files of their own beyond Playwright's results. With
+`SHOTS_DIR` set to a folder, they also save screenshots of the states they
+reach there, for a person to look at.
+
 ## Dice
 
 The server draws every value (`src/dice.ts`) and gives each roll an unsigned

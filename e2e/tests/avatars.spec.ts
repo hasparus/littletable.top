@@ -1,15 +1,19 @@
 import { type Browser, expect, type Locator, type Page, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 
 import { boardAt, HOST, HOSTED, STANDALONE, WORKOS } from "../ports";
-import { collectCspViolations, expectNoCspViolations, joinAs, openSheet, PHONE } from "./helpers";
+import {
+  collectCspViolations,
+  expectNoCspViolations,
+  joinAs,
+  openSheet,
+  PHONE,
+  reviewShot,
+} from "./helpers";
 
 // People's pictures, in both modes: a member's shows in someone else's
 // people list, loaded from the tabletop's own origin and never from the
 // host or the sign-in provider; a guest shows an initial. The artifacts
 // are the assertions and the screenshots.
-
-const SHOTS = "/home/user/ludamus/screenshots/board";
 
 // A person's row in the people list. The avatar is decoration beside the
 // name, so the row is found by the name it says.
@@ -70,14 +74,13 @@ test("hosted: a member's picture reaches a guest's people list from the tabletop
   expect(await pictureOf(own)).toBeNull();
   // The guest's browser asked the host for its pass and nothing else.
   expect(asked.filter((url) => url.startsWith(HOST) && !url.includes("/bootstrap/"))).toEqual([]);
-  mkdirSync(SHOTS, { recursive: true });
-  await guest.screenshot({ path: `${SHOTS}/avatars-people-phone.png` });
+  await reviewShot(guest, "avatars-people-phone");
 
   // Ada sees her own picture, and Bea's initial.
   const hers = await openSheet(page, "People");
   await expect.poll(async () => pictureOf(rowOf(hers, "Ada"))).not.toBeNull();
   await expect(rowOf(hers, "Bea").getByText("B", { exact: true })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/avatars-people-desktop.png` });
+  await reviewShot(page, "avatars-people-desktop");
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);
@@ -103,9 +106,9 @@ test("standalone: the account's picture is on the front page and on its boards",
     .toMatch(new RegExp(String.raw`^${STANDALONE}/api/avatars/[0-9a-f]{64}$`, "u"));
   // The browser went to the provider to sign in, never for a picture.
   expect(asked.filter((url) => url.startsWith(`${WORKOS}/avatars/`))).toEqual([]);
-  await page.screenshot({ path: `${SHOTS}/avatars-front.png` });
+  await reviewShot(page, "avatars-front");
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.screenshot({ path: `${SHOTS}/avatars-front-phone.png` });
+  await reviewShot(page, "avatars-front-phone");
   await page.setViewportSize({ height: 720, width: 1280 });
 
   await page.getByRole("button", { name: "New board" }).click();
@@ -122,7 +125,7 @@ test("standalone: the account's picture is on the front page and on its boards",
   expect(fromGuest.filter((url) => url.startsWith("http") && !url.startsWith(STANDALONE))).toEqual(
     [],
   );
-  await guest.screenshot({ path: `${SHOTS}/avatars-people-phone-standalone.png` });
+  await reviewShot(guest, "avatars-people-phone-standalone");
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);

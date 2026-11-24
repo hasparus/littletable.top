@@ -1,5 +1,4 @@
 import { type Browser, devices, expect, type Page, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
 import {
@@ -11,6 +10,7 @@ import {
   openSheet,
   PHONE,
   putNote,
+  reviewShot,
   sheet,
 } from "./helpers";
 
@@ -22,11 +22,8 @@ import {
 // above the on-screen keyboard and leave tldraw's mark alone. The
 // artifacts are the assertions and the screenshots.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
-
 async function shot(page: Page, name: string): Promise<void> {
-  mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: `${SHOTS}/search-${name}.png` });
+  await reviewShot(page, `search-${name}`);
 }
 
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };

@@ -1,4 +1,5 @@
 import { type Browser, devices, expect, type Locator, type Page } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 
 export const PHONE = devices["Pixel 7"];
 
@@ -112,4 +113,13 @@ export async function rollTwoD6(roller: Page, watcher: Page, name: string): Prom
   await closeSheet(roller, "Dice");
   await closeSheet(watcher, "Dice");
   return rolled;
+}
+
+// A screenshot for a person to look at, written only when SHOTS_DIR names
+// a folder: the suite itself writes none, and asserts on what it reads.
+export async function reviewShot(page: Page, name: string): Promise<void> {
+  const folder = process.env.SHOTS_DIR;
+  if (folder === undefined || folder === "") return;
+  mkdirSync(folder, { recursive: true });
+  await page.screenshot({ path: `${folder}/${name}.png` });
 }
