@@ -361,6 +361,6 @@ test("a .tldr's pages join the page menu and the places list, up to the page cap
   await openTldrBytes(page, withExtraPages(33));
   await expect(toast(page, "The file's pages were added to the board.").first()).toBeVisible();
   await expect.poll(async () => pagesListed(page)).toHaveLength(40);
-  await closePages(page);
+  await closeMenus(page);
   await expectNoCspViolations(page);
 });

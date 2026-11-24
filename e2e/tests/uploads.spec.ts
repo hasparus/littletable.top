@@ -177,10 +177,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 
   await openTldr(page, "table-newer.tldr");
   await expect(
-    toast(
-      page,
-      "This file comes from a newer version of tldraw than the board, so it cannot be opened here yet.",
-    ),
+    toast(page, "This file is from a newer version of tldraw. The board cannot open it yet."),
   ).toBeVisible();
 
   await dropFile(page, "table-older.tldr", "");

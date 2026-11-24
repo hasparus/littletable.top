@@ -45,7 +45,7 @@ const PL: FrontCopy = {
   deleteConfirm:
     "Usunąć „%(title)s” razem ze wszystkim, co na niej narysowano? Tego nie da się cofnąć.",
   linkCopied: "Skopiowano link.",
-  linkWasReset: "Link do niej został zmieniony",
+  linkWasReset: "Link do niej zmieniono",
   loading: "Wczytujemy…",
   newBoard: "Nowa tablica",
   newBoardTitle: "Tablica %(date)s",
@@ -62,9 +62,9 @@ const PL: FrontCopy = {
   signIn: "Zaloguj się",
   signInFailed: "Nie udało się zalogować. Spróbuj ponownie.",
   signInHelp:
-    "Zaloguj się, żeby zakładać tablice i łatwo do nich wracać. Osoby, którym wyślesz link, dołączą, podając tylko imię.",
+    "Zaloguj się, żeby zakładać tablice i do nich wracać. Osoby, którym wyślesz link, wpiszą tylko imię.",
   signOut: "Wyloguj się",
-  tooManyBoards: "Masz już najwięcej tablic, ile można. Najpierw usuń którąś.",
+  tooManyBoards: "Masz już maksymalną liczbę tablic. Najpierw usuń którąś.",
   tooManyNewBoards: "Założono właśnie wiele tablic. Zaczekaj chwilę przed kolejną.",
   visited: "Tablice, do których dołączono",
   yourBoards: "Twoje tablice",
