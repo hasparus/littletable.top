@@ -4,14 +4,13 @@
 
 import type { DieKind } from "./dice-solids";
 
-import { drawAtlas, faceSpot, NUMERAL_FONT, numeralSpot } from "./dice-atlas";
+import { drawAtlas, faceSpot, NUMERAL_FONT } from "./dice-atlas";
 import {
   blend,
   lerp,
   multiply,
   normalize,
   type Quat,
-  rotate,
   rotationBetween,
   sub,
   type Vec,
@@ -26,9 +25,10 @@ import {
   type Pose,
   type Rgb,
   type Tier,
+  type Turn,
 } from "./dice-renderer";
 import { solid } from "./dice-solids";
-import { type Die, finalRotation, type Planned, throwDice } from "./dice-throw";
+import { type Die, finalRotation, type Planned, throwDice, uprightTurn } from "./dice-throw";
 
 export type DiceThrow = {
   dispose: () => void;
@@ -96,7 +96,6 @@ function modelOf(kind: DieKind): Model {
     mesh: meshOf(kind),
     rounding: r,
     smooth: ball ? BALL_SMOOTH : 0,
-    spot: numeralSpot(kind),
   };
   models.set(kind, made);
   return made;
@@ -117,17 +116,19 @@ function facingOf({ bodies, thrown }: Planned): (Quat | null)[] {
   });
 }
 
-// Per die, whether its numerals are drawn upside down: a d10's numbering can
-// be turned only one way, which leaves the number on top reading any way
-// round; drawn either way up, it reads within a quarter turn of upright.
-function upsideDownOf({ bodies, numbering, thrown }: Planned): boolean[] {
+// Per die, the turn of its result's numeral on its face that will have it
+// read upright where the die comes to rest. It is drawn turned from the
+// first frame: on a tumbling die nobody can tell, and nothing moves on a die
+// at rest.
+function turnsOf({ bodies, numbering, thrown }: Planned): (Turn | null)[] {
   return bodies.map((body, index) => {
-    const shape = solid(body.kind);
-    const top = shape.features.find((feature) => feature.value === body.value);
-    if (numeralSpot(body.kind) === null || top === undefined || top.up === null) return false;
-    const shown = multiply(finalRotation(thrown, index), numbering[index]!);
-    // NOTE: z runs down the screen.
-    return rotate(shown, top.up)[2] > 0;
+    const turn = uprightTurn(body.kind, {
+      rotation: finalRotation(thrown, index),
+      turn: numbering[index]!,
+      value: body.value,
+    });
+    if (turn === null) return null;
+    return { ...faceSpot(body.kind, turn.face), cos: turn.cos, sin: turn.sin };
   });
 }
 
@@ -153,12 +154,12 @@ function resultsOf({ bodies, thrown }: Planned): (Result | null)[] {
   });
 }
 
-type Presented = { facing: (Quat | null)[]; results: (Result | null)[]; upsideDown: boolean[] };
+type Presented = { facing: (Quat | null)[]; results: (Result | null)[]; turns: (Turn | null)[] };
 
 // The dice between two recorded frames, each with its numbering turned.
 function posesAt(
   { bodies, numbering, thrown }: Planned,
-  { facing, results, upsideDown }: Presented,
+  { facing, results, turns }: Presented,
   frame: number,
 ): Pose[] {
   return bodies.map((body, index) => {
@@ -185,7 +186,7 @@ function posesAt(
       position: lerp(position(from), position(to), share),
       rotation: toCamera === null ? turned : multiply(toCamera, turned),
       size: thrown.sizes[index]!,
-      upsideDown: upsideDown[index]!,
+      turn: turns[index] ?? null,
     };
   });
 }
@@ -241,7 +242,7 @@ export async function createDiceThrow(
         cancelAnimationFrame(frameRequest);
         const run = throwDice(dice, seed);
         let planned: Planned | null = null;
-        let presented: Presented = { facing: [], results: [], upsideDown: [] };
+        let presented: Presented = { facing: [], results: [], turns: [] };
         let startedAt = 0;
         let length = 0;
         const tick = (now: number) => {
@@ -256,7 +257,7 @@ export async function createDiceThrow(
               presented = {
                 facing: facingOf(planned),
                 results: resultsOf(planned),
-                upsideDown: upsideDownOf(planned),
+                turns: turnsOf(planned),
               };
               startedAt = now;
               // The throw, and the marks of results that came to rest late.

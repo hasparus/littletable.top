@@ -176,18 +176,6 @@ function sizeFor(context: CanvasRenderingContext2D, texts: string[], radius: num
   );
 }
 
-// Where in its cell a d10's numeral is centred, in cells; the same on every
-// face. The renderer turns the numerals half round on it when the one on top
-// would otherwise read upside down. No other die needs it: their numbering
-// can be turned upright.
-export function numeralSpot(kind: DieKind): { columns: number; x: number; y: number } | null {
-  if (kind !== "d10") return null;
-  const shape = solid(kind);
-  const layout = layoutOf(shape);
-  const [x, y] = cellPoint(layout, 0, inscribed(shape, 0, layout).at);
-  return { columns: layout.columns, x, y };
-}
-
 // Where the numeral of face `index` is centred in the atlas, in cells.
 export function faceSpot(kind: DieKind, index: number): { columns: number; x: number; y: number } {
   const shape = solid(kind);

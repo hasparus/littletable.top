@@ -680,6 +680,16 @@ weight, `node e2e/numeral-centres.ts` rewrites the table;
 is underlined only when, upside down, it reads as another numeral of the
 same die.
 
+A die's numbering is turned by one of its symmetries so the value is on top,
+which leaves the numeral up to 36° (d12), 45° (d6) or 60° (d8, d20) off
+upright; a d10's kite has one symmetry per value, so its numeral used to
+land any way round. The renderer therefore draws the result's numeral
+turned on its own face by what is left (`uprightTurn` in `dice-throw.ts`),
+from the first frame of the throw: nobody can tell on a tumbling die, and
+the die comes to rest with its number upright without anything moving on
+it. The other faces keep their numerals as a real die has them: a d10's
+pointing to the pole, a d6's square to an edge.
+
 **The tray.** Dice are thrown in a virtual tray of 10 by 14 units. The
 renderer fits that rectangle, aspect kept, into the area between the top
 row (tldraw's menus and the result toast) and the bottom bar and centres it

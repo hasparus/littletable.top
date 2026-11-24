@@ -6,6 +6,7 @@ import {
   cross,
   dot,
   fromBasis,
+  length,
   multiply,
   normalize,
   type Quat,
@@ -94,6 +95,29 @@ export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
   }
   if (pick === null) throw new Error(`a ${kind} cannot show ${value}`);
   return pick;
+}
+
+// For the die that shows `value` on top once `turn` (its numbering) is
+// applied at rest in `rotation`: that face, and the cosine and sine of the
+// turn about its normal, clockwise seen from outside, that stands its
+// numeral upright on screen. A die's symmetries leave the numeral up to 36°
+// (d12), 45° (d6) or 60° (d8, d20) off upright, and a d10's kite has none to
+// choose from, so its numeral lands any way round. Null for a d4, read at
+// its corner, and for a ball, which `numbering` already turns upright.
+export function uprightTurn(
+  kind: DieKind,
+  { rotation, turn, value }: { rotation: Quat; turn: Quat; value: number },
+): { cos: number; face: number; sin: number } | null {
+  const shape = solid(kind);
+  const face = shape.features.findIndex((feature) => feature.value === value);
+  const up = shape.features[face]?.up ?? null;
+  if (shape.ball || up === null) return null;
+  const shown = multiply(rotation, turn);
+  const right = cross(up, shape.features[face]!.dir);
+  const cos = dot(rotate(shown, up), SCREEN_UP);
+  const sin = dot(rotate(shown, right), SCREEN_UP);
+  const size = length([cos, sin, 0]);
+  return { cos: cos / size, face, sin: sin / size };
 }
 
 export type Planned = { bodies: ThrownDie[]; numbering: Quat[]; thrown: Throw };

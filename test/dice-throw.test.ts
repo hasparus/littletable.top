@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DieKind } from "../client/src/dice-solids";
 
-import { multiply, rotate } from "../client/src/dice-math";
+import { add, cross, multiply, rotate, scale } from "../client/src/dice-math";
 import {
   FRAME_STRIDE,
   hashThrow,
@@ -11,7 +11,13 @@ import {
   TRAY_WIDTH,
 } from "../client/src/dice-physics";
 import { solid } from "../client/src/dice-solids";
-import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dice-throw";
+import {
+  bodiesOf,
+  finalRotation,
+  numbering,
+  throwDice,
+  uprightTurn,
+} from "../client/src/dice-throw";
 
 // What can go wrong with the shared throw, and what guards it here:
 // - a die ends tilted, on an edge or leaning on another: "lies flat"
@@ -22,6 +28,8 @@ import { bodiesOf, finalRotation, numbering, throwDice } from "../client/src/dic
 // - the top face is not the server's value: "shows the server's value"
 // - a die leaves the tray or ends inside another: "stays in the tray, apart"
 // - a throw that never settles is cut differently on two screens: "the cap"
+// - the number on top reads sideways, as a d10's would, whose numbering has
+//   one way to lie: "stands the result's numeral upright"
 // - the simulation changes by accident: the fixed-seed tripwire
 // - a transcendental function creeps back in: test/dice-exact.test.ts
 // - engines disagree: e2e/tests/dice-determinism.spec.ts runs the same
@@ -147,6 +155,31 @@ describe("the shared throw", () => {
       );
       expect(top.value).toBe(value);
       expect(rotate(shown, top.dir)[1]).toBeGreaterThan(0.999);
+    }
+  });
+
+  it.each(KINDS.slice(1, 6))("stands the result's numeral upright on a %s", (kind) => {
+    const shape = solid(kind);
+    for (const seed of SEEDS.slice(0, 10)) {
+      const rotation = finalRotation(simulate([kind], seed), 0);
+      const { value } = shape.features[seed % shape.features.length]!;
+      const turn = numbering(kind, rotation, value);
+      const upright = uprightTurn(kind, { rotation, turn, value })!;
+      const top = shape.features[upright.face]!;
+      expect(top.value).toBe(value);
+      // The numeral's up once turned by that much on its face; z runs down
+      // the screen.
+      const right = cross(top.up!, top.dir);
+      const up = add(scale(top.up!, upright.cos), scale(right, upright.sin));
+      expect(rotate(multiply(rotation, turn), up)[2]).toBeCloseTo(-1, 6);
+    }
+  });
+
+  it("turns no numeral of a d4 or of a ball", () => {
+    for (const kind of ["d4", "d100"] as const) {
+      const rotation = finalRotation(simulate([kind], 7), 0);
+      const turn = numbering(kind, rotation, 1);
+      expect(uprightTurn(kind, { rotation, turn, value: 1 })).toBeNull();
     }
   });
 
