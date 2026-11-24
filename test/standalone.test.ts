@@ -1,4 +1,11 @@
-import { TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason } from "@tldraw/sync-core";
+import {
+  DurableObjectSqliteSyncWrapper,
+  SQLiteSyncStorage,
+  TLSyncErrorCloseEventCode,
+  TLSyncErrorCloseEventReason,
+} from "@tldraw/sync-core";
+import { createShapeId, PageRecordType, type TLGroupShape, type TLRecord } from "@tldraw/tlschema";
+import { getIndexAbove, ZERO_INDEX_KEY } from "@tldraw/utils";
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
@@ -7,6 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Env } from "../src/index";
 
+import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { Browser, openSocket, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
 
@@ -15,7 +23,7 @@ type Answer = { board: string; pass: string; person: { id: string; name: string;
 const hostedEnv = env as unknown as Env;
 
 describe("the public board", () => {
-  it("automatically clears visitor data and reopens the same room", async () => {
+  it("fades and expires shapes independently on its recurring alarm", async () => {
     const guest = new Browser();
     const initial = await guest.post("/api/public-board/bootstrap");
     expect(initial.status).toBe(200);
@@ -25,7 +33,43 @@ describe("the public board", () => {
     const alarmOf = () => runInDurableObject(room, (_room, state) => state.storage.getAlarm());
     const firstAlarm = await alarmOf();
     expect(firstAlarm).toBeGreaterThan(Date.now());
-    expect(firstAlarm! % (24 * 60 * 60 * 1000)).toBe(0);
+    expect(firstAlarm! % PUBLIC_SWEEP_MS).toBe(0);
+
+    const now = Date.now();
+    const day = 4 * PUBLIC_SWEEP_MS;
+    const page = PageRecordType.createId("page");
+    const group = (name: string, overrides: Partial<TLGroupShape> = {}): TLGroupShape => ({
+      id: createShapeId(name),
+      index: ZERO_INDEX_KEY,
+      isLocked: false,
+      meta: {},
+      opacity: 1,
+      parentId: page,
+      props: {},
+      rotation: 0,
+      type: "group",
+      typeName: "shape",
+      x: 0,
+      y: 0,
+      ...overrides,
+    });
+    const expired = stampPublicShape(group("expired", { x: 100, y: 30 }), now - 2 * day - 1);
+    const faded = stampPublicShape(
+      group("faded", { index: getIndexAbove(expired.index) }),
+      now - day - 1,
+    );
+    const recent = stampPublicShape(group("recent", { parentId: expired.id, x: 2, y: 3 }), now);
+    const faint = stampPublicShape(group("faint", { opacity: 0.2 }), now - day - 1);
+
+    const drawing = (state: DurableObjectState) =>
+      new SQLiteSyncStorage<TLRecord>({
+        sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
+      });
+    await runInDurableObject(room, (_room, state) => {
+      drawing(state).transaction((store) => {
+        for (const shape of [expired, faded, recent, faint]) store.set(shape.id, shape);
+      });
+    });
 
     const rolled = await roomCall(`/rooms/${board}/roll`, pass, {
       body: JSON.stringify({ dice: [6] }),
@@ -35,15 +79,31 @@ describe("the public board", () => {
     expect(rolled.ok).toBe(true);
     const imageKey = `boards/${board}/example`;
     await standaloneEnv.Files.put(imageKey, "an image");
+
+    // An alarm can be retried. The second pass must leave faded shapes unchanged.
+    expect(await runDurableObjectAlarm(room)).toBe(true);
     expect(await runDurableObjectAlarm(room)).toBe(true);
     expect(await alarmOf()).toBeGreaterThan(Date.now());
-    expect(await standaloneEnv.Files.head(imageKey)).toBeNull();
+    await runInDurableObject(room, (_room, state) => {
+      drawing(state).transaction((store) => {
+        expect(store.get(expired.id)).toBeUndefined();
+        expect(store.get(faded.id)).toMatchObject({ meta: faded.meta, opacity: 0.5 });
+        expect(store.get(faint.id)).toEqual(faint);
+        expect(store.get(recent.id)).toMatchObject({
+          meta: recent.meta,
+          opacity: 1,
+          parentId: page,
+          x: 102,
+          y: 33,
+        });
+        expect(store.get(page)).toBeDefined();
+      });
+    });
 
+    expect(await standaloneEnv.Files.head(imageKey)).not.toBeNull();
     const history = await roomCall(`/rooms/${board}/rolls`, pass);
-    expect(await history.json()).toEqual([]);
-    const next = (await (await guest.post("/api/public-board/bootstrap")).json()) as Answer;
-    expect(next.board).toBe(board);
-    expect((await openSocket(board, next.pass)).response.status).toBe(101);
+    expect(await history.json()).toHaveLength(1);
+    expect((await openSocket(board, pass)).response.status).toBe(101);
     expect((await guest.post(`/rooms/${board}/delete`)).status).toBe(404);
   });
 });

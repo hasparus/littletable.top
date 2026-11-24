@@ -201,10 +201,11 @@ keeps what is listed or looked up across boards: `accounts`, `sessions`,
 looking up a code needs an index across all accounts. D1 has that index.
 The public board uses a fixed room ID outside the account board ID space.
 It has no owner or D1 row. Its first bootstrap schedules a Durable Object
-alarm for midnight UTC, and each clear schedules the next. The alarm clears
-visitor content and files and reopens the same room, so connected visitors
-can reconnect. The landing note is rendered by the client and never enters
-the shared document.
+alarm that runs every six hours on UTC boundaries. The server timestamps
+new shapes, caps their opacity at 50% once they are 24 hours old and
+removes them once they are 48 hours old. Each sweep syncs to connected
+visitors. Existing shapes without timestamps start aging when this feature
+is enabled. The client renders the landing note outside the shared document.
 
 ### Sessions and CSRF
 

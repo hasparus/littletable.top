@@ -1,3 +1,5 @@
+import type { TLRecord } from "@tldraw/tlschema";
+
 import {
   DurableObjectSqliteSyncWrapper,
   SQLiteSyncStorage,
@@ -5,6 +7,7 @@ import {
   TLSyncErrorCloseEventCode,
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
+import { isShape } from "@tldraw/tlschema";
 import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
@@ -15,6 +18,12 @@ import { addSeedColumn, drawSeed, type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
+import {
+  expirePublicShapes,
+  preservesPublicShapeAge,
+  PUBLIC_SWEEP_MS,
+  stampPublicShape,
+} from "./public-board-expiry";
 import {
   type Claim,
   type ClaimRequest,
@@ -38,7 +47,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 
 // Standalone account board IDs are alphanumeric and cannot collide with this room.
 export const PUBLIC_BOARD = "public-lobby";
-const DAY_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 
 export const PASS_HEADER = "X-Board-Pass";
 // The person's picture as personAvatar settled it, beside the pass.
@@ -60,7 +69,9 @@ function kind(sub: string): "guest" | "member" {
 }
 
 export class BoardRoom extends DurableObject<Env> {
-  private room!: TLSocketRoom<never, Person>;
+  private room!: TLSocketRoom<TLRecord, Person>;
+  private drawing!: SQLiteSyncStorage<TLRecord>;
+  private publicExpiryEnabled = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
@@ -87,15 +98,25 @@ export class BoardRoom extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
-    this.room = new TLSocketRoom<never, Person>({
+    this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
+    this.drawing = new SQLiteSyncStorage({
+      sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
+    });
+    this.room = new TLSocketRoom<TLRecord, Person>({
+      authorizeRecord: {
+        shape: (write) => {
+          if (write.type === "delete") return write.prev;
+          if (!this.publicExpiryEnabled) return write.next;
+          if (write.type === "create") return stampPublicShape(write.next, Date.now());
+          return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
+        },
+      },
       // NOTE: tldraw leaves the parsed message out of this hook's public
       // type; it is the object the room then applies.
       onAfterReceiveMessage: (received) => {
         stampPresence((received as { message?: unknown }).message, received.meta);
       },
-      storage: new SQLiteSyncStorage({
-        sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
-      }),
+      storage: this.drawing,
     });
     this.lastRollAt = new Map();
     // NOTE: the texts table first: the images' ledger counts it in the quota.
@@ -322,48 +343,47 @@ export class BoardRoom extends DurableObject<Env> {
     return stored;
   }
 
-  async schedulePublicClear(): Promise<void> {
+  async schedulePublicExpiry(): Promise<void> {
+    if (!this.publicExpiryEnabled) {
+      // Give existing shapes a starting age when this board first adopts expiry.
+      const now = Date.now();
+      this.drawing.transaction((store) => {
+        // Snapshot the records before rewriting them in the same SQLite table.
+        const records = [...store.values()];
+        for (const record of records) {
+          if (isShape(record)) store.set(record.id, stampPublicShape(record, now));
+        }
+      });
+      this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
+      this.publicExpiryEnabled = true;
+    }
     if ((await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Math.floor(Date.now() / DAY_MS) * DAY_MS + DAY_MS);
+      const next = (Math.floor(Date.now() / PUBLIC_SWEEP_MS) + 1) * PUBLIC_SWEEP_MS;
+      await this.ctx.storage.setAlarm(next);
     }
   }
 
   override async alarm(): Promise<void> {
-    await this.ctx.blockConcurrencyWhile(async () => {
-      const files = await this.clear(PUBLIC_BOARD, false);
-      await this.schedulePublicClear();
-      log("board.public_cleared", { board: PUBLIC_BOARD, files });
-    });
+    if (!this.publicExpiryEnabled) return;
+    this.drawing.transaction((store) => expirePublicShapes(store, Date.now()));
+    await this.schedulePublicExpiry();
   }
 
-  async destroy(board: string): Promise<void> {
-    const files = await this.clear(board, true);
-    log("board.deleted", { board, files });
-  }
-
-  private async clear(board: string, permanent: boolean): Promise<number> {
-    if (permanent) {
-      for (const session of this.room.getSessions()) {
-        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
-      }
-      this.room.close();
+  async destroy(board: string) {
+    for (const session of this.room.getSessions()) {
+      this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }
+    this.room.close();
     // Leave the document intact if deleting its files fails.
     let files: number;
     try {
       files = await this.files.wipe(board);
     } catch (error) {
-      if (permanent) this.open();
+      this.open();
       throw error;
-    }
-    if (!permanent) {
-      for (const session of this.room.getSessions()) {
-        this.room.sendCustomMessage(session.sessionId, { type: "public-board-cleared" });
-      }
-      this.room.close();
     }
     await this.ctx.storage.deleteAll();
     this.open();
-    return files;
+    log("board.deleted", { board, files });
   }
 }

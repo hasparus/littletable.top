@@ -16,8 +16,8 @@ const EN = {
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
   publicBoard: "Public whiteboard",
+  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
   publicGreeting: "Hey there",
-  publicReset: "Anyone can draw here. This board clears daily at 00:00 UTC.",
   publicStory: [
     "Whenever my friends invited me to play on Roll20 or another virtual tabletop, I complained. It was awkward on a phone, it had too many features, and even a character sheet meant filling out forms.",
     "Why do all that when we could drop screenshots from our PDFs onto a whiteboard and draw on them, just like at a real table?",
@@ -57,8 +57,8 @@ const PL: FrontCopy = {
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
   publicBoard: "Tablica publiczna",
+  publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
   publicGreeting: "Cześć",
-  publicReset: "Każdy może tu rysować. Tablica czyści się codziennie o północy UTC.",
   publicStory: [
     "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
     "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",

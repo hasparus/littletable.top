@@ -36,7 +36,7 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
       {copy.publicStory.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
       ))}
-      <footer>{copy.publicReset}</footer>
+      <footer>{copy.publicExpiry}</footer>
     </section>
   );
 }

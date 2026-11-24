@@ -384,7 +384,7 @@ export class Standalone {
     const board = saved ?? { id: PUBLIC_BOARD, linkVersion: 0, title: this.config.displayName };
     if (code === null) {
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(PUBLIC_BOARD));
-      await room.schedulePublicClear();
+      await room.schedulePublicExpiry();
     }
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });

@@ -1,0 +1,81 @@
+import type { TLSyncStorageTransaction } from "@tldraw/sync-core";
+import type { TLRecord, TLShape, TLShapeId } from "@tldraw/tlschema";
+import type { IndexKey } from "@tldraw/utils";
+
+import { isBinding, isShape } from "@tldraw/tlschema";
+import { getIndexAbove } from "@tldraw/utils";
+
+export const PUBLIC_SWEEP_MS = 6 * 60 * 60 * 1000;
+const DAY_MS = 4 * PUBLIC_SWEEP_MS;
+const CREATED_AT = "littleTablePublicCreatedAt";
+
+function creationTime(shape: TLShape): number | null {
+  const timestamp = shape.meta[CREATED_AT];
+  return typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function stampPublicShape(shape: TLShape, now: number): TLShape {
+  return { ...shape, meta: { ...shape.meta, [CREATED_AT]: now } };
+}
+
+export function preservesPublicShapeAge(before: TLShape, after: TLShape): boolean {
+  return before.meta[CREATED_AT] === after.meta[CREATED_AT];
+}
+
+export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, now: number): void {
+  const records = [...store.values()];
+  const shapes = new Map<string, TLShape>(
+    records.filter(isShape).map((shape) => [shape.id, shape]),
+  );
+  const expired = new Set<TLShapeId>();
+  const lastIndex = new Map<TLShape["parentId"], IndexKey>();
+
+  for (const shape of shapes.values()) {
+    const created = creationTime(shape);
+    if (created !== null && now - created >= 2 * DAY_MS) expired.add(shape.id);
+    const last = lastIndex.get(shape.parentId);
+    if (last === undefined || last < shape.index) lastIndex.set(shape.parentId, shape.index);
+  }
+
+  for (const shape of shapes.values()) {
+    if (expired.has(shape.id)) {
+      store.delete(shape.id);
+      continue;
+    }
+    const created = creationTime(shape);
+    let next = created === null ? stampPublicShape(shape, now) : shape;
+    if (created !== null && now - created >= DAY_MS && next.opacity > 0.5) {
+      next = { ...next, opacity: 0.5 };
+    }
+
+    // A newer drawing can outlive its group or frame. Keep its position
+    // in the closest surviving parent, composing any removed transforms.
+    const visited = new Set<TLShapeId>();
+    let parent = shapes.get(next.parentId);
+    while (parent !== undefined && expired.has(parent.id) && !visited.has(parent.id)) {
+      visited.add(parent.id);
+      const sin = Math.sin(parent.rotation);
+      const cos = Math.cos(parent.rotation);
+      next = {
+        ...next,
+        parentId: parent.parentId,
+        rotation: parent.rotation + next.rotation,
+        x: parent.x + cos * next.x - sin * next.y,
+        y: parent.y + sin * next.x + cos * next.y,
+      };
+      parent = shapes.get(next.parentId);
+    }
+    if (next.parentId !== shape.parentId) {
+      const index = getIndexAbove(lastIndex.get(next.parentId));
+      lastIndex.set(next.parentId, index);
+      next = { ...next, index };
+    }
+    if (next !== shape) store.set(next.id, next);
+  }
+
+  for (const record of records) {
+    if (isBinding(record) && (expired.has(record.fromId) || expired.has(record.toId))) {
+      store.delete(record.id);
+    }
+  }
+}

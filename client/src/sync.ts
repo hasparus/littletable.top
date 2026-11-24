@@ -54,14 +54,6 @@ export function useBoardStore({
       assets: files.store,
       attempt,
       onCustomMessageReceived: (message: unknown) => {
-        if (
-          typeof message === "object" &&
-          message !== null &&
-          (message as { type?: unknown }).type === "public-board-cleared"
-        ) {
-          location.reload();
-          return;
-        }
         receive(message);
         files.onTextNotice?.(message);
       },
