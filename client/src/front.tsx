@@ -6,7 +6,7 @@ import { colorFor } from "./colors";
 import { fill } from "./copy";
 import { type FrontCopy } from "./front-copy";
 
-// The standalone tabletop's front page: sign in, then the account's boards
+// The standalone tabletop's account page: sign in, then the account's boards
 // (made here, or joined by someone else's link) with what an owner can do
 // to them. The Worker's API: docs/internals.md, "Standalone mode".
 
@@ -42,8 +42,11 @@ function SignedOut({ copy, failed, name }: { copy: FrontCopy; failed: boolean; n
           {copy.signInFailed}
         </p>
       )}
-      <a className="btn btn-primary min-h-12" href="/auth/sign-in?return=/">
+      <a className="btn btn-primary min-h-12" href="/auth/sign-in?return=/boards">
         {copy.signIn}
+      </a>
+      <a className="underline underline-offset-2" href="/">
+        {copy.publicBoard}
       </a>
     </div>
   );
@@ -260,6 +263,9 @@ function SignedIn({
           {copy.signOut}
         </button>
       </header>
+      <a className="mt-4 inline-block underline underline-offset-2" href="/">
+        {copy.publicBoard}
+      </a>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <h1 className="flex-1 text-2xl font-semibold">{copy.yourBoards}</h1>
         <button className="btn btn-primary min-h-12" onClick={() => void create()} type="button">

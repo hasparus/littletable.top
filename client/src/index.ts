@@ -4,6 +4,7 @@ import type { ClientSettings, Language } from "../settings";
 
 import { type Door, knock } from "./bootstrap";
 import { COPY, fill } from "./copy";
+import { FRONT_COPY } from "./front-copy";
 
 // NOTE: the build writes it (vite.config.ts, client/settings.ts).
 declare const __TABLETOP__: ClientSettings;
@@ -52,23 +53,24 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) {
 }
 
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
-// The Worker serves this page at /b/<share code>, and in standalone mode
-// also at /, the front page.
+// Standalone mode also has the public board at / and the account at /boards.
 async function mount(): Promise<void> {
-  if (location.pathname === "/") {
-    const [{ mountFront }, { FRONT_COPY }] = await Promise.all([
-      import("./front"),
-      import("./front-copy"),
-    ]);
+  if (settings.hosted === null && location.pathname === "/boards") {
+    const { mountFront } = await import("./front");
     mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
     return;
   }
+  const isPublic = settings.hosted === null && location.pathname === "/";
+  const landing = isPublic ? { copy: FRONT_COPY[language], name: settings.name } : undefined;
   const shareCode = encodeURIComponent(location.pathname.split("/")[2] ?? "");
   // Hosted, the host signs passes across origins with its own cookie;
   // standalone, this Worker does, on its own origin.
   const door: Door =
     settings.hosted === null
-      ? { bootstrapUrl: `/api/b/${shareCode}/bootstrap`, credentials: "same-origin" }
+      ? {
+          bootstrapUrl: isPublic ? "/api/public-board/bootstrap" : `/api/b/${shareCode}/bootstrap`,
+          credentials: "same-origin",
+        }
       : {
           bootstrapUrl: settings.hosted.bootstrapUrl.replace("{code}", shareCode),
           credentials: "include",
@@ -87,6 +89,7 @@ async function mount(): Promise<void> {
     door,
     fallbackExit,
     first,
+    landing,
     language,
     licenseKey: settings.licenseKey,
   });

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { PublicLanding } from "./public-landing";
+
 import {
   type Answer,
   type Bootstrap,
@@ -29,6 +31,7 @@ type Mount = {
   // Where a person goes before the host has said whose board this is.
   fallbackExit: Exit;
   first: Promise<Answer>;
+  landing?: PublicLanding;
   language: string;
   licenseKey: string;
 };
@@ -41,13 +44,16 @@ function exitOf(copy: Copy, { boardsUrl, home }: Bootstrap): Exit {
     : { href: boardsUrl, label: copy.myBoards };
 }
 
-function Board({ copy, door, fallbackExit, first, language, licenseKey }: Mount) {
+function Board({ copy, door, fallbackExit, first, landing, language, licenseKey }: Mount) {
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
 
   const settle = useCallback(
     (answer: Answer) => {
       if (answer.kind === "ready") {
-        const exit = exitOf(copy, answer.bootstrap);
+        const exit =
+          landing !== undefined && answer.bootstrap.boardsUrl === null
+            ? { href: "/auth/sign-in?return=/boards", label: landing.copy.signIn }
+            : exitOf(copy, answer.bootstrap);
         document.title = answer.bootstrap.title;
         // NOTE: an ending only ever moves forward; a late renewal answer
         // must not bring a reset board back.
@@ -67,7 +73,7 @@ function Board({ copy, door, fallbackExit, first, language, licenseKey }: Mount)
         setStage({ kind: "failed", text });
       }
     },
-    [copy, door, fallbackExit],
+    [copy, door, fallbackExit, landing],
   );
 
   useEffect(() => {
@@ -118,6 +124,7 @@ function Board({ copy, door, fallbackExit, first, language, licenseKey }: Mount)
           copy={copy}
           exit={stage.exit}
           keeper={stage.keeper}
+          landing={landing}
           language={language}
           licenseKey={licenseKey}
         />
