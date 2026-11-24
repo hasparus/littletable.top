@@ -30,11 +30,11 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run build
-      - name: Report new React Doctor findings
+      - name: Check for new React Doctor findings
         if: github.event_name == 'pull_request'
         env:
           BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
-        run: bun run doctor --scope changed --base "$BASE_COMMIT"
+        run: bun run doctor --scope changed --base "$BASE_COMMIT" --blocking warning
 
   test:
     runs-on: ubuntu-latest
