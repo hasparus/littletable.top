@@ -146,7 +146,9 @@ export async function reviewShot(page: Page, name: string): Promise<void> {
 // real, synced shape updates, but without pointer drags to aim.
 export async function reachEditor(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const canvas = document.querySelector("[data-testid=canvas]")!;
+    const canvas = document.querySelector(
+      "[data-board-shell]:not([hidden]) [data-board-editor]:not([inert]) [data-testid=canvas]",
+    )!;
     const key = Object.keys(canvas).find((name) => name.startsWith("__reactFiber$"))!;
     type Fiber = { memoizedProps?: { value?: unknown }; return: Fiber | null };
     let fiber: Fiber | null = (canvas as unknown as Record<string, Fiber>)[key] ?? null;

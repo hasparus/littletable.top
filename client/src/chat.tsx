@@ -41,22 +41,23 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       if (!enabled) return;
-      try {
-        const response = await request({ signal });
-        if (!response.ok) throw new Error(`Chat history: ${response.status}`);
-        const history = (await response.json()) as ChatMessage[];
-        if (signal?.aborted) return;
-        const previous = historyThrough.current;
-        if (previous !== null) {
-          const missed = history.findLast((message) => message.id > previous && message.sub !== id);
-          if (missed !== undefined) setLatestIncoming((current) => Math.max(current, missed.id));
-        }
-        historyThrough.current = Math.max(previous ?? 0, history.at(-1)?.id ?? 0);
-        add(history);
-        setLoad("ready");
-      } catch {
-        if (!signal?.aborted) setLoad("failed");
+      const response = await request({ signal }).catch(() => null);
+      const history = response?.ok
+        ? ((await response.json().catch(() => null)) as ChatMessage[] | null)
+        : null;
+      if (signal?.aborted) return;
+      if (history === null) {
+        setLoad("failed");
+        return;
       }
+      const previous = historyThrough.current;
+      if (previous !== null) {
+        const missed = history.findLast((message) => message.id > previous && message.sub !== id);
+        if (missed !== undefined) setLatestIncoming((current) => Math.max(current, missed.id));
+      }
+      historyThrough.current = Math.max(previous ?? 0, history.at(-1)?.id ?? 0);
+      add(history);
+      setLoad("ready");
     },
     [add, enabled, id, request],
   );
@@ -108,16 +109,13 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
     input.current?.focus();
     setBusy(true);
     setRefusal(null);
-    try {
-      const result = await chat.send(message);
-      setRefusal(result);
-      if (result === null) {
-        setText((current) => (current.trim() === message ? "" : current));
-        follow.current = true;
-        if (log.current !== null) log.current.scrollTop = log.current.scrollHeight;
-      }
-    } finally {
-      setBusy(false);
+    const result = await chat.send(message);
+    setBusy(false);
+    setRefusal(result);
+    if (result === null) {
+      setText((current) => (current.trim() === message ? "" : current));
+      follow.current = true;
+      if (log.current !== null) log.current.scrollTop = log.current.scrollHeight;
     }
   };
 

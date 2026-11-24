@@ -16,7 +16,8 @@ owns accounts and boards and signs short-lived passes, and the tabletop
 trusts one configured issuer ([docs/hosting.md](docs/hosting.md)). In
 standalone mode the tabletop has its own domain, accounts (signed in
 through WorkOS AuthKit) and boards, and signs its own passes. Guests join
-by link with a name. Little Table runs standalone.
+by link with a name. Account board owners can draw on a private secret
+layer over a snapshot of the shared board. Little Table runs standalone.
 
 ## Licence
 

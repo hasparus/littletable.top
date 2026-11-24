@@ -3,6 +3,30 @@
 This file covers what the code does not say quickly: formats, invariants,
 and why the security choices were made. Limits are in `src/limits.ts`.
 
+## Secret layer
+
+On a standalone account board, **Secret layer** switches the owner to an
+editable overlay. The shared board is a read-only snapshot taken when the
+owner enters the layer. The canvas starts on the same page and at the same
+zoom and position. Switch back to see live shared edits, or switch back and
+enter the layer again to refresh the snapshot.
+
+The standalone bootstrap issues a separate signed `secretPass` only when
+the account owns the board. The pass is tied to the issuing account session.
+Signing out revokes its private access and closes its secret-layer sockets.
+Private sync, rolls, uploaded images and text
+readings use `/rooms/<board>/secret` with that pass. Its signed room ID and
+Durable Object name are `<board>/secret`, and the images and readings live
+under `boards/<board>/secret/`. Private image and reading responses use
+`Cache-Control: no-store`. Shared passes, including the owner's ordinary
+pass, open only the shared room. The backdrop's local store contains only
+shared document records. It has no socket and sends no cursor or camera
+activity to the shared room.
+
+Resetting the share link revokes previous passes for both rooms and keeps
+both documents. Deleting the board closes both rooms and removes their
+records and files. The public board and hosted boards have no secret layer.
+
 ## Images
 
 A board's images live in one R2 bucket per deployment (`Files`) as

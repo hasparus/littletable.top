@@ -10,6 +10,8 @@ export type Bootstrap = {
   boardsUrl: string | null;
   pass: string;
   person: Person;
+  // The Worker adds this only for the signed-in owner of a standalone account board.
+  secretPass?: string;
   // The place on the host the board belongs to, where a guest leaves to.
   home: { name: string; url: string };
   title: string;
@@ -75,6 +77,7 @@ export class PassKeeper {
     private readonly door: Door,
     first: Bootstrap,
     private readonly onEnding: (ending: Ending) => void,
+    readonly secret = false,
   ) {
     this.latest = first;
   }
@@ -83,10 +86,18 @@ export class PassKeeper {
     return this.latest;
   }
 
+  forSecret(onEnding: (ending: Ending) => void): PassKeeper {
+    const keeper = new PassKeeper(this.door, this.latest, onEnding, true);
+    keeper.issuedAt = this.issuedAt;
+    return keeper;
+  }
+
   async pass(): Promise<string> {
-    if (Date.now() - this.issuedAt < PASS_REUSE_MS) return this.latest.pass;
-    const renewed = await this.renew();
-    return renewed.pass;
+    const current = Date.now() - this.issuedAt < PASS_REUSE_MS ? this.latest : await this.renew();
+    if (!this.secret) return current.pass;
+    if (current.secretPass !== undefined) return current.secretPass;
+    this.end("link-reset");
+    throw new Error("board: secret layer is no longer available");
   }
 
   async socketUri(): Promise<string> {
@@ -97,7 +108,7 @@ export class PassKeeper {
 
   // The board's rooms API, on the board's own origin.
   get room(): string {
-    return `/rooms/${this.latest.board}`;
+    return `/rooms/${this.latest.board}${this.secret ? "/secret" : ""}`;
   }
 
   end(ending: Ending): void {

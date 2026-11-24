@@ -7,7 +7,7 @@ import type { RollRefusal, Rolls } from "./rolls";
 
 import { type RollResult, rollResult } from "../../src/dice-notation";
 import { dieLabel, fill } from "./copy";
-import { modifierLabel } from "./dice";
+import { modifierLabel } from "./dice-labels";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
 import { DieShape } from "./die-shape";
 
@@ -64,8 +64,11 @@ type Place = {
 };
 
 const boxOf = (selector: string): DOMRect | null => {
-  const box = document.querySelector(selector)?.getBoundingClientRect();
-  return box === undefined || box.width === 0 ? null : box;
+  return (
+    [...document.querySelectorAll(selector)]
+      .map((element) => element.getBoundingClientRect())
+      .find((box) => box.width > 0) ?? null
+  );
 };
 
 // On wide boards the toast centres on the viewport while leaving room for
@@ -75,6 +78,7 @@ function placeToast(height: number): Place {
   const zone = boxOf(".tlui-menu-zone") ?? new DOMRect();
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
   const publicControls = boxOf("[data-public-board-controls]");
+  const secretToggle = boxOf("[data-secret-layer-toggle]");
   const viewportWidth = document.documentElement.clientWidth;
   const sideRight = Math.min(
     viewportWidth,
@@ -83,13 +87,17 @@ function placeToast(height: number): Place {
       .filter((box) => box.width > 0)
       .map((box) => box.left),
   );
-  const right = Math.min(sideRight, publicControls?.left ?? sideRight);
+  const right = Math.min(
+    sideRight,
+    publicControls?.left ?? sideRight,
+    secretToggle?.left ?? sideRight,
+  );
   const center = viewportWidth / 2;
   const centeredWidth = 2 * (Math.min(center - zone.right, right - center) - GAP);
   const centered = viewportWidth >= WIDE_BOARD_WIDTH && centeredWidth >= ROW_MIN_WIDTH;
   const besideWidth = right - zone.right - 2 * GAP;
   const beside = besideWidth >= ROW_MIN_WIDTH;
-  const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0);
+  const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0, secretToggle?.bottom ?? 0);
   const top = beside ? button.top + (button.height - height) / 2 : rowBottom + GAP;
   return {
     alignment: centered ? "center" : beside ? "beside" : "below",
@@ -195,7 +203,7 @@ function ResultToast({
     const resized = new ResizeObserver(measure);
     resized.observe(dice);
     for (const zone of document.querySelectorAll(
-      ".tlui-menu-zone, .tlui-layout__top__right, [data-public-board-controls]",
+      ".tlui-menu-zone, .tlui-layout__top__right, [data-public-board-controls], [data-secret-layer-toggle]",
     )) {
       resized.observe(zone);
     }

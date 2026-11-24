@@ -21,6 +21,7 @@ import {
   MAX_SIGN_INS_PER_MINUTE,
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
+import { secretLayerOf } from "../secret-layer";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
@@ -302,6 +303,13 @@ export class Standalone {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
     await this.store.closeSession(found.hash);
+    const { owned } = await this.store.list(found.session.account.id);
+    await Promise.all(
+      owned.map(({ id }) => {
+        const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
+        return this.env.BoardRoom.get(secret).disconnectSession(found.hash);
+      }),
+    );
     log("auth.signed_out", { account: found.session.account.id });
     const { origin } = new URL(request.url);
     const redirect =
@@ -378,10 +386,19 @@ export class Standalone {
     if (action === "reset") {
       const reset = await this.store.resetLink(id, owner, randomCode(22));
       if (reset === null) return refuse(404, "not-found");
-      await room.moveLink(id, reset.linkVersion);
+      const secret = secretLayerOf(id);
+      await Promise.all([
+        room.moveLink(id, reset.linkVersion),
+        this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).moveLink(
+          secret,
+          reset.linkVersion,
+        ),
+      ]);
       return json(200, { id, shareCode: reset.shareCode, title: reset.title });
     }
     if (!(await this.store.delete(id, owner))) return refuse(404, "not-found");
+    const secret = secretLayerOf(id);
+    await this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret);
     await room.destroy(id);
     return new Response(null, { status: 204 });
   }
@@ -434,14 +451,24 @@ export class Standalone {
       person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
     }
-    const pass = await signPass(this.keys, {
+    const claims = {
       avatar: person.avatar,
       board: board.id,
       link: board.linkVersion,
       name: person.name,
       owner: person.owner,
       sub: person.id,
-    });
+    };
+    const [pass, secretPass] = await Promise.all([
+      signPass(this.keys, claims),
+      person.owner && found !== null
+        ? signPass(this.keys, {
+            ...claims,
+            board: secretLayerOf(board.id),
+            sessionHash: found.hash,
+          })
+        : null,
+    ]);
     log("pass.issued", {
       board: board.id,
       owner: person.owner,
@@ -454,6 +481,7 @@ export class Standalone {
         home: { name: this.config.displayName, url: "/" },
         pass,
         person: { id: person.id, name: person.name, owner: person.owner },
+        ...(secretPass === null ? {} : { secretPass }),
         title: board.title,
       },
       { headers, status: 200 },
