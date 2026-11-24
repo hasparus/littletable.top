@@ -42,6 +42,7 @@
   --board-left: max(var(--board-gutter), env(safe-area-inset-left));
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
   --board-top: max(var(--board-gutter), env(safe-area-inset-top));
+  --board-bottom-gap: 8px;
   --board-control-radius: 11px;
 }
 
@@ -50,15 +51,63 @@
   padding-inline: var(--board-left) var(--board-right);
 }
 
+[data-board-toolbar] > .tlui-main-toolbar--horizontal {
+  padding-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
+}
+
 [data-board-toolbar-actions] {
+  margin-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
   background: var(--tl-color-panel);
   border-radius: var(--tl-radius-4);
   box-shadow: var(--tl-shadow-2);
 }
 
 @media (max-width: 639px) {
+  [data-board-shell] {
+    --board-gutter: 4px;
+    --board-bottom-gap: 4px;
+  }
+
+  [data-board-toolbar] {
+    /* Leave the small tldraw tab on the right edge room to be tapped. */
+    padding-right: max(var(--board-right), calc(env(safe-area-inset-right) + 10px));
+  }
+
   [data-board-toolbar] > .tlui-main-toolbar {
     justify-content: flex-start;
+  }
+}
+
+/* On iOS the canvas can paint into the large viewport while Safari's
+   bars are visible. Keep the control layer inside the reachable viewport. */
+@supports (-webkit-touch-callout: none) and (height: 100lvh) {
+  body:has([data-board-shell]) {
+    min-height: 100lvh;
+    overflow: hidden;
+    background: var(--color-background);
+  }
+
+  [data-board-root]:has([data-board-shell]),
+  [data-board-shell] {
+    position: absolute;
+  }
+
+  [data-board-shell] {
+    overflow: visible;
+    --board-browser-bleed: max(0px, calc(100lvh - 100dvh - env(safe-area-inset-bottom)));
+  }
+
+  [data-board-editor] {
+    bottom: auto;
+    height: max(100%, 100lvh);
+  }
+
+  [data-board-editor] .tlui-layout {
+    height: calc(100% - var(--board-browser-bleed));
+  }
+
+  [data-board-editor] [data-testid^="tl-watermark"] {
+    translate: 0 calc(0px - var(--board-browser-bleed));
   }
 }
 

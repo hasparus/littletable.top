@@ -153,7 +153,7 @@ function BoardToolbar() {
         <BoardTools />
       </DefaultToolbar>
       <div
-        className="pointer-events-auto mb-[calc(var(--tl-space-3)+var(--tl-sab))] flex shrink-0 items-center p-0.5"
+        className="pointer-events-auto flex shrink-0 items-center p-0.5"
         data-board-toolbar-actions
       >
         <PanelButton icon="MagnifyingGlass" label={copy.search} panel="search" />

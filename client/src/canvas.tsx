@@ -219,7 +219,7 @@ export function BoardCanvas({
         data-public-board={landing === undefined ? undefined : ""}
       >
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
-        <div className="absolute inset-0 isolate">
+        <div className="absolute inset-0 isolate" data-board-editor>
           <Tldraw
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
