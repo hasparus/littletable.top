@@ -1,6 +1,13 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { type Editor, EmbedShapeUtil, Tldraw, useEditor, useValue } from "tldraw";
+import {
+  DefaultBackground,
+  type Editor,
+  EmbedShapeUtil,
+  Tldraw,
+  useEditor,
+  useValue,
+} from "tldraw";
 
 import "./board.css";
 
@@ -10,7 +17,7 @@ import type { Copy } from "./copy";
 
 import { BoardFiles } from "./assets";
 import { BoardFileHandlers } from "./board-files";
-import { components } from "./chrome";
+import { BoardMainMenu, components } from "./chrome";
 import { colorFor } from "./colors";
 import { DiceSheet, rollSentence } from "./dice";
 import { MEDIA_PROPS } from "./file-flows";
@@ -19,6 +26,8 @@ import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
+import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
+import { PublicBoardIntro, type PublicLanding } from "./public-landing";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
@@ -73,12 +82,14 @@ export function BoardCanvas({
   copy,
   exit,
   keeper,
+  landing,
   language,
   licenseKey,
 }: {
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
+  landing?: PublicLanding;
   language: string;
   licenseKey: string;
 }) {
@@ -173,6 +184,22 @@ export function BoardCanvas({
   );
   const { open } = ui;
   useEffect(() => (editor === null ? undefined : searchFromKeyboard(open)), [editor, open]);
+  const canvasComponents = useMemo(
+    () =>
+      landing === undefined
+        ? components
+        : {
+            ...components,
+            Background: () => (
+              <>
+                <DefaultBackground />
+                <PublicBoardIntro {...landing} />
+              </>
+            ),
+            MainMenu: () => <BoardMainMenu hideExit />,
+          },
+    [landing],
+  );
 
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
@@ -194,30 +221,41 @@ export function BoardCanvas({
 
   return (
     <BoardUiContext.Provider value={ui}>
-      <div className="fixed inset-0 overflow-hidden">
+      <div
+        className="fixed inset-0 overflow-hidden"
+        data-board-shell
+        data-public-board={landing === undefined ? undefined : ""}
+      >
         {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
-        <div className="absolute inset-0 isolate">
+        <div className="absolute inset-0 isolate" data-board-editor>
           <Tldraw
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
+            bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
             colorScheme="system"
-            components={components}
+            components={canvasComponents}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
             onMount={(mounted) => {
               // NOTE: tldraw's own menus (the page menu's among them) take
               // their language from the person's preferences, not this prop.
               mounted.user.updateUserPreferences({ locale: language });
+              if (landing !== undefined) rememberExistingArrows(mounted);
               setEditor(mounted);
             }}
             shapeUtils={SHAPE_UTILS}
             store={store}
           >
             <BoardFileHandlers />
-            <PageKeeper board={board} copy={copy} />
+            {landing === undefined && <PageKeeper board={board} copy={copy} />}
             <ThemeKeeper />
           </Tldraw>
         </div>
+        {landing !== undefined && (
+          <a className="absolute z-10" data-public-board-account href={exit.href}>
+            {exit.label}
+          </a>
+        )}
         {offline && <ConnectionBanner copy={copy} />}
         {panel === "dice" && <DiceSheet />}
         {panel === "search" && <SearchSheet />}
@@ -270,3 +308,5 @@ function searchFromKeyboard(open: BoardUi["open"]): () => void {
 // A pasted YouTube or Figma link would become a frame onto that site, which
 // the Content-Security-Policy refuses; it stays a plain link instead.
 const SHAPE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] })];
+
+const PUBLIC_BINDING_UTILS = [PublicArrowBindingUtil];

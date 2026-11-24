@@ -11,20 +11,22 @@ host. `alchemy/index.d.ts` documents every helper prop.
 The Alchemy helper sets these from its props; `wrangler.json` and
 `.dev.vars` set them for `wrangler dev`.
 
-| Variable            | Helper prop        | Meaning                                                                       |
-| ------------------- | ------------------ | ----------------------------------------------------------------------------- |
-| `TABLETOP_MODE`     | `mode`             | `hosted`                                                                      |
-| `ISSUER_PUBLIC_KEY` | `issuerPublicKey`  | The host's RSA public key, SPKI PEM (`\n` escapes allowed). Passes are RS256  |
-| `ISSUER`            | `issuer`           | The `iss` of the host's tokens. May not be `tabletop`                         |
-| `PASS_AUDIENCE`     | `passAudience`     | The `aud` of passes. Default `board`. May not be `tabletop-standalone`        |
-| `DELETION_AUDIENCE` | `deletionAudience` | The `aud` of deletion tokens. Default `board-deletion`; must differ           |
-| `HOST_ORIGIN`       | `hostOrigin`       | The host's origin. The page's Content-Security-Policy allows it               |
-| `HOME_URL`          | `homeUrl`          | Where `GET /` redirects (302). Default `HOST_ORIGIN/`                         |
-| `PRIMARY_HOST`      | `domain.primary`   | The tabletop's own host. Empty: answer on any host                            |
-| `ALIAS_HOSTS`       | `domain.aliases`   | Comma-separated hosts answered with a 308 to the same path on the primary one |
+| Variable              | Helper prop         | Meaning                                                                       |
+| --------------------- | ------------------- | ----------------------------------------------------------------------------- |
+| `TABLETOP_MODE`       | `mode`              | `hosted`                                                                      |
+| `ISSUER_PUBLIC_KEY`   | `issuerPublicKey`   | The host's RSA public key, SPKI PEM (`\n` escapes allowed). Passes are RS256  |
+| `ISSUER`              | `issuer`            | The `iss` of the host's tokens. May not be `tabletop`                         |
+| `PASS_AUDIENCE`       | `passAudience`      | The `aud` of passes. Default `board`. May not be `tabletop-standalone`        |
+| `DELETION_AUDIENCE`   | `deletionAudience`  | The `aud` of deletion tokens. Default `board-deletion`; must differ           |
+| `LINK_RESET_AUDIENCE` | `linkResetAudience` | The `aud` of link reset tokens. Default `board-link-reset`                    |
+| `HOST_ORIGIN`         | `hostOrigin`        | The host's origin. The page's Content-Security-Policy allows it               |
+| `HOME_URL`            | `homeUrl`           | Where `GET /` redirects (302). Default `HOST_ORIGIN/`                         |
+| `PRIMARY_HOST`        | `domain.primary`    | The tabletop's own host. Empty: answer on any host                            |
+| `ALIAS_HOSTS`         | `domain.aliases`    | Comma-separated hosts answered with a 308 to the same path on the primary one |
 
 `tabletop` and `tabletop-standalone` are standalone mode's own issuer and
-audience, so a pass from one mode never opens a board in the other. A
+audience, so a pass from one mode never opens a board in the other. Hosted
+passes, deletion tokens and link reset tokens each use a distinct audience. A
 configuration that misses what its mode needs, or sets the other mode's
 variables, answers 500 "This tabletop is not configured" to every request
 and logs `tabletop.misconfigured`.
@@ -52,7 +54,7 @@ The host answers only the tabletop's origin, with
 `Access-Control-Allow-Credentials: true` and `Vary: Origin`, and answers the
 preflight with `Access-Control-Allow-Methods: POST` and
 `Access-Control-Allow-Headers: Content-Type`. The JSON content type forces
-the preflight, which stands in for a CSRF token. The cookie reaches the
+a preflight, which takes the place of a CSRF token. The cookie reaches the
 host only when the two hosts are the same site (`board.example.org` and
 `example.org`) and its `SameSite` allows it.
 
@@ -96,10 +98,23 @@ The pass travels as `?pass=` on the socket and `Authorization: Bearer`
 elsewhere; images read it from a cookie (see
 [internals](internals.md#images)). A pass with a higher `link` than the
 board has seen moves the board on and closes every connection with a lower
-one; a lower `link` is refused. To reset a link, the host gives the board a
-new share code and signs later passes with `link + 1`.
+one; a lower `link` is refused.
 
-A **deletion token** is a JWT with `aud` = `DELETION_AUDIENCE`, the same key
+### Resetting a link
+
+Give the board a new share code, increment its link version, and use that
+version in later passes. To disconnect users of the old link immediately,
+send `POST /rooms/<board>/link` server to server with
+`Authorization: Bearer <token>`. The token is an RS256 JWT signed with the
+same key and issuer as a pass, with `aud` set to `LINK_RESET_AUDIENCE` and
+claims `board`, `link` (the new positive integer version), and `exp`.
+A 204 means the room is at that version or newer. If the response is lost,
+the host can retry the same version. Versions at or below the room's
+current version have no effect.
+
+### Deleting a board
+
+A deletion token is a JWT with `aud` = `DELETION_AUDIENCE`, the same key
 and issuer, and the claims `board` and `exp`. The host sends it server to
 server: `POST /rooms/<board>/delete` with `Authorization: Bearer <token>`,
 answered 204, repeatable. It removes the document, roll log, link version
@@ -115,6 +130,7 @@ delete, and a deletion token cannot open a socket or roll.
 | `GET /rooms/<board>/connect`                | The tldraw sync socket (`?sessionId=&pass=`)          |
 | `POST /rooms/<board>/roll`                  | Rolls `{"dice": [6, 6]}` for everyone                 |
 | `GET /rooms/<board>/rolls`                  | The latest 50 rolls                                   |
+| `POST /rooms/<board>/link`                  | Advances the link version (link reset token)          |
 | `POST /rooms/<board>/delete`                | Deletes the board's data (deletion token)             |
 | `POST /rooms/<board>/files`                 | Uploads an image (the bytes as the body)              |
 | `POST /rooms/<board>/files/access`          | Sets the cookie the board's `<img>`s read images with |
@@ -122,12 +138,12 @@ delete, and a deletion token cannot open a socket or roll.
 | `GET /rooms/<board>/files/avatars/<sha256>` | The picture of someone who has been on the board      |
 
 The rooms API is same-origin with the client and sends no CORS headers.
-The room draws every die (d4, d6, d8, d10, d12, d20, d100; up to 20 at once, one roll
-per person per 500 ms) and sends it to each connection as a sync custom
-message, so no client can edit one.
+The room draws every die (d4, d6, d8, d10, d12, d20, d100; up to 20 at
+once, one roll per person per 500 ms). It sends each roll to every
+connection as a sync custom message, so no client can edit one.
 
-A socket whose pass is valid but must be refused is accepted and closed at
-once with code 4099, which tldraw treats as final:
+A socket with a valid pass that must still be refused is accepted, then
+closed at once with code 4099, which tldraw treats as final:
 
 | Why                                   | Close reason |
 | ------------------------------------- | ------------ |
@@ -177,14 +193,14 @@ boards' images (`<app>-<stage>-<id>Files`, returned as `files`; never
 destroyed while it holds images) and the custom domains. It refuses the
 committed dev key. `alchemy`, `@alchemy.run/cloudflare` and `effect` are
 peer dependencies, so the stack and the helper share one copy of each. The
-helper is plain JavaScript with a hand-written `index.d.ts` because
+helper is plain JavaScript with a hand-written `index.d.ts`, because
 Alchemy's loader does not transpile TypeScript under `node_modules`.
 
 ### As a dependency
 
-Nothing is published yet. A git dependency works today:
+The package is not published yet. Use a git dependency:
 `"littletable-top": "github:<owner>/<repo>#<commit>"`. The repository is
-private, so the install needs a token that can read it. No build runs at
-install; the helper builds the client at deploy time. To publish to a
-registry, drop `"private": true` and choose a licence; `files` in
+private, so the install needs a token that can read it. Installing builds
+nothing; the helper builds the client at deploy time. To publish to a
+registry, drop `"private": true` and choose a licence. `files` in
 `package.json` already lists what a deploy needs.

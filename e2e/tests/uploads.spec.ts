@@ -129,7 +129,7 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   expect(assets).toEqual([`sha256:${sha256(MAP)}`, `sha256:${sha256(PORTRAIT)}`]);
 
   // What came out opens on a fresh board as the same document again.
-  await page.goto(`${STANDALONE}/`);
+  await page.goto(`${STANDALONE}/boards`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_BOARD);
   const chooser = page.waitForEvent("filechooser");
@@ -177,10 +177,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 
   await openTldr(page, "table-newer.tldr");
   await expect(
-    toast(
-      page,
-      "This file comes from a newer version of tldraw than the board, so it cannot be opened here yet.",
-    ),
+    toast(page, "This file is from a newer version of tldraw. The board cannot open it yet."),
   ).toBeVisible();
 
   await dropFile(page, "table-older.tldr", "");

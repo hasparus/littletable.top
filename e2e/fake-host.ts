@@ -1,7 +1,7 @@
 // A tiny host application for the hosted-mode end-to-end test, and the
 // reference implementation of the host contract (docs/hosting.md, "The host
 // contract"). It keeps accounts and boards in memory, signs passes and
-// deletion tokens with the committed dev key, and answers the tabletop's
+// board command tokens with the committed dev key, and answers the tabletop's
 // pass requests. Test-only: nothing here is fit for production.
 //
 //   node e2e/fake-host.ts   (Node 22.18+ runs the TypeScript as it is)
@@ -100,11 +100,11 @@ function signPass(
     .sign(signingKey);
 }
 
-function signDeletion(board: Board) {
-  return new SignJWT({ board: board.id })
+function signBoardCommand(audience: string, claims: { board: string; link?: number }) {
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(ISSUER)
-    .setAudience("board-deletion")
+    .setAudience(audience)
     .setIssuedAt(now())
     .setExpirationTime(now() + 60)
     .sign(signingKey);
@@ -227,10 +227,21 @@ const server = createServer(async (request, response) => {
   if (action![2] === "reset") {
     board.code = token(12);
     board.link += 1;
+    const resetToken = await signBoardCommand("board-link-reset", {
+      board: board.id,
+      link: board.link,
+    });
+    const reset = await fetch(`${TABLETOP}/rooms/${board.id}/link`, {
+      headers: { Authorization: `Bearer ${resetToken}` },
+      method: "POST",
+    }).catch(() => null);
+    if (reset?.status !== 204) return json(response, 502, { error: "link-reset-unconfirmed" });
   } else {
     boards.delete(board.id);
     const wiped = await fetch(`${TABLETOP}/rooms/${board.id}/delete`, {
-      headers: { Authorization: `Bearer ${await signDeletion(board)}` },
+      headers: {
+        Authorization: `Bearer ${await signBoardCommand("board-deletion", { board: board.id })}`,
+      },
       method: "POST",
     });
     if (wiped.status !== 204) console.error("fake host: the tabletop did not wipe", wiped.status);

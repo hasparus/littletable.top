@@ -15,6 +15,14 @@ const EN = {
   newBoard: "New board",
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
+  publicBoard: "Public whiteboard",
+  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
+  publicStory: [
+    "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
+    "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
+    "We started playing with Miro, Excalidraw and tldraw. It was way better, but a few small features were missing. My ideal app didn't exist... yet.",
+    "Little Table is this app. Just a whiteboard with dice rolls, search over text in images and secret layers. A virtual tabletop without bloat.",
+  ],
   rename: "Rename",
   resetConfirm: "Everyone who has the old link will be put out. Reset the link?",
   resetLink: "Reset link",
@@ -31,7 +39,7 @@ const EN = {
   yourBoards: "Your boards",
 };
 
-export type FrontCopy = Record<keyof typeof EN, string>;
+export type FrontCopy = typeof EN;
 
 const PL: FrontCopy = {
   actionFailed: "Nie udało się. Spróbuj ponownie.",
@@ -42,11 +50,19 @@ const PL: FrontCopy = {
   deleteConfirm:
     "Usunąć „%(title)s” razem ze wszystkim, co na niej narysowano? Tego nie da się cofnąć.",
   linkCopied: "Skopiowano link.",
-  linkWasReset: "Link do niej został zmieniony",
+  linkWasReset: "Link do niej zmieniono",
   loading: "Wczytujemy…",
   newBoard: "Nowa tablica",
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
+  publicBoard: "Tablica publiczna",
+  publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
+  publicStory: [
+    "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
+    "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",
+    "Spróbowaliśmy Miro, Excalidraw i tldraw. Było dużo lepiej, ale nadal brakowało mi kilku drobiazgów. Aplikacji, której szukałem, jeszcze nie było.",
+    "Tak powstało Little Table. To tablica, na której można rzucać kośćmi i wyszukiwać tekst na obrazach. Chcę jeszcze dodać ukryte warstwy. Wirtualny stół bez zbędnych dodatków.",
+  ],
   rename: "Zmień nazwę",
   resetConfirm: "Wszystkie osoby ze starym linkiem stracą dostęp. Zmienić link?",
   resetLink: "Zmień link",
@@ -55,9 +71,9 @@ const PL: FrontCopy = {
   signIn: "Zaloguj się",
   signInFailed: "Nie udało się zalogować. Spróbuj ponownie.",
   signInHelp:
-    "Zaloguj się, żeby zakładać tablice i łatwo do nich wracać. Osoby, którym wyślesz link, dołączą, podając tylko imię.",
+    "Zaloguj się, żeby zakładać tablice i do nich wracać. Osoby, którym wyślesz link, wpiszą tylko imię.",
   signOut: "Wyloguj się",
-  tooManyBoards: "Masz już najwięcej tablic, ile można. Najpierw usuń którąś.",
+  tooManyBoards: "Masz już maksymalną liczbę tablic. Najpierw usuń którąś.",
   tooManyNewBoards: "Założono właśnie wiele tablic. Zaczekaj chwilę przed kolejną.",
   visited: "Tablice, do których dołączono",
   yourBoards: "Twoje tablice",

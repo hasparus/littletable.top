@@ -33,8 +33,10 @@ export type HostedProps = Shared & {
   // PEM; "\n" escapes allowed). The committed dev key is refused.
   issuer: string;
   issuerPublicKey: string;
-  // Defaults: "board" and "board-deletion".
+  // Defaults: "board", "board-deletion" and "board-link-reset", respectively
+  // for passes, deletion tokens and link reset tokens.
   deletionAudience?: string;
+  linkResetAudience?: string;
   passAudience?: string;
   // The host's origin; the client asks it for passes and the policy allows it.
   hostOrigin: string;

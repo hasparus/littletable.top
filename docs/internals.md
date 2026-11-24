@@ -1,7 +1,7 @@
 # Internals
 
-Facts the code does not say quickly: formats, invariants, and the reasons
-behind the security choices. Limits live in `src/limits.ts`.
+This file covers what the code does not say quickly: formats, invariants,
+and why the security choices were made. Limits are in `src/limits.ts`.
 
 ## Images
 
@@ -15,7 +15,7 @@ A board's images live in one R2 bucket per deployment (`Files`) as
 - An `<img>` cannot send an Authorization header, so
   `POST /rooms/<board>/files/access` trades the pass for a cookie:
   `tabletop-files=<the pass>; Path=/rooms/<board>/files; Secure; HttpOnly;
-SameSite=Strict`, living as long as the pass. It is read only on
+SameSite=Strict`. It lasts as long as the pass and is read only on
   `GET`/`HEAD` of that path, so uploads still need the header and a page
   elsewhere cannot spend it. A signed URL would change every four minutes
   and defeat the browser's cache; the cookie keeps one address per image.
@@ -38,11 +38,12 @@ Pictures are never hot-linked. The Worker copies each into the bucket as
 `avatars/<sha256>` and serves it itself, so images stay `'self'` and no
 player's browser contacts the identity provider or the host.
 
-- The copy (`src/avatars.ts`): `https` only, no address literals or local
-  names, every redirect hop checked again. PNG, JPEG, GIF, WebP or AVIF; an
-  SVG is refused. Any failure leaves an initial and never fails the request.
-- Hosted: the board's Durable Object copies the pass's `avatar` claim, only
-  from `HOST_ORIGIN`, again only when the claim changes.
+- The copy (`src/avatars.ts`) is `https` only, refuses address literals and
+  local names, and checks every redirect hop again. It takes PNG, JPEG,
+  GIF, WebP or AVIF, not SVG. If the copy fails, the person keeps an
+  initial and the request still succeeds.
+- Hosted mode: the board's Durable Object copies the pass's `avatar` claim
+  from `HOST_ORIGIN` only, and again only when the claim changes.
 - `GET /rooms/<board>/files/avatars/<sha256>` answers only for someone who
   has been on that board; any other hash is a 404.
 - The room overwrites the user id, name and `meta.avatar` of every presence
@@ -166,12 +167,12 @@ The server draws every value (`src/dice.ts`) and gives each roll a 32-bit
 `seed`. The seed shapes only the animation: every client simulates the same
 throw and then turns each die so the server's value is on top.
 
-**The determinism rule.** From the seed to the last frame the simulation
-uses only `+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`,
-`Math.floor` and `Math.imul`, with a fixed step (1/240 s), solver iteration
-count and body order. Those are exact in every JavaScript engine; `sin`,
-`cos`, `atan2`, `pow` and the rest are not. A physics engine in
-WebAssembly would also need a wider Content-Security-Policy.
+The simulation keeps one rule from the seed to the last frame: it uses only
+`+ - * /`, `Math.sqrt`, `Math.abs`, `Math.min`, `Math.max`, `Math.floor`
+and `Math.imul`, with a fixed step (1/240 s), solver iteration count and
+body order. Those are exact in every JavaScript engine; `sin`, `cos`,
+`atan2`, `pow` and the rest are not. A physics engine in WebAssembly would
+also need a wider Content-Security-Policy.
 
 - `test/dice-exact.test.ts` runs a throw with every other `Math` function
   stubbed to throw.
@@ -182,7 +183,7 @@ WebAssembly would also need a wider Content-Security-Policy.
   the failing test prints. Clients on old and new builds see different
   throws until they reload.
 
-The renderer is free of the rule: nothing it computes feeds the frames.
+The rule does not bind the renderer: nothing it computes feeds the frames.
 Numerals are centred by their ink, from `client/src/dice-numeral-centres.ts`;
 after changing the font, `node e2e/numeral-centres.ts` rewrites it.
 
@@ -196,8 +197,18 @@ code>/bootstrap` on its own origin, with passes signed by its own key
 
 Live board state stays in the board's Durable Object. D1 (`migrations/`)
 keeps what is listed or looked up across boards: `accounts`, `sessions`,
-`boards` and `visits`. A link names a board by its share code, and finding
-a board from a code needs an index across all accounts, which D1 gives.
+`boards` and `visits`. A link names a board by its share code, and
+looking up a code needs an index across all accounts. D1 has that index.
+The public board uses a fixed room ID outside the account board ID space.
+It has no owner or D1 row. Its first bootstrap schedules a Durable Object
+alarm that runs every six hours on UTC boundaries. The server timestamps
+new shapes, caps their opacity at 50% once they are 24 hours old and
+removes them once they are 48 hours old. Each sweep syncs to connected
+visitors. Surviving arrows keep a saved endpoint when their target expires.
+After an additional sweep interval, the room reclaims unused uploads, their
+OCR results and their asset records. Existing shapes without timestamps
+start aging when this feature is enabled. The client renders the landing
+note outside the shared document.
 
 ### Sessions and CSRF
 
@@ -209,7 +220,9 @@ a board from a code needs an index across all accounts, which D1 gives.
   a JSON body, which no other origin sends without a preflight. Owner
   actions and sign-out also need `X-CSRF-Token`, from `GET /api/me`.
 - A guest's id and name live in `__Host-tabletop-guest`, signed under its
-  own audience.
+  own audience. The public board assigns guests a name immediately and keeps
+  it in `__Host-tabletop-public-guest`. Share links still ask new guests for
+  their names.
 - Board actions name the account in their queries, so someone else's board
   answers 404 and nothing changes.
 - The limits' client IP comes from `CF-Connecting-IP` only; the limiter
@@ -219,7 +232,8 @@ a board from a code needs an index across all accounts, which D1 gives.
 
 | Route                                     | Does                                                                           |
 | ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /`                                   | The front page: sign in, then the account's boards                             |
+| `GET /`                                   | Opens the shared public whiteboard                                             |
+| `GET /boards`                             | Sign-in and the account's boards                                               |
 | `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                           |
 | `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out              |
 | `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out     |
@@ -230,6 +244,7 @@ a board from a code needs an index across all accounts, which D1 gives.
 | `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only |
 | `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                         |
 | `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
+| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
 
 ### The sign-in provider
 

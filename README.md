@@ -1,24 +1,22 @@
 # Little Table
 
-A shared whiteboard with dice for tabletop games: a [tldraw](https://tldraw.dev)
-canvas everyone at the table draws on, a dice tray whose rolls the server
-makes and everyone sees land the same, and named places to jump to. Phone
-first; the board installs to a home screen. The package is
-`littletable-top`; this repository's own deployment is Little Table, at
-[littletable.top](https://littletable.top).
+A shared whiteboard with dice for tabletop games. Everyone at the table
+draws on one [tldraw](https://tldraw.dev) canvas. The server makes every
+roll, and everyone sees the dice land the same way. Named places let you
+jump around the board. It is built for phones first and installs to a home
+screen. The package is `littletable-top`. This repository deploys it as
+Little Table, at [littletable.top](https://littletable.top).
 
 One Cloudflare Worker serves the React client (`client/`, built by Vite into
 `dist/`) and the rooms. Each board is one SQLite-backed Durable Object,
 `BoardRoom`, which runs a tldraw sync room and keeps the board's roll log.
 
-It runs in one of two modes, chosen by configuration:
-
-- **Hosted.** A host application owns accounts and boards and signs
-  short-lived passes; the tabletop trusts one configured issuer. See
-  [docs/hosting.md](docs/hosting.md).
-- **Standalone.** The tabletop has its own domain, accounts (signed in
-  through WorkOS AuthKit) and boards, and signs its own passes. Guests join
-  by link with a name. Little Table runs this way.
+Configuration picks one of two modes. In hosted mode a host application
+owns accounts and boards and signs short-lived passes, and the tabletop
+trusts one configured issuer ([docs/hosting.md](docs/hosting.md)). In
+standalone mode the tabletop has its own domain, accounts (signed in
+through WorkOS AuthKit) and boards, and signs its own passes. Guests join
+by link with a name. Little Table runs standalone.
 
 ## Licence
 
@@ -31,7 +29,7 @@ models are under Apache-2.0 and MIT (see
 The tldraw SDK is an npm dependency under tldraw's own licence. Off
 `localhost` it runs only with a licence key (`TLDRAW_LICENSE_KEY`). Under
 the hobby licence Little Table uses, tldraw's "made with tldraw" mark must
-stay visible, unobscured and clickable. Nothing on the board covers it;
+stay visible, unobscured and clickable. Nothing on the board covers it, and
 `e2e/tests/watermark.spec.ts` checks that at phone and desktop widths. A
 host that deploys the tabletop brings its own key and licence terms.
 
@@ -55,8 +53,8 @@ are pinned in `package.json`: Bun in `packageManager`, Node in
 `devEngines.runtime`. Install those two versions, then `bun install`.
 
 Run Alchemy through the `plan:*` and `deploy:*` scripts or
-`./node_modules/.bin/alchemy`: `bun run alchemy` runs the `alchemy/` folder
-and exits 0, and `bunx alchemy` runs it under Bun, which it refuses.
+`./node_modules/.bin/alchemy`. `bun run alchemy` runs the `alchemy/` folder
+and exits 0. `bunx alchemy` runs it under Bun, which Alchemy refuses.
 
 | Command                                     | Does                                                    |
 | ------------------------------------------- | ------------------------------------------------------- |
@@ -64,15 +62,15 @@ and exits 0, and `bunx alchemy` runs it under Bun, which it refuses.
 | `bun run build && bun run serve`            | The built client from the Worker on :8788, real headers |
 | `bun run test`                              | The Vitest suite in workerd, against `test/assets`      |
 | `bun run e2e`                               | Playwright, against Workers it builds and starts itself |
-| `bun run typecheck`, `lint`, `format:check` | What CI checks besides                                  |
+| `bun run typecheck`, `lint`, `format:check` | The rest of what CI checks                              |
 
 A laptop's build is a hosted client of `TABLETOP_HOST_ORIGIN` (default
 `http://localhost:8000`, where `node e2e/fake-host.ts` runs a reference
 host), and `wrangler dev` trusts the dev key from `.dev.vars`. For
 standalone mode, build with `TABLETOP_MODE=standalone`, run
 `node e2e/fake-workos.ts`, apply `wrangler d1 migrations apply DB --local`,
-and start `wrangler dev --env-file e2e/standalone.env`; the e2e config does
-exactly this on :8790.
+and start `wrangler dev --env-file e2e/standalone.env`. The e2e config does
+the same on :8790.
 
 `bun run e2e` starts four servers: :8000 (fake host), :8001 (fake WorkOS),
 :8788 (hosted) and :8790 (standalone). With `CI` unset it reuses any already
@@ -96,12 +94,12 @@ Each stage gets the Worker with the client as static assets, the
 `BoardRoom` and `Limiter` Durable Objects, the D1 database with
 `migrations/` applied, the R2 bucket of the boards' images, and the custom
 domain. The Workers are `littletable` and `littletable-staging`. A bucket
-with images in it is never destroyed with its stage; empty a preview's by
-hand.
+with images in it is never destroyed with its stage, so empty a preview's
+by hand.
 
-One deploy per stage runs at a time. Until an Environment has every
-required input, its deploys end green with a notice listing what is
-missing, and nothing is deployed.
+One deploy per stage runs at a time. While an Environment lacks a required
+input, a deploy to it changes nothing and ends green with a notice that
+lists what is missing.
 
 ### GitHub Environments
 
@@ -119,8 +117,8 @@ Settings, Environments: `production` for `prod`, and `staging` for
 | variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but boards do not work without it. Public by design                         |
 
 All but `TLDRAW_LICENSE_KEY` are required. Use WorkOS's staging environment
-for `staging` and its production one for `production`. tldraw ties a
-licence key to its domains: get one that covers every host the Environment
+for `staging` and its production one for `production`. A tldraw licence key
+is tied to domains, so get one that covers every host the Environment
 deploys to. The workflow sets `TABLETOP_DOMAIN` to `littletable.top`.
 
 ### Cloudflare API token
@@ -148,8 +146,7 @@ if there is none); an account that already has one reuses it.
 In the WorkOS environment of each stage, before anyone signs in, add
 `https://<host>/auth/callback` as a redirect URI and `https://<host>/` as a
 sign-out redirect. `prod` is `littletable.top` and `staging` is
-`staging.littletable.top`; a preview's workers.dev host needs registering
-too.
+`staging.littletable.top`. Register a preview's workers.dev host too.
 
 ## More
 
