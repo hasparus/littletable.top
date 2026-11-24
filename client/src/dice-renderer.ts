@@ -43,6 +43,7 @@ export type Mark = { amount: number; columns: number; x: number; y: number };
 export type Turn = { columns: number; cos: number; sin: number; x: number; y: number };
 // `size`: the die as a share of its model.
 export type Pose = {
+  dimmed: number;
   mark: Mark | null;
   model: Model;
   position: Vec;
@@ -115,7 +116,7 @@ uniform sampler2D uAtlas;
 uniform vec3 uCam, uLight, uBody, uInk;
 uniform float uRough, uCoat, uCoatRough, uBump, uSmooth;
 uniform vec4 uTurn, uMark;
-uniform float uColumns;
+uniform float uColumns, uDimmed;
 uniform vec3 uP;
 out vec4 frag;
 const float PI = 3.14159265;
@@ -180,6 +181,8 @@ void main() {
   col += vec3(ggx(nh, ac)) * key * coat + env(r, uCoatRough) * coat * 0.7;
 #endif
   col = col / (1.0 + max(max(col.r, col.g), col.b) * 0.15);
+  float gray = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(col, vec3(gray * 0.55), uDimmed);
   frag = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
 }`;
 
@@ -549,6 +552,7 @@ export function createRenderer(
       gl.uniform4fv(uniform("uQ"), pose.rotation);
       gl.uniform3fv(uniform("uP"), pose.position);
       gl.uniform1f(uniform("uSize"), pose.size);
+      gl.uniform1f(uniform("uDimmed"), pose.dimmed);
       gl.uniform1f(uniform("uCoat"), MATERIAL.coat * pose.model.coat);
       const { mark, turn } = pose;
       if (turn === null) gl.uniform4f(uniform("uTurn"), -1, -1, 1, 0);

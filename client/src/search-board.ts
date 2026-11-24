@@ -317,15 +317,16 @@ export class BoardSearch {
 const cross = (o: Point, a: Point, b: Point) =>
   (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
+function hullHalf(points: readonly Point[]): Point[] {
+  const out: Point[] = [];
+  for (const point of points) {
+    while (out.length >= 2 && cross(out.at(-2)!, out.at(-1)!, point) <= 0) out.pop();
+    out.push(point);
+  }
+  return out.slice(0, -1);
+}
+
 function hull(points: readonly Point[]): Point[] {
   const sorted = points.toSorted((a, b) => a.x - b.x || a.y - b.y);
-  const half = (list: Point[]) => {
-    const out: Point[] = [];
-    for (const point of list) {
-      while (out.length >= 2 && cross(out.at(-2)!, out.at(-1)!, point) <= 0) out.pop();
-      out.push(point);
-    }
-    return out.slice(0, -1);
-  };
-  return [...half(sorted), ...half(sorted.toReversed())];
+  return [...hullHalf(sorted), ...hullHalf(sorted.toReversed())];
 }

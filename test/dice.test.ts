@@ -2,9 +2,9 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { BoardRoom } from "../src/board-room";
-import type { Roll } from "../src/dice";
+import type { Roll } from "../src/dice-notation";
 
-import { addSeedColumn, rollDie } from "../src/dice";
+import { addRollColumns, rollDie } from "../src/dice";
 import { call, pass, roll, seat, until } from "./support";
 
 describe("rolling", () => {
@@ -26,6 +26,44 @@ describe("rolling", () => {
     }
     const log = await call("/rooms/dice/rolls", await pass({ board: "dice", sub: "g:1" }));
     expect(await log.json()).toEqual([rolled]);
+  });
+
+  it("records a notation roll once, in group order, and sends it to each seat", async () => {
+    const board = "notation";
+    const token = await pass({ board });
+    const ania = await seat(board, token);
+    const guest = await seat(board, await pass({ board, name: "Guest", sub: "g:1" }));
+    const expression = "3k6kh2 + d20 - 2";
+    const response = await call(`/rooms/${board}/roll`, token, {
+      body: JSON.stringify({ expression }),
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    const rolled: Roll = await response.json();
+    expect(rolled.expression).toBe(expression);
+    expect(rolled.dice.map((die) => die.sides)).toEqual([6, 6, 6, 20]);
+    for (const person of [ania, guest]) {
+      await until(() => person.received.some((message) => message.type === "custom"));
+      expect(person.received.find((message) => message.type === "custom")?.data).toEqual({
+        roll: rolled,
+        type: "roll",
+      });
+    }
+    const log = await call(`/rooms/${board}/rolls`, token);
+    expect(await log.json()).toEqual([rolled]);
+  });
+
+  it("rejects invalid notation without falling back to dice or creating a log entry", async () => {
+    const board = "bad-notation";
+    const token = await pass({ board });
+    const response = await call(`/rooms/${board}/roll`, token, {
+      body: JSON.stringify({ dice: [6], expression: "3d6kh4" }),
+      method: "POST",
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "rule" });
+    const log = await call(`/rooms/${board}/rolls`, token);
+    expect(await log.json()).toEqual([]);
   });
 
   it.each([
@@ -58,7 +96,7 @@ describe("rolling", () => {
     expect(new Set(seeds).size).toBeGreaterThan(1);
   });
 
-  it("still loads the log of a room from before seeds, with null seeds", async () => {
+  it("still loads a log from before seeds and notation", async () => {
     const board = "before-seeds";
     const token = await pass({ board });
     await roll(board, token, [6]);
@@ -69,11 +107,12 @@ describe("rolling", () => {
       const { sql } = state.storage;
       sql.exec("DELETE FROM rolls");
       sql.exec("ALTER TABLE rolls DROP COLUMN seed");
+      sql.exec("ALTER TABLE rolls DROP COLUMN expression");
       sql.exec(
         "INSERT INTO rolls (at, sub, name, dice) VALUES (1, 'u:9', 'Old', '[{\"sides\":6,\"value\":4}]')",
       );
-      addSeedColumn(sql);
-      addSeedColumn(sql);
+      addRollColumns(sql);
+      addRollColumns(sql);
     });
     const log = await call(`/rooms/${board}/rolls`, token);
     expect(await log.json()).toEqual([

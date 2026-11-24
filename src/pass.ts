@@ -72,7 +72,7 @@ async function verifyBoardCommand(token: string, verifier: Verifier) {
     issuer: verifier.issuer,
     requiredClaims: ["exp"],
   });
-  if (typeof payload.board !== "string") throw new Error("Invalid board command");
+  if (typeof payload.board !== "string") throw new TypeError("Invalid board command");
   return { board: payload.board, link: payload.link };
 }
 

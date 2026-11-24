@@ -22,7 +22,7 @@ export function NameForm({
   return (
     <div className="fixed inset-0 grid place-items-center overflow-y-auto bg-background px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <form
-        className="w-full max-w-sm rounded-2xl bg-bg-secondary p-5 shadow-[0_8px_32px_rgb(37_34_32/0.12)] ring-1 ring-border"
+        className="w-full max-w-sm rounded-2xl bg-bg-secondary p-5 shadow-card ring-1 ring-border"
         onSubmit={async (event) => {
           event.preventDefault();
           const trimmed = name.trim();
@@ -61,7 +61,7 @@ export function NameForm({
           </p>
         )}
         <button
-          className="btn btn-primary mt-4 min-h-12 w-full"
+          className="btn btn-primary btn-join mt-4 min-h-12 w-full"
           disabled={busy || name.trim().length === 0}
           type="submit"
         >

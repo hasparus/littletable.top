@@ -17,11 +17,10 @@ const EN = {
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
   publicBoard: "Public whiteboard",
   publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
-  publicGreeting: "Hey there",
   publicStory: [
-    "I complained whenever my friends invited me to use Roll20 or some other virtual tabletop I complained it's inconvenient on phones, has too many features and requires busywork like filling forms for character sheets.",
-    "Why do it if we could use a whiteboard app, upload screenshots of PDFs to it and draw on them just like on a real table.",
-    "We started playing using Miro, Excalidraw and tldraw. It was way better, but some small features were missing. My ideal app didn't exist... yet.",
+    "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
+    "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
+    "We started playing with Miro, Excalidraw and tldraw. It was way better, but a few small features were missing. My ideal app didn't exist... yet.",
     "Little Table is this app. Just a whiteboard with dice rolls, search over text in images and secret layers. A virtual tabletop without bloat.",
   ],
   rename: "Rename",
@@ -58,7 +57,6 @@ const PL: FrontCopy = {
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
   publicBoard: "Tablica publiczna",
   publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
-  publicGreeting: "Cześć",
   publicStory: [
     "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
     "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",

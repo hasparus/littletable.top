@@ -23,6 +23,7 @@ import {
   StarToolbarItem,
   TextToolbarItem,
   type TLComponents,
+  TldrawUiButton,
   TldrawUiMenuActionItem,
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
@@ -47,11 +48,11 @@ function BoardTools() {
   return (
     <>
       <SelectToolbarItem />
-      <DrawToolbarItem />
       <HandToolbarItem />
+      <DrawToolbarItem />
+      <TextToolbarItem />
       <EraserToolbarItem />
       <NoteToolbarItem />
-      <TextToolbarItem />
       <ArrowToolbarItem />
       <FrameToolbarItem />
       <AssetToolbarItem />
@@ -80,37 +81,29 @@ function PanelButton({
   const ui = useBoardUi();
   const expanded = ui.panel === panel;
   return (
-    <button
+    <TldrawUiButton
       aria-controls={expanded ? PANEL_ID[panel] : undefined}
       aria-expanded={expanded}
-      className={`relative grid size-11 touch-manipulation place-items-center rounded-xl transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${
-        panel === "dice"
-          ? "bg-primary text-white hover:bg-primary-hover"
-          : expanded
-            ? "bg-primary-light text-primary-strong"
-            : "text-foreground hover:bg-bg-tertiary"
-      }`}
+      isActive={expanded}
       onClick={() => ui.open(expanded ? null : panel)}
       title={label}
-      type="button"
+      type="tool"
     >
-      <Icon className="size-5.5" name={icon} />
-      <span className="sr-only">{label}</span>
+      <Icon className="size-4.5" name={icon} />
       {badge !== undefined && badge > 1 && (
         <span
           aria-hidden="true"
-          className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-secondary px-1 text-[0.625rem] leading-none font-bold text-white tabular-nums"
+          className="absolute! top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-secondary px-1 text-[0.625rem] leading-none font-bold text-white tabular-nums"
         >
           {badge}
         </span>
       )}
-    </button>
+    </TldrawUiButton>
   );
 }
 
-// tldraw counts how many tools fit from its toolbar's width: two tools at
-// 177px, one more for every 43px (a phone's tool button), up to nine.
 const TOOLBAR_FIT = { maxItems: 8, maxSizePx: 478, minItems: 1, minSizePx: 177 };
+const PHONE_TOOLBAR_FIT = { ...TOOLBAR_FIT, maxItems: 4, minItems: 4 };
 
 const usePhone = () => useBreakpoint() < PORTRAIT_BREAKPOINT.TABLET_SM;
 
@@ -143,19 +136,18 @@ function BoardActionsMenu() {
 // tldraw's licence watermark, which must never be covered.
 function BoardToolbar() {
   const { copy, editor, person } = useBoardUi();
+  const compact = usePhone();
   const people = usePresent(editor).filter(({ id }) => id !== person.id).length + 1;
   return (
     <div
-      className="flex w-full grow-2 items-end sm:justify-center [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 sm:[&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]"
-      data-board-toolbar
+      className="flex w-full min-w-0 grow-2 items-end sm:justify-center [&>.tlui-main-toolbar]:min-w-0 [&>.tlui-main-toolbar]:grow [&>.tlui-main-toolbar]:basis-0 sm:[&>.tlui-main-toolbar]:justify-end sm:[&>.tlui-main-toolbar]:grow-0 sm:[&>.tlui-main-toolbar]:basis-[483px]"
+      data-board-toolbar={compact ? "compact" : ""}
     >
-      <DefaultToolbar {...TOOLBAR_FIT}>
+      <DefaultToolbar {...(compact ? PHONE_TOOLBAR_FIT : TOOLBAR_FIT)}>
         <BoardTools />
       </DefaultToolbar>
-      <div
-        className="pointer-events-auto flex shrink-0 items-center p-0.5"
-        data-board-toolbar-actions
-      >
+      {/* oxlint-disable-next-line better-tailwindcss/no-unknown-classes -- the drawing toolbar's tldraw surface */}
+      <div className="tlui-main-toolbar__tools flex shrink-0" data-board-toolbar-actions>
         <PanelButton icon="MagnifyingGlass" label={copy.search} panel="search" />
         <PanelButton badge={people} icon="Group" label={copy.people} panel="people" />
         <PanelButton icon="Dice" label={copy.dice} panel="dice" />

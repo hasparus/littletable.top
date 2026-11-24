@@ -23,6 +23,10 @@ const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
 // The result toast; it joins the accessibility tree once the dice settle.
 const toast = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
+const dieLabels = (container: Locator) =>
+  container
+    .getByRole("img")
+    .evaluateAll((dice) => dice.map((die) => die.getAttribute("aria-label")));
 
 // NOTE: without animations, so nothing passing over the tray, such as a
 // button's fade, can make two shots of the same dice differ.
@@ -126,6 +130,74 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
 
   await expectNoCspViolations(page);
   await expectNoCspViolations(guest);
+  await guest.context().close();
+});
+
+test("two phones show the same kept dice, modifier and total in the tray, toast and log", async ({
+  browser,
+  page,
+}, testInfo) => {
+  const viewport = { height: 740, width: 360 };
+  await page.setViewportSize(viewport);
+  const boardUrl = await startBoard(page);
+  const guest = await guestOn(browser, boardUrl, { viewport });
+  const dice = await openSheet(page, "Dice");
+  const notation = dice.getByRole("textbox", { name: "Dice notation" });
+  await notation.fill("3d6kh4");
+  await notation.press("Enter");
+  await expect(dice.getByRole("status")).toHaveText(
+    "Keep or drop at least one die and at most the number of dice in the group.",
+  );
+  await expect(dice.getByRole("listitem")).toHaveCount(0);
+
+  await notation.fill("2d20kl1 − 2");
+  await closeSheet(page, "Dice");
+  await openSheet(page, "People");
+  await closeSheet(page, "People");
+  await openSheet(page, "Dice");
+  await expect(notation).toHaveValue("2d20kl1 − 2");
+  await expect(dice.getByRole("button", { name: "Roll 2d20kl1 − 2" })).toBeEnabled();
+  await reviewShot(page, "dice-notation-keep-lowest-phone");
+  await notation.fill("3d6kh2 + 3");
+  await reviewShot(page, "dice-notation-keep-highest-phone");
+  await notation.press("Enter");
+  await expect(dice.getByRole("button", { name: "Roll 3d6kh2 + 3 again" })).toBeVisible();
+  await closeSheet(page, "Dice");
+
+  const result = toast(page);
+  await expect(result.getByRole("img", { name: /\(dropped\)$/u })).toHaveCount(1);
+  const expected = await dieLabels(result);
+  const values = expected.map((label) => Number(/^d6: (\d+)/u.exec(label ?? "")?.[1]));
+  const dropped = expected.findIndex((label) => label?.endsWith("(dropped)"));
+  const kept = values.filter((_, index) => index !== dropped);
+  expect(values[dropped]).toBe(Math.min(...values));
+  const total = kept[0]! + kept[1]! + 3;
+  const shots: Buffer[] = [];
+  for (const [name, screen] of [
+    ["roller", page],
+    ["watcher", guest],
+  ] as const) {
+    await expect(toast(screen).getByRole("img", { name: expected[dropped]! })).toBeVisible();
+    expect(await dieLabels(toast(screen))).toEqual(expected);
+    await expect(toast(screen)).toHaveText(new RegExp(`\\+ 3 =\\s*${total}$`, "u"));
+    await expect(screen.getByText(`Kept ${kept.join(", ")}`, { exact: false })).toBeAttached();
+    await expect(diceCanvas(screen)).toBeVisible();
+
+    await setVisibility(screen.locator(".tl-container"), "hidden");
+    const shot = await shoot(tray(screen));
+    await testInfo.attach(`notation-tray-${name}.png`, { body: shot, contentType: "image/png" });
+    shots.push(shot);
+    await setVisibility(screen.locator(".tl-container"), "");
+
+    const log = await openSheet(screen, "Dice");
+    const entry = log.getByRole("listitem").first();
+    await expect(entry.getByText("3d6kh2 + 3", { exact: true })).toBeVisible();
+    await expect(entry.getByText(`Total: ${total}`, { exact: false })).toBeAttached();
+    expect(await dieLabels(entry)).toEqual(expected);
+    if (screen === page) await reviewShot(screen, "dice-notation-result-phone");
+    await closeSheet(screen, "Dice");
+  }
+  expect(shots[0]!.equals(shots[1]!)).toBe(true);
   await guest.context().close();
 });
 

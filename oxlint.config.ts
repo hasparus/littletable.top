@@ -7,6 +7,7 @@ const tailwindEntryPoint = fileURLToPath(new URL("client/src/app.css", import.me
 export default defineConfig({
   extends: [baseConfig, { options: { typeAware: false } }],
   ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report"],
+  jsPlugins: ["@shadcn/lint"],
   overrides: [
     // The Worker logs one JSON line per event to the console, which is what
     // Workers Logs collects, and the fakes are server processes; the
@@ -16,6 +17,13 @@ export default defineConfig({
       rules: { "no-console": "off" },
     },
     { files: ["src/index.ts"], rules: { "import/no-default-export": "off" } },
+    {
+      files: ["client/src/**/*.tsx"],
+      rules: {
+        "shadcn/no-arbitrary-values": ["error", { deny: ["shadow"] }],
+        "shadcn/no-raw-colors": "error",
+      },
+    },
     {
       files: ["client/src/**/*.ts"],
       rules: {

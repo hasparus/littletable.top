@@ -28,6 +28,9 @@ import { useBoardUi } from "./ui";
 const ROW_BUTTON =
   "grid size-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus";
 
+const SEARCH_ICON = "pointer-events-none absolute start-3 top-1/2 size-5 -translate-y-1/2";
+const SEARCH_TEXT_PADDING = "ps-10 pe-3";
+
 export const SEARCH_FIELD_ID = "board-search-field";
 const RESULTS_ID = "board-search-results";
 const optionId = (index: number) => `board-search-hit-${index}`;
@@ -108,7 +111,7 @@ function PlacesList({
           return (
             <li className="flex items-center gap-1" key={place.id}>
               <button
-                className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-lg pr-2 text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+                className={`relative flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-lg text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${SEARCH_TEXT_PADDING}`}
                 onClick={() => {
                   if (editor === null) return;
                   open(null);
@@ -116,7 +119,7 @@ function PlacesList({
                 }}
                 type="button"
               >
-                <Icon className="size-5 shrink-0 text-primary" name="PinIcon" />
+                <Icon className={`${SEARCH_ICON} text-primary`} name="PinIcon" />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-base">{place.name}</span>
                   {pages !== null && (
@@ -174,7 +177,7 @@ function Results({
     document.getElementById(optionId(active))?.scrollIntoView({ block: "nearest" });
   }, [active]);
   return (
-    <ul aria-label={copy.searchResults} className="mt-1" id={RESULTS_ID} role="listbox">
+    <ul aria-label={copy.searchResults} className="space-y-1" id={RESULTS_ID} role="listbox">
       {hits.map((hit, index) => {
         const source = SOURCES[hit.doc.kind];
         const label = source.label === null ? null : copy[source.label];
@@ -184,14 +187,14 @@ function Results({
           // (aria-activedescendant); a tap or click chooses one directly.
           <li
             aria-selected={index === active}
-            className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 aria-selected:bg-bg-tertiary"
+            className={`relative flex min-h-12 cursor-pointer items-center rounded-xl py-2 aria-selected:bg-bg-tertiary ${SEARCH_TEXT_PADDING}`}
             id={optionId(index)}
             key={hit.doc.id}
             onClick={() => choose(hit)}
             onPointerMove={() => index === active || setActive(index)}
             role="option"
           >
-            <Icon className="size-5 shrink-0 text-primary" name={source.icon} />
+            <Icon className={`${SEARCH_ICON} text-primary`} name={source.icon} />
             <span className="flex min-w-0 flex-col">
               <span className="line-clamp-2 text-base wrap-break-word">
                 {label !== null && !source.seen && <span className="sr-only">{`${label}: `}</span>}
@@ -302,10 +305,7 @@ export function SearchSheet() {
 
   const field = (
     <div className="relative min-w-0 flex-1">
-      <Icon
-        className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-foreground-muted"
-        name="MagnifyingGlass"
-      />
+      <Icon className={`${SEARCH_ICON} text-foreground-muted`} name="MagnifyingGlass" />
       <input
         aria-activedescendant={current >= 0 ? optionId(current) : undefined}
         aria-autocomplete="list"
@@ -313,7 +313,7 @@ export function SearchSheet() {
         aria-expanded={hits !== null && hits.length > 0}
         aria-label={copy.searchBoard}
         autoComplete="off"
-        className="block h-11 w-full rounded-xl border border-border bg-bg-tertiary pr-3 pl-10 text-base focus:border-primary focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className={`block h-11 w-full rounded-xl bg-bg-tertiary text-base inset-ring inset-ring-border focus:inset-ring-primary focus:outline-none [&::-webkit-search-cancel-button]:hidden ${SEARCH_TEXT_PADDING}`}
         data-autofocus={focusField && naming === null ? "" : undefined}
         enterKeyHint="search"
         id={SEARCH_FIELD_ID}
