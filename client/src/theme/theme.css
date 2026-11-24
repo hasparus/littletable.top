@@ -55,8 +55,8 @@
   --color-white: #ffffff;
   --color-ink: #252220;
 
-  --color-background: #fcfaf7;
-  --color-border: #e7e1d8;
+  --color-background: #f7f6f3;
+  --color-border: #e3e0d9;
   /* The hover shade: the coral itself is under 3:1 on the page's grey. */
   --color-border-focus: var(--brand-primary-hover);
 
@@ -65,8 +65,8 @@
   /* The palest grey that still clears 4.5:1 on every surface it sits on. */
   --color-foreground-muted: #6b6b6b;
 
-  --color-bg-secondary: #fffefc;
-  --color-bg-tertiary: #f4f0ea;
+  --color-bg-secondary: #fefdfc;
+  --color-bg-tertiary: #f7f5f3;
 
   --color-primary: var(--brand-primary);
   --color-primary-hover: var(--brand-primary-hover);

@@ -58,4 +58,4 @@ export const BRAND_PROPERTIES: Record<keyof Brand, string> = {
 };
 
 // The light theme's page colour: the browser's toolbar and splash screen.
-export const THEME_COLOR = "#fcfaf7";
+export const THEME_COLOR = "#f7f6f3";
