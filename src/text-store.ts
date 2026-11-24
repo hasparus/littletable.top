@@ -1,5 +1,5 @@
 // Text read off a board's images, kept in the board's Durable Object
-// beside its images (README, "Text in images"): which images have a
+// beside its images (docs/internals.md, "Text in images"): which images have a
 // reading by which engine, who is reading which image now (a short
 // lease, so two browsers do not read the same one), and which readings
 // failed too often to hand out again. The results themselves are objects

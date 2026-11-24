@@ -65,7 +65,7 @@ const assetOf = (shape: TLShape): TLAssetId | null => {
 const HASH_IN_SRC = /\/files\/([0-9a-f]{64})$/u;
 
 // The SHA-256 of an image asset's bytes, which its address on the board
-// names (README, "Images"); null for an image from anywhere else.
+// names (docs/internals.md, "Images"); null for an image from anywhere else.
 export function imageHash(editor: Editor, asset: TLAssetId): string | null {
   const record = editor.getAsset(asset);
   if (record?.type !== "image" || typeof record.props.src !== "string") return null;

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 // The text worker: reads one image at a time with the engines it is asked
-// for, off the main thread (README, "Text in images"). The image is
+// for, off the main thread (docs/internals.md, "Text in images"). The image is
 // decoded once, drawn once at the engines' cap, and let go after; each
 // engine loads the first time it is needed and stays for the next image
 // until the board lets the worker go.

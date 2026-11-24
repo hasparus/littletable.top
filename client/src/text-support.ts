@@ -1,6 +1,6 @@
 import type { EngineName } from "../../src/text-result";
 
-// What this device can read text off images with (README, "Text in
+// What this device can read text off images with (docs/internals.md, "Text in
 // images"). Both engines need a worker that decodes and draws images
 // (createImageBitmap, OffscreenCanvas) and WebAssembly; PP-OCR's runtime
 // also needs WebAssembly SIMD. A weak device, or one saving data, runs

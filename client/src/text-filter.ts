@@ -3,7 +3,7 @@ import type { Point } from "./search-index";
 
 import { fold } from "./search-text";
 
-// Which of what the engines read goes into the board's search (README,
+// Which of what the engines read goes into the board's search (docs/internals.md,
 // "Text in images"). Engines also "read" a map's mountains, trees and
 // hatching as short words; those would answer searches with places that
 // say nothing. A word stays when:

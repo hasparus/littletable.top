@@ -14,7 +14,7 @@ import type { PassKeeper } from "./bootstrap";
 
 import { fileFromDataUrl } from "./tldr";
 
-// A board's images live in the Worker's R2 bucket (README, "Images"): an
+// A board's images live in the Worker's R2 bucket (docs/internals.md, "Images"): an
 // upload sends the bytes with the pass in its header, and the document keeps
 // the address the Worker answers, /rooms/<board>/files/<sha256>. An <img>
 // reads it with the files cookie, which the board keeps fresh with each pass.
@@ -286,7 +286,7 @@ const fetched =
   };
 
 // Pasted images and images that point at another board's files land on
-// this board as its own uploads (README, "Images"):
+// this board as its own uploads (docs/internals.md, "Images"):
 // - tldraw's copy embeds each image as a data: URL, and its paste reads
 //   one back with fetch, which the page's policy refuses; the board reads
 //   it itself instead;

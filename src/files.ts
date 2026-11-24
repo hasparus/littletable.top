@@ -1,5 +1,5 @@
 // A board's images over HTTP: uploads, the cookie an <img> reads them with,
-// and the reads. See README, "Images".
+// and the reads. See docs/internals.md, "Images".
 
 import { decodeJwt } from "jose";
 
@@ -271,7 +271,7 @@ function logText(fields: {
   console.log(JSON.stringify({ event: "board.text_stored", ...rest, person }));
 }
 
-// The board's text readings (README, "Text in images"): what is stored and
+// The board's text readings (docs/internals.md, "Text in images"): what is stored and
 // under way, claiming an image to read, keeping and giving back the claim.
 async function textControl(request: Request, route: FileRoute, action: string): Promise<Response> {
   if (action === "" && (request.method === "GET" || request.method === "HEAD")) {

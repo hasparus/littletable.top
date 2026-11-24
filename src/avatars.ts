@@ -2,7 +2,7 @@
 // tabletop's own origin: the board's policy allows images from itself only,
 // other players' browsers never contact the identity provider or the host,
 // and a picture that changes or disappears upstream breaks nothing here.
-// See README, "Avatars".
+// See docs/internals.md, "Avatars".
 
 import { readCapped, sha256Hex, sniff } from "./file-store";
 import { AVATAR_TIMEOUT_MS, MAX_AVATAR_BYTES, MAX_AVATAR_REDIRECTS } from "./limits";

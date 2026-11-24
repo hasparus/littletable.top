@@ -8,7 +8,7 @@ import { type FrontCopy } from "./front-copy";
 
 // The standalone tabletop's front page: sign in, then the account's boards
 // (made here, or joined by someone else's link) with what an owner can do
-// to them. The Worker's API: README, "Standalone mode".
+// to them. The Worker's API: docs/internals.md, "Standalone mode".
 
 // avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };

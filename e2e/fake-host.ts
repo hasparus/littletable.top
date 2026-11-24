@@ -1,5 +1,5 @@
 // A tiny host application for the hosted-mode end-to-end test, and the
-// reference implementation of the host contract (README, "The host
+// reference implementation of the host contract (docs/hosting.md, "The host
 // contract"). It keeps accounts and boards in memory, signs passes and
 // deletion tokens with the committed dev key, and answers the tabletop's
 // pass requests. Test-only: nothing here is fit for production.

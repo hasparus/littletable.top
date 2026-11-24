@@ -17,7 +17,7 @@ import { imageHash } from "./search-board";
 import { TextReader } from "./text-reader";
 import { PARAMS, savingData } from "./text-support";
 
-// Text in the board's images, in this browser (README, "Text in images").
+// Text in the board's images, in this browser (docs/internals.md, "Text in images").
 // It loads what has been read off the board's images already, follows the
 // room's notices as more is read, and, when this person is not busy and
 // the tab is in view, takes one image nobody has read yet with the
@@ -218,7 +218,7 @@ export class ImageText {
     this.#count();
   }
 
-  // A notice from the room (README, "Text in images"): a reading under
+  // A notice from the room (docs/internals.md, "Text in images"): a reading under
   // way, given up or stored.
   receive(message: unknown): void {
     if (!isNotice(message)) return;

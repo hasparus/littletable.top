@@ -1,5 +1,5 @@
 // The text read off an image, as browsers upload it and the Worker keeps
-// it (README, "Text in images"): one JSON object per image and engine,
+// it (docs/internals.md, "Text in images"): one JSON object per image and engine,
 // format "ocr/1", in the source image's pixels, lines in reading order.
 // The Worker validates every result here before it stores one (it is text
 // from a client) and the client normalises its own the same way, so both

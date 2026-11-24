@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Little Table: a tldraw tabletop on Cloudflare Workers. React, Vite, Tailwind. README has the rest.
+Little Table: a tldraw tabletop on Cloudflare Workers. React, Vite, Tailwind. README and `docs/` have the rest.
 
 - Tools: Bun installs and runs scripts, Node runs the tools; both pinned in `package.json`. Green before push: `bun run typecheck`, `lint`, `format:check`, `build`, `test` (one script per `bun run`).
 - E2E: `E2E_PORT_OFFSET=<n> bun run e2e`. Checkouts share ports. Never kill processes by pattern.

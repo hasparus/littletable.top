@@ -13,7 +13,7 @@ export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
   return Response.redirect(url.toString(), 308);
 }
 
-// NOTE: reading text off images (README, "Text in images") runs two
+// NOTE: reading text off images (docs/internals.md, "Text in images") runs two
 // engines compiled to WebAssembly in a worker of this origin, which needs
 // 'wasm-unsafe-eval': it compiles WebAssembly and nothing else, so eval
 // and string-built functions stay refused. Their workers are files of

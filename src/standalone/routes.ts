@@ -1,6 +1,6 @@
 // Standalone mode's own routes: sign-in through the provider, the account's
 // session, its boards, and the pass endpoint, which answers exactly as a
-// host's does (README, "The host contract") so the client cannot tell the
+// host's does (docs/hosting.md, "The host contract") so the client cannot tell the
 // two apart. Passes are signed with the Worker's own key.
 
 import type { BoardRoom } from "../board-room";

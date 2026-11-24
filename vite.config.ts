@@ -126,7 +126,7 @@ const ocr = (name: string) => fileURLToPath(new URL(`client/ocr/${name}`, import
 // among them, as Vite emits it from the runtime's own reference. They stay files, fetched only when an
 // image is read: each under /assets/ocr/ with its content's hash in its
 // name, or, for Tesseract's language data, whose names it fixes, in its
-// folder's. README, "Text in images", says where each comes from.
+// folder's. docs/internals.md, "Text in images", says where each comes from.
 const ENGINE_FILES = {
   detector: { from: ocr("ppocr-v6-tiny-det.onnx"), name: "ppocr-v6-tiny-det.onnx" },
   recogniser: { from: ocr("ppocr-v6-tiny-rec.onnx"), name: "ppocr-v6-tiny-rec.onnx" },

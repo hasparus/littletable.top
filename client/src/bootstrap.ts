@@ -1,6 +1,6 @@
 export type Person = { id: string; name: string; owner: boolean };
 
-// What the pass endpoint answers (README, "The host contract").
+// What the pass endpoint answers (docs/hosting.md, "The host contract").
 export type Bootstrap = {
   // The board's id: its room is /rooms/<board> on this origin.
   board: string;
