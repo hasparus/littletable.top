@@ -67,6 +67,11 @@
   padding-inline: 0;
 }
 
+/* tldraw's row offsets its children by 2px on both sides. */
+[data-board-toolbar] .tlui-main-toolbar__tools > .tlui-row {
+  margin-inline: 0;
+}
+
 [data-board-toolbar] .tlui-main-toolbar__tools .tlui-button__tool {
   width: var(--board-tool-size);
   min-width: var(--board-tool-size);

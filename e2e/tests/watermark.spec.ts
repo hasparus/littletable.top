@@ -45,6 +45,11 @@ async function expectPhoneToolbar(page: Page) {
   ).toEqual(["tools.select", "tools.hand", "tools.draw", "tools.text", "tools.more-button"]);
 
   const toolBounds = (await tools.boundingBox())!;
+  const pointerBounds = (await tools.getByTestId("tools.select").boundingBox())!;
+  expect(pointerBounds.x - toolBounds.x, "pointer highlight has an even corner inset").toBeCloseTo(
+    pointerBounds.y - toolBounds.y,
+    0,
+  );
   const actionBounds = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
   expect(toolBounds.y).toBeCloseTo(actionBounds.y, 0);
   const buttons = page.locator("[data-board-toolbar] .tlui-button__tool:visible");
