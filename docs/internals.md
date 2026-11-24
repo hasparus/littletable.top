@@ -204,8 +204,11 @@ It has no owner or D1 row. Its first bootstrap schedules a Durable Object
 alarm that runs every six hours on UTC boundaries. The server timestamps
 new shapes, caps their opacity at 50% once they are 24 hours old and
 removes them once they are 48 hours old. Each sweep syncs to connected
-visitors. Existing shapes without timestamps start aging when this feature
-is enabled. The client renders the landing note outside the shared document.
+visitors. Surviving arrows keep a saved endpoint when their target expires.
+After an additional sweep interval, the room reclaims unused uploads, their
+OCR results and their asset records. Existing shapes without timestamps
+start aging when this feature is enabled. The client renders the landing
+note outside the shared document.
 
 ### Sessions and CSRF
 

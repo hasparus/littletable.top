@@ -4,7 +4,19 @@ import {
   TLSyncErrorCloseEventCode,
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
-import { createShapeId, PageRecordType, type TLGroupShape, type TLRecord } from "@tldraw/tlschema";
+import {
+  AssetRecordType,
+  createBindingId,
+  createShapeId,
+  PageRecordType,
+  type TLArrowBinding,
+  type TLArrowShape,
+  type TLGroupShape,
+  type TLImageAsset,
+  type TLImageShape,
+  type TLRecord,
+  toRichText,
+} from "@tldraw/tlschema";
 import { getIndexAbove, ZERO_INDEX_KEY } from "@tldraw/utils";
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
@@ -14,6 +26,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Env } from "../src/index";
 
+import { fileKey, textKey } from "../src/file-store";
+import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { Browser, openSocket, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
@@ -61,14 +75,118 @@ describe("the public board", () => {
     const recent = stampPublicShape(group("recent", { parentId: expired.id, x: 2, y: 3 }), now);
     const faint = stampPublicShape(group("faint", { opacity: 0.2 }), now - day - 1);
 
+    const arrow: TLArrowShape = {
+      ...group("arrow"),
+      props: {
+        arrowheadEnd: "arrow",
+        arrowheadStart: "none",
+        bend: 0,
+        color: "black",
+        dash: "draw",
+        elbowMidPoint: 0.5,
+        end: { x: 2, y: 0 },
+        fill: "none",
+        font: "draw",
+        kind: "arc",
+        labelColor: "black",
+        labelPosition: 0.5,
+        richText: toRichText(""),
+        scale: 1,
+        size: "m",
+        start: { x: 0, y: 0 },
+      },
+      type: "arrow",
+    };
+    const endpoint = { x: 98, y: 30 };
+    const anchored = stampPublicShape(
+      { ...arrow, meta: saveArrowEndpoints(arrow, { end: endpoint })! },
+      now,
+    );
+    const binding: TLArrowBinding = {
+      fromId: arrow.id,
+      id: createBindingId("expired-target"),
+      meta: {},
+      props: {
+        isExact: false,
+        isPrecise: false,
+        normalizedAnchor: { x: 0.5, y: 0.5 },
+        snap: "none",
+        terminal: "end",
+      },
+      toId: expired.id,
+      type: "arrow",
+      typeName: "binding",
+    };
+
+    const hashes = { expired: "a".repeat(64), shared: "b".repeat(64) };
+    const imageAsset = (name: string, hash: string): TLImageAsset => ({
+      id: AssetRecordType.createId(name),
+      meta: {},
+      props: {
+        h: 20,
+        isAnimated: false,
+        mimeType: "image/png",
+        name,
+        src: `/rooms/${board}/files/${hash}`,
+        w: 20,
+      },
+      type: "image",
+      typeName: "asset",
+    });
+    const orphan = imageAsset("orphan", hashes.expired);
+    const held = imageAsset("held", hashes.shared);
+    const image = (name: string, assetId: TLImageAsset["id"]): TLImageShape => ({
+      ...group(name),
+      props: {
+        altText: "",
+        assetId,
+        crop: null,
+        flipX: false,
+        flipY: false,
+        h: 20,
+        playing: true,
+        url: "",
+        w: 20,
+      },
+      type: "image",
+    });
+    const expiredImage = stampPublicShape(image("expired-image", orphan.id), now - 2 * day - 1);
+    const oldSharedImage = stampPublicShape(image("old-shared-image", held.id), now - 2 * day - 1);
+    const newSharedImage = stampPublicShape(image("new-shared-image", held.id), now);
     const drawing = (state: DurableObjectState) =>
       new SQLiteSyncStorage<TLRecord>({
         sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
       });
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
-        for (const shape of [expired, faded, recent, faint]) store.set(shape.id, shape);
+        for (const record of [
+          expired,
+          faded,
+          recent,
+          faint,
+          anchored,
+          binding,
+          orphan,
+          held,
+          expiredImage,
+          oldSharedImage,
+          newSharedImage,
+        ]) {
+          store.set(record.id, record);
+        }
       });
+      for (const hash of Object.values(hashes)) {
+        state.storage.sql.exec(
+          "INSERT INTO files (hash, bytes, type, at) VALUES (?, 10, 'image/png', ?)",
+          hash,
+          now,
+        );
+        state.storage.sql.exec(
+          "INSERT INTO texts (hash, engine, bytes, words, at) VALUES (?, 'tesseract-6.0.1', 5, 1, ?)",
+          hash,
+          now,
+        );
+      }
     });
 
     const rolled = await roomCall(`/rooms/${board}/roll`, pass, {
@@ -77,8 +195,13 @@ describe("the public board", () => {
       method: "POST",
     });
     expect(rolled.ok).toBe(true);
-    const imageKey = `boards/${board}/example`;
-    await standaloneEnv.Files.put(imageKey, "an image");
+    const bucket = standaloneEnv.Files;
+    const imageKey = fileKey(board, hashes.expired);
+    const orphanText = textKey(board, hashes.expired, "tesseract-6.0.1");
+    for (const hash of Object.values(hashes)) {
+      await bucket.put(fileKey(board, hash), "an image");
+      await bucket.put(textKey(board, hash, "tesseract-6.0.1"), "{}");
+    }
 
     // An alarm can be retried. The second pass must leave faded shapes unchanged.
     expect(await runDurableObjectAlarm(room)).toBe(true);
@@ -97,10 +220,33 @@ describe("the public board", () => {
           y: 33,
         });
         expect(store.get(page)).toBeDefined();
+        expect(store.get(binding.id)).toBeUndefined();
+        expect(store.get(arrow.id)).toMatchObject({ props: { end: endpoint } });
+        expect(store.get(orphan.id)).toBeDefined();
       });
     });
 
-    expect(await standaloneEnv.Files.head(imageKey)).not.toBeNull();
+    expect(await bucket.head(imageKey)).not.toBeNull();
+    await runInDurableObject(room, (_room, state) => {
+      state.storage.sql.exec(
+        "UPDATE files SET unused_at = ? WHERE hash = ?",
+        now - PUBLIC_SWEEP_MS - 1,
+        hashes.expired,
+      );
+    });
+    expect(await runDurableObjectAlarm(room)).toBe(true);
+    expect(await bucket.head(imageKey)).toBeNull();
+    expect(await bucket.head(orphanText)).toBeNull();
+    expect(await bucket.head(fileKey(board, hashes.shared))).not.toBeNull();
+    await runInDurableObject(room, (_room, state) => {
+      const { sql } = state.storage;
+      expect(sql.exec("SELECT hash FROM files").toArray()).toEqual([{ hash: hashes.shared }]);
+      expect(sql.exec("SELECT hash FROM texts").toArray()).toEqual([{ hash: hashes.shared }]);
+      drawing(state).transaction((store) => {
+        expect(store.get(orphan.id)).toBeUndefined();
+        expect(store.get(held.id)).toBeDefined();
+      });
+    });
     const history = await roomCall(`/rooms/${board}/rolls`, pass);
     expect(await history.json()).toHaveLength(1);
     expect((await openSocket(board, pass)).response.status).toBe(101);

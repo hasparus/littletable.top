@@ -22,6 +22,7 @@ import {
   expirePublicShapes,
   preservesPublicShapeAge,
   PUBLIC_SWEEP_MS,
+  publicFileReferences,
   stampPublicShape,
 } from "./public-board-expiry";
 import {
@@ -75,6 +76,7 @@ export class BoardRoom extends DurableObject<Env> {
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
+  private readonly textUploads = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -330,17 +332,22 @@ export class BoardRoom extends DurableObject<Env> {
   ): Promise<"link-reset" | StoredText | TextRefusal | { problem: string; refusal: "invalid" }> {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
-    const stored = await this.texts.store(
-      { board: pass.board, engine, hash, sub: pass.sub },
-      body,
-      {
-        bytesNow: () => this.files.storedBytes(),
-      },
-    );
-    if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
-      this.announceText([{ engine, hash }], "stored");
+    this.textUploads.set(hash, (this.textUploads.get(hash) ?? 0) + 1);
+    try {
+      const stored = await this.texts.store(
+        { board: pass.board, engine, hash, sub: pass.sub },
+        body,
+        { bytesNow: () => this.files.storedBytes() },
+      );
+      if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
+        this.announceText([{ engine, hash }], "stored");
+      }
+      return stored;
+    } finally {
+      const remaining = (this.textUploads.get(hash) ?? 1) - 1;
+      if (remaining === 0) this.textUploads.delete(hash);
+      else this.textUploads.set(hash, remaining);
     }
-    return stored;
   }
 
   async schedulePublicExpiry(): Promise<void> {
@@ -365,8 +372,26 @@ export class BoardRoom extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     if (!this.publicExpiryEnabled) return;
-    this.drawing.transaction((store) => expirePublicShapes(store, Date.now()));
-    await this.schedulePublicExpiry();
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const now = Date.now();
+      const { assetsByHash, live } = this.drawing.transaction((store) => {
+        expirePublicShapes(store, now);
+        return publicFileReferences(store.values(), PUBLIC_BOARD);
+      }).result;
+      const reclaimed = await this.files.reclaimUnused(
+        PUBLIC_BOARD,
+        live,
+        now,
+        PUBLIC_SWEEP_MS,
+        (hash) => this.textUploads.has(hash),
+      );
+      this.drawing.transaction((store) => {
+        for (const hash of reclaimed) {
+          for (const id of assetsByHash.get(hash) ?? []) store.delete(id);
+        }
+      });
+      await this.schedulePublicExpiry();
+    });
   }
 
   async destroy(board: string) {

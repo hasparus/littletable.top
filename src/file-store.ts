@@ -101,6 +101,8 @@ export async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 // board finds them all, even one the ledger lost track of.
 export const boardPrefix = (board: string) => `boards/${board}/`;
 export const fileKey = (board: string, hash: string) => `${boardPrefix(board)}${hash}`;
+export const textKey = (board: string, hash: string, engine: string) =>
+  `${fileKey(board, hash)}.ocr.${engine}.json`;
 
 export type FileRefusal = "empty" | "over-quota" | "too-fast" | "too-large" | "unsupported";
 
@@ -114,6 +116,7 @@ export class FileLedger {
   // minute's worth through.
   private readonly recent = new Map<string, number[]>();
   private readonly writing = new Map<string, Promise<unknown>>();
+  private readonly removing = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly sql: SqlStorage,
@@ -128,6 +131,9 @@ export class FileLedger {
     if (!columns.some((column) => column.name === "width")) {
       sql.exec("ALTER TABLE files ADD COLUMN width INTEGER");
       sql.exec("ALTER TABLE files ADD COLUMN height INTEGER");
+    }
+    if (!columns.some((column) => column.name === "unused_at")) {
+      sql.exec("ALTER TABLE files ADD COLUMN unused_at INTEGER");
     }
     // NOTE: sizes kept before a JPEG's EXIF orientation was applied are
     // read again: only a row marked upright holds the size as it shows.
@@ -164,10 +170,12 @@ export class FileLedger {
     if (type === null) return "unsupported";
     const hash = await sha256Hex(body);
     const bytes = body.byteLength;
+    await this.removing.get(hash);
     const known = this.sql.exec("SELECT 1 FROM files WHERE hash = ?", hash).toArray();
     if (known.length > 0) {
       // NOTE: the same image sent twice at once is written once; the second
       // answer waits for the first write.
+      this.sql.exec("UPDATE files SET unused_at = NULL WHERE hash = ?", hash);
       await this.writing.get(hash);
       return { bytes, duplicate: true, hash, type };
     }
@@ -195,6 +203,52 @@ export class FileLedger {
       this.writing.delete(hash);
     }
     return { bytes, duplicate: false, hash, type };
+  }
+
+  // Only public rooms sweep unused uploads. A file must go unreferenced
+  // for a whole sweep interval, so uploads and canvas writes can arrive apart.
+  async reclaimUnused(
+    board: string,
+    live: ReadonlySet<string>,
+    now: number,
+    grace: number,
+    textBusy: (hash: string) => boolean,
+  ): Promise<string[]> {
+    const candidates: string[] = [];
+    for (const { hash, unused_at: unusedAt } of this.sql
+      .exec<{ hash: string; unused_at: number | null }>("SELECT hash, unused_at FROM files")
+      .toArray()) {
+      if (live.has(hash) || this.writing.has(hash) || textBusy(hash)) {
+        if (unusedAt !== null)
+          this.sql.exec("UPDATE files SET unused_at = NULL WHERE hash = ?", hash);
+      } else if (unusedAt === null) {
+        this.sql.exec("UPDATE files SET unused_at = ? WHERE hash = ?", now, hash);
+      } else if (now - unusedAt >= grace && candidates.length < 64) {
+        candidates.push(hash);
+      }
+    }
+    if (candidates.length === 0) return candidates;
+    const keys = candidates.flatMap((hash) => [
+      fileKey(board, hash),
+      ...this.sql
+        .exec<{ engine: string }>("SELECT engine FROM texts WHERE hash = ?", hash)
+        .toArray()
+        .map(({ engine }) => textKey(board, hash, engine)),
+    ]);
+    // If R2 fails, leave the ledger intact so the next alarm can retry.
+    const remove = this.bucket.delete(keys);
+    for (const hash of candidates) this.removing.set(hash, remove);
+    try {
+      await remove;
+      for (const hash of candidates) {
+        this.sql.exec("DELETE FROM texts WHERE hash = ?", hash);
+        this.sql.exec("DELETE FROM text_failures WHERE hash = ?", hash);
+        this.sql.exec("DELETE FROM files WHERE hash = ?", hash);
+      }
+      return candidates;
+    } finally {
+      for (const hash of candidates) this.removing.delete(hash);
+    }
   }
 
   // Removes every object under the board's prefix; the ledger itself goes

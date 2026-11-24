@@ -1,9 +1,13 @@
 import type { TLSyncStorageTransaction } from "@tldraw/sync-core";
-import type { TLRecord, TLShape, TLShapeId } from "@tldraw/tlschema";
+import type { TLAssetId, TLRecord, TLShape, TLShapeId } from "@tldraw/tlschema";
 import type { IndexKey } from "@tldraw/utils";
 
 import { isBinding, isShape } from "@tldraw/tlschema";
 import { getIndexAbove } from "@tldraw/utils";
+
+import type { ArrowTerminal } from "./public-arrow-endpoints";
+
+import { savedArrowEndpoint } from "./public-arrow-endpoints";
 
 export const PUBLIC_SWEEP_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 4 * PUBLIC_SWEEP_MS;
@@ -37,6 +41,19 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
     if (last === undefined || last < shape.index) lastIndex.set(shape.parentId, shape.index);
   }
 
+  const detached = new Map<TLShapeId, ArrowTerminal[]>();
+  for (const record of records) {
+    if (!isBinding(record)) continue;
+    if (expired.has(record.fromId) || expired.has(record.toId)) {
+      store.delete(record.id);
+      if (record.type === "arrow" && !expired.has(record.fromId)) {
+        const terminals = detached.get(record.fromId) ?? [];
+        terminals.push(record.props.terminal);
+        detached.set(record.fromId, terminals);
+      }
+    }
+  }
+
   for (const shape of shapes.values()) {
     if (expired.has(shape.id)) {
       store.delete(shape.id);
@@ -46,6 +63,14 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
     let next = created === null ? stampPublicShape(shape, now) : shape;
     if (created !== null && now - created >= DAY_MS && next.opacity > 0.5) {
       next = { ...next, opacity: 0.5 };
+    }
+
+    if (next.type === "arrow") {
+      for (const terminal of detached.get(next.id) ?? []) {
+        const endpoint = savedArrowEndpoint(next.meta, terminal);
+        if (endpoint !== undefined)
+          next = { ...next, props: { ...next.props, [terminal]: endpoint } };
+      }
     }
 
     // A newer drawing can outlive its group or frame. Keep its position
@@ -72,10 +97,32 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
     }
     if (next !== shape) store.set(next.id, next);
   }
+}
 
+export function publicFileReferences(records: Iterable<TLRecord>, board: string) {
+  const assetIds = new Set<string>();
+  const assetsByHash = new Map<string, TLAssetId[]>();
+  const live = new Set<string>();
+  const prefix = `/rooms/${board}/files/`;
   for (const record of records) {
-    if (isBinding(record) && (expired.has(record.fromId) || expired.has(record.toId))) {
-      store.delete(record.id);
+    if (isShape(record) && "assetId" in record.props && typeof record.props.assetId === "string") {
+      assetIds.add(record.props.assetId);
     }
+    if (
+      record.typeName !== "asset" ||
+      !("src" in record.props) ||
+      typeof record.props.src !== "string"
+    )
+      continue;
+    if (!record.props.src.startsWith(prefix)) continue;
+    const hash = record.props.src.slice(prefix.length);
+    if (!/^[0-9a-f]{64}$/u.test(hash)) continue;
+    const ids = assetsByHash.get(hash) ?? [];
+    ids.push(record.id);
+    assetsByHash.set(hash, ids);
   }
+  for (const [hash, ids] of assetsByHash) {
+    if (ids.some((id) => assetIds.has(id))) live.add(hash);
+  }
+  return { assetsByHash, live };
 }

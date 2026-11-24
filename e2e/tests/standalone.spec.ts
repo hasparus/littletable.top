@@ -1,4 +1,7 @@
+import type { Editor, TLArrowShape, TLShapeId } from "tldraw";
+
 import { expect, test } from "@playwright/test";
+import { createShapeId } from "@tldraw/tlschema";
 
 import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
@@ -11,6 +14,7 @@ import {
   openSheet,
   phone,
   putNote,
+  reachEditor,
   rollTwoD6,
   sheet,
 } from "./helpers";
@@ -39,6 +43,39 @@ test("the home page is one editable public board for anonymous visitors", async 
   await expect(onBoard(guest, "A note from the public board")).toBeInViewport();
   await expectNoCspViolations(guest);
   await guest.context().close();
+});
+
+test("a public arrow saves its moved endpoint for the expiry sweep", async ({ page }) => {
+  await page.goto(`${STANDALONE}/`);
+  await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+  await reachEditor(page);
+  const ids = { arrow: String(createShapeId()), target: String(createShapeId()) };
+  await page.evaluate(({ arrow, target }) => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    editor.createShapes([
+      { id: target as TLShapeId, props: { h: 100, w: 100 }, type: "geo", x: 320, y: 100 },
+      { id: arrow as TLShapeId, props: { end: { x: 250, y: 50 } }, type: "arrow", x: 20, y: 100 },
+    ]);
+    editor.createBinding({
+      fromId: arrow as TLShapeId,
+      props: { terminal: "end" },
+      toId: target as TLShapeId,
+      type: "arrow",
+    });
+  }, ids);
+  const rememberedEnd = () =>
+    page.evaluate((arrow) => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      const point = editor.getShape<TLArrowShape>(arrow as TLShapeId)?.meta.littleTableArrowEnd;
+      return (point as { x?: number } | undefined)?.x;
+    }, ids.arrow);
+  await expect.poll(rememberedEnd).toEqual(expect.any(Number));
+  const initial = (await rememberedEnd())!;
+  await page.evaluate((target) => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    editor.updateShape({ id: target as TLShapeId, type: "geo", x: 500 });
+  }, ids.target);
+  await expect.poll(rememberedEnd).toBeGreaterThan(initial);
 });
 
 test("an owner signs in and makes a board; a guest joins by link and plays", async ({

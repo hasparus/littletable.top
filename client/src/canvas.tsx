@@ -19,6 +19,7 @@ import { ImageText } from "./image-text";
 import { Notice } from "./notice";
 import { PageKeeper } from "./pages";
 import { PeopleSheet } from "./people";
+import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
 import { PublicBoardIntro, type PublicLanding } from "./public-landing";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
@@ -223,6 +224,7 @@ export function BoardCanvas({
           <Tldraw
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
+            bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
             colorScheme="system"
             components={canvasComponents}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
@@ -231,6 +233,7 @@ export function BoardCanvas({
               // NOTE: tldraw's own menus (the page menu's among them) take
               // their language from the person's preferences, not this prop.
               mounted.user.updateUserPreferences({ locale: language });
+              if (landing !== undefined) rememberExistingArrows(mounted);
               setEditor(mounted);
             }}
             shapeUtils={SHAPE_UTILS}
@@ -298,3 +301,5 @@ function searchFromKeyboard(open: BoardUi["open"]): () => void {
 // A pasted YouTube or Figma link would become a frame onto that site, which
 // the Content-Security-Policy refuses; it stays a plain link instead.
 const SHAPE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] })];
+
+const PUBLIC_BINDING_UTILS = [PublicArrowBindingUtil];

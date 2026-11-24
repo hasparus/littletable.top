@@ -8,11 +8,11 @@ import type { Config } from "./config";
 import type { Pass } from "./pass";
 
 import { avatarKey } from "./avatars";
-import { fileKey, readCapped } from "./file-store";
+import { fileKey, readCapped, textKey } from "./file-store";
 import { MAX_FILE_BYTES, MAX_TEXT_RESULT_BYTES } from "./limits";
 import { harden } from "./site";
 import { type EngineKey, isEngineKey } from "./text-result";
-import { parseClaim, textKey } from "./text-store";
+import { parseClaim } from "./text-store";
 
 // NOTE: an <img> cannot send an Authorization header. The pass rides in
 // this cookie instead, scoped to the board's files, for reads only.
