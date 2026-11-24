@@ -44,6 +44,7 @@
   --board-top: max(var(--board-gutter), env(safe-area-inset-top));
   --board-bottom-gap: 8px;
   --board-control-radius: 11px;
+  --board-top-control-size: 44px;
 }
 
 [data-board-toolbar] {
@@ -112,7 +113,7 @@
 }
 
 [data-public-board] .tlui-menu-zone {
-  min-height: 44px;
+  min-height: var(--board-top-control-size);
   margin: var(--board-top) 0 0 var(--board-left);
   border: 0;
   border-radius: var(--board-control-radius);
@@ -121,13 +122,13 @@
 }
 
 [data-public-board] .tlui-menu-zone .tlui-button {
-  min-height: 44px;
+  min-height: var(--board-top-control-size);
 }
 
 [data-public-board-account] {
   inset: var(--board-top) var(--board-right) auto auto;
   display: grid;
-  min-height: 44px;
+  min-height: var(--board-top-control-size);
   align-items: center;
   padding-inline: 14px;
   border: 1px solid var(--color-border);
@@ -148,10 +149,9 @@
 }
 
 [data-public-board-note] {
-  padding: clamp(16px, 4.5vw, 24px);
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-bg-secondary);
+  top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
+  left: var(--board-left);
+  width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
   color: var(--color-foreground);
   font-family: var(--tl-font-draw);
   font-size: 15px;
@@ -170,8 +170,6 @@
 
 [data-public-board-note] footer {
   margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
   color: var(--color-foreground-muted);
   font-size: 13px;
 }

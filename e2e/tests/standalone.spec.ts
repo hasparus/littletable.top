@@ -35,7 +35,16 @@ test("the home page is one editable public board for anonymous visitors", async 
 
   const intro = guest.getByRole("region", { name: "Public whiteboard" });
   await expect(intro.getByRole("heading", { level: 1 })).toBeInViewport();
-  await expect(intro.getByText("So I made Little Table.", { exact: false })).toBeInViewport();
+  await expect(intro.getByText("Little Table is this app.", { exact: false })).toBeInViewport();
+  await expect(intro).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(intro).toHaveCSS("padding-left", "0px");
+  await expect
+    .poll(async () => {
+      const note = await intro.boundingBox();
+      const menu = await guest.getByRole("button", { exact: true, name: "Menu" }).boundingBox();
+      return note !== null && menu !== null && Math.abs(note.x - menu.x) <= 1;
+    })
+    .toBe(true);
   await expect(guest.getByRole("link", { name: "Sign in" })).toBeVisible();
   await expect(guest.getByLabel("Your name")).toHaveCount(0);
 

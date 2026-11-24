@@ -11,9 +11,8 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
     "public board introduction",
     () => {
       if (editor.getCurrentPageId() !== editor.getPages()[0]?.id) return null;
-      const { x, y } = editor.pageToViewport({ x: 12, y: 68 });
+      const { x, y } = editor.pageToViewport({ x: 0, y: 0 });
       return {
-        width: Math.min(502, Math.max(232, editor.getViewportScreenBounds().w - 24)),
         x,
         y,
         zoom: editor.getZoomLevel(),
@@ -22,13 +21,13 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
     [editor],
   );
   if (position === null) return null;
-  const { width, x, y, zoom } = position;
+  const { x, y, zoom } = position;
   return (
     <section
       aria-label={copy.publicBoard}
-      className="pointer-events-none absolute top-0 left-0 origin-top-left"
+      className="pointer-events-none absolute origin-top-left"
       data-public-board-note
-      style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, width }}
+      style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})` }}
     >
       <h1>
         {copy.publicGreeting} <span data-public-board-wave>👋</span>
