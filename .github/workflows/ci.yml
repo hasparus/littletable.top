@@ -37,8 +37,14 @@ jobs:
       - run: bun run test
 
   e2e:
+    name: e2e ${{ matrix.shard }}/${{ strategy.job-total }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # NOTE: every shard runs to the end and reports its own failures.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -50,13 +56,22 @@ jobs:
         with:
           node-version-file: package.json
           package-manager-cache: false
-      - uses: actions/cache@v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # NOTE: Playwright downloads builds made for the runner's Ubuntu
+      # release, so the key names both.
+      - id: browsers
+        run: |
+          version=$(node -p 'require("@playwright/test/package.json").version')
+          echo "key=playwright-$ImageOS-$version" >> "$GITHUB_OUTPUT"
+      - id: browser-cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.key }}
       # The browser builds that match the pinned @playwright/test; the dice
       # determinism spec runs the shared throw in all three engines.
-      - run: bun run playwright install --with-deps chromium firefox webkit
-      - run: bun run e2e
+      - if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: bun run playwright install --with-deps chromium firefox webkit
+      - if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: bun run playwright install-deps chromium firefox webkit
+      - run: bun run e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}

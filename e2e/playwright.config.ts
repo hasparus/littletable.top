@@ -30,7 +30,9 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
 export default defineConfig({
   expect: { timeout: 10_000 },
   forbidOnly: isCI,
-  fullyParallel: false,
+  // NOTE: CI shards the suite by test, so one spec's tests can land on
+  // different runners, each with its own servers.
+  fullyParallel: true,
   outputDir: "test-results",
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
