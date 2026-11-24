@@ -1,6 +1,6 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { type Editor, EmbedShapeUtil, Tldraw } from "tldraw";
+import { type Editor, EmbedShapeUtil, Tldraw, useEditor, useValue } from "tldraw";
 
 import "./board.css";
 
@@ -200,6 +200,7 @@ export function BoardCanvas({
           <Tldraw
             {...MEDIA_PROPS}
             assetUrls={assetUrls}
+            colorScheme="system"
             components={components}
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
@@ -214,6 +215,7 @@ export function BoardCanvas({
           >
             <BoardFileHandlers />
             <PageKeeper board={board} copy={copy} />
+            <ThemeKeeper />
           </Tldraw>
         </div>
         {offline && <ConnectionBanner copy={copy} />}
@@ -231,6 +233,17 @@ export function BoardCanvas({
       </div>
     </BoardUiContext.Provider>
   );
+}
+
+// The board's own sheets and bars take tldraw's theme: the device's until
+// the person picks one in tldraw's preferences.
+function ThemeKeeper() {
+  const editor = useEditor();
+  const dark = useValue("dark mode", () => editor.user.getIsDarkMode(), [editor]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
+  return null;
 }
 
 const STALLED_AFTER_MS = 8000;
