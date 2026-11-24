@@ -1,3 +1,5 @@
+export type { Roll } from "../../src/dice-notation";
+
 export type Person = { id: string; name: string; owner: boolean };
 
 // What the pass endpoint answers (docs/hosting.md, "The host contract").
@@ -11,17 +13,6 @@ export type Bootstrap = {
   // The place on the host the board belongs to, where a guest leaves to.
   home: { name: string; url: string };
   title: string;
-};
-
-// The roll as the Worker records it (src/dice.ts).
-export type Roll = {
-  at: number;
-  dice: { sides: number; value: number }[];
-  id: number;
-  name: string;
-  // Shapes the throw's animation; null on rolls logged before seeds existed.
-  seed: number | null;
-  sub: string;
 };
 
 export type Answer =

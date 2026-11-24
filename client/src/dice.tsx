@@ -1,19 +1,36 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import type { Roll } from "./bootstrap";
 import type { RollRefusal } from "./rolls";
 
+import {
+  MAX_EXPRESSION_LENGTH,
+  MAX_MODIFIER,
+  type Notation,
+  type NotationError,
+  parseNotation,
+  type RollRequest,
+  rollResult,
+} from "../../src/dice-notation";
+import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { type Copy, dieLabel, fill } from "./copy";
 import { DieShape } from "./die-shape";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-// The Worker's limits (src/limits.ts).
-export const DIE_SIDES = [4, 6, 8, 10, 12, 20, 100] as const;
-const MAX_DICE = 20;
+export const modifierLabel = (modifier: number) =>
+  `${modifier < 0 ? "−" : "+"} ${Math.abs(modifier)}`;
 
-export const total = (roll: Roll): number => roll.dice.reduce((sum, { value }) => sum + value, 0);
+function notationLabel(copy: Copy, { groups, modifier }: Notation): string {
+  const pool = groups
+    .map(
+      ({ count, rule, sides }) =>
+        `${count > 1 ? count : ""}${dieLabel(copy, sides)}${rule === null ? "" : `${rule.kind}${rule.count}`}`,
+    )
+    .join(" + ");
+  return modifier === null ? pool : `${pool} ${modifierLabel(modifier)}`;
+}
 
 // "2d6 + d20": the pool grouped by die, small to large.
 export function poolLabel(copy: Copy, sides: number[]): string {
@@ -25,34 +42,56 @@ export function poolLabel(copy: Copy, sides: number[]): string {
 }
 
 export function rollSentence(copy: Copy, roll: Roll): string {
+  const result = rollResult(roll);
   const values = roll.dice.map(({ value }) => value).join(", ");
-  const pool = poolLabel(
-    copy,
-    roll.dice.map(({ sides }) => sides),
-  );
-  return `${fill(copy.rolledBy, { name: roll.name })} ${pool}: ${values}. ${copy.total}: ${total(roll)}`;
+  const pool =
+    result.notation === null
+      ? poolLabel(
+          copy,
+          roll.dice.map(({ sides }) => sides),
+        )
+      : notationLabel(copy, result.notation);
+  const sentences = [`${fill(copy.rolledBy, { name: roll.name })} ${pool}: ${values}`];
+  if (result.notation !== null) {
+    const kept = roll.dice.filter((_, index) => result.kept[index]).map(({ value }) => value);
+    sentences.push(
+      kept.length === 0 ? copy.noDiceKept : fill(copy.keptDice, { dice: kept.join(", ") }),
+    );
+    if (result.notation.modifier !== null) {
+      sentences.push(
+        fill(copy.rollModifier, { modifier: modifierLabel(result.notation.modifier) }),
+      );
+    }
+  }
+  sentences.push(`${copy.total}: ${result.total}`);
+  return sentences.join(". ");
 }
 
 const DIE_BUTTON =
   "grid h-12 place-items-center rounded-xl transition-transform select-none touch-manipulation active:scale-95 disabled:opacity-40 hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus";
 
 function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Roll }) {
+  const { kept, notation, total } = rollResult(roll);
+  const modifier = notation?.modifier ?? null;
   return (
     <li className="flex items-start gap-3 py-2.5">
       <div className="min-w-0 flex-1">
         <p className="flex items-baseline gap-2 text-sm">
           <span className="truncate font-semibold">{roll.name}</span>
-          <span className="shrink-0 text-foreground-muted">
-            {poolLabel(
-              copy,
-              roll.dice.map(({ sides }) => sides),
-            )}
+          <span className="min-w-0 wrap-break-word text-foreground-muted">
+            {notation === null
+              ? poolLabel(
+                  copy,
+                  roll.dice.map(({ sides }) => sides),
+                )
+              : notationLabel(copy, notation)}
           </span>
         </p>
         <p className="mt-1 flex flex-wrap gap-1">
           {roll.dice.map((die, index) => (
             <DieShape
               copy={copy}
+              dropped={!kept[index]}
               key={index}
               sides={die.sides}
               size="sm"
@@ -64,8 +103,11 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
       </div>
       <div className="shrink-0 text-right">
         <p className="text-xl leading-tight font-bold tabular-nums">
+          {modifier !== null && (
+            <span className="mr-1 text-sm font-normal">{modifierLabel(modifier)} =</span>
+          )}
           <span className="sr-only">{copy.total}: </span>
-          {total(roll)}
+          {total}
         </p>
         <p className="text-xs text-foreground-muted tabular-nums">
           {new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(roll.at)}
@@ -75,26 +117,55 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
   );
 }
 
+function notationMessage(copy: Copy, error: NotationError, example: string): string {
+  switch (error) {
+    case "count":
+      return fill(copy.notationCount, { max: MAX_DICE });
+    case "length":
+      return fill(copy.notationLength, { max: MAX_EXPRESSION_LENGTH });
+    case "modifier":
+      return fill(copy.notationModifier, { max: MAX_MODIFIER });
+    case "rule":
+      return copy.notationRule;
+    case "sides":
+      return copy.notationSides;
+    case "syntax":
+      return fill(copy.notationSyntax, { example });
+  }
+}
+
 export function DiceSheet() {
   const { copy, locale, person, pool, rolls, setPool } = useBoardUi();
+  const expressionId = useId();
   const [busy, setBusy] = useState(false);
+  const [expression, setExpression] = useState("");
+  const [notationError, setNotationError] = useState<NotationError | null>(null);
   const [refusal, setRefusal] = useState<RollRefusal | null>(null);
-  const lastPool = useMemo(
-    () => rolls.log.findLast(({ sub }) => sub === person.id)?.dice.map(({ sides }) => sides),
-    [person.id, rolls.log],
-  );
-  // One primary action: the pool being built, else the last pool again.
-  const again = pool.length === 0 && lastPool !== undefined;
-  const next = again ? lastPool : pool;
+  const last = rolls.log.findLast(({ sub }) => sub === person.id);
+  const hasExpression = expression.trim() !== "";
+  const again = !hasExpression && pool.length === 0 && last !== undefined;
+  const nextExpression = again ? last.expression : hasExpression ? expression : undefined;
+  const nextPool = again ? last.dice.map(({ sides }) => sides) : pool;
+  const notation = nextExpression === undefined ? null : parseNotation(nextExpression);
+  const label =
+    notation === null
+      ? poolLabel(copy, nextPool)
+      : typeof notation === "string"
+        ? ""
+        : notationLabel(copy, notation);
+  const example = `3${dieLabel(copy, 6)}kh2 + 3`;
   const newestFirst = useMemo(() => rolls.log.toReversed(), [rolls.log]);
 
-  const roll = async (dice: number[]) => {
+  const roll = async (request: RollRequest) => {
     setBusy(true);
     setRefusal(null);
-    const answer = await rolls.roll(dice);
+    const answer = await rolls.roll(request);
     setBusy(false);
     setRefusal(answer);
-    if (answer === null) setPool([]);
+    if (answer === null) {
+      setExpression("");
+      setPool([]);
+    }
   };
 
   return (
@@ -137,7 +208,11 @@ export function DiceSheet() {
             className={DIE_BUTTON}
             disabled={pool.length >= MAX_DICE}
             key={sides}
-            onClick={() => setPool([...pool, sides])}
+            onClick={() => {
+              setExpression("");
+              setNotationError(null);
+              setPool([...pool, sides]);
+            }}
             type="button"
           >
             <DieShape copy={copy} sides={sides} size="lg" tone="quiet" />
@@ -145,29 +220,67 @@ export function DiceSheet() {
         ))}
       </div>
 
-      {/* NOTE: one button for both actions, never disabled mid-roll, so
-          focus stays on it from one roll to the next. */}
-      <button
-        aria-disabled={busy}
-        className="btn btn-primary mt-3 min-h-12 w-full gap-2 aria-disabled:opacity-70"
-        disabled={next.length === 0}
-        onClick={() => {
-          if (!busy) void roll(next);
+      <form
+        className="mt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (busy) return;
+          if (typeof notation === "string") {
+            setNotationError(notation);
+            setRefusal(null);
+          } else if (nextExpression !== undefined) {
+            void roll({ expression: nextExpression });
+          } else if (nextPool.length > 0) {
+            void roll({ dice: nextPool });
+          }
         }}
-        type="button"
       >
-        {again && <Icon className="size-4 shrink-0" name="Repeat" />}
-        <span className="truncate">
-          {again ? (
-            fill(copy.rollAgain, { pool: poolLabel(copy, next) })
-          ) : (
-            <>
-              {copy.roll}
-              {next.length > 0 && <span className="font-normal"> {poolLabel(copy, next)}</span>}
-            </>
-          )}
-        </span>
-      </button>
+        <label className="block text-sm font-medium" htmlFor={expressionId}>
+          {copy.diceExpression}
+        </label>
+        <input
+          aria-describedby={notationError === null ? undefined : `${expressionId}-error`}
+          aria-invalid={notationError !== null}
+          autoCapitalize="none"
+          autoComplete="off"
+          className="mt-1 block h-11 w-full rounded-lg border border-border bg-bg-secondary px-3 text-base focus:border-primary focus:outline-none"
+          enterKeyHint="go"
+          id={expressionId}
+          onChange={(event) => {
+            const { value } = event.target;
+            setExpression(value);
+            setNotationError(null);
+            if (value.trim() !== "" && pool.length > 0) setPool([]);
+          }}
+          placeholder={example}
+          spellCheck={false}
+          value={expression}
+        />
+        {notationError !== null && (
+          <p className="mt-2 text-sm text-danger-text" id={`${expressionId}-error`} role="status">
+            {notationMessage(copy, notationError, example)}
+          </p>
+        )}
+        {/* NOTE: focus stays on the primary action during a roll. */}
+        <button
+          aria-disabled={busy}
+          className="btn btn-primary mt-3 min-h-12 w-full gap-2 aria-disabled:opacity-70"
+          disabled={nextExpression === undefined && nextPool.length === 0}
+          type="submit"
+        >
+          {again && <Icon className="size-4 shrink-0" name="Repeat" />}
+          <span className="truncate">
+            {again ? (
+              fill(copy.rollAgain, { pool: label })
+            ) : (
+              <>
+                {copy.roll}
+                {label && <span className="font-normal"> {label}</span>}
+              </>
+            )}
+          </span>
+        </button>
+      </form>
       {refusal !== null && (
         <p className="mt-2 text-sm text-danger-text" role="status">
           {refusal === "too-fast" ? copy.rollTooFast : copy.rollFailed}
