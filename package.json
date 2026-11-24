@@ -79,13 +79,18 @@
     "alchemy": "2.0.0-beta.85",
     "effect": "4.1.2"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.13.1"
+    }
+  },
   "engines": {
     "node": ">=22"
   },
-  "aube": {
-    "allowBuilds": {
-      "esbuild": true,
-      "workerd": true
-    }
-  }
+  "packageManager": "bun@1.4.4",
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ]
 }

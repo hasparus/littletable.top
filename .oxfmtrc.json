@@ -10,5 +10,5 @@
       "unknown"
     ]
   },
-  "ignorePatterns": ["aube-lock.yaml", "dist", "e2e/fixtures/text/*.json"]
+  "ignorePatterns": ["bun.lock", "dist", "e2e/fixtures/text/*.json"]
 }

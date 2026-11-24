@@ -1,0 +1,3 @@
+[install]
+# A week, in seconds: new releases wait this long before an install takes them.
+minimumReleaseAge = 604800
