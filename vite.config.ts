@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, normalizePath, type Plugin } from "vite";
 
 import {
   BRAND_PROPERTIES,
@@ -21,6 +21,12 @@ import {
 // `bun run dev:worker` runs.
 
 const WORKER_DEV_PORT = 8789;
+// Hosted builds compile this client's source from an installed package.
+const clientSource = normalizePath(fileURLToPath(new URL("client/src/", import.meta.url)));
+const compilerFiles = new RegExp(
+  `^${clientSource.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}.*\\.[jt]sx?(?:$|\\?)`,
+  "u",
+);
 
 // A laptop's build: TABLETOP_MODE=standalone, or a hosted client of
 // TABLETOP_HOST_ORIGIN. Alchemy builds pass the whole value instead
@@ -234,7 +240,13 @@ export default defineConfig({
   optimizeDeps: { exclude: ["@tldraw/assets"] },
   plugins: [
     react(),
-    babel({ presets: [reactCompilerPreset()] }),
+    babel({
+      include: compilerFiles,
+      exclude: [],
+      presets: [
+        reactCompilerPreset({ sources: (filename) => compilerFiles.test(normalizePath(filename)) }),
+      ],
+    }),
     tailwindcss(),
     tabletop(),
     textEngineFiles(),
