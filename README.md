@@ -889,8 +889,8 @@ for the account the tabletop deploys to:
 | Zone: the `TABLETOP_DOMAIN` one | Workers Routes: Edit     | Attaching the custom domain                                                               |
 | Zone: the `TABLETOP_DOMAIN` one | DNS: Edit                | The DNS record the custom domain gets                                                     |
 
-The zone rows matter only once `TABLETOP_DOMAIN` is set, and that zone must
-be in the same account. Alchemy keeps its deploy state in the account's
+The workflow sets `TABLETOP_DOMAIN` to `littletable.top`; its zone must be
+on Cloudflare DNS in the same account. Alchemy keeps its deploy state in the account's
 state store, a Worker named `alchemy-state-store` with a Durable Object; the
 first deploy creates it (and the account's Secrets Store, if there is none),
 so the state store needs no secret of its own here. An account whose store
@@ -908,30 +908,18 @@ reviewers.
 | secret   | `WORKOS_API_KEY`        | The WorkOS environment's API key (`sk_...`)                                                     |
 | variable | `WORKOS_CLIENT_ID`      | That environment's client id                                                                    |
 | secret   | `TABLETOP_SIGNING_KEY`  | A key of this Environment's own: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` |
-| variable | `TABLETOP_DOMAIN`       | Optional. `littletable.top`: `prod` serves it, `staging` serves `staging.<it>`                  |
 | variable | `TLDRAW_LICENSE_KEY`    | Optional to deploy, but see below. Public by design                                             |
 
-All but the two optional ones are required. Use WorkOS's staging environment
+All but `TLDRAW_LICENSE_KEY` are required. Use WorkOS's staging environment
 for `staging` and its production one for `production`.
 
-### The first deploy, on workers.dev
+### The first deploy
 
-The custom domain can come later. Without `TABLETOP_DOMAIN`, `staging`
-serves `https://littletable-staging.<account subdomain>.workers.dev` and
-`prod` `https://littletable.<account subdomain>.workers.dev`. WorkOS needs that
-address, which you only learn from the first deploy:
-
-1. Set the `production` Environment's inputs and deploy (push to `main`,
-   or run the workflow).
-2. Read the URL from the run's summary.
-3. In WorkOS, add `https://<that host>/auth/callback` as a redirect URI and
-   `https://<that host>/` as a sign-out redirect. Sign-in works from then
-   on; nothing needs redeploying.
-
-Setting `TABLETOP_DOMAIN` later moves `prod` and `staging` to their custom
-domains on the next deploy; register those hosts the same way. A preview
-stage has its own workers.dev host, which needs registering too before
-anyone signs in there.
+`prod` serves `https://littletable.top` and `staging`
+`https://staging.littletable.top`. Before anyone signs in, add
+`https://<host>/auth/callback` as a WorkOS redirect URI and `https://<host>/`
+as a sign-out redirect, in the WorkOS environment of that stage. A preview
+stage has its own workers.dev host, which needs registering too.
 
 tldraw's SDK runs without a licence key only on local addresses
 (`localhost`), so a deploy without `TLDRAW_LICENSE_KEY` succeeds, with a

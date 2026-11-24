@@ -50,7 +50,7 @@ jobs:
       STAGE: ${{ inputs.stage || 'prod' }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
-      TABLETOP_DOMAIN: ${{ vars.TABLETOP_DOMAIN }}
+      TABLETOP_DOMAIN: littletable.top
       # Public by design: tldraw ties the key to the domain.
       TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
     steps:
