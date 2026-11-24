@@ -152,6 +152,7 @@
   top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
   left: var(--board-left);
   width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
+  padding-inline: 2px;
   color: var(--color-foreground);
   font-family: var(--tl-font-draw);
   font-size: 15px;
@@ -159,9 +160,7 @@
 }
 
 [data-public-board-note] h1 {
-  font-size: 26px;
   font-weight: 700;
-  line-height: 1.1;
 }
 
 [data-public-board-note] p {
@@ -171,10 +170,8 @@
 [data-public-board-note] footer {
   margin-top: 16px;
   color: var(--color-foreground-muted);
-  font-size: 13px;
 }
 
 [data-public-board-wave] {
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-  font-size: 0.8em;
 }
