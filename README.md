@@ -103,9 +103,10 @@ lists what is missing.
 ### Pull request previews
 
 The [PR Preview workflow](.github/workflows/pr-preview.yml) deploys each
-same-repository PR targeting `main` to its own Alchemy stage `pr-<number>`
-when the repository owner opens, updates, or reopens it. It updates one
-PR comment and sets the deployment URL in GitHub. The URL is `https://littletable-pr-<number>.hasparus.workers.dev`.
+same-repository PR to its own Alchemy stage `pr-<number>` when the
+repository owner opens, updates, retargets, or reopens it. The checkout
+includes the PR's target branch and head. The workflow updates one PR
+comment and sets the deployment URL in GitHub. The URL is `https://littletable-pr-<number>.hasparus.workers.dev`.
 
 Each PR's Worker, Durable Objects, D1 database, R2 bucket, and signing key
 belong to that stage. The workflow uses the Cloudflare and WorkOS credentials
@@ -123,10 +124,11 @@ Durable Objects. Each PR goes to a separate Worker with its own bindings.
 
 In GitHub Settings under Environments, use `production` for `prod`,
 `staging` for manual non-production deploys, and `preview` for pull
-requests. Give both `production` and `preview` deployment branch rules
-that allow only `main`. The preview workflow runs from `main` and checks
-out the merge ref only for owner-triggered deployments. It checks both
-parents against the PR event before running the checkout with credentials.
+requests. Give `production` a deployment branch rule for `main`. A
+`preview` environment branch rule matches the preview workflow's default
+branch ref (`main`), so it can protect preview credentials for PRs with
+any target branch. The workflow checks both parents of the PR's merge ref
+against the event before running owner-triggered deploys with credentials.
 
 | Kind     | Name                    | Value                                                                                                             |
 | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
