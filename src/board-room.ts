@@ -1,3 +1,5 @@
+import type { TLRecord } from "@tldraw/tlschema";
+
 import {
   DurableObjectSqliteSyncWrapper,
   SQLiteSyncStorage,
@@ -5,6 +7,7 @@ import {
   TLSyncErrorCloseEventCode,
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
+import { isShape } from "@tldraw/tlschema";
 import { DurableObject } from "cloudflare:workers";
 
 import type { Pass } from "./pass";
@@ -15,6 +18,13 @@ import { addSeedColumn, drawSeed, type Roll, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
+import {
+  expirePublicShapes,
+  preservesPublicShapeAge,
+  PUBLIC_SWEEP_MS,
+  publicFileReferences,
+  stampPublicShape,
+} from "./public-board-expiry";
 import {
   type Claim,
   type ClaimRequest,
@@ -36,6 +46,10 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
+// Standalone account board IDs are alphanumeric and cannot collide with this room.
+export const PUBLIC_BOARD = "public-lobby";
+const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
+
 export const PASS_HEADER = "X-Board-Pass";
 // The person's picture as personAvatar settled it, beside the pass.
 export const AVATAR_HEADER = "X-Board-Avatar";
@@ -56,10 +70,13 @@ function kind(sub: string): "guest" | "member" {
 }
 
 export class BoardRoom extends DurableObject<Env> {
-  private room!: TLSocketRoom<never, Person>;
+  private room!: TLSocketRoom<TLRecord, Person>;
+  private drawing!: SQLiteSyncStorage<TLRecord>;
+  private publicExpiryEnabled = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
+  private readonly textUploads = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -83,15 +100,25 @@ export class BoardRoom extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
-    this.room = new TLSocketRoom<never, Person>({
+    this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
+    this.drawing = new SQLiteSyncStorage({
+      sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
+    });
+    this.room = new TLSocketRoom<TLRecord, Person>({
+      authorizeRecord: {
+        shape: (write) => {
+          if (write.type === "delete") return write.prev;
+          if (!this.publicExpiryEnabled) return write.next;
+          if (write.type === "create") return stampPublicShape(write.next, Date.now());
+          return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
+        },
+      },
       // NOTE: tldraw leaves the parsed message out of this hook's public
       // type; it is the object the room then applies.
       onAfterReceiveMessage: (received) => {
         stampPresence((received as { message?: unknown }).message, received.meta);
       },
-      storage: new SQLiteSyncStorage({
-        sql: new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" }),
-      }),
+      storage: this.drawing,
     });
     this.lastRollAt = new Map();
     // NOTE: the texts table first: the images' ledger counts it in the quota.
@@ -305,17 +332,66 @@ export class BoardRoom extends DurableObject<Env> {
   ): Promise<"link-reset" | StoredText | TextRefusal | { problem: string; refusal: "invalid" }> {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
-    const stored = await this.texts.store(
-      { board: pass.board, engine, hash, sub: pass.sub },
-      body,
-      {
-        bytesNow: () => this.files.storedBytes(),
-      },
-    );
-    if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
-      this.announceText([{ engine, hash }], "stored");
+    this.textUploads.set(hash, (this.textUploads.get(hash) ?? 0) + 1);
+    try {
+      const stored = await this.texts.store(
+        { board: pass.board, engine, hash, sub: pass.sub },
+        body,
+        { bytesNow: () => this.files.storedBytes() },
+      );
+      if (typeof stored === "object" && "body" in stored && !stored.duplicate) {
+        this.announceText([{ engine, hash }], "stored");
+      }
+      return stored;
+    } finally {
+      const remaining = (this.textUploads.get(hash) ?? 1) - 1;
+      if (remaining === 0) this.textUploads.delete(hash);
+      else this.textUploads.set(hash, remaining);
     }
-    return stored;
+  }
+
+  async schedulePublicExpiry(): Promise<void> {
+    if (!this.publicExpiryEnabled) {
+      // Give existing shapes a starting age when this board first adopts expiry.
+      const now = Date.now();
+      this.drawing.transaction((store) => {
+        // Snapshot the records before rewriting them in the same SQLite table.
+        const records = [...store.values()];
+        for (const record of records) {
+          if (isShape(record)) store.set(record.id, stampPublicShape(record, now));
+        }
+      });
+      this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
+      this.publicExpiryEnabled = true;
+    }
+    if ((await this.ctx.storage.getAlarm()) === null) {
+      const next = (Math.floor(Date.now() / PUBLIC_SWEEP_MS) + 1) * PUBLIC_SWEEP_MS;
+      await this.ctx.storage.setAlarm(next);
+    }
+  }
+
+  override async alarm(): Promise<void> {
+    if (!this.publicExpiryEnabled) return;
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const now = Date.now();
+      const { assetsByHash, live } = this.drawing.transaction((store) => {
+        expirePublicShapes(store, now);
+        return publicFileReferences(store.values(), PUBLIC_BOARD);
+      }).result;
+      const reclaimed = await this.files.reclaimUnused(
+        PUBLIC_BOARD,
+        live,
+        now,
+        PUBLIC_SWEEP_MS,
+        (hash) => this.textUploads.has(hash),
+      );
+      this.drawing.transaction((store) => {
+        for (const hash of reclaimed) {
+          for (const id of assetsByHash.get(hash) ?? []) store.delete(id);
+        }
+      });
+      await this.schedulePublicExpiry();
+    });
   }
 
   async destroy(board: string) {
@@ -323,8 +399,7 @@ export class BoardRoom extends DurableObject<Env> {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }
     this.room.close();
-    // NOTE: the images go first: if that fails the board's document is
-    // still there, the room opens again, and deleting again finishes.
+    // Leave the document intact if deleting its files fails.
     let files: number;
     try {
       files = await this.files.wipe(board);

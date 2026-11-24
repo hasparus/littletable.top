@@ -200,7 +200,15 @@ keeps what is listed or looked up across boards: `accounts`, `sessions`,
 `boards` and `visits`. A link names a board by its share code, and
 looking up a code needs an index across all accounts. D1 has that index.
 The public board uses a fixed room ID outside the account board ID space.
-It has no owner or D1 row.
+It has no owner or D1 row. Its first bootstrap schedules a Durable Object
+alarm that runs every six hours on UTC boundaries. The server timestamps
+new shapes, caps their opacity at 50% once they are 24 hours old and
+removes them once they are 48 hours old. Each sweep syncs to connected
+visitors. Surviving arrows keep a saved endpoint when their target expires.
+After an additional sweep interval, the room reclaims unused uploads, their
+OCR results and their asset records. Existing shapes without timestamps
+start aging when this feature is enabled. The client renders the landing
+note outside the shared document.
 
 ### Sessions and CSRF
 

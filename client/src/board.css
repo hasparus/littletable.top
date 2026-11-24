@@ -20,3 +20,163 @@
 .tl-theme__dark {
   --tl-color-focus: var(--brand-primary-strong-dark);
 }
+
+/* The editor and the board's own controls share the app's neutral surfaces. */
+.tl-theme__light,
+.tl-theme__dark {
+  --tl-color-background: var(--color-background);
+  --tl-color-low: var(--color-bg-tertiary);
+  --tl-color-low-border: var(--color-border);
+  --tl-color-divider: var(--color-border);
+  --tl-color-panel: var(--color-bg-secondary);
+  --tl-color-panel-contrast: var(--color-border);
+  --tl-color-panel-transparent: transparent;
+  --tl-color-text: var(--color-foreground);
+  --tl-color-text-0: var(--color-foreground);
+  --tl-color-text-1: var(--color-foreground-secondary);
+  --tl-color-text-3: var(--color-foreground-muted);
+}
+
+[data-board-shell] {
+  --board-gutter: 12px;
+  --board-left: max(var(--board-gutter), env(safe-area-inset-left));
+  --board-right: max(var(--board-gutter), env(safe-area-inset-right));
+  --board-top: max(var(--board-gutter), env(safe-area-inset-top));
+  --board-bottom-gap: 8px;
+  --board-control-radius: 11px;
+}
+
+[data-board-toolbar] {
+  gap: var(--tl-space-3);
+  padding-inline: var(--board-left) var(--board-right);
+}
+
+[data-board-toolbar] > .tlui-main-toolbar--horizontal {
+  padding-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
+}
+
+[data-board-toolbar-actions] {
+  margin-bottom: calc(var(--board-bottom-gap) + var(--tl-sab));
+  background: var(--tl-color-panel);
+  border-radius: var(--tl-radius-4);
+  box-shadow: var(--tl-shadow-2);
+}
+
+@media (max-width: 639px) {
+  [data-board-shell] {
+    --board-gutter: 4px;
+    --board-bottom-gap: 4px;
+  }
+
+  [data-board-toolbar] {
+    /* Leave the small tldraw tab on the right edge room to be tapped. */
+    padding-right: max(var(--board-right), calc(env(safe-area-inset-right) + 10px));
+  }
+
+  [data-board-toolbar] > .tlui-main-toolbar {
+    justify-content: flex-start;
+  }
+}
+
+/* On iOS the canvas can paint into the large viewport while Safari's
+   bars are visible. Keep the control layer inside the reachable viewport. */
+@supports (-webkit-touch-callout: none) and (height: 100lvh) {
+  body:has([data-board-shell]) {
+    min-height: 100lvh;
+    overflow: hidden;
+    background: var(--color-background);
+  }
+
+  [data-board-root]:has([data-board-shell]),
+  [data-board-shell] {
+    position: absolute;
+  }
+
+  [data-board-shell] {
+    overflow: visible;
+    --board-browser-bleed: max(0px, calc(100lvh - 100dvh - env(safe-area-inset-bottom)));
+  }
+
+  [data-board-editor] {
+    bottom: auto;
+    height: max(100%, 100lvh);
+  }
+
+  [data-board-editor] .tlui-layout {
+    height: calc(100% - var(--board-browser-bleed));
+  }
+
+  [data-board-editor] [data-testid^="tl-watermark"] {
+    translate: 0 calc(0px - var(--board-browser-bleed));
+  }
+}
+
+[data-public-board] .tlui-menu-zone {
+  min-height: 44px;
+  margin: var(--board-top) 0 0 var(--board-left);
+  border: 0;
+  border-radius: var(--board-control-radius);
+  background: var(--tl-color-panel);
+  box-shadow: var(--tl-shadow-2);
+}
+
+[data-public-board] .tlui-menu-zone .tlui-button {
+  min-height: 44px;
+}
+
+[data-public-board-account] {
+  inset: var(--board-top) var(--board-right) auto auto;
+  display: grid;
+  min-height: 44px;
+  align-items: center;
+  padding-inline: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--board-control-radius);
+  background: var(--color-bg-secondary);
+  color: var(--color-foreground);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+[data-public-board-account]:hover {
+  background: var(--color-bg-tertiary);
+}
+
+[data-public-board-account]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+[data-public-board-note] {
+  padding: clamp(16px, 4.5vw, 24px);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-secondary);
+  color: var(--color-foreground);
+  font-family: var(--tl-font-draw);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+[data-public-board-note] h1 {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+[data-public-board-note] p {
+  margin-top: 12px;
+}
+
+[data-public-board-note] footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-foreground-muted);
+  font-size: 13px;
+}
+
+[data-public-board-wave] {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 0.8em;
+}

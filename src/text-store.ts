@@ -5,7 +5,7 @@
 // failed too often to hand out again. The results themselves are objects
 // in R2 next to their image.
 
-import { fileKey } from "./file-store";
+import { fileKey, textKey } from "./file-store";
 import { imageDimensions, type Shown, SIZE_PREFIX_BYTES } from "./image-size";
 import {
   MAX_BOARD_FILE_BYTES,
@@ -15,9 +15,6 @@ import {
   TEXT_LEASE_MS,
 } from "./limits";
 import { type EngineKey, isEngineKey, validateTextResult } from "./text-result";
-
-export const textKey = (board: string, hash: string, engine: EngineKey) =>
-  `${fileKey(board, hash)}.ocr.${engine}.json`;
 
 export type Reading = { engine: EngineKey; hash: string };
 

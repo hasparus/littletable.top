@@ -61,7 +61,7 @@ async function mount(): Promise<void> {
     return;
   }
   const isPublic = settings.hosted === null && location.pathname === "/";
-  const landing = isPublic ? { copy: FRONT_COPY[language], name: settings.name } : undefined;
+  const landing = isPublic ? { copy: FRONT_COPY[language] } : undefined;
   const shareCode = encodeURIComponent(location.pathname.split("/")[2] ?? "");
   // Hosted, the host signs passes across origins with its own cookie;
   // standalone, this Worker does, on its own origin.

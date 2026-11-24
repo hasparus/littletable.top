@@ -123,3 +123,21 @@ export async function reviewShot(page: Page, name: string): Promise<void> {
   mkdirSync(folder, { recursive: true });
   await page.screenshot({ path: `${folder}/${name}.png` });
 }
+
+// The board's tldraw editor, found through React's own records of the
+// canvas: the test then changes shapes as a person's gestures would, with
+// real, synced shape updates, but without pointer drags to aim.
+export async function reachEditor(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const canvas = document.querySelector("[data-testid=canvas]")!;
+    const key = Object.keys(canvas).find((name) => name.startsWith("__reactFiber$"))!;
+    type Fiber = { memoizedProps?: { value?: unknown }; return: Fiber | null };
+    let fiber: Fiber | null = (canvas as unknown as Record<string, Fiber>)[key] ?? null;
+    while (fiber !== null) {
+      const value = fiber.memoizedProps?.value as { updateShape?: unknown } | undefined;
+      if (typeof value?.updateShape === "function") break;
+      fiber = fiber.return;
+    }
+    (globalThis as unknown as { __editor: unknown }).__editor = fiber!.memoizedProps!.value;
+  });
+}

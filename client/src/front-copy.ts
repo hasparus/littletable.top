@@ -16,8 +16,14 @@ const EN = {
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
   publicBoard: "Public whiteboard",
-  publicDescription: "Draw maps, plan your game, and roll dice together on a shared whiteboard.",
-  publicInvitation: "Pick a tool and draw. Everyone here can see and edit this board.",
+  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
+  publicGreeting: "Hey there",
+  publicStory: [
+    "Whenever my friends invited me to play on Roll20 or another virtual tabletop, I complained. It was awkward on a phone, it had too many features, and even a character sheet meant filling out forms.",
+    "Why do all that when we could drop screenshots from our PDFs onto a whiteboard and draw on them, just like at a real table?",
+    "We tried Miro, Excalidraw, and tldraw. It was way better, but I still missed a few things. My ideal app didn’t exist yet.",
+    "So I made Little Table. Just a whiteboard with dice and search that reads text in images. Secret layers are still on my list. A virtual tabletop without the bloat.",
+  ],
   rename: "Rename",
   resetConfirm: "Everyone who has the old link will be put out. Reset the link?",
   resetLink: "Reset link",
@@ -34,7 +40,7 @@ const EN = {
   yourBoards: "Your boards",
 };
 
-export type FrontCopy = Record<keyof typeof EN, string>;
+export type FrontCopy = typeof EN;
 
 const PL: FrontCopy = {
   actionFailed: "Nie udało się. Spróbuj ponownie.",
@@ -51,9 +57,14 @@ const PL: FrontCopy = {
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
   publicBoard: "Tablica publiczna",
-  publicDescription: "Rysujcie mapy, planujcie rozgrywkę i rzucajcie kośćmi na wspólnej tablicy.",
-  publicInvitation:
-    "Wybierz narzędzie i zacznij rysować. Każdy tutaj widzi i może zmieniać tę tablicę.",
+  publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
+  publicGreeting: "Cześć",
+  publicStory: [
+    "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
+    "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",
+    "Spróbowaliśmy Miro, Excalidraw i tldraw. Było dużo lepiej, ale nadal brakowało mi kilku drobiazgów. Aplikacji, której szukałem, jeszcze nie było.",
+    "Tak powstało Little Table. To tablica, na której można rzucać kośćmi i wyszukiwać tekst na obrazach. Chcę jeszcze dodać ukryte warstwy. Wirtualny stół bez zbędnych dodatków.",
+  ],
   rename: "Zmień nazwę",
   resetConfirm: "Wszystkie osoby ze starym linkiem stracą dostęp. Zmienić link?",
   resetLink: "Zmień link",

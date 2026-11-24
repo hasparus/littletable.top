@@ -251,7 +251,7 @@ test("a lost connection is said below the top row, clear of the toast and the me
 
   cut = true;
   await Promise.all(sockets.map(async (socket) => socket.close()));
-  const banner = guest.getByRole("status").filter({ hasText: "Connection lost" });
+  const banner = guest.getByRole("status").filter({ hasText: "Reconnecting…" });
   await expect(banner).toBeVisible();
   const said = await boxOf(banner);
   for (const other of [toast(guest), menuZone(guest)]) {

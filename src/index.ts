@@ -3,6 +3,7 @@ import {
   type AvatarSource,
   type BoardRoom,
   PASS_HEADER,
+  PUBLIC_BOARD,
   type Refusal,
 } from "./board-room";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
@@ -143,7 +144,14 @@ async function rooms(
   }
   const [, board, action] =
     /^\/rooms\/([\w-]{1,64})\/(connect|delete|link|rolls?)$/u.exec(url.pathname) ?? [];
-  if (board === undefined) return new Response("Not found", { status: 404 });
+  if (
+    board === undefined ||
+    (config.mode === "standalone" &&
+      board === PUBLIC_BOARD &&
+      (action === "delete" || action === "link"))
+  ) {
+    return new Response("Not found", { status: 404 });
+  }
   const room = env.BoardRoom.get(env.BoardRoom.idFromName(board));
   if (action === "delete") {
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
