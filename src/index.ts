@@ -110,13 +110,11 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
   }
 }
 
-const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
-const GIZMO_ACTION =
-  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(gizmos|gizmo-requests|deck)$/u;
-
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|summon)$/u;
+const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
+const ACTION =
+  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|gizmos|gizmo-requests|link|rolls?|deck|summon)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -161,7 +159,7 @@ async function rooms(
     return room.gizmoImage(key!, path!, request.method === "HEAD");
   }
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
-  const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? GIZMO_ACTION.exec(url.pathname) ?? [];
+  const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
   if (action === "chat" && (config.mode !== "standalone" || board !== PUBLIC_BOARD)) {
     return new Response("Not found", { status: 404 });
