@@ -1,16 +1,15 @@
 # Little Table
 
-A shared whiteboard with dice for tabletop RPGs. Sketch the road to Briarwatch,
-mark where the party makes camp, and roll a d20 to see what finds them there.
+A shared whiteboard with dice for tabletop RPGs. Drop a screenshot of your
+character sheet on the board. Find a spell by searching the text on the sheet,
+cross off a spell slot, and roll damage where everyone can see the dice.
 
-<img src="scripts/open-graph-map.png" width="600" alt="Briarwatch Pass on the board. A red X marks a campsite along the old road. A d20 beside the road shows 12." />
+[Roll a die on the public board](https://littletable.top/). You can play
+without signing in. Anyone can draw here, and drawings disappear after two days.
 
-[Try the public board](https://littletable.top/). You can draw straight away.
-Anyone can join, and drawings disappear after two days.
-
-[Make a board for your game](https://littletable.top/boards). Sign in, choose
+[Make a board for your group](https://littletable.top/boards). Sign in, choose
 **New board**, and send the URL to your players. Anyone with the link can join
-with just a name. Use the **Secret layer** to mark an ambush only you can see.
+with just a name. The **Secret layer** lets you write notes only you can see.
 
 ## Development
 
