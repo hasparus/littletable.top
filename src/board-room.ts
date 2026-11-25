@@ -277,13 +277,13 @@ export class BoardRoom extends DurableObject<Env> {
     );
   }
 
-  private async withDocumentGrant<T>(grant: BoardGrant, use: () => T): Promise<T | "revoked"> {
+  private async withDocumentGrant<T>(grant: BoardGrant, apply: () => T): Promise<"revoked" | T> {
     if (grant.standalone !== undefined) {
       const epoch = this.assistantGrantEpoch;
       if (!this.env.DB || !(await new AssistantGrants(this.env.DB).admits(grant))) return "revoked";
       // Grant changes, link resets and deletion can interleave with the D1 check.
       // Use the document in the same turn as the final epoch check.
-      return this.assistantGrantEpoch === epoch ? use() : "revoked";
+      return this.assistantGrantEpoch === epoch ? apply() : "revoked";
     }
     // A hosted grant older than the board's grant version was revoked.
     // A newer one moves the board on.
@@ -293,7 +293,7 @@ export class BoardRoom extends DurableObject<Env> {
     if (grant.role !== "shaman" && grant.role !== "owner") return "revoked";
     if (grant.grant < current) return "revoked";
     if (grant.grant > current) this.setGrantVersion(grant.grant);
-    return use();
+    return apply();
   }
 
   // The host revokes every assistant grant on this board signed before
