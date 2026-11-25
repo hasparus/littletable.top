@@ -123,6 +123,12 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
         else template.remove();
       },
     })
+    .on("template[data-landing-prerender]", {
+      element: (template) => {
+        if (url.pathname === "/") template.removeAndKeepContent();
+        else template.remove();
+      },
+    })
     .on("head", {
       element: (head) => {
         const tags = Object.entries(graph).map(
@@ -161,6 +167,11 @@ export async function serveBoards(
   ];
   let locale = requested.find((tag) => tag === "en" || tag === "pl");
   return new HTMLRewriter()
+    .on("template[data-landing-prerender]", {
+      element: (template) => {
+        template.remove();
+      },
+    })
     .on("html", {
       element(html) {
         locale ??= html.getAttribute("lang") === "pl" ? "pl" : "en";

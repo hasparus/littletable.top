@@ -79,10 +79,15 @@ async function mount(): Promise<void> {
   const first = knock(door);
   if (landing) {
     const classes = document.documentElement.classList;
-    const reveal = () => classes.remove("loading-handwriting");
-    classes.add("loading-handwriting");
-    void document.fonts.load('15px "Landing handwriting"').then(reveal, reveal);
-    root.replaceChildren(landingPreview(landing.copy));
+    const font = '15px "Landing handwriting"';
+    if (!document.fonts.check(font)) {
+      const reveal = () => classes.remove("loading-handwriting");
+      classes.add("loading-handwriting");
+      void document.fonts.load(font).then(reveal, reveal);
+    }
+    if (root.querySelector("[data-landing-preview]") === null) {
+      root.replaceChildren(landingPreview(landing.copy));
+    }
   }
   const { mountBoard } = await import("./board");
   mountBoard(root, {
