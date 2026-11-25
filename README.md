@@ -3,7 +3,7 @@
 A shared whiteboard with dice for tabletop RPGs. You can search the text in
 character sheets and rulebook screenshots.
 
-[Make a board for your group](https://littletable.top/boards) · [Say hi](https://littletable.top/)
+[Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
 
 <img src="docs/screenshots/table.png" width="720" alt="A red d20 showing 7 in the courtyard of the Château de Pierrefonds floor plan on a Little Table board." />
 
