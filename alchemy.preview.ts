@@ -89,18 +89,13 @@ export default Alchemy.Stack(
     });
 
     const commit = yield* Config.String("PREVIEW_COMMIT");
+    const mcpLink = mcp === undefined ? "" : `\n\n[MCP endpoint](https://${mcp.domain}/mcp)`;
     yield* GitHub.Comment("PreviewComment", {
       owner: github.owner,
       repository: github.repository,
       issueNumber: github.pr,
       allowDelete: true,
-      body: Output.interpolate`
-        ## Little Table preview
-
-        [Open the preview](${url})${mcp === undefined ? "" : `\n\n[MCP endpoint](https://${mcp.domain}/mcp)`}
-
-        Built from \`${commit.slice(0, 7)}\`.
-      `,
+      body: Output.interpolate`## Little Table preview\n\n[Open the preview](${url})${mcpLink}\n\nBuilt from \`${commit.slice(0, 7)}\`.`,
     });
     return { url };
   }),
