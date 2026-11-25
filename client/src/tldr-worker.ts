@@ -12,7 +12,7 @@ import {
 
 import type { ImportProblem } from "./tldr";
 
-import { type BoardColor, isBoardColor } from "./board-palette";
+import { type BoardColor, isBoardColor } from "../../src/board-palette";
 import { fileFromDataUrl } from "./data-url-file";
 
 export type BoardDocument = {

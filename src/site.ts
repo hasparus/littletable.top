@@ -2,7 +2,10 @@
 // /b/<share code>, and the headers every page and file leaves with.
 
 import type { Config, Hosts, StandaloneConfig } from "./config";
+import type { PreviewBindings } from "./share-preview";
+import type { Board } from "./standalone/store";
 
+import { composeBoardPreview } from "./share-preview";
 import { Store } from "./standalone/store";
 
 // A request to an alias moves to the same path on the primary host, before
@@ -75,6 +78,7 @@ export function harden(response: Response, request: Request, config: Config): Re
 }
 
 const SHELL = /^\/b\/([A-Za-z0-9]{1,64})\/?$/u;
+const BOARD_PREVIEW = /^\/b\/([A-Za-z0-9]{1,64})\/preview\.png$/u;
 const WEBSITE_DESCRIPTION =
   "Draw maps, roll dice, and play tabletop games together on a shared whiteboard.";
 // Vite names every built script, style and font after its content, and
@@ -102,7 +106,9 @@ const htmlAttribute = (text: string) =>
 
 // Social previews are read before any JavaScript runs. Use the public name
 // a board already returns to people with its current share link.
-function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, boardTitle?: string) {
+function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board?: Board) {
+  const boardTitle = board?.title;
+  const illustrated = board?.hasThumbnail === true;
   if (!page.ok || page.body === null) return page;
   const title =
     boardTitle === undefined ? config.displayName : `${boardTitle} · ${config.displayName}`;
@@ -112,8 +118,10 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
       : `Join ${boardTitle} on ${config.displayName}. ${WEBSITE_DESCRIPTION}`;
   const graph = {
     description,
-    image: new URL("/open-graph.png", url).href,
-    "image:alt": "Little Table logo and tabletop dice",
+    image: new URL(illustrated ? `/b/${board.shareCode}/preview.png` : "/open-graph.png", url).href,
+    "image:alt": illustrated
+      ? `Little Table board: ${board.title}`
+      : "Little Table logo and tabletop dice",
     "image:height": "630",
     "image:type": "image/png",
     "image:width": "1200",
@@ -148,12 +156,14 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     .transform(page);
 }
 
+type SiteBindings = PreviewBindings & { DB?: D1Database };
+
 export async function serveSite(
   request: Request,
-  assets: Fetcher,
+  env: SiteBindings,
   config: Config,
-  database?: D1Database,
 ): Promise<Response> {
+  const { ASSETS: assets, DB: database } = env;
   const url = new URL(request.url);
   if (request.method !== "GET" && request.method !== "HEAD") {
     return harden(new Response("Method not allowed", { status: 405 }), request, config);
@@ -168,12 +178,29 @@ export async function serveSite(
   }
   if (url.pathname === "/boards" && config.mode === "standalone")
     return shell(request, assets, config);
+  const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
+  if (imageCode !== undefined && config.mode === "standalone") {
+    const board = database === undefined ? null : await new Store(database).byShareCode(imageCode);
+    let preview: Response | null = null;
+    if (board?.hasThumbnail === true) {
+      preview =
+        request.method === "HEAD"
+          ? new Response(null, { headers: { "Content-Type": "image/png" } })
+          : await composeBoardPreview(url, board, env);
+    }
+    const image =
+      preview ?? (await assets.fetch(new URL("/open-graph.png", url), { method: request.method }));
+    const response = harden(image, request, config);
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
+  }
   const shareCode = SHELL.exec(url.pathname)?.[1];
   if (shareCode !== undefined) {
     const page = await shell(request, assets, config);
     if (config.mode === "hosted" || !page.ok || page.body === null) return page;
     const board = database === undefined ? null : await new Store(database).byShareCode(shareCode);
-    return withOpenGraph(page, url, config, board?.title);
+    return withOpenGraph(page, url, config, board ?? undefined);
   }
   const file = harden(await assets.fetch(request), request, config);
   if (file.ok && HASHED.test(url.pathname)) {

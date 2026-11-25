@@ -8,7 +8,7 @@ import {
   TLSyncErrorCloseEventCode,
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
-import { isShape } from "@tldraw/tlschema";
+import { isShape, TLDOCUMENT_ID } from "@tldraw/tlschema";
 import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
@@ -18,6 +18,7 @@ import type { Pass } from "./pass";
 import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
+import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
@@ -411,6 +412,14 @@ export class BoardRoom extends DurableObject<Env> {
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
     return this.admit(pass) ?? this.trackUpload(this.files.store(pass.board, pass.sub, body));
+  }
+
+  backgroundForSharePreview(link: number): BoardColor | null {
+    if (this.retired || link < this.link()) return null;
+    return this.drawing.transaction((store) => {
+      const background = store.get(TLDOCUMENT_ID)?.meta.backgroundColor;
+      return isBoardColor(background) ? background : "default";
+    }).result;
   }
 
   async storeThumbnail(
