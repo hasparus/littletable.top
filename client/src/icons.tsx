@@ -107,3 +107,15 @@ export function Icon({ className = "size-5", name }: { className?: string; name:
     </svg>
   );
 }
+
+export function TableMark({ className }: { className: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="currentColor" viewBox="0 0 120 120">
+      <path
+        d="M76.98 17.71C94.18 19.6 100.4 25.82 102.29 43.02C84.24 43.85 84.24 76.15 102.29 76.98C100.4 94.18 94.18 100.4 76.98 102.29C76.15 84.24 43.85 84.24 43.02 102.29C25.82 100.4 19.6 94.18 17.71 76.98C35.76 76.15 35.76 43.85 17.71 43.02C19.6 25.82 25.82 19.6 43.02 17.71C43.85 35.76 76.15 35.76 76.98 17.71ZM60 51a9 9 0 1 0 0 18 9 9 0 1 0 0-18Z"
+        fillRule="evenodd"
+      />
+      <path d="M47.5 17H72.5C72.5 30 47.5 30 47.5 17ZM103 47.5V72.5C90 72.5 90 47.5 103 47.5ZM72.5 103H47.5C47.5 90 72.5 90 72.5 103ZM17 72.5V47.5C30 47.5 30 72.5 17 72.5Z" />
+    </svg>
+  );
+}
