@@ -1,13 +1,7 @@
-// A die's rounded surface as triangles: its flat faces, a bevel strip along
-// every edge and a spherical patch on every corner, with exact normals. Each
-// flat face maps onto its own cell of the numeral atlas (dice-atlas.ts); the
-// bevels and corners map onto one blank cell.
-
 import { add, cross, dot, length, lerp, normalize, scale, sub, type Vec } from "./dice-math";
 import { type DieKind, pseudoAngle, solid, type Solid } from "./dice-solids";
 
-// A face's cell in the atlas: the face's middle on the rounded die, the
-// numeral's right and up in the face plane, and the cell's width in die units.
+/** Atlas cell centred on the rounded face, with in-plane axes and width in die units. */
 export type Cell = { center: Vec; right: Vec; span: number; up: Vec };
 
 export type Layout = { cells: Cell[]; columns: number; shrink: number };
@@ -19,8 +13,6 @@ export type DieMesh = {
   uvs: Float32Array;
 };
 
-// Steps across a rounded edge; fewer on the ball, whose edges are short and
-// many.
 const BEVEL_SEGMENTS = 6;
 const BALL_BEVEL_SEGMENTS = 2;
 
@@ -40,7 +32,7 @@ export function layoutOf(shape: Solid): Layout {
   return { cells, columns: Math.ceil(Math.sqrt(shape.faces.length + 1)), shrink };
 }
 
-// Where point `p` of face `face` falls in the atlas, in cells from its top left.
+/** Projects a point into atlas cell coordinates measured from the top-left corner. */
 export function cellPoint(layout: Layout, face: number, p: Vec): [number, number] {
   const cell = layout.cells[face]!;
   const d = sub(p, cell.center);

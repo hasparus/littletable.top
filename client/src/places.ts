@@ -2,10 +2,6 @@ import type { BoxLike, Editor, IndexKey, TLPageId, TLShape, TLShapeId } from "tl
 
 import { useCallback, useState } from "react";
 
-// A place is a shape whose meta carries a name, so tldraw sync shares it
-// like any other property, it follows the shape (to another page too: tldraw
-// moves a shape there under its own id), and it goes with the shape or its
-// page.
 const PLACE_KEY = "place";
 export const MAX_PLACE_NAME = 60;
 
@@ -100,7 +96,7 @@ export function useMyPlace(board: string): [TLShapeId | null, (id: TLShapeId | n
         if (id === null) localStorage.removeItem(key);
         else localStorage.setItem(key, id);
       } catch {
-        // NOTE: storage refused; the star still holds for this visit.
+        // WARNING: A browser can block localStorage. Retain the star in memory if the write fails.
       }
     },
     [key],

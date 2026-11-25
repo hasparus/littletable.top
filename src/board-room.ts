@@ -54,7 +54,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
-// Standalone account board IDs are alphanumeric and cannot collide with this room.
+/** Account board IDs are alphanumeric, so they cannot collide with this room name. */
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
@@ -104,9 +104,6 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT)",
     );
     addRollColumns(sql);
-    // Everyone who has been on the board with a picture, so the board shows
-    // those pictures and no others: source is what their pass named,
-    // avatar the hash of the copy (null if it could not be copied).
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
@@ -152,8 +149,7 @@ export class BoardRoom extends DurableObject<Env> {
           return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
         },
       },
-      // NOTE: tldraw leaves the parsed message out of this hook's public
-      // type; it is the object the room then applies.
+      // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
         stampPresence((received as { message?: unknown }).message, received.meta);
       },
@@ -172,8 +168,7 @@ export class BoardRoom extends DurableObject<Env> {
     return row === undefined ? 0 : (row.link as number);
   }
 
-  // A newer pass also moves the room forward if the host has yet to
-  // notify it of the reset.
+  // WARNING: A fresh pass can arrive before the host notifies the room of a link reset.
   private admit(pass: Pass): "link-reset" | null {
     if (this.retired) return "link-reset";
     const current = this.link();
@@ -515,7 +510,7 @@ export class BoardRoom extends DurableObject<Env> {
   async schedulePublicExpiry(): Promise<void> {
     this.namePublicLandingPage();
     if (!this.publicExpiryEnabled) {
-      // Give existing shapes a starting age when this board first adopts expiry.
+      // WARNING: Stamp existing shapes when enabling expiry so drawings without a timestamp can expire.
       const now = Date.now();
       this.drawing.transaction((store) => {
         // WARNING: Materialize these SQLite rows before updating the table they came from.

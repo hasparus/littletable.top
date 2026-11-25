@@ -15,7 +15,7 @@ const SETTLE_MS = 3000;
 const FIRST_RETRY_MS = 5000;
 
 function thumbnailPage(editor: Editor) {
-  // Use the first populated shared page so every editor captures the same content.
+  // WARNING: Choose the first populated shared page so a preview does not depend on which page an editor is viewing.
   for (const page of editor.getPages()) {
     const shapes = editor.getPageShapeIds(page);
     if (shapes.size > 0) return { id: page.id, shapes };
@@ -30,7 +30,7 @@ async function renderThumbnail(editor: Editor, shapes: Set<TLShapeId>): Promise<
     return bounds === undefined ? [] : [bounds];
   });
   if (boxes.length === 0) {
-    // Store a transparent canvas after the last drawing was erased.
+    // WARNING: Publish a transparent canvas when the last drawing is erased so the old preview does not persist.
     const canvas = document.createElement("canvas");
     canvas.width = THUMBNAIL_WIDTH;
     canvas.height = THUMBNAIL_HEIGHT;
@@ -117,7 +117,7 @@ export function keepThumbnail(
         else retryDelay = FIRST_RETRY_MS;
       }
     } catch {
-      // An optional preview must not interrupt the editor or its sync.
+      // WARNING: Preview failures must stay separate from editor sync.
     } finally {
       pending = null;
       schedule();

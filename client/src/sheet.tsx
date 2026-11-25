@@ -3,15 +3,11 @@ import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState 
 import { Icon } from "./icons";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
-// Less than this hidden at the bottom of the screen is a browser's own bar
-// coming and going, not an on-screen keyboard.
+// WARNING: Small visual viewport changes can be browser chrome rather than an on-screen keyboard.
 const KEYBOARD_MIN_PX = 120;
 const GAP_PX = 8;
 
-// An on-screen keyboard covers the bottom of the layout viewport, where the
-// sheets sit, without resizing it (iOS, and Android by default); the visual
-// viewport is what is left above it. While a keyboard is up, the sheet
-// stands on it instead.
+// WARNING: The on-screen keyboard can cover the layout viewport without resizing it. Position the sheet using the visual viewport.
 function useAboveKeyboard(): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties>();
   useEffect(() => {
@@ -72,7 +68,6 @@ export function Sheet({
     };
   }, []);
 
-  // Escape closes the sheet wherever focus is, even on the canvas.
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) open(null);

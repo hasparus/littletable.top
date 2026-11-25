@@ -112,7 +112,6 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
   page,
   request,
 }) => {
-  // A canvas that can't encode WebP returns PNG, as on Safari.
   await page.addInitScript(() => {
     const { toBlob } = HTMLCanvasElement.prototype;
     HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
@@ -181,7 +180,6 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
     });
     await expect(page.getByTestId("page-menu.button")).toHaveText("Notes");
 
-    // Reset the client's cooldown and record the next candidate without waiting five minutes.
     await page.reload();
     await expect(dice).toBeVisible();
     await page.route("**/api/boards/*/thumbnail", (route) => route.fulfill({ status: 204 }));
@@ -220,9 +218,6 @@ test("a pending thumbnail refresh survives a layer switch and retries a failed u
   const saved = await initial;
   expect(saved.status()).toBe(204);
 
-  // Start with an existing thumbnail and a new capture controller. Stub
-  // subsequent PUTs so this test does not need to wait out the server's
-  // five-minute write interval.
   const bootstrap = page.waitForResponse((response) => response.url().endsWith("/bootstrap"));
   await page.reload();
   const admission = await bootstrap;

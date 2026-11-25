@@ -1,6 +1,5 @@
 import type { Language } from "../settings";
 
-// The Polish keeps the board's own words (copy.ts) and stays gender-neutral.
 const EN = {
   actionFailed: "That did not work. Try again.",
   boardName: "Board name",

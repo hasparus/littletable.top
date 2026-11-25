@@ -16,7 +16,6 @@ export function notationLabel(copy: Copy, { groups, modifier }: Notation): strin
   return modifier === null ? pool : `${pool} ${modifierLabel(modifier)}`;
 }
 
-// "2d6 + d20": the pool grouped by die, small to large.
 export function poolLabel(copy: Copy, sides: number[]): string {
   const counts = new Map<number, number>();
   for (const side of sides.toSorted((a, b) => a - b)) counts.set(side, (counts.get(side) ?? 0) + 1);

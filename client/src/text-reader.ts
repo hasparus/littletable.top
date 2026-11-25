@@ -6,8 +6,6 @@ import type { ReadReply, ReadRequest, Size } from "./text-worker";
 export type EngineReading = { engine: EngineName; lines: TextLine[]; ms: number; size: Size };
 export type EngineOutcome = EngineReading | { engine: EngineName; failed: string };
 
-// The first reading also fetches and starts the engine (several
-// megabytes), so it gets longer.
 const FIRST_LIMIT_MS = 120_000;
 const LIMIT_MS = 60_000;
 const IDLE_MS = 60_000;
@@ -40,7 +38,7 @@ export class TextReader {
     this.#idle = setTimeout(() => this.stop(), IDLE_MS);
   }
 
-  // Reads one image with each engine in turn, reporting each as it ends.
+  /** Reads one image with each engine in turn, reporting each as it ends. */
   read(
     bytes: ArrayBuffer,
     engines: EngineName[],

@@ -31,8 +31,7 @@ export function rememberExistingArrows(editor: Editor): void {
   );
 }
 
-// Keep the snapshot current through the same binding events that tldraw uses
-// to recompute arrow geometry, including changes to ancestors.
+/** Keeps public arrow endpoint snapshots current on tldraw binding events, including changes to ancestors. */
 export class PublicArrowBindingUtil extends ArrowBindingUtil {
   override onAfterCreate(options: Parameters<ArrowBindingUtil["onAfterCreate"]>[0]): void {
     super.onAfterCreate(options);

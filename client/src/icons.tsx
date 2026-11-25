@@ -1,4 +1,3 @@
-// Heroicons 20/solid ("mini"), plus Little Table’s own marks.
 const paths = {
   ArrowUpRight: (
     <path d="M5.75 4.5a.75.75 0 0 0 0 1.5h7.19l-8.22 8.22a.75.75 0 1 0 1.06 1.06L14 7.06v7.19a.75.75 0 0 0 1.5 0v-9a.75.75 0 0 0-.75-.75h-9Z" />
@@ -103,6 +102,7 @@ const paths = {
 
 export type IconName = keyof typeof paths;
 
+/** Heroicons 20/solid (mini), alongside Little Table’s own marks. */
 export function Icon({ className = "size-5", name }: { className?: string; name: IconName }) {
   return (
     <svg aria-hidden="true" className={className} fill="currentColor" viewBox="0 0 20 20">

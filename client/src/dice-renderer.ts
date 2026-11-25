@@ -1,22 +1,13 @@
-// A die's shadow is its corners' projected convex hull, grown by its rounding.
-// A higher corner casts a wider, paler penumbra. Output is transparent with
-// premultiplied alpha so the board shows through.
-//
-// Shader math does not affect the deterministic simulation in dice-physics.ts.
-
 import type { DieMesh } from "./dice-mesh";
 
 import { add, type Quat, rotate, scale, type Vec } from "./dice-math";
 import { TRAY_DEPTH, TRAY_WIDTH } from "./dice-physics";
 
-// "low": one device pixel per CSS pixel, no clearcoat.
+/** Low quality uses one device pixel per CSS pixel and disables the clearcoat. */
 export type Tier = "full" | "low";
 export type Rgb = [number, number, number];
 export type Look = { body: Rgb; ink: Rgb };
-// `core` and `rounding`: the die is its core's corners swept by a ball.
-// `coat`: its share of the clearcoat. `smooth`: how far its faces are lit
-// as the sphere around them, which keeps one of a ball's many small faces
-// from outshining the rest.
+/** The core and rounding define the solid. Smooth controls lighting toward the enclosing sphere. */
 export type Model = {
   atlas: HTMLCanvasElement;
   coat: number;
@@ -25,7 +16,7 @@ export type Model = {
   rounding: number;
   smooth: number;
 };
-// `size`: the die as a share of its model.
+/** A die in model units scaled by size. */
 export type Pose = {
   dimmed: number;
   model: Model;
@@ -40,28 +31,18 @@ export type Renderer = {
   tier: Tier;
 };
 
-// Room around the tray for the parts of a die that overhang its footprint.
 const MARGIN = 0.4;
-// tan(12°): a 24° lens, long enough that dice at the edges barely lean.
 const TAN_HALF_FOV = 0.2126;
 const CAMERA_TILT = 0.12;
 const MAX_PIXEL_RATIO = 2;
-// 64° up, from the far left.
 const LIGHT: Vec = [-0.269, 0.8988, -0.3458];
-// Shadow colours where a die touches the floor, not premultiplied: ink on a
-// light board, black on a dark one.
 const SHADOW_TINT = { dark: [0, 0, 0, 0.85], light: [0.07, 0.08, 0.17, 0.5] } as const;
-// Penumbra width in floor units: at the floor, and more per unit of height.
 const PENUMBRA = { atFloor: 0.05, perHeight: 0.22 };
-// How quickly a shadow pales with the height of the corner that casts it
-// above the die's lowest point, and with the height of the die off the floor.
 const PALING = { lifted: 0.35, within: 0.5 };
 
 const MATERIAL = { bump: 1.3, coat: 0.8, coatRoughness: 0.12, roughness: 0.42 };
 
-// The tray's rectangle in a host of `width` by `height` CSS pixels: as large
-// as fits with its aspect kept, centred. Every screen shows the whole tray,
-// so a die lands on the same spot of it everywhere.
+/** Fits the entire tray into the host in CSS pixels and preserves the tray aspect ratio. */
 export function trayRect(width: number, height: number) {
   const across = TRAY_WIDTH + 2 * MARGIN;
   const down = TRAY_DEPTH + 2 * MARGIN;
@@ -144,9 +125,6 @@ void main() {
   frag = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
 }`;
 
-// The shadows of all dice as one mesh on the floor: x, z, how far through the
-// fade from full shade (0) to none (1) the vertex is, and the shadow's
-// strength there.
 const SHADE_VS = `#version 300 es
 in vec4 aPos; uniform mat4 uViewProj;
 out vec2 vShade;
@@ -165,14 +143,11 @@ type Uploaded = { atlas: WebGLTexture; count: number; die: WebGLVertexArrayObjec
 type Point = [number, number];
 type ScreenPoint = { x: number; y: number };
 
-// The key light on the floor: the way shadows fall, how far per unit of
-// height, and the sine of its elevation.
 const SUN = (() => {
   const flat = Math.hypot(LIGHT[0], LIGHT[2]);
   return { lean: flat / LIGHT[1], squash: LIGHT[1], x: -LIGHT[0] / flat, z: -LIGHT[2] / flat };
 })();
 
-// The convex outline of `spots`, counter-clockwise (a monotone chain).
 function hullOf<T extends ScreenPoint>(spots: T[]): T[] {
   const sorted = spots.toSorted((a, b) => a.x - b.x || a.y - b.y);
   const chain = (list: T[]) => {
@@ -192,7 +167,6 @@ function hullOf<T extends ScreenPoint>(spots: T[]): T[] {
   return [...chain(sorted), ...chain(sorted.toReversed())];
 }
 
-// Per edge of `outline`, its outward normal.
 const normalsOf = (outline: ScreenPoint[]) =>
   outline.map(({ x, y }, index): Point => {
     const next = outline[(index + 1) % outline.length]!;
@@ -200,7 +174,6 @@ const normalsOf = (outline: ScreenPoint[]) =>
     return [(next.y - y) / reach, (x - next.x) / reach];
   });
 
-// `outline` pushed out by `offset(spot)`, each corner as three points of its arc.
 function grown<T extends ScreenPoint>(
   outline: T[],
   normals: Point[],
@@ -251,16 +224,11 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
 const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
 export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
 
-// A camera above the tray, tilted a little toward the viewer, as one
-// column-major view-projection matrix. `across` and `down` are the shares of
-// the canvas the tray's rectangle takes, so the whole canvas is drawn on and
-// a die in flight is not cut off at the tray's edge.
 function camera(width: number, height: number) {
   const tray = trayRect(width, height);
   const eye = EYE;
   const size = Math.hypot(...eye);
   const forward: Vec = [0, -eye[1] / size, -eye[2] / size];
-  // With "up" along -z: right is +x, and the camera's own up follows.
   const up: Vec = [0, -forward[2], forward[1]];
   const near = 1;
   const far = 200;
@@ -268,7 +236,6 @@ function camera(width: number, height: number) {
   const sy = tray.height / (height * TAN_HALF_FOV);
   const depth = (far + near) / (near - far);
   const along = (axis: Vec) => -(axis[1] * eye[1] + axis[2] * eye[2]);
-  // Rows of the view matrix: right (1 0 0), up, -forward; then the projection.
   const viewProj = new Float32Array([
     sx,
     0,
@@ -290,9 +257,7 @@ function camera(width: number, height: number) {
   return { eye, viewProj };
 }
 
-// The same projection drives the canvas and the interactive silhouette of
-// each die. Projecting the rounded outline leaves the board usable between
-// dice, even when there are several in the tray.
+/** Shares the renderer projection for hit testing and keeps the board interactive between dice. */
 export function diceScreen(width: number, height: number) {
   const { viewProj: m } = camera(width, height);
   const project = ([x, y, z]: Vec): ScreenPoint => {
@@ -323,8 +288,6 @@ export function diceScreen(width: number, height: number) {
   };
 }
 
-// Software rendering, or a device that reports little memory or few cores,
-// gets the low tier: the same throw, drawn more cheaply.
 function contextOf(canvas: HTMLCanvasElement, forced: Tier | null) {
   const attributes: WebGLContextAttributes = {
     alpha: true,
@@ -351,7 +314,6 @@ export function createRenderer(
   const { gl, tier } = contextOf(canvas, forced);
   const full = tier === "full";
   const uploaded = new Map<Model, Uploaded>();
-  // The shades' vertices, four numbers each; it grows to hold a throw.
   let shades = new Float32Array(1 << 14);
   let shadesUsed = 0;
   let lost = false;
@@ -413,10 +375,6 @@ export function createRenderer(
   canvas.addEventListener("webglcontextlost", onLost);
   canvas.addEventListener("webglcontextrestored", onRestore);
 
-  // Adds rings of points as triangles: ring 0 to ring 1, ring 1 to ring 2.
-  // `place` turns a ring's point into a floor point; `fades[r]` is how far
-  // through the fade ring r is, `strengths[r][i]` the shadow's strength at
-  // its point i.
   const band = (
     rings: Point[][],
     fades: number[],
@@ -452,10 +410,6 @@ export function createRenderer(
       }
   };
 
-  // One die's cast shadow, built in the sun's space: the floor turned so
-  // that x runs away from the light and squashed along it by the sine of the
-  // light's elevation, which makes the shadow of the die's rounding a circle
-  // again. From its middle to its outline, then out through half the penumbra.
   const cast = (corners: Vec[], rounding: number, bottom: number) => {
     const outline = hullOf(
       corners.map(([x, y, z]) => ({
@@ -546,8 +500,6 @@ export function createRenderer(
     }
     gl.disable(gl.CULL_FACE);
 
-    // NOTE: after the dice and behind them in depth, so the floor under a die
-    // costs no shading.
     gl.depthMask(false);
     gl.enable(gl.BLEND);
     const [red, green, blue, alpha] = dark ? SHADOW_TINT.dark : SHADOW_TINT.light;
@@ -568,8 +520,6 @@ export function createRenderer(
     gl.bufferData(gl.ARRAY_BUFFER, shades, gl.DYNAMIC_DRAW, 0, shadesUsed);
     gl.uniformMatrix4fv(gpu.shade.uniform("uViewProj"), false, viewProj);
     gl.uniform4f(gpu.shade.uniform("uTint"), red * alpha, green * alpha, blue * alpha, alpha);
-    // NOTE: one light, so where two shadows overlap the floor is no darker
-    // than under one.
     gl.blendEquation(gl.MAX);
     gl.drawArrays(gl.TRIANGLES, 0, shadesUsed / 4);
     gl.blendEquation(gl.FUNC_ADD);

@@ -1,7 +1,3 @@
-// The colour a person has on a board, on their cursor and around their
-// avatar. Apart from tldraw, so the front page can use it without loading it.
-
-// tldraw's cursor colours, picked by person so a colour stays with them.
 const COLORS = [
   "#ff802b",
   "#ec5e41",
@@ -17,6 +13,7 @@ const COLORS = [
   "#55b467",
 ];
 
+/** A stable tldraw cursor colour by person ID, also used by the front page without importing tldraw. */
 export function colorFor(id: string): string {
   let hash = 0;
   for (const char of id) hash = (hash * 31 + char.codePointAt(0)!) % 2_147_483_647;

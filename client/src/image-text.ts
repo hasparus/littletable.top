@@ -17,28 +17,13 @@ import { imageHash } from "./search-board";
 import { TextReader } from "./text-reader";
 import { PARAMS, savingData } from "./text-support";
 
-// Text in the board's images, in this browser (docs/internals.md, "Text in images").
-// It loads what has been read off the board's images already, follows the
-// room's notices as more is read, and, when this person is not busy and
-// the tab is in view, takes one image nobody has read yet with the
-// engines this device can run, under a lease the board's Durable Object
-// keeps so that two browsers do not read the same image. The uploader's
-// browser takes its own images first, right away.
-
 const KEY_OF: Record<EngineName, EngineKey> = {
   ppocr: "ppocr-v6tiny.1",
   tesseract: "tesseract-6.0.1",
 };
 
-// How long the board must have been left alone before a browser that did
-// not upload an image starts reading it, and how often a lease is renewed
-// (the room keeps one 30 s past its last renewal).
 const IDLE_MS = 4000;
 const RENEW_MS = 10_000;
-// A browser asks for an image when the room's notices or a new image say
-// there may be one. Only a lease that ran out goes unannounced: while
-// someone else reads, it asks again once their lease could have lapsed.
-// The slow fallback covers notices missed on a dropped socket.
 const TAKEOVER_MS = 32_000;
 const FALLBACK_MS = 5 * 60_000;
 const SETTLE_MS = 500;
@@ -75,7 +60,6 @@ export class ImageText {
   readonly #listing: Listing = { failed: new Set(), reading: new Set(), stored: new Set() };
   readonly #results = new Map<string, Map<EngineKey, TextResult>>();
   readonly #fetching = new Set<Pair>();
-  // Images this person uploaded, read first and whatever the connection.
   readonly #own = new Set<string>();
   #images = new Set<string>();
   #reading: string | null = null;
@@ -139,8 +123,6 @@ export class ImageText {
     this.#reader.stop();
   }
 
-  // The board's images that can carry text, by the SHA-256 of their bytes:
-  // those an image shape on any page shows now.
   #boardImages(): Set<string> {
     const hashes = new Set<string>();
     for (const record of this.#editor.store.allRecords()) {
@@ -174,8 +156,6 @@ export class ImageText {
     });
   }
 
-  // What the room has read and is reading, for when a notice was missed
-  // (a socket that dropped, a lease that ran out).
   async #refresh(thenRead = true): Promise<void> {
     try {
       const response = await this.#request("/text");
@@ -218,8 +198,7 @@ export class ImageText {
     this.#count();
   }
 
-  // A notice from the room (docs/internals.md, "Text in images"): a reading under
-  // way, given up or stored.
+  /** Updates the local OCR listing when the room starts, releases, or stores a reading. */
   receive(message: unknown): void {
     if (!isNotice(message)) return;
     for (const { engine, hash } of message.readings) {

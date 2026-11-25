@@ -7,7 +7,6 @@ import { COPY, fill } from "./copy";
 import { FRONT_COPY, LANDING_COPY } from "./front-copy";
 import { landingPreview } from "./landing-preview";
 
-// NOTE: the build writes it (vite.config.ts, client/settings.ts).
 declare const __TABLETOP__: ClientSettings;
 const settings = __TABLETOP__;
 
@@ -24,7 +23,7 @@ function pickLanguage(): Language {
     try {
       sessionStorage.setItem(LANGUAGE_KEY, asked);
     } catch {
-      // NOTE: storage can be off; the language then holds for this load only.
+      // WARNING: When sessionStorage is unavailable, the language query applies to this load only.
     }
     return asked;
   }
@@ -47,8 +46,7 @@ const preferredLanguage = pickLanguage();
 const language = isPublic ? "en" : preferredLanguage;
 const copy = COPY[language];
 document.documentElement.lang = language;
-// NOTE: a host keeps a chosen theme in its own origin's storage, out of
-// reach here; the board follows the device.
+// WARNING: The board cannot read the host’s storage across origins. Use the device theme instead.
 if (matchMedia("(prefers-color-scheme: dark)").matches) {
   document.documentElement.classList.add("dark");
 }
@@ -62,8 +60,6 @@ async function mount(): Promise<void> {
   }
   const landing = isPublic ? { copy: LANDING_COPY } : undefined;
   const shareCode = encodeURIComponent(location.pathname.split("/")[2] ?? "");
-  // Hosted, the host signs passes across origins with its own cookie;
-  // standalone, this Worker does, on its own origin.
   const door: Door =
     settings.hosted === null
       ? {
@@ -79,11 +75,9 @@ async function mount(): Promise<void> {
       ? { href: "/", label: fill(copy.backTo, { home: settings.name }) }
       : { href: settings.hosted.exitUrl, label: copy.backToMain };
 
-  // The bootstrap request and tldraw's download run side by side: on a
-  // phone the canvas then opens one round trip sooner.
+  // WARNING: Keep the bootstrap request and editor download concurrent to avoid delaying the canvas.
   const first = knock(door);
   if (landing) {
-    // Reveal the intro with the same face throughout, even on a slow first visit.
     const classes = document.documentElement.classList;
     const reveal = () => classes.remove("loading-handwriting");
     classes.add("loading-handwriting");

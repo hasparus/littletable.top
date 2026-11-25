@@ -1,17 +1,8 @@
-// The text read off an image, as browsers upload it and the Worker keeps
-// it (docs/internals.md, "Text in images"): one JSON object per image and engine,
-// format "ocr/1", in the source image's pixels, lines in reading order.
-// The Worker validates every result here before it stores one (it is text
-// from a client) and the client normalises its own the same way, so both
-// hold the same words.
-
 import { MAX_TEXT_RESULT_BYTES, MAX_TEXT_WORDS, MAX_WORD_LENGTH } from "./limits";
 
 export const TEXT_FORMAT = "ocr/1";
 
-// Every engine a browser may store a reading of, by the key its results
-// are stored under: name, then version. A better engine, or this one with
-// other models or parameters, is a new key, read alongside the old.
+/** Changing OCR models or parameters requires a new engine key, leaving stored readings addressable. */
 export const TEXT_ENGINES = {
   "ppocr-v6tiny.1": {
     model: "PP-OCRv6_tiny_det+PP-OCRv6_tiny_rec",

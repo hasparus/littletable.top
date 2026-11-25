@@ -26,7 +26,6 @@ export default defineConfig({
   outputDir: "test-results",
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // Safari differs on image OCR and canvas encoders, so run both flows in WebKit.
     {
       grep: /found by others|a thumbnail shows a remote drawing/u,
       name: "webkit",
@@ -60,7 +59,7 @@ export default defineConfig({
       env: { ...env, TABLETOP_HOST_ORIGIN: HOST },
       reuseExistingServer: !isCI,
       timeout: 120_000,
-      // A room without a pass answers 403, which counts as up.
+      // WARNING: The readiness URL is unauthenticated. Playwright accepts its 403 response as ready.
       url: `${HOSTED}/rooms/e2e/rolls`,
     },
     {

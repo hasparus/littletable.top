@@ -70,6 +70,7 @@ function ReadyBoard({
   }, []);
   const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
   useEffect(() => () => view?.store.dispose(), [view]);
+  // WARNING: Keep the hidden editor mounted so its connection can finish sending pending edits.
   return (
     <div data-board-layout>
       <BoardCanvas
@@ -82,7 +83,6 @@ function ReadyBoard({
         licenseKey={licenseKey}
         onEditor={canEnterSecret ? setShared : undefined}
       />
-      {/* NOTE: the room's connection keeps sending pending edits when its editor is out of view. */}
       {secret !== undefined && (
         <BoardCanvas
           active={editingSecret}
@@ -169,7 +169,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
   }, [first, settle]);
 
   switch (stage.kind) {
-    // NOTE: a reload cannot help either ending: the old link opens nothing.
+    // WARNING: Reloading a deleted board or a reset guest link cannot restore access.
     case "ended":
       return (
         <Notice

@@ -1,6 +1,5 @@
 import { MediaHelpers } from "tldraw";
 
-// The Worker stores files up to 10 MiB (src/limits.ts MAX_FILE_BYTES).
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /**
@@ -11,13 +10,10 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
  */
 export const MAX_IMAGE_SIDE = 4096;
 
-// High enough that pencil marks and small print on a photographed sheet
-// stay sharp; a 12 MP photo lands around 2-4 MB.
 const JPEG_QUALITY = 0.9;
 const LOWER_QUALITIES = [0.8, 0.7];
 
-// Only still raster images are redrawn: an animated GIF, WebP or PNG would
-// lose its frames, and an SVG is already as small as it gets.
+// WARNING: Resizing animated images on a canvas loses their animation frames.
 const REDRAWN = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 type Surface = {
@@ -92,8 +88,7 @@ export async function fitForUpload(
     const longest = Math.max(bitmap.width, bitmap.height);
     let scale = Math.min(1, maxSide / longest);
     if (scale === 1 && file.size <= MAX_IMAGE_BYTES) return file;
-    // A JPEG has no transparency to keep; anything else tries to keep it
-    // first and becomes a JPEG only if that is still too heavy.
+    // WARNING: Converting to JPEG discards transparency. Use it only if an alpha-preserving result does not fit.
     for (let tries = 0; tries < 4; tries++) {
       for (const opaque of file.type === "image/jpeg" ? [true] : [false, true]) {
         const encoded = await redraw(bitmap, { opaque, scale });

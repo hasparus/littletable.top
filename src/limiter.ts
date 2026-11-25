@@ -1,7 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-// A fixed-window counter, one object per hashed client address: no address
-// is stored in the clear, and each object forgets a window once it passes.
+/** Counts requests in a fixed window per hashed client address without storing raw addresses. */
 export class Limiter extends DurableObject {
   private windows = new Map<string, { count: number; window: number }>();
 

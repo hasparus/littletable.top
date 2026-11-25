@@ -12,9 +12,11 @@ import { fileURLToPath } from "node:url";
 
 import { buildClient } from "./build-client.js";
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 const pem = (/** @type {string} */ value) => value.replaceAll(String.raw`\n`, "\n");
 
 // WARNING: Trusting the committed development key lets anyone mint passes for this deployment.
@@ -22,6 +24,7 @@ const devPublicKey = createPublicKey(
   readFileSync(packageFile("dev/dev-signing-key.pem"), "utf8"),
 ).export({ format: "der", type: "spki" });
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {import("node:crypto").KeyObject} key @param {string} name */
 function refuseDevKey(key, name) {
   const publicKey = key.type === "public" ? key : createPublicKey(key);
@@ -37,9 +40,11 @@ const observability = {
   logs: { enabled: true, invocationLogs: false },
 };
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {string | Redacted.Redacted<string>} value */
 const secret = (value) => (Redacted.isRedacted(value) ? value : Redacted.make(value));
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {string | Redacted.Redacted<string>} value */
 function signingSecret(value) {
   const key = secret(value);
@@ -47,6 +52,7 @@ function signingSecret(value) {
   return key;
 }
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /**
  * @param {import("./index.js").TabletopProps} props
  * @returns {{ client: import("../client/settings.ts").ClientSettings, env: Record<string, unknown> }}
@@ -126,7 +132,9 @@ export const Tabletop = (id, props) =>
     const sourceFile =
       prebuilt === undefined
         ? packageFile
-        : (/** @type {string} */ path) => resolve(prebuilt, path);
+        : // oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
+          (/** @type {string} */ path) => resolve(prebuilt, path);
+    // oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
     /** @type {{ compatibility_date: string }} */
     const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);

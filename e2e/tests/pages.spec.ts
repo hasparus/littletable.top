@@ -30,7 +30,7 @@ const pageButton = (page: Page) => page.getByTestId("page-menu.button");
 
 const onPhone = (page: Page) => (page.viewportSize()?.width ?? 0) < 600;
 
-// A phone is touched, so tldraw takes its pointer as coarse, as it would.
+// WARNING: Use touch on mobile so tldraw sees a coarse pointer.
 const press = async (page: Page, target: Locator) =>
   onPhone(page) ? target.tap() : target.click();
 
@@ -74,8 +74,7 @@ async function pageItemAction(page: Page, name: string, action: string): Promise
   await choose(page, action);
 }
 
-// tldraw asks a phone for a name with the browser's own prompt, and a
-// desktop in place.
+// WARNING: tldraw prompts for the name on phones instead of opening the desktop inline field.
 async function renamePage(page: Page, { from, to }: { from: string; to: string }) {
   const phone = onPhone(page);
   if (phone) page.once("dialog", (dialog) => void dialog.accept(to));
@@ -260,7 +259,6 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await desk.close();
 });
 
-// table.tldr (three pages) with `extra` more empty pages after its own.
 function withExtraPages(extra: number): Buffer {
   const file = JSON.parse(readFileSync(fixture("table.tldr"), "utf8")) as { records: object[] };
   const digits = "456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -315,8 +313,6 @@ test("a .tldr's pages join the page menu and the places list, up to the page cap
     "Notes",
   ]);
 
-  // 4 pages + 37 would pass tldraw's 40: the whole file is refused, and no
-  // image of it is uploaded.
   const uploads: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().endsWith("/files"))

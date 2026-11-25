@@ -42,7 +42,7 @@ test("phone chat follows the latest message across keyboard resizes while at the
     await log.evaluate((element) => {
       element.scrollTop = 80;
     });
-    // Deliver the scroll event before resizing the viewport.
+    // WARNING: Let the scroll event update follow mode before resizing the viewport.
     await log.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );

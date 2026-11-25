@@ -35,9 +35,6 @@ export const SEARCH_FIELD_ID = "board-search-field";
 const RESULTS_ID = "board-search-results";
 const optionId = (index: number) => `board-search-hit-${index}`;
 
-// How each source shows: an icon always; a word for screen readers where
-// the icon carries meaning (a place), and a visible one where the result
-// would otherwise read like the board's own text (a line in an image).
 const SOURCES: Record<SearchKind, { icon: IconName; label: keyof Copy | null; seen: boolean }> = {
   native: { icon: "Text", label: null, seen: false },
   ocr: { icon: "Photo", label: "searchInImage", seen: true },
@@ -183,8 +180,7 @@ function Results({
         const label = source.label === null ? null : copy[source.label];
         const page = pages?.get(hit.doc.page);
         return (
-          // NOTE: the field keeps focus and moves through the options
-          // (aria-activedescendant); a tap or click chooses one directly.
+          // WARNING: Keep focus in the combobox input so aria-activedescendant can announce the active option.
           <li
             aria-selected={index === active}
             className={`relative flex min-h-12 cursor-pointer items-center rounded-xl py-2 aria-selected:bg-bg-tertiary ${SEARCH_TEXT_PADDING}`}
@@ -228,8 +224,6 @@ function Results({
 
 const finePointer = () => globalThis.matchMedia("(pointer: fine)").matches;
 
-// With nothing typed, the sheet lists places in board order. Typing searches
-// across pages. Choosing a result jumps to it and flashes it locally.
 export function SearchSheet() {
   const {
     board,
@@ -244,15 +238,11 @@ export function SearchSheet() {
     setNaming,
     typing,
   } = useBoardUi();
-  // NOTE: only while something on the board is being read: why a map
-  // uploaded a moment ago is not found yet.
   const reading = useValue("images being read", () => imageText?.pending.get() ?? 0, [imageText]);
   const [mine, setMine] = useMyPlace(board);
   const places = useValue("board places", () => (editor === null ? [] : placesOn(editor)), [
     editor,
   ]);
-  // Exactly one shape that is not a place yet can become one from here, so
-  // the action is in reach on a phone, where right-click is a long press.
   const candidate = useValue(
     "place candidate",
     () => {
@@ -287,7 +277,6 @@ export function SearchSheet() {
     if (found === null) return;
     const { hidden, polygon } = found;
     const page = editor.getAncestorPageId(hit.doc.shape) ?? hit.doc.page;
-    // NOTE: blurring first puts a phone's keyboard away before the board moves.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     open(null);
     goToBounds(editor, page, boundsOf(polygon));

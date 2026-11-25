@@ -1,10 +1,3 @@
-// Text read off a board's images, kept in the board's Durable Object
-// beside its images (docs/internals.md, "Text in images"): which images have a
-// reading by which engine, who is reading which image now (a short
-// lease, so two browsers do not read the same one), and which readings
-// failed too often to hand out again. The results themselves are objects
-// in R2 next to their image.
-
 import { fileKey, textKey } from "./file-store";
 import { imageDimensions, type Shown, SIZE_PREFIX_BYTES } from "./image-size";
 import {
@@ -19,7 +12,7 @@ import { type EngineKey, isEngineKey, validateTextResult } from "./text-result";
 export type Reading = { engine: EngineKey; hash: string };
 
 export type TextListing = {
-  // Given up on: failed MAX_TEXT_FAILURES times.
+  /** Images and engines that have reached MAX_TEXT_FAILURES. */
   failed: Reading[];
   reading: Reading[];
   stored: Reading[];
@@ -35,7 +28,6 @@ export type StoredText = { body: string; duplicate: boolean; words: number };
 
 const MINUTE_MS = 60_000;
 const HASH = /^[0-9a-f]{64}$/u;
-// The most images one claim may name: more than a board shows at once.
 const MAX_CANDIDATES = 2000;
 
 type Lease = Reading & { lease: string; sub: string; until: number };
@@ -54,8 +46,7 @@ export function parseClaim(body: unknown): ClaimRequest | null {
 }
 
 class Allowance {
-  // NOTE: in memory, as the uploads' own: an evicted board forgets it,
-  // which only lets one more minute's worth through.
+  // WARNING: Eviction clears this in-memory allowance, so it can let one extra window through.
   private readonly recent = new Map<string, number[]>();
 
   constructor(private readonly perMinute: number) {}
@@ -179,8 +170,6 @@ export class TextLedger {
     return held.map(({ engine, hash }) => ({ engine, hash }));
   }
 
-  // The image's size as it shows, from its header in R2, read once and
-  // remembered.
   private async dimensions(board: string, hash: string): Promise<Shown | null> {
     const [row] = this.sql
       .exec("SELECT width, height, type, upright FROM files WHERE hash = ?", hash)
@@ -214,9 +203,7 @@ export class TextLedger {
     return { body: (await object?.text()) ?? "", duplicate: true, words: row!.words as number };
   }
 
-  // Validates and keeps one image's reading by one engine. The first
-  // valid one wins; another for the same image and engine is answered
-  // with the one kept.
+  /** Stores the first valid result per image and engine, returning that result to later writers. */
   async store(
     { board, engine, hash, sub }: { board: string; engine: EngineKey; hash: string; sub: string },
     raw: ArrayBuffer,

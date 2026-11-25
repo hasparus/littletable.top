@@ -115,7 +115,6 @@ for (const [name, device] of SCREENS) {
     const { height, width } = page.viewportSize()!;
     await expect(watermark(page)).toBeVisible();
     const mark = (await watermark(page).boundingBox())!;
-    // Bottom right, inside the screen but for the tab's 2px tuck on a phone.
     expect(mark.x + mark.width).toBeGreaterThan(width - 16);
     expect(mark.x).toBeLessThan(width);
     expect(mark.y + mark.height).toBeLessThanOrEqual(height);

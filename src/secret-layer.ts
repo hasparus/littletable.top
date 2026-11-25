@@ -1,3 +1,3 @@
-// A slash keeps the private room's storage name outside the shared room ID space.
+/** The slash keeps private room names outside the shared board ID space. */
 export const secretLayerOf = (board: string) => `${board}/secret`;
 export const isSecretLayer = (room: string) => room.endsWith("/secret");

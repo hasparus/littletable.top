@@ -27,7 +27,6 @@ const basis = (dir: Vec, ring: Vec): [Vec, Vec, Vec] => {
   return [n, w, cross(n, w)];
 };
 
-// The point p under the rotation that takes frame `from` onto frame `to`.
 const carry = (to: [Vec, Vec, Vec], from: [Vec, Vec, Vec], p: Vec): Vec => {
   const c = [dot(from[0], p), dot(from[1], p), dot(from[2], p)] as const;
   return [0, 1, 2].map(
@@ -45,11 +44,7 @@ function landedFeature(shape: Solid, rotation: Quat): Feature {
   return best;
 }
 
-// A rotation of the solid onto itself, applied to the mesh alone, that puts
-// the face showing `value` where the landed face is. The silhouette does not
-// change, so the recorded throw stays true. All the numerals keep their
-// orientation on the mesh. A ball can use the shortest rotation to put
-// its result on top because it has no silhouette to preserve.
+/** Rotates the mesh onto itself to show the value without changing the recorded trajectory. */
 export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
   const shape = solid(kind);
   if (shape.ball) {
@@ -88,8 +83,7 @@ export function numbering(kind: DieKind, rotation: Quat, value: number): Quat {
 
 export type Planned = { bodies: ThrownDie[]; numbering: Quat[]; thrown: Throw };
 
-// The d100 is spherical. A fixed camera correction keeps its result at the
-// centre of its projection without changing which numerals are on each face.
+/** Corrects the d100 orientation so the result is centred in its camera projection. */
 export function cameraFacingOf({ bodies, thrown }: Planned, eye: Vec): (Quat | null)[] {
   return bodies.map((body, index) => {
     if (!solid(body.kind).ball) return null;
@@ -106,7 +100,7 @@ export function finalRotation(thrown: Throw, index: number): Quat {
   return [frames[last]!, frames[last + 1]!, frames[last + 2]!, frames[last + 3]!];
 }
 
-// Call `advance` until it reports done, then read `planned`.
+/** Call advance to completion before reading planned. */
 export function throwDice(
   dice: Die[],
   seed: number,

@@ -3,14 +3,8 @@ import type { Point } from "./search-index";
 
 import { fold } from "./search-text";
 
-// OCR can mistake map symbols and hatching for words. A tentative Tesseract
-// match needs support from its line or PP-OCR. Keep distinct readings from
-// both engines so a correct match survives a misread in the other.
-
 export const MIN_CONFIDENCE = 0.5;
 export const SURE = 0.8;
-// The width of one letter against the height of the line, outside which
-// a box is not text.
 const LETTER_ASPECT = { max: 3, min: 0.12 };
 
 export type ReadWord = { region: Point[]; text: string };
@@ -19,10 +13,7 @@ export type ReadLine = { engine: EngineName; region: Point[]; text: string; word
 type Candidate = TextWord & { engine: EngineName; line: number };
 
 const LETTERS = /[\p{L}\p{N}]/gu;
-// PP-OCR's dictionary is mostly Chinese; on a board of Latin text a Han
-// character is a drawing misread.
 const FOREIGN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-// What trees, towns and dots on a map read as.
 const RINGS = /^[0oO8°Qº]+$/u;
 const LONE_SURE = 0.9;
 
@@ -42,7 +33,6 @@ const cornersOf = (word: Pick<TextWord, "b" | "q">): Point[] => {
 
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
-// How long the word runs and how tall its letters are, in its own frame.
 function extent(word: TextWord): { across: number; along: number } {
   const [tl, tr, , bl] = cornersOf(word);
   return { across: distance(tl!, bl!), along: distance(tl!, tr!) };
@@ -50,7 +40,7 @@ function extent(word: TextWord): { across: number; along: number } {
 
 const area = ([x0, y0, x1, y1]: Box) => Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
 
-// The share of the smaller box that the two boxes have in common.
+/** Intersection area as a share of the smaller box. */
 export function overlap(a: Box, b: Box): number {
   const x = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
   const y = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
@@ -84,8 +74,6 @@ function backed(word: Candidate, line: Candidate[], others: Candidate[]): boolea
   return line.filter((other) => other !== word && other.c >= SURE).length >= 2;
 }
 
-// A word alone on its line, of a few symbols: a room number on a plan,
-// or a mountain or a tree.
 function loneAndShort(word: Candidate, line: Candidate[]): boolean {
   if (line.length > 1) return false;
   const symbols = [...word.t];
@@ -122,10 +110,9 @@ function lineRegion(words: TextWord[], source: TextLine): Point[] {
   });
 }
 
-// Tesseract wins duplicate matches because it preserves diacritics better.
 const ORDER: Record<EngineName, number> = { ppocr: 1, tesseract: 0 };
 
-// Results are independent of which engine finishes first.
+/** Indexable lines in a stable order, regardless of which engine finishes first. */
 export function linesToIndex(readings: readonly TextResult[]): ReadLine[] {
   const sorted = readings.toSorted((a, b) => ORDER[a.engine.name] - ORDER[b.engine.name]);
   const byReading = sorted.map((reading) => ({ lines: candidates(reading), reading }));

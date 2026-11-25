@@ -32,7 +32,6 @@ const MAP = "text/map_pl.jpg";
 const SHEET = "text/sheet_pl_scan.jpg";
 const MAP_HASH = sha256(readFileSync(fixture(MAP)));
 const truth = JSON.parse(readFileSync(fixture("text/map_pl.gt.json"), "utf8")) as Truth;
-// Long enough for a cold start: both engines' files, then both images.
 const READ_MS = 150_000;
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -113,8 +112,6 @@ const trackFrames = (page: Page) =>
 const worstFrame = (page: Page) =>
   page.evaluate(() => (globalThis as unknown as { __frames: { worst: number } }).__frames.worst);
 
-// Where the flash is on screen, and where the ground truth puts a word of
-// the map's image as the board shows it now (unrotated, uncropped).
 async function flashAndTruth(page: Page, word: string) {
   const flash = page.getByRole("img", { name: /^Found: /u });
   const points = await flash.evaluate((svg) => {
@@ -319,9 +316,6 @@ const mapShape = (page: Page) =>
     return { id: shape.id, props: shape.props, rotation: shape.rotation };
   }, MAP_HASH);
 
-// Turns, resizes and crops the map at once: `crop` is the part of the
-// image as displayed that stays, the uncropped image is `scale` of its
-// source size.
 const cropMap = (
   page: Page,
   change: { crop: [number, number, number, number]; rotation: number; scale: number },
@@ -350,10 +344,7 @@ const cropMap = (
     { change, hash: MAP_HASH, size: { h: truth.height, w: truth.width } },
   );
 
-// Where pixels of the map's source land on screen, as the browser draws
-// the <img>: a marker per pixel, inside a box that copies the image's own
-// box and flip, so it goes through tldraw's crop, flip, shape and camera
-// transforms exactly as the picture does.
+// WARNING: Map source pixels through the browser’s crop, flip, shape and camera transforms before checking the outline.
 const onScreen = (page: Page, pixels: { x: number; y: number }[], hash = MAP_HASH) =>
   page
     .getByTestId("canvas")
@@ -399,7 +390,6 @@ async function flashPoints(page: Page): Promise<Point[]> {
   return JSON.parse(last) as Point[];
 }
 
-// Whether `point` is inside the convex polygon, whichever way it winds.
 function inside(point: Point, polygon: Point[]): boolean {
   const sides = polygon.map((from, at) => {
     const to = polygon[(at + 1) % polygon.length]!;
@@ -413,7 +403,6 @@ const centre = (points: Point[]): Point => ({
   y: points.reduce((sum, { y }) => sum + y, 0) / points.length,
 });
 
-// The angle on screen of the polygon's longest side, folded into [0, 180).
 function longestSideAngle(points: Point[]): number {
   const sides = points.map((from, at) => {
     const to = points[(at + 1) % points.length]!;
@@ -476,7 +465,6 @@ test("a label is found where an image shows it after it is turned, resized, crop
   await expectFlashOnLabel(bea.page);
   await shot(bea.page, "flash-cropped-desktop");
 
-  // Flipped as the menu flips it, which mirrors the crop with the image.
   const { id } = await mapShape(ada.page);
   await ada.page.evaluate((shape) => {
     (globalThis as unknown as { __editor: Editor }).__editor.flipShapes([shape], "horizontal");
@@ -511,9 +499,6 @@ test("a label is found where an image shows it after it is turned, resized, crop
   for (const each of [ada, bea]) await each.page.context().close();
 });
 
-// map_pl_sideways.jpg is map_pl.jpg with its pixels turned a quarter to
-// the left and EXIF orientation 6, as a phone held upright writes a photo:
-// shown upright, stored sideways, and small enough not to be redrawn.
 const SIDEWAYS = "text/map_pl_sideways.jpg";
 
 test("a sideways photo's text is found where the board shows it upright", async ({ browser }) => {

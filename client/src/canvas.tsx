@@ -37,8 +37,7 @@ const DiceStage = lazy(async () => {
   return { default: Stage };
 });
 
-// NOTE: someone who asked for reduced motion never throws 3D dice, so their
-// device does not fetch them either.
+// WARNING: Avoid fetching the 3D dice scene when reduced motion is enabled.
 const loadDice = () => {
   void import("./dice-stage");
   if (!globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -46,8 +45,7 @@ const loadDice = () => {
   }
 };
 
-// Trackpad pinches can arrive as modified wheel events or Safari gesture
-// events. Cancel browser zoom without intercepting the canvas handlers.
+// WARNING: Cancel browser pinch zoom for both modified wheel events and Safari gesture events without blocking the editor handlers.
 const cancelPinchZoom = (event: Event) => event.preventDefault();
 const cancelWheelZoom = (event: WheelEvent) => {
   if (event.ctrlKey || event.metaKey) cancelPinchZoom(event);
@@ -115,13 +113,10 @@ export function BoardCanvas({
   const usable = active && store.status === "synced-remote";
   const online = usable && store.connectionStatus === "online";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
-  // The cookie the board's pictures load with, before anyone opens a sheet
-  // that shows them.
+  // WARNING: Fetch the files cookie before any panel needs to display authenticated images.
   useEffect(() => {
     if (usable) files.keepReadable();
   }, [files, usable]);
-  // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
-  // a while the person is told why nothing shows.
   const connecting = active && store.status === "loading";
   const [connection, setConnection] = useState({ connecting, stalled: false });
   if (connection.connecting !== connecting) {
@@ -134,7 +129,6 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
-  // Pending edits and cooldown belong to the lifetime of the shared editor.
   const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
   useEffect(() => {
     const grant = keeper.bootstrap.thumbnail;
@@ -236,11 +230,8 @@ export function BoardCanvas({
     () => (active && editor !== null ? searchFromKeyboard(open) : undefined),
     [active, editor, open],
   );
-  // NOTE: a full board waits and asks again (useBoardStore); the way out
-  // stays in reach meanwhile.
   if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
   if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
-  // NOTE: tldraw logs the reason of any sync error itself.
   if (store.status === "error") {
     return active ? (
       <Notice
@@ -325,9 +316,7 @@ export function BoardCanvas({
 
 const STALLED_AFTER_MS = 8000;
 
-// Ctrl+F (⌘F on a Mac) searches the board instead of the page, whose own
-// find cannot see into the canvas; pressed again, it goes back to the
-// field. Taken before tldraw sees it.
+// WARNING: Listen during capture so tldraw and the browser do not intercept board search first.
 function searchFromKeyboard(open: BoardUi["open"]): () => void {
   const find = (event: KeyboardEvent) => {
     const mod = /Mac|iPhone|iPad/u.test(navigator.platform) ? event.metaKey : event.ctrlKey;

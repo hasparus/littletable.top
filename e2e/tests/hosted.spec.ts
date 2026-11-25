@@ -23,7 +23,6 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   await expectOwnPolicy(page, `'self' ${socketOf(HOSTED)} ${HOST}`);
-  // The fake host assigns ids across the entire run.
   await expect(page).toHaveTitle(/^Board \d+$/u);
   const title = await page.title();
 

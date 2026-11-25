@@ -1,21 +1,4 @@
-// A tiny host application for the hosted-mode end-to-end test, and the
-// reference implementation of the host contract (docs/hosting.md, "The host
-// contract"). It keeps accounts and boards in memory, signs passes and
-// board command tokens with the committed dev key, and answers the tabletop's
-// pass requests. Test-only: nothing here is fit for production.
-//
-//   node e2e/fake-host.ts   (Node 22.18+ runs the TypeScript as it is)
-//
-// Pages, all plain HTML:
-//   GET  /sign-in?name=Ada      a session for a member called Ada, with a
-//                               picture (&picture=none: without one)
-//   GET  /avatars/<id>.png      a member's picture, which the tabletop copies
-//   GET  /boards/               the member's boards, with New / Reset / Delete
-//   POST /boards/new            creates a board, then 302 to the tabletop
-//   POST /boards/<id>/reset     gives the board a new link and link version
-//   POST /boards/<id>/delete    forgets the board and has the Worker wipe it
-// The contract itself:
-//   OPTIONS, POST /b/<code>/bootstrap/
+// WARNING: This in-memory sample host signs passes with the committed development key. Use it only locally.
 
 import { importPKCS8, SignJWT } from "jose";
 import { randomBytes } from "node:crypto";

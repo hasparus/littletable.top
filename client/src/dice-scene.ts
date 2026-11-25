@@ -1,7 +1,3 @@
-// Plays the shared throw on a transparent canvas inside `host`: simulates it
-// from the roll's seed, turns each die's numbering so the server's value is
-// on top, and draws the recorded frames. Values never come from the physics.
-
 import type { DiceLaunch } from "../../src/dice-notation";
 import type { DieKind } from "./dice-solids";
 
@@ -26,7 +22,7 @@ type ThrowOptions = DiceControls & { kept: readonly boolean[]; launch?: DiceLaun
 
 export type DiceThrow = {
   dispose: () => void;
-  // Settles when the dice lie still, or at once when another roll replaces it.
+  /** Resolves when the dice settle or another roll replaces them. */
   roll: (dice: Die[], options: ThrowOptions) => Promise<void>;
 };
 
@@ -36,7 +32,6 @@ const LIGHT_INK: Rgb = [1, 0.973, 0.949];
 const FALLBACK_BODY: Rgb = [0.184, 0.435, 0.875];
 const BALL_SMOOTH = 0.5;
 const SETTLE_FADE_FRAMES = 15;
-// The simulation's share of a frame on a slow device, before it yields.
 const SLICE_MS = 6;
 const TIER_KEY = "tabletop.dice-tier";
 
@@ -72,9 +67,7 @@ function modelOf(kind: DieKind): Model {
   const known = models.get(kind);
   if (known !== undefined) return known;
   const { ball, core, r } = solid(kind);
-  // NOTE: the clearcoat's highlight is a point on a rounded edge, but a
-  // whole face of a ball when that face mirrors the light, and it whites the
-  // number out; the ball goes without.
+  // WARNING: A clearcoat highlight can obscure the entire numeric face of a d100.
   const coat = ball ? 0 : 1;
   const made = {
     atlas: drawAtlas(kind),
@@ -88,12 +81,10 @@ function modelOf(kind: DieKind): Model {
   return made;
 }
 
-// Dropped dice start to dim once they come to rest.
 function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)[] {
   return thrown.frames.map((frames, index) => {
     if (kept[index] !== false) return null;
     const last = frames.length - FRAME_STRIDE;
-    // NOTE: the height is left out: the last frame alone sets it exactly.
     const still = (at: number) =>
       [0, 2, 3, 4, 5, 6].every((k) => Math.abs(frames[at + k]! - frames[last + k]!) < 1e-9);
     let from = last;
@@ -135,8 +126,7 @@ function posesAt(
   });
 }
 
-// `onError` hears of a failure outside a roll: a redraw after a resize or a
-// restored context.
+/** onError receives failures during redraws outside a roll, including resizes and context restoration. */
 export async function createDiceThrow(
   host: HTMLElement,
   onError: (error: unknown) => void,
@@ -148,7 +138,6 @@ export async function createDiceThrow(
   canvas.className = "pointer-events-none absolute inset-0 size-full";
   let shown: Pose[] = [];
   let controls: ReturnType<typeof addDiceControls> | null = null;
-  // Shadow contrast follows the board theme even when it differs from the device theme.
   function redraw() {
     renderer.draw(shown, document.querySelector(".tl-theme__dark") !== null);
     controls?.measure();
@@ -210,7 +199,6 @@ export async function createDiceThrow(
               dimming = dimFrom(planned, kept);
               facing = cameraFacingOf(planned, EYE);
               startedAt = now;
-              // Include the fades of dice that came to rest late.
               length = Math.max(
                 planned.thrown.frames[0]!.length / FRAME_STRIDE - 1,
                 ...dimming.map((dim) => (dim === null ? 0 : dim + SETTLE_FADE_FRAMES)),

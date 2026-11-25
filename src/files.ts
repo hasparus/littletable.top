@@ -93,16 +93,13 @@ async function upload(request: Request, route: FileRoute): Promise<Response> {
   );
 }
 
-// Trades the pass in the header for the same pass in a cookie on the
-// board's files path, for as long as the pass lives, and answers where the
-// person's own picture is (the room copies a host's on the way).
 async function access(request: Request, route: FileRoute): Promise<Response> {
   const token = bearer(request);
   const pass = await route.passOf(token);
   if (token === null || pass === null) return refuse(403, "forbidden");
   if ((await route.room.fileAccess(pass)) !== null) return refuse(403, "link-reset");
   const avatar = await route.room.personAvatar(pass, route.avatars);
-  // NOTE: verified, a pass always carries exp.
+  // WARNING: Read the expiration only after pass verification requires the exp claim.
   const lifetime = Math.max(0, decodeJwt(token).exp! - Math.floor(Date.now() / 1000));
   return Response.json(
     { avatar: avatar === null ? null : `${filesPath(route.board)}/avatars/${avatar}` },
@@ -178,7 +175,7 @@ export async function serveStored(
       status: range === null ? 200 : 206,
     });
   } else {
-    // HEAD, or a GET whose If-None-Match already holds these bytes.
+    // WARNING: An R2 response without a body can be a conditional GET as well as a HEAD.
     const unchanged = request.method === "GET";
     if (!unchanged) headers.set("Content-Length", String(object.size));
     response = new Response(null, { headers, status: unchanged ? 304 : 200 });
@@ -205,7 +202,7 @@ async function read(request: Request, route: FileRoute, hash: string): Promise<R
   });
 }
 
-// A picture of someone who has been on this board, to anyone on it now.
+// WARNING: A hash alone is insufficient to read an avatar. Check its association with this board.
 async function readAvatar(request: Request, route: FileRoute, hash: string): Promise<Response> {
   if ((await reader(request, route)) === null) return new Response("Forbidden", { status: 403 });
   if (!(await route.room.hasAvatar(hash))) return new Response("Not found", { status: 404 });

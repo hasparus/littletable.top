@@ -8,15 +8,6 @@ import { score, type Truth } from "../text-score";
 import { collectCspViolations, expectNoCspViolations } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
 
-// How well the real engines read the committed fixtures, in a real
-// browser, through the board itself: one person uploads all six, their
-// browser reads them, and the stored readings are scored against the
-// ground truth. Floors sit a little below what both engines measured
-// (docs/internals.md, "Text in images"), so a regression in the pipeline, a model
-// or a parameter fails here. Slow (a cold start of both engines and six
-// images): `bun run e2e -- --grep @accuracy` runs it alone. The
-// artifact is accuracy.json, every score.
-
 type Floor = { diacritics: number; names: number; tesseractLocated: number };
 
 const FLOORS: Record<string, Floor> = {

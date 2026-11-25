@@ -1,12 +1,9 @@
-// Where the end-to-end servers listen. E2E_PORT_OFFSET moves all four
-// together, so two checkouts on one machine can run their suites at once
-// (say 100 in one: 8100, 8101, 8888, 8890).
-
 const offset = Number(process.env.E2E_PORT_OFFSET ?? 0);
 if (!Number.isInteger(offset) || offset < 0 || offset % 10 !== 0 || offset > 50_000) {
   throw new Error(`E2E_PORT_OFFSET must be a multiple of 10 from 0 to 50000, not "${offset}"`);
 }
 
+/** Applies E2E_PORT_OFFSET to all servers for concurrent local runs. */
 export const PORTS = {
   host: 8000 + offset,
   hosted: 8788 + offset,

@@ -13,9 +13,6 @@ import { fill } from "./copy";
 import { fitForUpload, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from "./images";
 import { exportTldr, ImportRefused, importTldr, isTldrFile, MAX_TLDR_BYTES } from "./tldr";
 
-// What tldraw takes in: still and animated images and SVG (which tldraw
-// sanitises before it uploads), no video. tldraw sizes an image's shape to
-// MAX_IMAGE_SIDE, the same budget its bytes are redrawn to (images.ts).
 export const MEDIA_PROPS = {
   acceptedImageMimeTypes: [
     "image/png",
@@ -177,8 +174,7 @@ export function handleFiles(
     explained++;
     toasts.addToast({ severity: "error", title: refusalText(copy, reason) });
   };
-  // NOTE: tldraw follows a failed upload with its own "Upload failed"; the
-  // board has already said why.
+  // WARNING: Suppress tldraw’s generic upload error only when the board has already shown the specific reason.
   const quietToasts: TLUiToastsContextType = {
     ...toasts,
     addToast: (toast) => {

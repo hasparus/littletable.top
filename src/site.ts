@@ -69,9 +69,7 @@ const SHELL = /^\/b\/([A-Za-z0-9]{1,64})\/?$/u;
 const BOARD_PREVIEW = /^\/b\/([A-Za-z0-9]{1,64})\/preview\.png$/u;
 const WEBSITE_DESCRIPTION =
   "Draw maps, roll dice, and play tabletop games together on a shared whiteboard.";
-// Vite names every built script, style and font after its content, and
-// the text engines' files (WebAssembly, models, language data) carry the
-// hash of theirs in their name or their folder's (vite.config.ts).
+// WARNING: Only use immutable caching for paths that carry content hashes in their file or folder name.
 const HASHED = /^\/assets\//u;
 
 async function shell(request: Request, assets: Fetcher, config: Config): Promise<Response> {
@@ -92,8 +90,7 @@ const htmlAttribute = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 
-// Social previews are read before any JavaScript runs. Use the public name
-// a board already returns to people with its current share link.
+// WARNING: Link preview crawlers need metadata in the HTML before client JavaScript runs.
 function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board?: Board) {
   const boardTitle = board?.title;
   const illustrated = board?.hasThumbnail === true;

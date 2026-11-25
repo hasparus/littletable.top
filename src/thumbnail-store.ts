@@ -18,7 +18,7 @@ export const thumbnailKey = (board: string) => `thumbnails/${board}`;
 export function isThumbnail(body: ArrayBuffer, type: ThumbnailType): boolean {
   const bytes = new Uint8Array(body);
   if (sniff(bytes) !== type) return false;
-  // The extended WebP header's animation bit is only set for animated files.
+  // WARNING: An extended WebP frame may be animated. Reject it when the header sets the animation flag.
   if (
     type === "image/webp" &&
     String.fromCodePoint(...bytes.subarray(12, 16)) === "VP8X" &&

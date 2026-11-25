@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RollRequest } from "../../src/dice-notation";
 import type { PassKeeper, Roll } from "./bootstrap";
 
-// The Worker keeps the latest 50 (src/limits.ts).
 const LOG_LENGTH = 50;
 
 export type RollRefusal = "failed" | "too-fast";
@@ -27,8 +26,7 @@ export function useRolls(keeper: PassKeeper): Rolls {
   const [arrived, setArrived] = useState<Roll | null>(null);
   const seen = useRef(new Set<number>());
 
-  // The same roll comes back twice to its roller (as the answer and as the
-  // room's message), and the log load can cross a message in flight.
+  // WARNING: A roll can arrive through the response, a room message, and the log. Keep each ID only once.
   const add = useCallback((rolls: Roll[], announce: boolean) => {
     const fresh = rolls.filter(({ id }) => !seen.current.has(id));
     if (fresh.length === 0) return;

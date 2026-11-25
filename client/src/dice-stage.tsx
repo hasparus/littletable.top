@@ -11,17 +11,11 @@ import { modifierLabel } from "./dice-labels";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
 import { DieShape } from "./die-shape";
 
-// NOTE: a throw that never reports back must not hide the result for good.
+// WARNING: A throw that never reports back must still reveal its result.
 const GIVE_UP_MS = 12_000;
-// Between the toast, tldraw's controls, the screen's edge and the tray, in
-// CSS pixels.
 const GAP = 8;
-// Narrower than this beside the menu, the toast drops below it instead.
 const ROW_MIN_WIDTH = 120;
 const WIDE_BOARD_WIDTH = 1024;
-// The dice and the total come first: the roller's name shows only where
-// every die fits beside it and the name keeps this much of itself (or all
-// of a shorter one). The roll log and the announcement always give it.
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 const RESTING_AFTER_MS = 4000;
@@ -69,9 +63,6 @@ const boxOf = (selector: string): DOMRect | null => {
   );
 };
 
-// On wide boards the toast centres on the viewport while leaving room for
-// both sides' controls. On narrower boards it sits beside or below the menu.
-// `below` is where the toast and controls end, for the dice tray.
 function placeToast(height: number): Place {
   const zone = boxOf(".tlui-menu-zone") ?? new DOMRect();
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
@@ -119,9 +110,7 @@ const dropFrom = (place: Place): Keyframe[] => [
   { opacity: 1, transform: "none" },
 ];
 
-// Whether the roller's name fits beside every die and the total in a toast
-// of `width`: the dice row's and the total's own widths do not depend on
-// the name, so the answer does not flip once the name comes or goes.
+// WARNING: Measure dice and total independently of the name to avoid oscillating toast widths.
 function nameFits(toast: HTMLElement, dice: HTMLElement, sum: HTMLElement | null, width: number) {
   const style = getComputedStyle(toast);
   const chrome = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"]
@@ -137,8 +126,6 @@ function nameFits(toast: HTMLElement, dice: HTMLElement, sum: HTMLElement | null
   return room >= Math.min(name, NAME_MIN_WIDTH);
 }
 
-// The toast is laid out from the moment the roll arrives, so the tray below
-// it has its final place before the dice fly; it drops in once they settle.
 function ResultToast({
   copy,
   onClose,
@@ -224,7 +211,6 @@ function ResultToast({
     exiting.current = exit;
     void exit.finished.then(
       () => exiting.current === exit && onClose(),
-      // NOTE: cancelled only when a newer roll took the toast over.
       () => null,
     );
   };
@@ -282,11 +268,7 @@ function ResultToast({
   );
 }
 
-// Throws a roll that just arrived for everyone at the board, on a tray that
-// sits between the top row and the bottom bar, and lands the dice on `roll`'s
-// values. The toast names who rolled and gives the total once they settle.
-// The dice and the toast stay until the next roll or a tap on the toast,
-// which calls `onSettled`.
+/** Plays the received roll and calls onSettled when its result toast is dismissed. */
 export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);

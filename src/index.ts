@@ -31,7 +31,7 @@ import { hasActiveSession } from "./standalone/store";
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
 
-// DB and Limiter are bound in standalone mode only.
+/** The standalone deployment alone binds D1 and the address limiter. */
 export type Env = ConfigEnv &
   FeedbackEnv &
   Partial<Pick<StandaloneEnv, "DB" | "Limiter">> & {
@@ -40,7 +40,6 @@ export type Env = ConfigEnv &
     Files: R2Bucket;
   };
 
-// The rooms API needs no CORS because its client and bearer-authenticated requests are same-origin.
 const REFUSAL_STATUS: Record<Refusal, number> = { full: 429, "link-reset": 403, "too-fast": 429 };
 
 function answer(result: Refusal | object): Response {

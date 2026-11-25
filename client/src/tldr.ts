@@ -17,9 +17,6 @@ import {
 
 import type { BoardDocument, ImportReply } from "./tldr-worker";
 
-// tldraw's own file format, a .tldr: the whole document as JSON, with each
-// image embedded as a data: URL so the file opens anywhere tldraw does.
-
 /**
  * Embedded images grow by a third as base64; a board's whole quota of
  * images (src/limits.ts) fits with room to spare.
@@ -184,9 +181,7 @@ async function uploadEmbedded(
   return uploaded;
 }
 
-// Gives every record the file brings an id of its own on this board: its
-// own where it is free, a new one where the board already has it, with
-// parents, bindings and images following the new ids.
+// WARNING: When replacing a clashing record ID, update its parents, bindings and asset references too.
 function planIds(editor: Editor, plan: Plan, replacing: TLPage | null): Plan {
   const taken = (id: string) => editor.store.has(id as TLRecord["id"]) && id !== replacing?.id;
   const ids = new Map<string, string>();

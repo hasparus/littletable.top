@@ -1,6 +1,3 @@
-// tldraw builds hatch tiles for every zoom level and both themes the first
-// time these SVG defs mount. Keep its renderer, but wait for a patterned
-// shape (local or remote), or for the user to select the pattern fill.
 import {
   ArrowShapeUtil,
   computed,

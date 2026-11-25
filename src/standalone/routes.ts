@@ -32,8 +32,7 @@ export type StandaloneEnv = {
   Limiter: DurableObjectNamespace<Limiter>;
 };
 
-// NOTE: __Host- cookies are Secure, host-only and on path /, so neither a
-// sibling subdomain nor a plain-HTTP page can set or read them.
+// WARNING: Keep the __Host- prefix so sibling subdomains and insecure pages cannot set the session cookie.
 const SESSION_COOKIE = "__Host-tabletop-session";
 const SIGN_IN_COOKIE = "__Host-tabletop-sign-in";
 const GUEST_COOKIE = "__Host-tabletop-guest";
@@ -109,9 +108,7 @@ const json = (status: number, body: object, headers: HeadersInit = {}) =>
 
 const refuse = (status: number, error: string) => json(status, { error });
 
-// A same-origin page's request, never a form or a page elsewhere: the
-// browser names the origin on every POST, and a JSON body needs a
-// preflight no other origin passes.
+// WARNING: Require same-origin JSON so cross-origin forms cannot submit an authenticated action.
 function sameOrigin(request: Request, contentType = "application/json"): boolean {
   return (
     request.headers.get("Origin") === new URL(request.url).origin &&
@@ -119,8 +116,7 @@ function sameOrigin(request: Request, contentType = "application/json"): boolean
   );
 }
 
-// A return address on this origin only, so sign-in cannot be made to
-// redirect elsewhere.
+// WARNING: Accept only a local path so sign-in cannot redirect to another origin.
 function returnPath(value: string | null): string {
   return value !== null && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")
     ? value
@@ -185,8 +181,6 @@ export class Standalone {
     return session === null ? null : { hash, session };
   }
 
-  // A signed-in person's state-changing request: same origin, and the
-  // session's CSRF token echoed in a header.
   private async member(request: Request, contentType?: string) {
     if (!sameOrigin(request, contentType))
       return { refusal: refuse(403, "forbidden-origin") } as const;
@@ -278,9 +272,7 @@ export class Standalone {
     return new Response(null, { headers, status: 302 });
   }
 
-  // The account's picture after this sign-in: the copy it has while the
-  // provider's address stays the same, else a fresh copy, else none. A
-  // failed copy is tried again at the next sign-in.
+  // WARNING: Retry failed avatar copies at the next sign-in even if the provider URL has not changed.
   private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
     if (identity.avatarUrl === null) return null;
     const kept = await this.store.avatarOf(identity.subject);
@@ -294,7 +286,6 @@ export class Standalone {
     return "hash" in copy ? copy.hash : null;
   }
 
-  // The signed-in person's own picture, for the front page; nobody else's.
   private async avatar(request: Request, hash: string): Promise<Response> {
     const found = await this.session(request);
     if (found === null || found.session.account.avatar !== hash) {
@@ -420,8 +411,7 @@ export class Standalone {
     return json(201, { id: board.id, shareCode: board.shareCode, title: board.title });
   }
 
-  // Owner-only: a board that is not this account's answers as if it did
-  // not exist, and nothing changes.
+  // WARNING: A different account’s board must return the same response as a nonexistent board.
   private async act(request: Request, id: string, action: string): Promise<Response> {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;

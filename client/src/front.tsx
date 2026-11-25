@@ -14,7 +14,6 @@ import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { boardShell } from "./front-skeleton";
 import { Icon, TableMark } from "./icons";
 
-// avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
 
 type BoardPage = Lists & { account: Account; csrf: string };

@@ -293,10 +293,6 @@ test("the import card keeps its height when all uploads pause", async ({ page })
   }
 });
 
-// An image's address on another board opens only with that board's files
-// cookie, which a person holds while they are on it. Pasted from another
-// board's tab, or in a .tldr that points at one, the image is copied to
-// this board; what this person cannot read is left out, and they are told.
 test("an image from another board is copied over, or left out with a reason", async ({
   browser,
 }) => {
@@ -320,7 +316,6 @@ test("an image from another board is copied over, or left out with a reason", as
   const guest = await phone(browser, second.url());
   await joinAs(guest, "Noor");
 
-  // Pasting a tldraw selection with an embedded image gives the destination board its own copy.
   await first.bringToFront();
   await first.getByTestId("canvas").focus();
   await first.keyboard.press("ControlOrMeta+a");

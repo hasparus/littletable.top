@@ -21,8 +21,6 @@ import {
   sheet,
 } from "./helpers";
 
-// The WorkOS stand-in keeps standalone sign-in offline.
-
 const ON_BOARD = boardAt(STANDALONE);
 
 function listBoard(prefix: string, index: number) {
@@ -333,7 +331,7 @@ test("a board created in Polish opens with Strona 1 for its first guest in Engli
   await page.getByLabel("Name").fill("Ada");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Stop the creator's navigation from loading the canvas so the guest opens the room first.
+  // WARNING: Intercept the creator’s first navigation so the guest initializes the room.
   await page.route(`${STANDALONE}/b/*`, (route) => route.fulfill({ body: "" }), { times: 1 });
   await page.getByRole("button", { name: "Nowa tablica" }).click();
   await expect(page).toHaveURL(ON_BOARD);

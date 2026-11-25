@@ -4,8 +4,6 @@ import { AVATAR_TIMEOUT_MS, MAX_AVATAR_BYTES, MAX_AVATAR_REDIRECTS } from "./lim
 export const AVATAR = /^[0-9a-f]{64}$/u;
 
 // WARNING: Deleting one board must leave avatars intact because other boards and accounts share them.
-// TODO: deleting an account (not built yet) must delete its avatar's object
-// once no other account's row and no board's `people` row names its hash.
 export const avatarKey = (hash: string) => `avatars/${hash}`;
 
 export type AvatarFailure =
@@ -23,9 +21,7 @@ export type AvatarCopy = { failure: AvatarFailure } | { hash: string };
 // WARNING: Reapply the avatar policy on every redirect so an allowed origin cannot bypass it.
 export type AvatarRule = (url: URL) => boolean;
 
-// Host names that never name a public picture: loopback, link-local and
-// private networks, and the names that resolve to them. Any address
-// literal is refused too: a provider names its pictures by host name.
+// WARNING: Reject address literals and private network names before issuing avatar requests.
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/u, "");
   if (host === "localhost" || /\.(?:localhost|local|internal|home\.arpa)$/u.test(host)) {
@@ -34,16 +30,14 @@ function isPrivateHost(hostname: string): boolean {
   return /^\d+(?:\.\d+){0,3}$/u.test(host) || /^0x[0-9a-f]+$/u.test(host) || host.startsWith("[");
 }
 
-// The configured sign-in API origin is trusted as-is. Pictures from other
-// origins must use HTTPS and a public host name.
+/** Trusts the configured sign-in API origin. Other origins must use HTTPS and a public host name. */
 export const providerRule =
   (apiBase: string): AvatarRule =>
   (url) =>
     url.origin === new URL(apiBase).origin ||
     (url.protocol === "https:" && !isPrivateHost(url.hostname));
 
-// Hosted mode: the host's own origin and nothing else, so a URL in a pass
-// can never make the Worker fetch another site.
+/** Restricts hosted avatar copies to the host origin, including every redirect. */
 export const hostRule =
   (hostOrigin: string): AvatarRule =>
   (url) =>
@@ -112,8 +106,7 @@ export async function copyAvatar({
     return { failure: signal.aborted ? "timeout" : "unreachable" };
   }
   if (typeof body === "string") return { failure: body };
-  // NOTE: an SVG is a document, not a picture of someone; nothing a
-  // provider sends as a face needs to be one.
+  // WARNING: Reject SVG avatars because they can contain active document content.
   const type = sniff(new Uint8Array(body));
   if (type === null) return { failure: "not-image" };
   if (type === "image/svg+xml") return { failure: "svg" };

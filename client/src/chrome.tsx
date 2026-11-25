@@ -107,9 +107,6 @@ const PHONE_TOOLBAR_FIT = { ...TOOLBAR_FIT, maxItems: 4, minItems: 4 };
 
 const usePhone = () => useBreakpoint() < PORTRAIT_BREAKPOINT.TABLET_SM;
 
-// A phone keeps the row above its tools to undo, redo and delete, so the
-// bar fits a 360px screen; duplicate and the arrange menu stay a long press
-// away in the context menu.
 function BoardQuickActions() {
   const editor = useEditor();
   const phone = usePhone();
@@ -129,11 +126,7 @@ function BoardActionsMenu() {
   return usePhone() ? null : <DefaultActionsMenu />;
 }
 
-// The board's three controls ride in tldraw's own bottom row, so a phone
-// shows one bar: drawing tools first, the table's things at the thumb's end.
-// tldraw's toolbar takes the width the controls leave and folds the tools
-// that do not fit into its overflow menu. The right edge stays clear for
-// tldraw's licence watermark, which must never be covered.
+// WARNING: Reserve the toolbar's right edge for tldraw's licence watermark.
 function BoardToolbar() {
   const { copy, editor, person } = useBoardUi();
   const compact = usePhone();
@@ -239,13 +232,6 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
   );
 }
 
-// - The page menu stays beside the main menu in the top corner, on a phone
-//   too: the bottom bar is the table's, and pages are switched far less
-//   often than tools.
-// - SharePanel: the people sheet replaces it; tldraw's own lets each person
-//   rename or recolour themselves, but the name comes from the pass.
-// - TopPanel: its offline badge is replaced by the board's own, in the
-//   board's language.
 export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,

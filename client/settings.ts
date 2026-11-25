@@ -1,8 +1,3 @@
-// What the client is built with. The build turns one JSON value into the
-// client's constants, its web app manifest, the page's title and the brand
-// colours (vite.config.ts); a host's Alchemy stack passes it to the build
-// (alchemy/index.js), and `vite` on a laptop reads it from TABLETOP_* env.
-
 export type Language = "en" | "pl";
 
 /** The six colours a deployer may set; the rest of the palette is neutral. */
@@ -24,6 +19,7 @@ export type HostedSettings = {
   exitUrl: string;
 };
 
+/** One build-time settings value feeds the client constants, manifest, page title and brand. */
 export type ClientSettings = {
   brand: Partial<Brand>;
   description: string;

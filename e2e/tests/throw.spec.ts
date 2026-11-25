@@ -22,7 +22,6 @@ import {
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
-// The result toast enters the accessibility tree once the dice settle.
 const toast = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
 const dieLabels = (container: Locator) =>
   container
@@ -93,7 +92,7 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
     await expect(diceCanvas(screen)).toBeVisible();
     await expect(toast(screen)).toBeVisible();
     await expect(toast(screen)).toContainText("Ada");
-    // Only the dice: the board under them shows each person the other's cursor.
+    // WARNING: Hide the board during pixel comparisons so the other browser’s cursor cannot affect them.
     await setVisibility(screen.locator(".tl-container"), "hidden");
     const shot = await shoot(tray(screen));
     await testInfo.attach(`tray-${name}.png`, { body: shot, contentType: "image/png" });
@@ -257,8 +256,6 @@ const overlap = (a: Box, b: Box) =>
 
 const boxOf = async (target: Locator): Promise<Box> => (await target.boundingBox())!;
 
-// tldraw's top-left controls: the main menu, the page menu, and on a wide
-// screen undo, redo and the rest.
 const menuZone = (page: Page): Locator => page.locator(".tlui-menu-zone");
 
 async function expectInMenuRow(page: Page): Promise<Box> {
@@ -337,7 +334,7 @@ test("with reduced motion the toast shows at once and no 3D code is fetched", as
   const guest = await guestOn(browser, boardUrl, { reducedMotion: "reduce" });
   const fetched: string[] = [];
   guest.on("request", (request) => fetched.push(request.url()));
-  // Past the idle warm-up, which is when the 3D code would have been fetched.
+  // WARNING: Wait past the idle warm-up so an unintended dice download would be observed.
   await guest.waitForTimeout(6000);
 
   await roll(page, [6, 6]);
@@ -456,9 +453,6 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
   await expectNoCspViolations(page);
 });
 
-// tldraw's page menu shares the top row with the main menu, and its name
-// sets how wide that corner is. On desktop the toast centres on the screen
-// while fitting between that corner and tldraw's style panel.
 test("the toast centres on desktop and fits beside the page menu on phones", async ({
   browser,
   page,
@@ -471,7 +465,6 @@ test("the toast centres on desktop and fits beside the page menu on phones", asy
     ["desktop", devices["Desktop Chrome"]],
   ] as const;
   for (const [name, device] of screens) {
-    // NOTE: reduced motion puts the toast up at once, so the shots are still.
     const screen = await guestOn(browser, boardUrl, {
       ...device,
       deviceScaleFactor: 2,

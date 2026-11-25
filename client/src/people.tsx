@@ -6,13 +6,11 @@ import { usePageNames } from "./pages";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-// avatar is the picture's hash, as the room stamped it on their presence.
 type Person = { avatar: string | null; color: string; id: string; name: string };
 
 export type Present = Person & { page: TLPageId };
 
-// tldraw's user ids carry a prefix of their own (createUserId); the pass's
-// person id ("u:12", "g:abc") is what follows it.
+// WARNING: tldraw adds its own user: prefix before the pass's member or guest identifier.
 const personId = (userId: string) => userId.replace(/^user:/u, "");
 
 const avatarOf = (meta: Record<string, unknown>) =>

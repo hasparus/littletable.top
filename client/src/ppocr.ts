@@ -1,11 +1,3 @@
-// PP-OCRv6 on plain ONNX Runtime, typed arrays only (no OpenCV, no eval):
-//
-//   detector (DB) → probability map → connected components → the smallest
-//   ROTATED rectangle around each → grown by the unclip ratio → sampled
-//   upright along that rectangle (a label at 45° is read level) → tall
-//   crops read turned a quarter → recogniser (CTC) → read upside down too
-//   when unsure → each word's quad from the time steps its letters fired.
-
 export type Point = [number, number];
 /** Corners clockwise from the top left of the text as it reads. */
 export type Quad = [Point, Point, Point, Point];
@@ -278,7 +270,6 @@ export function boxesFromMap(
     let count = 0;
     stack[top++] = start;
     seen[start] = 1;
-    // Each row's leftmost and rightmost pixel: enough for the hull.
     const rowMin = new Map<number, number>();
     const rowMax = new Map<number, number>();
     while (top > 0) {
@@ -441,7 +432,7 @@ export async function createPipeline({
   options = DEFAULT_OPTIONS,
   runtime,
 }: {
-  // Index 0 is CTC's blank; a space follows the dictionary's own symbols.
+  /** Ordered dictionary symbols without the CTC blank or appended space. */
   dict: readonly string[];
   models: { detector: Uint8Array; recogniser: Uint8Array };
   options?: PipelineOptions;

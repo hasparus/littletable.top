@@ -9,9 +9,6 @@ import type { Rolls } from "./rolls";
 
 export type Refusal = "full" | "gone" | "link-reset";
 
-// The Worker accepts a socket it must turn away and closes it at once with
-// tldraw's final close code and one of these reasons (docs/hosting.md,
-// "Routes").
 const REFUSALS: Partial<Record<string, Refusal>> = {
   [TLSyncErrorCloseEventReason.FORBIDDEN]: "link-reset",
   [TLSyncErrorCloseEventReason.NOT_FOUND]: "gone",

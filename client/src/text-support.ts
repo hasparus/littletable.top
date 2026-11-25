@@ -1,22 +1,13 @@
 import type { EngineName } from "../../src/text-result";
 
-// What this device can read text off images with (docs/internals.md, "Text in
-// images"). Both engines need a worker that decodes and draws images
-// (createImageBitmap, OffscreenCanvas) and WebAssembly; PP-OCR's runtime
-// also needs WebAssembly SIMD. A weak device, or one saving data, runs
-// Tesseract alone.
-
-// Both engines read a picture of at most this long a side; Tesseract's
-// accuracy stops growing there, and the detector looks at 960 px anyway.
+/** Maximum image long side before either OCR engine reads it. */
 export const MAX_SIDE = 2048;
-// What each engine's reading says it was read with.
+/** Settings recorded with each engine’s reading. */
 export const PARAMS: Record<EngineName, Record<string, number>> = {
   ppocr: { detMaxSide: 960, maxSide: MAX_SIDE },
   tesseract: { maxSide: MAX_SIDE, psm: 11 },
 };
 
-// The smallest module that uses a SIMD instruction (i8x16.splat, then
-// i8x16.popcnt), as wasm-feature-detect checks for it.
 const SIMD_PROBE = Uint8Array.from([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15,
   253, 98, 11,

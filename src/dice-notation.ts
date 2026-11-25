@@ -89,7 +89,7 @@ export function rollResult(roll: {
       const drop = rule.kind === "dh" || rule.kind === "dl";
       const high = rule.kind === "kh" || rule.kind === "dl";
       const keepCount = drop ? count - rule.count : rule.count;
-      // NOTE: ties keep earlier dice, including under equivalent keep and drop rules.
+      // WARNING: Keep and drop rules must select the same dice on a tie, favoring earlier rolls.
       const ranked = roll.dice
         .slice(offset, offset + count)
         .map(({ value }, index) => ({ index: offset + index, value }))

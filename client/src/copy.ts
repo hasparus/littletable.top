@@ -1,7 +1,5 @@
 import type { Language } from "../settings";
 
-// Use gender-neutral Polish and keep board (tablica), page (strona), place (miejsce),
-// and dice notation (k6) consistent.
 const EN = {
   addDie: "Add %(die)s",
   addToPlaces: "Add to places",
@@ -179,7 +177,6 @@ const PL: Copy = {
   diceExpression: "Notacja rzutu",
   die: "k%(sides)s",
   droppedDie: "%(die)s (odrzucona)",
-  // NOTE: tldraw's own Polish says "Obserwuj" for following someone.
   follow: "Obserwuj",
   guest: "Gość",
   imageFailed: "Nie udało się wysłać obrazu. Sprawdź połączenie i spróbuj ponownie.",

@@ -21,8 +21,6 @@ type Outline = {
   ticks?: string;
 };
 
-// NOTE: classic die silhouettes in a 32-unit box, drawn so that no two share an
-// outline at 28px: triangle, rounded square, rhombus, kite, pentagon, hexagon, and a many-sided ball for the d100.
 const OUTLINES: Record<number, Outline> = {
   4: { points: "16,3 29,26.5 3,26.5", text: { size: 12, y: 19 } },
   6: { text: { size: 14, y: 16.5 } },

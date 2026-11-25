@@ -10,13 +10,9 @@ import {
   reviewShot,
 } from "./helpers";
 
-// A person's row in the people list. The avatar is decoration beside the
-// name, so the row is found by the name it says.
 const rowOf = (people: Locator, name: string): Locator =>
   people.getByRole("listitem").filter({ hasText: name });
 
-// The picture in a person's avatar, once it has really loaded, as the
-// address it came from; null while there is only an initial.
 async function pictureOf(avatar: Locator): Promise<string | null> {
   const picture = avatar.locator("img");
   if ((await picture.count()) === 0) return null;
@@ -61,7 +57,6 @@ test("hosted: a member's picture reaches a guest's people list from the tabletop
   await expect
     .poll(async () => pictureOf(rowOf(people, "Ada")))
     .toMatch(new RegExp(String.raw`^${HOSTED}/rooms/[\w-]+/files/avatars/[0-9a-f]{64}$`, "u"));
-  // A screen reader hears each name once, not the avatar's too.
   await expect(people.getByRole("button", { exact: true, name: "Ada Follow" })).toBeVisible();
   const own = rowOf(people, "Bea");
   await expect(own.getByText("B", { exact: true })).toBeVisible();

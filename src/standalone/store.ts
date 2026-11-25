@@ -1,11 +1,6 @@
-// Standalone mode's records in D1 (migrations/): accounts, sessions, boards
-// and visits. Every board query that acts for a person names that person,
-// so an id from a request never reaches another account's board.
-
 import type { Identity } from "./provider";
 
-// avatar is the SHA-256 of the account's picture as the Worker copied it
-// (src/avatars.ts); avatarUrl is the provider's address it came from.
+/** Stores the copied avatar’s SHA-256 alongside its original provider URL. */
 export type Account = { avatar: string | null; avatarUrl: string | null; id: string; name: string };
 
 export type Board = {
@@ -27,7 +22,7 @@ export type Listed = {
   shareCode: string;
   title: string;
 };
-// shareCode is null once the owner has reset the link the visitor came by.
+/** A visit’s share code is null after the owner resets the link that was used. */
 export type Visited = {
   hasThumbnail?: true;
   id: string;
@@ -211,7 +206,7 @@ export class Store {
       .run();
   }
 
-  // The owner and visitors with the current link may see the shared thumbnail.
+  /** Allows the owner and visitors who used the current share link to read the shared thumbnail. */
   async thumbnailAccess(id: string, accountId: string) {
     const row = await this.db
       .prepare(

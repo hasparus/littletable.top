@@ -86,6 +86,7 @@ function notationMessage(copy: Copy, error: NotationError, example: string): str
   }
 }
 
+/** Keep the primary roll control focused while the dice are in motion. */
 export function DiceSheet() {
   const { close, copy, locale, person, rollDraft, rolls, setRollDraft } = useBoardUi();
   const { expression, pool } = rollDraft;
@@ -211,7 +212,6 @@ export function DiceSheet() {
             {notationMessage(copy, notationError, example)}
           </p>
         )}
-        {/* NOTE: focus stays on the primary action during a roll. */}
         <button
           aria-disabled={busy}
           className="btn btn-primary mt-3 min-h-12 w-full gap-2 aria-disabled:opacity-70"

@@ -15,11 +15,6 @@ import type { ImportProgress } from "./tldr";
 
 import { fileFromDataUrl } from "./data-url-file";
 
-// A board's images live in the Worker's R2 bucket (docs/internals.md, "Images"): an
-// upload sends the bytes with the pass in its header, and the document keeps
-// the address the Worker answers, /rooms/<board>/files/<sha256>. An <img>
-// reads it with the files cookie, which the board keeps fresh with each pass.
-
 export type UploadRefusal = "failed" | "over-quota" | "too-fast" | "too-large" | "unsupported";
 
 export class UploadRefused extends Error {
@@ -37,8 +32,6 @@ const REFUSAL_OF: Partial<Record<number, UploadRefusal>> = {
   507: "over-quota",
 };
 
-// Waits between tries on a flaky connection, and after the Worker said
-// "too fast" (its window is a minute).
 const RETRY_MS = [1000, 3000, 8000];
 const TOO_FAST_RETRY_MS = 15_000;
 const TOO_FAST_TRIES = 5;
@@ -114,9 +107,9 @@ export class BoardFiles {
   readonly avatar = atom<string | null>("own avatar", null);
   readonly readable = atom("files readable", false);
   onRefused: ((reason: UploadRefusal) => void) | null = null;
-  // Set by the board's image text (image-text.ts): an image this person
-  // uploaded, to read first, and the room's notices about reading them.
+  /** Schedules OCR for an image uploaded by this client. */
   onUploaded: ((hash: string) => void) | null = null;
+  /** Receives the room’s OCR notifications. */
   onTextNotice: ((message: unknown) => void) | null = null;
   private cookiePass: string | null = null;
   private pendingAccess: Promise<void> | null = null;
@@ -147,8 +140,7 @@ export class BoardFiles {
     return `${this.keeper.room}/files`;
   }
 
-  // The cookie an <img> reads the board's images and pictures with, for
-  // the pass the board holds now.
+  // WARNING: Media elements rely on the files cookie, so refresh it whenever the pass changes.
   private async access(): Promise<void> {
     const pass = await this.keeper.pass();
     if (pass === this.cookiePass) return;
@@ -315,8 +307,6 @@ type Media = Extract<TLAsset, { type: "image" | "video" }>;
 
 type Read = () => Promise<File>;
 
-// The bytes behind another board's address, with what this browser may
-// read: that board's files cookie, held while the person is on it.
 const fetched =
   (src: string, name: string): Read =>
   async () => {

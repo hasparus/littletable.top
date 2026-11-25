@@ -1,4 +1,4 @@
-// Regenerate these fixtures with `node e2e/fixtures/make-fixtures.ts` after changing the installed tldraw schema.
+// WARNING: Regenerate these fixtures with `node e2e/fixtures/make-fixtures.ts` when changing the installed tldraw schema.
 
 import {
   b64Vecs,
@@ -372,8 +372,6 @@ writeFileSync(
   file({ records, schema: serialized, tldrawFileFormatVersion: 1 }),
 );
 
-// The same board one step back on every sequence that can step back: what
-// an older tldraw wrote, as far as tldraw's own migrations can say.
 const older = structuredClone(serialized);
 for (const [sequence, version] of Object.entries(older.sequences)) {
   if (version === 0) continue;

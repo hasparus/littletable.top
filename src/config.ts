@@ -35,8 +35,7 @@ export type ConfigEnv = {
   PRIMARY_HOST?: string;
 };
 
-// The standalone mode's own names. A hosted configuration may not use them,
-// so a pass one mode issues is never one the other accepts.
+// WARNING: Reserve this issuer and audience in hosted mode so hosted and standalone passes stay distinct.
 export const STANDALONE_ISSUER = "tabletop";
 export const STANDALONE_AUDIENCE = "tabletop-standalone";
 

@@ -75,7 +75,6 @@ const lerp = (from: Point, to: Point, t: number): Point => ({
   y: from.y + (to.y - from.y) * t,
 });
 
-// Sutherland–Hodgman against an axis-aligned rectangle.
 function clipToRect(polygon: Point[], min: Point, max: Point): Point[] {
   const edges: Edge[] = [
     { cut: (p, q) => lerp(p, q, (min.x - p.x) / (q.x - p.x)), inside: (p) => p.x >= min.x },

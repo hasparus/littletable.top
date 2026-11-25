@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 
 export const PHONE = devices["Pixel 7"];
 
-export async function installKeyboard(context: BrowserContext): Promise<void> {
+export async function installKeyboard(context: BrowserContext) {
   await context.addInitScript(() => {
     let keyboard = 0;
     const fake = new EventTarget();
@@ -23,6 +23,7 @@ export async function installKeyboard(context: BrowserContext): Promise<void> {
       scale: { value: 1 },
       width: { get: () => globalThis.innerWidth },
     });
+    // oxlint-disable-next-line landmines-testing/no-test-doubles -- Headless Playwright has no native mobile keyboard to resize the visual viewport.
     Object.defineProperty(globalThis, "visualViewport", { configurable: true, get: () => fake });
     Object.assign(globalThis, {
       __keyboard: (px: number) => {
@@ -33,12 +34,10 @@ export async function installKeyboard(context: BrowserContext): Promise<void> {
   });
 }
 
-// Stands in for an on-screen keyboard: the visual viewport loses the
-// bottom `px` of the screen, as on iOS and Android, while the layout
-// viewport keeps its size.
-export async function withKeyboard(page: Page, px: number): Promise<void> {
+/** Simulates a keyboard covering the bottom of the visual viewport while leaving layout unchanged. */
+export async function withKeyboard(page: Page, px: number) {
   await page.evaluate((height) => {
-    (globalThis as unknown as { __keyboard: (px: number) => void }).__keyboard(height);
+    globalThis.__keyboard(height);
   }, px);
 }
 
@@ -46,6 +45,7 @@ type Violation = { blockedURI: string; sourceFile: string; violatedDirective: st
 
 declare global {
   var __cspViolations: Violation[];
+  var __keyboard: (px: number) => void;
 }
 
 // WARNING: Install the CSP listener before the first paint to catch early violations.
@@ -128,10 +128,7 @@ export async function joinAs(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
 }
 
-/**
- * The newest roll log entry as it reads, without its last line: the time,
- * which each screen formats from its own clock.
- */
+// WARNING: Exclude the timestamp when comparing roll logs because the browsers render it from their own clocks.
 async function newestRoll(log: Locator): Promise<string> {
   const entry = log.getByRole("listitem").first();
   await expect(entry).toBeVisible();

@@ -25,8 +25,6 @@ import { useBoardUi } from "./ui";
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
 const assetUrls = getAssetUrlsByImport();
 
-// The board's own sheets and bars take tldraw's theme: the device's until
-// the person picks one in tldraw's preferences.
 function ThemeKeeper() {
   const editor = useEditor();
   const dark = useValue("dark mode", () => editor.user.getIsDarkMode(), [editor]);
@@ -101,6 +99,7 @@ export function BoardEditors({
     [backdrop, landing],
   );
 
+  // WARNING: Keep the foreground editor isolated so tldraw's z-index 300 UI cannot cover the board's sheets.
   return (
     <>
       {backdrop !== undefined && (
@@ -130,7 +129,6 @@ export function BoardEditors({
           />
         </div>
       )}
-      {/* WARNING: Without isolate, tldraw's z-index 300 UI can cover the board's sheets. */}
       <div className="absolute inset-0 isolate" data-board-editor>
         <Tldraw
           {...MEDIA_PROPS}
