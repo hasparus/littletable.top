@@ -12,6 +12,7 @@ import { isPublicSignature } from "./public-signature";
 
 type Drawing = Extract<TLRecord, { typeName: "shape" }>;
 type DrawingId = Drawing["id"];
+type ParentId = Drawing["parentId"];
 
 export const PUBLIC_SWEEP_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 4 * PUBLIC_SWEEP_MS;
@@ -30,6 +31,45 @@ export function preservesPublicShapeAge(before: Drawing, after: Drawing): boolea
   return before.meta[CREATED_AT] === after.meta[CREATED_AT];
 }
 
+function siblingsByParent(drawings: Iterable<Drawing>) {
+  const children = new Map<ParentId, Drawing[]>();
+  for (const drawing of drawings) {
+    const siblings = children.get(drawing.parentId) ?? [];
+    siblings.push(drawing);
+    children.set(drawing.parentId, siblings);
+  }
+  return children;
+}
+
+export function separatePublicSiblingIndices(
+  store: TLSyncStorageTransaction<TLRecord>,
+  parents?: ReadonlySet<ParentId>,
+  moved?: ReadonlySet<DrawingId>,
+) {
+  const drawings = [...store.values()].filter(
+    (record): record is Drawing => isShape(record) && (parents?.has(record.parentId) ?? true),
+  );
+  for (const siblings of siblingsByParent(drawings).values()) {
+    siblings.sort(
+      (a, b) =>
+        sortByIndex(a, b) || Number(moved?.has(a.id) ?? false) - Number(moved?.has(b.id) ?? false),
+    );
+    for (let start = 0; start < siblings.length; ) {
+      const { index } = siblings[start]!;
+      let end = start + 1;
+      while (siblings[end]?.index === index) end++;
+      if (end > start + 1) {
+        const keys = getIndicesBetween(index, siblings[end]?.index ?? null, end - start - 1);
+        for (const [offset, key] of keys.entries()) {
+          const sibling = siblings[start + 1 + offset]!;
+          store.set(sibling.id, { ...sibling, index: key });
+        }
+      }
+      start = end;
+    }
+  }
+}
+
 function indicesAfterExpiry(
   drawings: Iterable<Drawing>,
   expired: ReadonlySet<Drawing["parentId"]>,
@@ -37,12 +77,7 @@ function indicesAfterExpiry(
   const indices = new Map<DrawingId, IndexKey>();
   if (expired.size === 0) return indices;
 
-  const children = new Map<Drawing["parentId"], Drawing[]>();
-  for (const drawing of drawings) {
-    const siblings = children.get(drawing.parentId) ?? [];
-    siblings.push(drawing);
-    children.set(drawing.parentId, siblings);
-  }
+  const children = siblingsByParent(drawings);
   for (const [parentId, siblings] of children) {
     if (expired.has(parentId) || !siblings.some((drawing) => expired.has(drawing.id))) continue;
 
