@@ -347,3 +347,98 @@
   z-index: 1;
   pointer-events: none;
 }
+
+[data-chat-size="fixed"] {
+  height: var(--chat-height);
+  max-height: calc(100dvh - var(--board-sheet-bottom) - var(--board-top));
+}
+
+[data-chat-edge] {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+  user-select: none;
+}
+
+[data-chat-edge="n"] {
+  display: block;
+  inset: -8px 0 auto;
+  height: 16px;
+  cursor: ns-resize;
+}
+
+@media (min-width: 40rem) {
+  [data-chat-size] {
+    --chat-min-width: min(16rem, calc(100dvw - 16px));
+    min-width: var(--chat-min-width);
+    --used-chat-width: clamp(var(--chat-min-width), var(--chat-width, 24rem), calc(100dvw - 16px));
+    width: var(--used-chat-width);
+    left: clamp(
+      8px,
+      var(--chat-left, calc(50% - var(--used-chat-width) / 2)),
+      calc(100dvw - var(--used-chat-width) - 8px)
+    );
+    translate: none;
+  }
+
+  [data-chat-size="fixed"] {
+    bottom: clamp(8px, var(--chat-bottom, 5rem), max(8px, calc(100dvh - var(--chat-height) - 8px)));
+    max-height: calc(100dvh - 16px);
+  }
+
+  [data-chat-edge] {
+    display: block;
+  }
+  [data-chat-edge="n"],
+  [data-chat-edge="s"] {
+    height: 10px;
+    inset-inline: 5px;
+    cursor: ns-resize;
+  }
+  [data-chat-edge="n"] {
+    top: -5px;
+  }
+  [data-chat-edge="s"] {
+    bottom: -5px;
+  }
+  [data-chat-edge="w"],
+  [data-chat-edge="e"] {
+    width: 10px;
+    inset-block: 5px;
+    cursor: ew-resize;
+  }
+  [data-chat-edge="w"] {
+    left: -5px;
+  }
+  [data-chat-edge="e"] {
+    right: -5px;
+  }
+  [data-chat-edge="nw"],
+  [data-chat-edge="ne"],
+  [data-chat-edge="sw"],
+  [data-chat-edge="se"] {
+    width: 16px;
+    height: 16px;
+  }
+  [data-chat-edge="nw"] {
+    top: -5px;
+    left: -5px;
+    cursor: nwse-resize;
+  }
+  [data-chat-edge="ne"] {
+    top: -5px;
+    right: -5px;
+    cursor: nesw-resize;
+  }
+  [data-chat-edge="sw"] {
+    bottom: -5px;
+    left: -5px;
+    cursor: nesw-resize;
+  }
+  [data-chat-edge="se"] {
+    bottom: -5px;
+    right: -5px;
+    cursor: nwse-resize;
+  }
+}

@@ -48,6 +48,9 @@ const EN = {
   chatLoadFailed: "Could not load earlier messages.",
   chatLoading: "Loading messages…",
   chatMessage: "Message",
+  chatResize: "Resize chat",
+  chatResizeHint:
+    "Use the up and down arrows to adjust height. On a wide screen, use left and right to adjust width. Activate to expand or reset.",
   chatSend: "Send",
   chatTooFast: "Wait a moment before sending another message.",
   clearPool: "Clear",
@@ -185,6 +188,9 @@ const PL: Copy = {
   chatLoadFailed: "Nie udało się wczytać wcześniejszych wiadomości.",
   chatLoading: "Wczytywanie wiadomości…",
   chatMessage: "Wiadomość",
+  chatResize: "Zmień rozmiar czatu",
+  chatResizeHint:
+    "Użyj strzałek w górę i w dół, aby zmienić wysokość. Na szerokim ekranie użyj strzałek w lewo i w prawo, aby zmienić szerokość. Aktywuj, aby powiększyć czat lub przywrócić jego rozmiar.",
   chatSend: "Wyślij",
   chatTooFast: "Poczekaj chwilę przed wysłaniem kolejnej wiadomości.",
   clearPool: "Wyczyść",

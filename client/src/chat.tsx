@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { PassKeeper } from "./bootstrap";
+import type { ChatSize } from "./chat-resize";
 
 import { CHAT_HISTORY_LENGTH, type ChatMessage, MAX_CHAT_LENGTH } from "../../src/chat";
 import { Avatar } from "./avatar";
@@ -108,11 +109,14 @@ function sameRun(previous: ChatMessage | undefined, next: ChatMessage | undefine
 export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; shown: boolean }) {
   const { copy, locale, person } = useBoardUi();
   const [text, setText] = useState("");
+  const [size, setSize] = useState<ChatSize>({});
   const [submission, setSubmission] = useState<"idle" | "sending" | Refusal>("idle");
   const busy = submission === "sending";
   const input = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const logSize = useRef({ height: 0, width: 0 });
+  const resizeAnchor = useRef<{ element: Element; offset: number } | null>(null);
   const time = useMemo(() => new Intl.DateTimeFormat(locale, { timeStyle: "short" }), [locale]);
 
   useLayoutEffect(() => {
@@ -125,12 +129,41 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
     if (!shown || viewport === null) return;
 
     // WARNING: Follow keyboard-driven log resizes even when no message arrives.
-    const resize = new ResizeObserver(() => {
+    const measure = () => {
+      logSize.current = { height: viewport.clientHeight, width: viewport.clientWidth };
       if (follow.current) viewport.scrollTop = viewport.scrollHeight;
-    });
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
     resize.observe(viewport);
     return () => resize.disconnect();
   }, [shown]);
+
+  useLayoutEffect(() => {
+    const viewport = log.current;
+    const anchor = resizeAnchor.current;
+    resizeAnchor.current = null;
+    if (viewport === null || anchor === null || !viewport.contains(anchor.element)) return;
+    viewport.scrollTop +=
+      anchor.element.getBoundingClientRect().top -
+      viewport.getBoundingClientRect().top -
+      anchor.offset;
+  }, [size.width]);
+
+  const resize = (next: ChatSize) => {
+    const viewport = log.current;
+    if (!follow.current && viewport !== null && next.width !== size.width) {
+      // WARNING: Keep the same message in view when the new width rewraps the thread.
+      const { top } = viewport.getBoundingClientRect();
+      const element = [...viewport.children].find(
+        (child) => child.getBoundingClientRect().bottom > top,
+      );
+      if (element !== undefined) {
+        resizeAnchor.current = { element, offset: element.getBoundingClientRect().top - top };
+      }
+    }
+    setSize(next);
+  };
 
   const send = async (message: string) => {
     input.current?.focus();
@@ -147,11 +180,17 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   if (!shown) return null;
 
   return (
-    <Sheet panel="chat" title={copy.chat}>
+    <Sheet chatResize={{ change: resize, size }} panel="chat" title={copy.chat}>
       <div
         aria-label={copy.chat}
-        className="min-h-0 max-h-[min(52dvh,23rem)] overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus"
+        className={`min-h-0 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${size.height === undefined ? "max-h-[min(52dvh,23rem)]" : "flex-1"}`}
         onScroll={({ currentTarget }) => {
+          // WARNING: Chrome can deliver scroll clamping before the observer sees the new size.
+          if (
+            currentTarget.clientHeight !== logSize.current.height ||
+            currentTarget.clientWidth !== logSize.current.width
+          )
+            return;
           follow.current =
             currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight < 32;
         }}
