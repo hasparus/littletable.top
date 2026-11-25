@@ -64,19 +64,12 @@ bun run test test/board-view-lifecycle.test.ts
 bun run test test/board-view-lifecycle.test.ts -t 'schedule 1$'
 ```
 
-The public-board expiry alarm changes the paint order of surviving strokes.
-Replay the regression with:
+The Worker alarm experiment found that expiry could change the paint order of
+surviving strokes. The production fix and permanent regression are in
+[PR #81](https://github.com/hasparus/littletable.top/pull/81).
 
-```sh
-bun run test test/public-stacking.test.ts
-```
-
-The fixture stacks red beneath blue inside a 49-hour-old group and places a
-green stroke above the group. All three fresh strokes overlap. Before the alarm,
-their back-to-front order is red, blue, green. After one production alarm,
-SQLite contains the same strokes in green, blue, red paint order. The sweep
-assigns fresh indices above the highest page sibling as it iterates surviving
-children. The test derives paint order independently by walking parent groups
-and sorting siblings by their tldraw index. Fixture setup, initial order, alarm
-execution and survival checks run normally. Only the final equality is marked
-`it.fails`. Remove `.fails` to see the failing diff or to land a fix.
+The original fixture stacked red beneath blue inside a 49-hour-old group and
+placed green above the group. One production alarm changed the back-to-front
+order from red, blue, green to green, blue, red. The test derived paint order
+by walking parent groups and sorting siblings by their tldraw index.
+[Original repro](https://github.com/hasparus/littletable.top/blob/8877d5a899e4cc3844a8d43278750ebe4c4c19c9/test/public-stacking.test.ts)
