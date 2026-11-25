@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 
 import { previewAccounts } from "./alchemy.preview-db.ts";
 import { Tabletop } from "./alchemy/index.js";
+import { httpsOrigin } from "./src/mcp/origin.ts";
 
 // A separate stack name keeps PR teardown scoped to preview state. Preview
 // Workers use workers.dev, with a fixed prefix for WorkOS Staging redirects.
@@ -50,8 +51,8 @@ export default Alchemy.Stack(
           new Error("Set preview MCP_AUTHKIT_ORIGIN and MCP_DOMAIN together."),
         );
       }
-      const issuerUrl = URL.canParse(issuer) ? new URL(issuer) : undefined;
-      if (issuerUrl?.protocol !== "https:" || issuerUrl.origin !== issuer) {
+      const authorizationServer = httpsOrigin(issuer);
+      if (authorizationServer === null) {
         return yield* Effect.die(
           new Error("Set preview MCP_AUTHKIT_ORIGIN to the HTTPS issuer origin."),
         );
@@ -67,7 +68,7 @@ export default Alchemy.Stack(
           new Error("Set preview MCP_DOMAIN to the base hostname for PR subdomains."),
         );
       }
-      mcp = { authorizationServer: issuer, domain, workerName: `littletable-mcp-${stage}` };
+      mcp = { authorizationServer, domain, workerName: `littletable-mcp-${stage}` };
     }
 
     const signing = yield* Alchemy.KeyPair("SigningKey", { algorithm: "rsa" });
