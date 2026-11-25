@@ -157,11 +157,11 @@ jobs:
 
       - name: Bundle preview
         env:
-          TLDRAW_LICENSE_KEY: ${{ vars.PREVIEW_TLDRAW_LICENSE_KEY }}
+          TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
           WRANGLER_SEND_METRICS: "false"
         run: |
           if [ -z "$TLDRAW_LICENSE_KEY" ]; then
-            echo '::warning::Set repository variable PREVIEW_TLDRAW_LICENSE_KEY to enable the preview board editor.'
+            echo '::warning::Set repository variable TLDRAW_LICENSE_KEY to enable the preview board editor.'
           fi
           export PREVIEW_BUNDLE_DIR="$RUNNER_TEMP/preview-bundle"
           mkdir "$PREVIEW_BUNDLE_DIR"
