@@ -38,9 +38,8 @@ export function BoardShare({
       await action();
     } catch {
       setStatus(copy.shareFailed);
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   async function copyLink(path: string) {
