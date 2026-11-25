@@ -1,5 +1,3 @@
-import type { Copy } from "./copy";
-
 export const PALETTE = {
   default: {
     dark: "var(--tl-color-background)",
@@ -10,7 +8,7 @@ export const PALETTE = {
   sage: { dark: "#2c2f2a", label: "boardBackgroundSage", light: "#ebede7" },
   sand: { dark: "#342c20", label: "boardBackgroundSand", light: "#f6eedc" },
   sky: { dark: "#222d3d", label: "boardBackgroundSky", light: "#e6eff9" },
-} as const satisfies Record<string, { dark: string; label: keyof Copy; light: string }>;
+} as const;
 
 export type BoardColor = keyof typeof PALETTE;
 

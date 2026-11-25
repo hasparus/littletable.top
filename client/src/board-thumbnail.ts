@@ -4,11 +4,9 @@ import type { Bootstrap } from "./bootstrap";
 
 import {
   isThumbnailType,
-  THUMBNAIL_BACKGROUND_HEADER,
   THUMBNAIL_HEIGHT,
   THUMBNAIL_INTERVAL_MS,
   THUMBNAIL_WIDTH,
-  thumbnailBackground,
   thumbnailByteLimit,
   thumbnailUrl,
 } from "../../src/board-thumbnail";
@@ -67,7 +65,6 @@ export function keepThumbnail(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: AbortController | null = null;
   let page = thumbnailPage(editor);
-  let hasThumbnail = !grant.needed;
   let dirty = grant.needed && page !== null;
   let nextCapture = 0;
   let retryDelay = FIRST_RETRY_MS;
@@ -93,11 +90,6 @@ export function keepThumbnail(
     pending = attempt;
     dirty = false;
     try {
-      const selected = editor.getDocumentSettings().meta.backgroundColor;
-      const background =
-        typeof selected === "string" && selected !== "default"
-          ? thumbnailBackground(editor.getCurrentTheme().colors.light.background)
-          : null;
       const image = await renderThumbnail(editor, target?.shapes ?? new Set());
       if (
         attempt.signal.aborted ||
@@ -111,7 +103,6 @@ export function keepThumbnail(
         body: image,
         headers: {
           "Content-Type": image.type,
-          ...(background === null ? {} : { [THUMBNAIL_BACKGROUND_HEADER]: background }),
           "X-Board-Link": String(grant.link),
           "X-CSRF-Token": grant.csrf,
         },
@@ -119,7 +110,6 @@ export function keepThumbnail(
         signal: attempt.signal,
       }).catch(() => null);
       if (response?.ok === true) {
-        hasThumbnail = true;
         nextCapture = Date.now() + THUMBNAIL_INTERVAL_MS;
         retryDelay = FIRST_RETRY_MS;
       } else if (!attempt.signal.aborted) {
@@ -139,15 +129,7 @@ export function keepThumbnail(
     ({ changes }) => {
       const previous = page;
       page = thumbnailPage(editor);
-      const backgroundChanged =
-        (hasThumbnail || page !== null) &&
-        Object.values(changes.updated).some(
-          ([before, after]) =>
-            before.typeName === "document" &&
-            after.typeName === "document" &&
-            before.meta.backgroundColor !== after.meta.backgroundColor,
-        );
-      if (previous?.id === page?.id && !backgroundChanged) {
+      if (previous?.id === page?.id) {
         if (page === null) return;
         const { shapes } = page;
         const records = [

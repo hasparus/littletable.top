@@ -307,8 +307,8 @@ can keep their own copies of earlier cards.
 
 The Worker uses the same Photon library as thumbnail validation to composite
 the branding and transparent drawing onto the light version of the board's
-selected background. Thumbnail uploads store the color in R2 metadata. The
-Worker reuses the rendered card while the artwork, thumbnail, and color match.
+saved background. The color comes from the board room's drawing settings.
+The Worker reuses the rendered card while the artwork, thumbnail, and color match.
 Missing thumbnails or a failed render get the generic card.
 
 ### The sign-in provider

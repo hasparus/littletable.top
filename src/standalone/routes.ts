@@ -11,12 +11,7 @@ import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
 import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
-import {
-  isThumbnailType,
-  THUMBNAIL_BACKGROUND_HEADER,
-  thumbnailBackground,
-  thumbnailByteLimit,
-} from "../board-thumbnail";
+import { isThumbnailType, thumbnailByteLimit } from "../board-thumbnail";
 import { readCapped } from "../file-store";
 import { serveStored } from "../files";
 import { addressKey } from "../limiter";
@@ -379,8 +374,7 @@ export class Standalone {
     if (body === "too-large") return refuse(413, "too-large");
     if (!isThumbnail(body, type)) return refuse(415, "invalid-thumbnail");
     const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
-    const background = thumbnailBackground(request.headers.get(THUMBNAIL_BACKGROUND_HEADER));
-    const result = await room.storeThumbnail(id, access.link, body, type, background);
+    const result = await room.storeThumbnail(id, access.link, body, type);
     if (result === "forbidden") return refuse(404, "not-found");
     if (typeof result === "object") {
       return json(

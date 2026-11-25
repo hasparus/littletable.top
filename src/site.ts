@@ -2,6 +2,7 @@
 // /b/<share code>, and the headers every page and file leaves with.
 
 import type { Config, Hosts, StandaloneConfig } from "./config";
+import type { PreviewBindings } from "./share-preview";
 import type { Board } from "./standalone/store";
 
 import { composeBoardPreview } from "./share-preview";
@@ -155,7 +156,7 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     .transform(page);
 }
 
-type SiteBindings = { ASSETS: Fetcher; DB?: D1Database; Files: R2Bucket };
+type SiteBindings = PreviewBindings & { DB?: D1Database };
 
 export async function serveSite(
   request: Request,
@@ -180,10 +181,13 @@ export async function serveSite(
   const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
   if (imageCode !== undefined && config.mode === "standalone") {
     const board = database === undefined ? null : await new Store(database).byShareCode(imageCode);
-    const preview =
-      request.method === "GET" && board?.hasThumbnail === true
-        ? await composeBoardPreview(url, board.id, env.Files, assets)
-        : null;
+    let preview: Response | null = null;
+    if (board?.hasThumbnail === true) {
+      preview =
+        request.method === "HEAD"
+          ? new Response(null, { headers: { "Content-Type": "image/png" } })
+          : await composeBoardPreview(url, board, env);
+    }
     const image =
       preview ?? (await assets.fetch(new URL("/open-graph.png", url), { method: request.method }));
     const response = harden(image, request, config);

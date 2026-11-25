@@ -5,11 +5,6 @@ export const THUMBNAIL_MAX_BYTES = 50_000;
 export const THUMBNAIL_INTERVAL_MS = 5 * 60_000;
 export const THUMBNAIL_DAILY_LIMIT = 8;
 export const THUMBNAIL_DAY_MS = 24 * 60 * 60_000;
-export const THUMBNAIL_BACKGROUND_HEADER = "X-Board-Background";
-
-export function thumbnailBackground(value: string | null): string | null {
-  return value !== null && /^#[0-9a-f]{6}$/iu.test(value) ? value.toLowerCase() : null;
-}
 
 export type ThumbnailType = "image/png" | "image/webp";
 

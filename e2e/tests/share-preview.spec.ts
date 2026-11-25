@@ -9,7 +9,7 @@ test("a link preview includes the drawing as soon as the board has a thumbnail",
   page,
   request,
 }) => {
-  await page.goto(`${STANDALONE}/boards`);
+  await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Sample account");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -52,4 +52,19 @@ test("a link preview includes the drawing as soon as the board has a thumbnail",
   } finally {
     composed.free();
   }
+
+  await page.getByTestId("main-menu.button").click();
+  await page.getByRole("menuitem", { name: "Background color" }).hover();
+  await page.getByRole("menuitemcheckbox", { name: "Sage" }).click();
+  await expect
+    .poll(async () => {
+      const colored = await request.get(`${board}/preview.png`);
+      const card = PhotonImage.new_from_byteslice(await colored.body());
+      try {
+        return card.get_raw_pixels().slice(0, 4);
+      } finally {
+        card.free();
+      }
+    })
+    .toEqual(Uint8Array.of(235, 237, 231, 255));
 });

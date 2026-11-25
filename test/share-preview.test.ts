@@ -1,12 +1,10 @@
 import { PhotonImage } from "@cf-wasm/photon/workerd";
+import { DurableObjectSqliteSyncWrapper, SQLiteSyncStorage } from "@tldraw/sync-core";
+import { TLDOCUMENT_ID, type TLRecord } from "@tldraw/tlschema";
 import { runInDurableObject } from "cloudflare:test";
 import { expect, it } from "vitest";
 
-import {
-  THUMBNAIL_BACKGROUND_HEADER,
-  THUMBNAIL_INTERVAL_MS,
-  thumbnailUrl,
-} from "../src/board-thumbnail";
+import { thumbnailUrl } from "../src/board-thumbnail";
 import { SHARE_ART, SHARE_ART_WINDOW } from "../src/share-art";
 import { Browser, ORIGIN, standaloneEnv } from "./standalone-support";
 
@@ -55,7 +53,11 @@ it("automatically composes a drawing for the current share link only", async () 
           return Promise.resolve(new Response(template, { headers: { ETag: '"plain"' } }));
         }
         if (url.pathname === "/open-graph.png") {
-          return Promise.resolve(new Response(init?.method === "HEAD" ? null : "Generic PNG"));
+          return Promise.resolve(
+            new Response(init?.method === "HEAD" ? null : "Generic PNG", {
+              headers: { "Content-Length": "11", "Content-Type": "image/png" },
+            }),
+          );
         }
         return standaloneEnv.ASSETS.fetch(url, init);
       },
@@ -67,19 +69,17 @@ it("automatically composes a drawing for the current share link only", async () 
   );
   expect(await (await crawler.fetch(card, {}, env)).text()).toBe("Generic PNG");
 
-  const upload = (background: string | null = null) =>
-    owner.fetch(thumbnailUrl(board.id), {
-      body: drawing,
-      headers: {
-        "Content-Type": "image/png",
-        Origin: ORIGIN,
-        "X-Board-Link": "0",
-        "X-CSRF-Token": owner.csrf!,
-        ...(background === null ? {} : { [THUMBNAIL_BACKGROUND_HEADER]: background }),
-      },
-      method: "PUT",
-    });
-  expect((await upload()).status).toBe(204);
+  const upload = await owner.fetch(thumbnailUrl(board.id), {
+    body: drawing,
+    headers: {
+      "Content-Type": "image/png",
+      Origin: ORIGIN,
+      "X-Board-Link": "0",
+      "X-CSRF-Token": owner.csrf!,
+    },
+    method: "PUT",
+  });
+  expect(upload.status).toBe(204);
   expect((await crawler.fetch(thumbnailUrl(board.id))).status).toBe(404);
   expect(await (await crawler.fetch(page, {}, env)).text()).toContain(
     `property="og:image" content="${ORIGIN}${card}"`,
@@ -94,12 +94,17 @@ it("automatically composes a drawing for the current share link only", async () 
   const { BoardRoom: rooms } = standaloneEnv;
   const room = rooms.get(rooms.idFromName(board.id));
   await runInDurableObject(room, (_instance, state) => {
-    state.storage.sql.exec(
-      "UPDATE thumbnail SET updated_at = ?",
-      Date.now() - THUMBNAIL_INTERVAL_MS,
-    );
+    const drawingStore = new SQLiteSyncStorage<TLRecord>({
+      sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
+    });
+    drawingStore.transaction((store) => {
+      const settings = store.get(TLDOCUMENT_ID);
+      if (settings === undefined || settings.typeName !== "document") {
+        throw new Error("Expected board settings");
+      }
+      store.set(TLDOCUMENT_ID, { ...settings, meta: { ...settings.meta, backgroundColor: "sky" } });
+    });
   });
-  expect((await upload("#e6eff9")).status).toBe(204);
   const colored = await crawler.fetch(card, {}, env);
   const bytes = await colored.arrayBuffer();
   expectCardPixels(bytes, [230, 239, 249, 255]);
@@ -107,6 +112,8 @@ it("automatically composes a drawing for the current share link only", async () 
   expect(await (await crawler.fetch(card, {}, env)).arrayBuffer()).toEqual(bytes);
   const head = await crawler.fetch(card, { method: "HEAD" }, env);
   expect(head.body).toBeNull();
+  expect(head.headers.get("Content-Type")).toBe("image/png");
+  expect(head.headers.get("Content-Length")).toBeNull();
 
   const reset = await owner.post(`/api/boards/${board.id}/reset`);
   expect(reset.status).toBe(200);

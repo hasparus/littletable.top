@@ -1,6 +1,9 @@
 import { PhotonImage, resize, SamplingFilter, watermark } from "@cf-wasm/photon/workerd";
 
-import { thumbnailBackground } from "./board-thumbnail";
+import type { BoardRoom } from "./board-room";
+import type { Board } from "./standalone/store";
+
+import { PALETTE } from "./board-palette";
 import { SHARE_ART, SHARE_ART_BACKGROUND, SHARE_ART_WINDOW } from "./share-art";
 import { thumbnailKey } from "./thumbnail-store";
 
@@ -49,20 +52,26 @@ function renderPreview(
   }
 }
 
+export type PreviewBindings = {
+  ASSETS: Fetcher;
+  BoardRoom: DurableObjectNamespace<BoardRoom>;
+  Files: R2Bucket;
+};
+
 export async function composeBoardPreview(
   url: URL,
-  board: string,
-  files: R2Bucket,
-  assets: Fetcher,
+  board: Board,
+  { ASSETS, BoardRoom, Files }: PreviewBindings,
 ): Promise<Response | null> {
   try {
-    const [template, thumbnail] = await Promise.all([
-      assets.fetch(new URL(SHARE_ART, url)),
-      files.get(thumbnailKey(board)),
+    const room = BoardRoom.get(BoardRoom.idFromName(board.id));
+    const [template, thumbnail, color] = await Promise.all([
+      ASSETS.fetch(new URL(SHARE_ART, url)),
+      Files.get(thumbnailKey(board.id)),
+      room.backgroundForSharePreview(board.linkVersion).catch(() => "default" as const),
     ]);
-    if (!template.ok || template.body === null || thumbnail === null) return null;
-    const background =
-      thumbnailBackground(thumbnail.customMetadata?.background ?? null) ?? SHARE_ART_BACKGROUND;
+    if (!template.ok || template.body === null || thumbnail === null || color === null) return null;
+    const background = color === "default" ? SHARE_ART_BACKGROUND : PALETTE[color].light;
 
     // Only the valid-link route can reach this cache. Color can change while
     // the drawing bytes remain identical, so each is part of the key.
@@ -70,7 +79,7 @@ export async function composeBoardPreview(
     let cacheKey: string | null = null;
     let cache: Cache | null = null;
     if (artTag !== null) {
-      const key = new URL(`/__share-preview/${board}`, url);
+      const key = new URL(`/__share-preview/${board.id}`, url);
       key.searchParams.set("drawing", thumbnail.etag);
       key.searchParams.set("art", artTag);
       key.searchParams.set("background", background);
