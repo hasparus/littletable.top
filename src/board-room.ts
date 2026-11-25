@@ -418,6 +418,7 @@ export class BoardRoom extends DurableObject<Env> {
     link: number,
     body: ArrayBuffer,
     type: ThumbnailType,
+    background: string | null = null,
   ): Promise<ThumbnailWrite> {
     if (this.retired || link < this.link()) return "forbidden";
     if (this.thumbnailPending) return { retryAt: Date.now() + 5000 };
@@ -425,7 +426,15 @@ export class BoardRoom extends DurableObject<Env> {
     this.thumbnailPending = true;
     try {
       return await this.trackUpload(
-        writeThumbnail(this.ctx.storage.sql, this.env.Files, board, body, type, Date.now()),
+        writeThumbnail(
+          this.ctx.storage.sql,
+          this.env.Files,
+          board,
+          body,
+          type,
+          Date.now(),
+          background,
+        ),
       );
     } finally {
       this.thumbnailPending = false;

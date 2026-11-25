@@ -21,6 +21,7 @@ import {
 // `bun run dev:worker` runs.
 
 const WORKER_DEV_PORT = 8789;
+const SHARE_IMAGES = ["open-graph.png", "open-graph-board.png"];
 // Hosted builds compile this client's source from an installed package.
 const clientSource = normalizePath(fileURLToPath(new URL("client/src/", import.meta.url)));
 const compilerFiles = new RegExp(
@@ -109,11 +110,13 @@ function tabletop(): Plugin {
     generateBundle() {
       this.emitFile({ fileName: "manifest.webmanifest", source: manifest(), type: "asset" });
       if (settings.mode === "standalone") {
-        this.emitFile({
-          fileName: "open-graph.png",
-          source: readFileSync(new URL("client/open-graph.png", import.meta.url)),
-          type: "asset",
-        });
+        for (const fileName of SHARE_IMAGES) {
+          this.emitFile({
+            fileName,
+            source: readFileSync(new URL(`client/${fileName}`, import.meta.url)),
+            type: "asset",
+          });
+        }
       }
     },
     load(id) {

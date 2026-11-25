@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { chromium } from "@playwright/test";
 // Run with Bun and Playwright Chromium installed:
 // bun scripts/open-graph.tsx map-notes client/open-graph.png
+// bun scripts/open-graph.tsx link-preview client/open-graph-board.png
 // bun scripts/open-graph.tsx gallery /tmp/littletable-open-graph.html
 import { readFile, writeFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -224,17 +225,9 @@ function DiceNight() {
   );
 }
 
-function MapNotes() {
+function BrandLockup() {
   return (
-    <Card name="Little Table on a sketched map with a rolled d20">
-      <image
-        height={HEIGHT}
-        href={`data:image/png;base64,${mapBoard.toString("base64")}`}
-        width={WIDTH}
-      />
-      {/* Cover the local editor's zoom display and license notice in the share image. */}
-      <rect fill="#f7f6f3" height="45" width="96" x="0" y="585" />
-      <rect fill="#f7f6f3" height="45" width="110" x="1090" y="585" />
+    <>
       <Logo size={82} x={54} y={185} />
       <g fontFamily="Google Sans Flex, sans-serif">
         <text fill="#252220" fontSize="76" fontWeight="748" letterSpacing="-2.7" x="64" y="350">
@@ -247,6 +240,30 @@ function MapNotes() {
           </tspan>
         </text>
       </g>
+    </>
+  );
+}
+
+function LinkPreview() {
+  return (
+    <Card name="Little Table with space for a shared drawing">
+      <BrandLockup />
+    </Card>
+  );
+}
+
+function MapNotes() {
+  return (
+    <Card name="Little Table on a sketched map with a rolled d20">
+      <image
+        height={HEIGHT}
+        href={`data:image/png;base64,${mapBoard.toString("base64")}`}
+        width={WIDTH}
+      />
+      {/* Cover the local editor's zoom display and license notice in the share image. */}
+      <rect fill="#f7f6f3" height="45" width="96" x="0" y="585" />
+      <rect fill="#f7f6f3" height="45" width="110" x="1090" y="585" />
+      <BrandLockup />
     </Card>
   );
 }
@@ -257,14 +274,16 @@ const concepts = {
   "shared-board": { title: "Shared board", render: <SharedBoard /> },
 };
 
+const artwork = { ...concepts, "link-preview": { render: <LinkPreview /> } };
+
 const [concept, output] = process.argv.slice(2);
 if (
   output === undefined ||
   concept === undefined ||
-  (concept !== "gallery" && !Object.hasOwn(concepts, concept))
+  (concept !== "gallery" && !Object.hasOwn(artwork, concept))
 ) {
   throw new Error(
-    "Usage: bun scripts/open-graph.tsx <shared-board|dice-night|map-notes|gallery> <output>",
+    "Usage: bun scripts/open-graph.tsx <shared-board|dice-night|map-notes|link-preview|gallery> <output>",
   );
 }
 const [font, googleSansFlex, mapBoard, mark] = await Promise.all([
@@ -318,10 +337,14 @@ if (concept === "gallery") {
       viewport: { height: HEIGHT, width: WIDTH },
     });
     await page.setContent(
-      documentOf(renderToStaticMarkup(concepts[concept as keyof typeof concepts].render)),
+      documentOf(renderToStaticMarkup(artwork[concept as keyof typeof artwork].render)),
     );
     await page.evaluate(() => document.fonts.ready);
-    await page.screenshot({ path: output, type: "png" });
+    await page.screenshot({
+      omitBackground: concept === "link-preview",
+      path: output,
+      type: "png",
+    });
   } finally {
     await browser.close();
   }

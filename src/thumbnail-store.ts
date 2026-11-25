@@ -55,6 +55,7 @@ export async function writeThumbnail(
   body: ArrayBuffer,
   type: ThumbnailType,
   now: number,
+  background: string | null,
 ): Promise<ThumbnailWrite> {
   sql.exec(
     "CREATE TABLE IF NOT EXISTS thumbnail (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER NOT NULL, writes_today INTEGER NOT NULL, hash TEXT NOT NULL)",
@@ -72,11 +73,15 @@ export async function writeThumbnail(
   }
   if (count >= THUMBNAIL_DAILY_LIMIT) return { retryAt: (day + 1) * THUMBNAIL_DAY_MS };
 
-  const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))]
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+  const hash = background === null ? digest : `${digest}:${background}`;
   if (latest?.hash === hash) return "duplicate";
-  await bucket.put(thumbnailKey(board), body, { httpMetadata: { contentType: type } });
+  await bucket.put(thumbnailKey(board), body, {
+    ...(background === null ? {} : { customMetadata: { background } }),
+    httpMetadata: { contentType: type },
+  });
   sql.exec(
     `INSERT INTO thumbnail (id, updated_at, writes_today, hash) VALUES (1, ?1, ?2, ?3)
      ON CONFLICT (id) DO UPDATE SET updated_at = ?1, writes_today = ?2, hash = ?3`,
