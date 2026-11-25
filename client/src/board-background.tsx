@@ -11,8 +11,8 @@ import {
   useValue,
 } from "tldraw";
 
+import { isBoardColor, PALETTE } from "../../src/board-palette";
 import { isSecretLayer } from "../../src/secret-layer";
-import { isBoardColor, PALETTE } from "./board-palette";
 import { useBoardUi } from "./ui";
 
 function boardColor(editor: Editor) {

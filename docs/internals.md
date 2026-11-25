@@ -292,10 +292,24 @@ note outside the shared document.
 | `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                        |
 | `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only                 |
 | `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                                         |
+| `GET /b/<share code>/preview.png`         | Branded link image with the shared board thumbnail when available                              |
 | `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                                          |
 | `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                                             |
 
 Board creation also accepts `"language": "pl"` to start with a Polish page name.
+
+### Link previews
+
+The current share link automatically includes the shared thumbnail when one
+exists. The image route looks up the current share code on every request.
+Old links and deleted boards get the generic image. Apps that fetch previews
+can keep their own copies of earlier cards.
+
+The Worker uses the same Photon library as thumbnail validation to composite
+the branding and transparent drawing onto the light version of the board's
+saved background. The color comes from the board room's drawing settings.
+The Worker reuses the rendered card while the artwork, thumbnail, and color match.
+Missing thumbnails or a failed render get the generic card.
 
 ### The sign-in provider
 

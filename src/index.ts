@@ -265,7 +265,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     ).route(request);
     if (own !== null) return own;
   }
-  return serveSite(request, env.ASSETS, config, env.DB);
+  return serveSite(request, env, config);
 }
 
 export default { fetch: handle } satisfies ExportedHandler<Env>;
