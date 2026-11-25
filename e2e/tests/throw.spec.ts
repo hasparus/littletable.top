@@ -312,6 +312,41 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
   expect([await boxOf(menu), await boxOf(pageMenu)]).toEqual(atRest);
 });
 
+test("the hamburger menu paints above the visible dice tray", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 390 });
+  await startBoard(page);
+  await roll(page, [6, 20]);
+  await expect(toast(page)).toBeVisible();
+  const canvas = diceCanvas(page);
+  await expect(canvas).toBeVisible();
+  const dice = await shoot(tray(page));
+  await setVisibility(canvas, "hidden");
+  expect(await shows(tray(page), dice), "dice are painted over the board").toBe(false);
+  await setVisibility(canvas, "");
+
+  await page.getByTestId("main-menu.button").click();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await reviewShot(page, "dice-hamburger-menu");
+  const menuBox = await boxOf(menu);
+  const canvasBox = await boxOf(canvas);
+  const top = Math.max(menuBox.y, canvasBox.y) + 10;
+  const bottom = Math.min(menuBox.y + menuBox.height, canvasBox.y + canvasBox.height) - 10;
+  expect(bottom).toBeGreaterThan(top);
+  const pixels = () =>
+    page.screenshot({
+      animations: "disabled",
+      clip: { height: bottom - top, width: menuBox.width - 20, x: menuBox.x + 10, y: top },
+    });
+  await canvas.evaluate((element) => {
+    element.style.backgroundColor = "magenta";
+  });
+  const aboveDice = await pixels();
+  await setVisibility(canvas, "hidden");
+  const withoutDice = await pixels();
+  expect(withoutDice.equals(aboveDice), "the overlapping canvas cannot cover the menu").toBe(true);
+});
+
 test("a new roll takes the tray over from the one before", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const guest = await guestOn(browser, boardUrl);
