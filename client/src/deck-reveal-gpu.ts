@@ -11,6 +11,7 @@ async function loadPicture(src: string, signal: AbortSignal) {
 }
 
 export async function playDeckReveal(canvas: HTMLCanvasElement, src: string, signal: AbortSignal) {
+  const started = performance.now();
   const [device, picture] = await Promise.allSettled([tgpu.init(), loadPicture(src, signal)]);
   if (device.status === "rejected") throw device.reason;
   const root = device.value;
@@ -34,10 +35,11 @@ export async function playDeckReveal(canvas: HTMLCanvasElement, src: string, sig
       });
       await final.initAsync();
       signal.throwIfAborted();
+      if (performance.now() - started > 320) return;
       loop.run(0);
       const reveal = canvas.animate(
-        [{ opacity: 0, filter: "brightness(1.35)" }, { opacity: 1 }, { opacity: 0 }],
-        { duration: 540, easing: "ease-out" },
+        [{ opacity: 0 }, { opacity: 0.35, filter: "brightness(1.09)" }, { opacity: 0 }],
+        { duration: 260, easing: "ease-out" },
       );
       const cancel = () => reveal.cancel();
       signal.addEventListener("abort", cancel, { once: true });

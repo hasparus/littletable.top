@@ -106,3 +106,51 @@ test("an owner places physical Gizmos and deals an illustrated card that guests 
     await guestContext.close();
   }
 });
+
+test("a card keeps its grip through a deal and can be slid back onto the stack", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 700 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(STANDALONE + "/dev/gizmos");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const top = page.getByRole("button", { name: "Draw a card" });
+  const dealt = page.locator("[data-deck-card]");
+  const count = page.locator("[data-deck-base]");
+  await expect(count).toHaveText("78");
+  const rect = (await top.boundingBox())!;
+  const x = rect.x + 9,
+    y = rect.y + 16;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 130, y - 74, { steps: 7 });
+  const held = (await page.locator("[data-deck-ghost]").boundingBox())!;
+  expect(Math.abs(held.x - rect.x - 130)).toBeLessThan(2);
+  expect(Math.abs(held.y - rect.y + 74)).toBeLessThan(2);
+  expect(Math.abs(held.width - rect.width)).toBeLessThan(2);
+  await page.mouse.move(x, y, { steps: 5 });
+  await page.mouse.up();
+  await expect(dealt).toHaveCount(0);
+  await expect(count).toHaveText("78");
+
+  await page.mouse.down();
+  await page.mouse.move(x + 130, y - 74, { steps: 7 });
+  await page.mouse.up();
+  await expect(dealt).toHaveCount(1);
+  const landed = (await dealt.boundingBox())!;
+  expect(Math.abs(landed.x + landed.width / 2 - held.x - held.width / 2)).toBeLessThan(2);
+  expect(Math.abs(landed.y - held.y)).toBeLessThan(2);
+
+  await top.press("Enter");
+  await top.press("Enter");
+  await expect(count).toHaveText("75");
+  const faces = await dealt.evaluateAll((cards) =>
+    cards.map((card) => card.getBoundingClientRect().toJSON()),
+  );
+  for (const [index, a] of faces.entries()) {
+    for (const b of faces.slice(index + 1))
+      expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(
+        true,
+      );
+  }
+});
