@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
 
 import type { Language } from "../settings";
 import type { Action, Editing, Lists, Owned } from "./front-board-list";
@@ -179,9 +178,16 @@ function SignedIn({
   );
 }
 
-function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
-  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(null);
-  const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
+type FrontProps = {
+  copy: FrontCopy;
+  failed?: boolean;
+  initialPage?: "signed-out" | BoardPage;
+  locale: Language;
+  name: string;
+};
+
+export function Front({ copy, failed, initialPage, locale, name }: FrontProps) {
+  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(initialPage ?? null);
   const reload = useCallback(async () => {
     try {
       const response = await fetch("/api/boards");
@@ -193,9 +199,9 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name
     }
   }, []);
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- The initial load updates state when the fetch settles.
-    void reload();
-  }, [reload]);
+    // oxlint-disable-next-line react/set-state-in-effect -- The fallback load updates state when the fetch settles.
+    if (initialPage === undefined) void reload();
+  }, [initialPage, reload]);
   if (page === "failed") {
     return (
       <p className="p-6 text-danger-text" role="alert">
@@ -212,20 +218,16 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name
     );
   }
   return page === "signed-out" ? (
-    <SignedOut copy={copy} failed={failed} name={name} />
+    <SignedOut copy={copy} failed={failed === true} name={name} />
   ) : (
     <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} />
   );
 }
 
-export function mountFront(
-  element: HTMLElement,
-  props: { copy: FrontCopy; locale: Language; name: string },
-) {
-  element.classList.add("overflow-y-auto", "bg-background");
-  createRoot(element).render(
+export function BoardsApp(props: FrontProps) {
+  return (
     <FeedbackProvider enabled language={props.locale}>
       <Front {...props} />
-    </FeedbackProvider>,
+    </FeedbackProvider>
   );
 }

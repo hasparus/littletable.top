@@ -23,40 +23,62 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
-function listBoard(prefix: string, index: number) {
-  return { id: `${prefix}${index}`, shareCode: `${prefix}${index}`, title: `${prefix} ${index}` };
-}
-
 test("board sections collapse on phones only when both lists have three boards", async ({
   page,
+  request,
 }) => {
-  const owned = Array.from({ length: 3 }, (_, index) => ({
-    ...listBoard("Created", index),
-    createdAt: 1_700_000_000,
-  }));
-  const visited = Array.from({ length: 3 }, (_, index) => ({
-    ...listBoard("Joined", index),
-    visitedAt: 1_700_000_000,
-  }));
-  let lists = { owned, visited: visited.slice(0, 2) };
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.route("**/api/boards", async (route) => {
-    const response = await route.fetch();
-    if (!response.ok()) return route.fulfill({ response });
-    await route.fulfill({ json: { ...(await response.json()), ...lists }, response });
-  });
   await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
-  await page.getByLabel("Name").fill("Board Lists");
+  const account = crypto.randomUUID().slice(0, 12);
+  await page.getByLabel("Name").fill(`Board lists ${account}`);
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL(`${STANDALONE}/boards`);
 
+  const start = await request.get(`${STANDALONE}/auth/sign-in?return=/boards`, { maxRedirects: 0 });
+  const authorize = new URL(start.headers().location!);
+  authorize.searchParams.set("fake_user", `Board host ${account}`);
+  const signedIn = await request.get(authorize.href);
+  expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
+  const member = page.request;
+  const headersFor = async (client: typeof member) => {
+    const response = await client.get(`${STANDALONE}/api/me`);
+    const me = await response.json();
+    return { Origin: STANDALONE, "X-CSRF-Token": me.csrf };
+  };
+  const memberHeaders = await headersFor(member);
+  const hostHeaders = await headersFor(request);
+  const shared: { id: string; shareCode: string }[] = [];
+  for (let index = 0; index < 3; index++) {
+    const own = await member.post(`${STANDALONE}/api/boards`, {
+      data: { title: `Created ${index}` },
+      headers: memberHeaders,
+    });
+    expect(own.status()).toBe(201);
+    const board = await request.post(`${STANDALONE}/api/boards`, {
+      data: { title: `Joined ${index}` },
+      headers: hostHeaders,
+    });
+    expect(board.status()).toBe(201);
+    shared.push(await board.json());
+  }
+  const visit = async (index: number) => {
+    const response = await member.post(
+      `${STANDALONE}/api/b/${shared[index]!.shareCode}/bootstrap`,
+      { data: {}, headers: memberHeaders },
+    );
+    expect(response.ok()).toBe(true);
+  };
+  await visit(0);
+  await visit(1);
+  await page.reload();
   const created = page.getByRole("button", { exact: true, name: "Boards created" });
   const joined = page.getByRole("button", { exact: true, name: "Boards joined" });
   const row = page.getByRole("link", { exact: true, name: "Joined 0" });
   await expect(row).toBeVisible();
   await expect(created.or(joined)).toHaveCount(0);
 
-  lists = { owned, visited };
+  await visit(2);
   await page.reload();
   await expect(created).toHaveAttribute("aria-expanded", "true");
   await expect(joined).toHaveAttribute("aria-expanded", "true");
@@ -73,7 +95,13 @@ test("board sections collapse on phones only when both lists have three boards",
   await expect(created.or(joined)).toHaveCount(0);
   await expect(row).toBeVisible();
 
-  lists = { owned, visited: [] };
+  for (const board of shared) {
+    const removed = await request.post(`${STANDALONE}/api/boards/${board.id}/delete`, {
+      data: {},
+      headers: hostHeaders,
+    });
+    expect(removed.status()).toBe(204);
+  }
   await page.setViewportSize({ height: 844, width: 390 });
   await page.reload();
   await expect(page.getByRole("link", { exact: true, name: "Created 0" })).toBeVisible();

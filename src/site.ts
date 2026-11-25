@@ -1,8 +1,9 @@
 import type { Config, Hosts, StandaloneConfig } from "./config";
 import type { PreviewBindings } from "./share-preview";
+import type { Standalone } from "./standalone/routes";
 import type { Board } from "./standalone/store";
 
-import { boardShell } from "../client/src/front-skeleton";
+import { renderBoards } from "./render-boards";
 import { composeBoardPreview } from "./share-preview";
 import { Store } from "./standalone/store";
 
@@ -141,6 +142,50 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     .transform(page);
 }
 
+export async function serveBoards(
+  request: Request,
+  assets: Fetcher,
+  config: StandaloneConfig,
+  own: Standalone,
+) {
+  const page = await shell(request, assets, config);
+  page.headers.set("Cache-Control", "private, no-store");
+  if (!page.ok || page.body === null || request.method === "HEAD") return page;
+  const data = await own.boardPage(request);
+  const url = new URL(request.url);
+  const requested = [
+    url.searchParams.get("lang"),
+    ...(request.headers.get("Accept-Language") ?? "")
+      .split(",")
+      .map((tag) => tag.split(";")[0]?.trim().split("-")[0]),
+  ];
+  let locale = requested.find((tag) => tag === "en" || tag === "pl");
+  return new HTMLRewriter()
+    .on("html", {
+      element(html) {
+        locale ??= html.getAttribute("lang") === "pl" ? "pl" : "en";
+        html.setAttribute("lang", locale);
+      },
+    })
+    .on("[data-board-root]", {
+      element(root) {
+        const state = {
+          failed: url.searchParams.get("sign-in") === "failed",
+          initialPage: data,
+          locale: locale ?? "en",
+          name: config.displayName,
+        } as const;
+        root.setAttribute("class", "fixed inset-0 overflow-y-auto bg-background");
+        root.setInnerContent(renderBoards(state), { html: true });
+        root.after(
+          `<script type="application/json" id="boards-state">${JSON.stringify(state).replaceAll("<", String.raw`\u003c`)}</script>`,
+          { html: true },
+        );
+      },
+    })
+    .transform(page);
+}
+
 type SiteBindings = PreviewBindings & { DB?: D1Database };
 
 export async function serveSite(
@@ -158,17 +203,6 @@ export async function serveSite(
       return harden(Response.redirect(config.homeUrl, 302), request, config);
     }
     return withOpenGraph(await shell(request, assets, config), url, config);
-  }
-  if (url.pathname === "/boards" && config.mode === "standalone") {
-    const page = await shell(request, assets, config);
-    if (!page.ok || page.body === null) return page;
-    return new HTMLRewriter()
-      .on("[data-board-root]", {
-        element: (root) => {
-          root.setInnerContent(boardShell, { html: true });
-        },
-      })
-      .transform(page);
   }
   const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
   if (imageCode !== undefined && config.mode === "standalone") {
