@@ -66,6 +66,9 @@ const paths = {
       fillRule="evenodd"
     />
   ),
+  Send: (
+    <path d="M2.86 2.28a.75.75 0 0 0-.93.97L4.1 9.25h7.65a.75.75 0 0 1 0 1.5H4.1l-2.17 6a.75.75 0 0 0 .93.97l14.75-7a.75.75 0 0 0 0-1.44l-14.75-7Z" />
+  ),
   Star: (
     <path
       clipRule="evenodd"

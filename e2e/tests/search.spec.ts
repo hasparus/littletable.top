@@ -5,6 +5,7 @@ import {
   closeSheet,
   collectCspViolations,
   expectNoCspViolations,
+  installKeyboard,
   joinAs,
   onBoard,
   openSheet,
@@ -12,6 +13,7 @@ import {
   putNote,
   reviewShot,
   sheet,
+  withKeyboard,
 } from "./helpers";
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -184,15 +186,6 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   await context.close();
 });
 
-// Stands in for an on-screen keyboard: the visual viewport loses the
-// bottom `px` of the screen, as on iOS and Android, while the layout
-// viewport keeps its size.
-async function withKeyboard(page: Page, px: number): Promise<void> {
-  await page.evaluate((height) => {
-    (globalThis as unknown as { __keyboard: (px: number) => void }).__keyboard(height);
-  }, px);
-}
-
 const KEYBOARD_PX = 340;
 
 const below = (box: { height: number; y: number }) => box.y + box.height;
@@ -215,26 +208,7 @@ test("on a phone, in Polish, the results stand above the keyboard and leave tldr
   }
 
   const context = await browser.newContext({ ...PHONE_2X, viewport: { height: 740, width: 360 } });
-  await context.addInitScript(() => {
-    let keyboard = 0;
-    const fake = new EventTarget();
-    Object.defineProperties(fake, {
-      height: { get: () => globalThis.innerHeight - keyboard },
-      offsetLeft: { value: 0 },
-      offsetTop: { value: 0 },
-      pageLeft: { value: 0 },
-      pageTop: { value: 0 },
-      scale: { value: 1 },
-      width: { get: () => globalThis.innerWidth },
-    });
-    Object.defineProperty(globalThis, "visualViewport", { configurable: true, get: () => fake });
-    Object.assign(globalThis, {
-      __keyboard: (px: number) => {
-        keyboard = px;
-        fake.dispatchEvent(new Event("resize"));
-      },
-    });
-  });
+  await installKeyboard(context);
   const bea = await context.newPage();
   await collectCspViolations(bea);
   await bea.goto(`${boardUrl}?lang=pl`);
