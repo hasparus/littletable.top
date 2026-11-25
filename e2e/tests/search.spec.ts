@@ -1,6 +1,6 @@
 import { type Browser, devices, expect, type Page, test } from "@playwright/test";
 
-import { HOST } from "../ports";
+import { HOST, STANDALONE } from "../ports";
 import {
   closeSheet,
   collectCspViolations,
@@ -189,6 +189,45 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
 const KEYBOARD_PX = 340;
 
 const below = (box: { height: number; y: number }) => box.y + box.height;
+
+test("phone search fits a panned keyboard viewport and restores the board controls when closed", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    ...PHONE,
+    reducedMotion: "reduce",
+    viewport: { height: 740, width: 360 },
+  });
+  try {
+    await installKeyboard(context);
+    const page = await context.newPage();
+    await page.goto(STANDALONE);
+    const toolbar = page.locator("[data-board-toolbar]");
+    await expect(toolbar).toBeVisible();
+    const original = await toolbar.boundingBox();
+    const search = await openSheet(page, "Search");
+    await field(page).tap();
+    await withKeyboard(page, 340, 260);
+
+    await expect.poll(async () => below((await search.boundingBox())!)).toBe(652);
+    const active = await search.boundingBox();
+    expect(active?.y).toBeGreaterThanOrEqual(268);
+
+    // WARNING: Simulate Safari scrolling the layout viewport while an input is focused.
+    await page.evaluate(() => {
+      document.body.style.minHeight = "calc(100vh + 300px)";
+      window.scrollTo(0, 90);
+    });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(90);
+    await search.getByRole("button", { name: "Close" }).dispatchEvent("click");
+    await expect(search).toBeHidden();
+    await withKeyboard(page, 0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => toolbar.boundingBox()).toEqual(original);
+  } finally {
+    await context.close();
+  }
+});
 
 test("on a phone, in Polish, the results stand above the keyboard and leave tldraw's mark alone", async ({
   browser,

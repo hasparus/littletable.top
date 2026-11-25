@@ -34,11 +34,14 @@ function useAboveKeyboard() {
     const viewport = globalThis.visualViewport;
     if (viewport === null || viewport === undefined) return;
     const measure = () => {
-      const hidden = globalThis.innerHeight - viewport.height - viewport.offsetTop;
+      const covered = globalThis.innerHeight - viewport.height;
       setArea(
-        hidden < KEYBOARD_MIN_PX
+        covered < KEYBOARD_MIN_PX || viewport.scale !== 1
           ? undefined
-          : { bottom: hidden + GAP_PX, height: viewport.height - 2 * GAP_PX },
+          : {
+              bottom: Math.max(0, covered - viewport.offsetTop) + GAP_PX,
+              height: viewport.height - 2 * GAP_PX,
+            },
       );
     };
     measure();

@@ -13,21 +13,23 @@ export const PHONE = devices["Pixel 7"];
 export async function installKeyboard(context: BrowserContext) {
   await context.addInitScript(() => {
     let keyboard = 0;
+    let offset = 0;
     const fake = new EventTarget();
     Object.defineProperties(fake, {
       height: { get: () => globalThis.innerHeight - keyboard },
       offsetLeft: { value: 0 },
-      offsetTop: { value: 0 },
+      offsetTop: { get: () => offset },
       pageLeft: { value: 0 },
-      pageTop: { value: 0 },
+      pageTop: { get: () => globalThis.scrollY + offset },
       scale: { value: 1 },
       width: { get: () => globalThis.innerWidth },
     });
     // oxlint-disable-next-line landmines-testing/no-test-doubles -- Headless Playwright has no native mobile keyboard to resize the visual viewport.
     Object.defineProperty(globalThis, "visualViewport", { configurable: true, get: () => fake });
     Object.assign(globalThis, {
-      __keyboard: (px: number) => {
+      __keyboard: (px: number, top: number) => {
         keyboard = px;
+        offset = top;
         fake.dispatchEvent(new Event("resize"));
       },
     });
@@ -35,17 +37,20 @@ export async function installKeyboard(context: BrowserContext) {
 }
 
 /** Simulates a keyboard covering the bottom of the visual viewport while leaving layout unchanged. */
-export async function withKeyboard(page: Page, px: number) {
-  await page.evaluate((height) => {
-    globalThis.__keyboard(height);
-  }, px);
+export async function withKeyboard(page: Page, px: number, offsetTop = 0) {
+  await page.evaluate(
+    ([height, top]) => {
+      globalThis.__keyboard(height, top);
+    },
+    [px, offsetTop],
+  );
 }
 
 type Violation = { blockedURI: string; sourceFile: string; violatedDirective: string };
 
 declare global {
   var __cspViolations: Violation[];
-  var __keyboard: (px: number) => void;
+  var __keyboard: (px: number, top: number) => void;
 }
 
 // WARNING: Install the CSP listener before the first paint to catch early violations.
