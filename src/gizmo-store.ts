@@ -54,13 +54,14 @@ async function pinSource(fetchFile: FetchFile, input: string) {
   const pinned = gizmoSource(link);
   if (pinned) return pinned;
   const [, owner, repo, , ...parts] = new URL(link).pathname.split("/");
+  const signal = AbortSignal.timeout(8000);
   for (let split = 1; split < parts.length; split++) {
     const ref = encodeURIComponent(parts.slice(0, split).join("/"));
     const url = `https://api.github.com/repos/${owner}/${repo}/commits/${ref}`;
     const response = await fetchFile(url, {
       headers: { Accept: "application/vnd.github.sha", "User-Agent": "Little-Table-Gizmos" },
       redirect: "manual",
-      signal: AbortSignal.timeout(8000),
+      signal,
     });
     if (!response.ok) {
       await response.body?.cancel();

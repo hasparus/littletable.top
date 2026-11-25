@@ -2,8 +2,10 @@ import type { Editor } from "tldraw";
 
 import {
   type PointerEvent,
+  type Ref,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -11,7 +13,7 @@ import {
 
 import "./gizmo-drawer.css";
 
-import type { InstalledGizmo } from "../../src/gizmo-packages";
+import type { GizmoRequest, InstalledGizmo } from "../../src/gizmo-packages";
 import type { DeckActions } from "./deck";
 
 import {
@@ -27,6 +29,7 @@ import { usePresent } from "./people";
 import { PANEL_ID } from "./ui";
 
 type Piece = InstalledGizmo;
+type RequestStatus = GizmoRequest["status"];
 export type GizmoListing = { url: string; name: { en: string; pl: string }; thumbnail: string };
 type Point = { x: number; y: number };
 type Drag = Point & { piece: Piece; tilt: number };
@@ -81,7 +84,7 @@ function Marketplace({
   installed: readonly Piece[];
   requested: readonly string[];
   declined: readonly string[];
-  installOrRequest: (url: string) => Promise<boolean>;
+  installOrRequest: (url: string) => Promise<RequestStatus | false>;
   canInstall: boolean;
   canRequest: boolean;
   custom: boolean;
@@ -93,24 +96,31 @@ function Marketplace({
   const action = canInstall ? copy.gizmoInstall : copy.gizmoRequest;
   const available = online && !pending && (canInstall || canRequest);
   const language = locale === "pl" ? "pl" : "en";
+  const installedUrls = new Set(installed.map((piece) => piece.url));
+  const listedUrls = new Set(entries.map((entry) => entry.url));
+  const requestedUrls = new Set(requested);
+  const declinedUrls = new Set(declined);
 
   async function submit(url: string) {
     if (!available) return false;
     setPending(url);
     setMessage(null);
-    const succeeded = await installOrRequest(url).catch(() => false);
+    const result = await installOrRequest(url).catch(() => false as const);
     setPending("");
-    if (!canInstall || !succeeded) {
+    if (!result) {
       setMessage({
-        text: succeeded
-          ? copy.gizmoRequested
-          : canInstall
-            ? copy.gizmoInstallFailed
-            : copy.gizmoRequestFailed,
-        error: !succeeded,
+        text: canInstall ? copy.gizmoInstallFailed : copy.gizmoRequestFailed,
+        error: true,
       });
+    } else if (!canInstall) {
+      const labels = {
+        pending: copy.gizmoRequested,
+        installed: copy.gizmoInstalled,
+        declined: copy.gizmoDeclined,
+      };
+      setMessage({ text: labels[result], error: false });
     }
-    return succeeded;
+    return !!result;
   }
 
   return (
@@ -119,12 +129,12 @@ function Marketplace({
         <div data-gizmo-listings>
           {entries.map(({ url, name, thumbnail }) => {
             const title = name[language];
-            const present = installed.some((piece) => piece.url === url);
+            const present = installedUrls.has(url);
             const state = present
               ? copy.gizmoInstalled
-              : requested.includes(url)
+              : requestedUrls.has(url)
                 ? copy.gizmoRequested
-                : declined.includes(url)
+                : declinedUrls.has(url)
                   ? copy.gizmoDeclined
                   : null;
             return (
@@ -187,12 +197,12 @@ function Marketplace({
       )}
       {canRequest &&
         Array.from(new Set([...requested, ...declined]), (url) =>
-          entries.some((entry) => entry.url === url) ? null : (
+          listedUrls.has(url) ? null : (
             <article key={url} data-gizmo-custom-status>
               <a href={url} target="_blank" rel="noreferrer">
                 {url.slice("https://github.com/".length)}
               </a>
-              <span>{requested.includes(url) ? copy.gizmoRequested : copy.gizmoDeclined}</span>
+              <span>{requestedUrls.has(url) ? copy.gizmoRequested : copy.gizmoDeclined}</span>
             </article>
           ),
         )}
@@ -201,116 +211,26 @@ function Marketplace({
   );
 }
 
-export function GizmoDrawer({
+function useGizmoPlacement({
   editor,
   online,
   deck,
-  pieces,
-  install,
-  marketplace = [],
-  request,
-  requested = [],
-  declined = [],
-  custom = true,
-  arrival,
-  status,
   seats,
+  dismiss,
 }: {
-  seats?: string[];
   editor: Editor;
   online: boolean;
   deck: DeckActions;
-  pieces: readonly Piece[];
-  marketplace?: readonly GizmoListing[];
-  install?: (url: string) => Promise<Piece>;
-  request?: (url: string) => Promise<void>;
-  requested?: readonly string[];
-  declined?: readonly string[];
-  custom?: boolean;
-  arrival?: string;
-  status?: string;
+  seats?: string[];
+  dismiss: () => void;
 }) {
-  const { copy, locale, person, close: closePanel } = useGizmoUi();
-  const dismiss = useCallback(() => {
-    closePanel("gizmos");
-    editor
-      .getContainer()
-      .querySelector<HTMLElement>('[data-testid="main-menu.button"]')
-      ?.focus({ preventScroll: true });
-  }, [closePanel, editor]);
-  const [sounds, setSounds] = useState(gizmoSoundsEnabled);
-  const shelf = useRef<HTMLDialogElement>(null);
-  const [browsing, setBrowsing] = useState<{ arrival?: string } | null>();
-  const [installed, setInstalled] = useState<{ url: string; arrival?: string } | null>(null);
-  const arriving = installed !== null && installed.arrival === arrival ? installed.url : arrival;
-  const arrivalTile = useRef<HTMLButtonElement>(null);
-  const highlighted = useRef<string | undefined>(undefined);
-  const marketBack = useRef<HTMLButtonElement>(null);
-  const marketLink = useRef<HTMLButtonElement>(null);
-  const marketVisited = useRef(false);
-  const canBrowse = marketplace.length > 0 || (custom && (!!install || !!request));
-  const marketplaceOpen =
-    browsing === undefined
-      ? canBrowse && !status && !arriving && pieces.length === 0
-      : browsing !== null && browsing.arrival === arrival;
-  const arrivingInstalled = pieces.some((piece) => piece.url === arriving);
+  const { locale, person } = useGizmoUi();
   const guests = usePresent(editor);
   const grip = useRef<Grip | null>(null);
   const placing = useRef(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!highlighted.current && !marketVisited.current)
-      close.current?.focus({ preventScroll: true });
-    if (shelf.current)
-      return springGizmo(shelf.current, (t) => `translateY(${8 * t}px) scale(${1 - 0.025 * t})`);
-  }, []);
-  useLayoutEffect(() => {
-    if (marketplaceOpen) {
-      marketVisited.current = true;
-      marketBack.current?.focus({ preventScroll: true });
-      return;
-    }
-    const tile = arrivalTile.current;
-    if (arrivingInstalled && arriving && tile && highlighted.current !== arriving) {
-      highlighted.current = arriving;
-      marketVisited.current = false;
-      tile.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
-      tile.focus({ preventScroll: true });
-      const artwork = tile.querySelector<HTMLElement>("[data-gizmo-display]");
-      if (artwork)
-        return springGizmo(artwork, (t) => `translateY(${t * 12}px) scale(${1 - t * 0.2})`);
-    } else if (marketVisited.current) {
-      marketVisited.current = false;
-      marketLink.current?.focus({ preventScroll: true });
-    }
-  }, [arriving, arrivingInstalled, marketplaceOpen]);
-  useEffect(() => {
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      grip.current = null;
-      if (marketplaceOpen) setBrowsing(null);
-      else dismiss();
-    };
-    globalThis.addEventListener("keydown", escape);
-    return () => globalThis.removeEventListener("keydown", escape);
-  }, [dismiss, marketplaceOpen]);
-
-  async function installOrRequest(url: string) {
-    if (install) {
-      const piece = await install(url);
-      setInstalled({ url: piece.url, arrival });
-      setBrowsing(null);
-      marketVisited.current = false;
-      return true;
-    }
-    if (!request) return false;
-    await request(url);
-    return true;
-  }
 
   async function place(piece: Piece, point: Point) {
     if (placing.current || !online || editor.getIsReadonly()) return;
@@ -331,7 +251,7 @@ export function GizmoDrawer({
     setBusy(false);
     if (placed) {
       playGizmoCue("place");
-      if (shelf.current?.isConnected) dismiss();
+      dismiss();
     } else setFailed(true);
   }
 
@@ -373,6 +293,238 @@ export function GizmoDrawer({
     grip.current = null;
     setDrag(null);
   }
+  function clearGrip() {
+    grip.current = null;
+    setDrag(null);
+  }
+
+  return { busy, failed, drag, clearGrip, place, grab, move, release, cancel };
+}
+
+function useDrawerFocus(
+  marketplaceOpen: boolean,
+  arriving: string | undefined,
+  arrivingInstalled: boolean,
+) {
+  const shelf = useRef<HTMLDialogElement>(null);
+  const arrivalTile = useRef<HTMLButtonElement>(null);
+  const highlighted = useRef<string | undefined>(undefined);
+  const marketBack = useRef<HTMLButtonElement>(null);
+  const marketLink = useRef<HTMLButtonElement>(null);
+  const marketVisited = useRef(false);
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!highlighted.current && !marketVisited.current)
+      close.current?.focus({ preventScroll: true });
+    if (shelf.current)
+      return springGizmo(shelf.current, (t) => `translateY(${8 * t}px) scale(${1 - 0.025 * t})`);
+  }, []);
+  useLayoutEffect(() => {
+    if (marketplaceOpen) {
+      marketVisited.current = true;
+      marketBack.current?.focus({ preventScroll: true });
+      return;
+    }
+    const tile = arrivalTile.current;
+    if (arrivingInstalled && arriving && tile && highlighted.current !== arriving) {
+      highlighted.current = arriving;
+      marketVisited.current = false;
+      tile.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+      tile.focus({ preventScroll: true });
+      const artwork = tile.querySelector<HTMLElement>("[data-gizmo-display]");
+      if (artwork)
+        return springGizmo(artwork, (t) => `translateY(${t * 12}px) scale(${1 - t * 0.2})`);
+    } else if (marketVisited.current) {
+      marketVisited.current = false;
+      marketLink.current?.focus({ preventScroll: true });
+    }
+  }, [arriving, arrivingInstalled, marketplaceOpen]);
+
+  return { shelf, close, arrivalTile, marketBack, marketLink };
+}
+
+function DrawerHeader({
+  marketplaceOpen,
+  marketBack,
+  close,
+  back,
+  dismiss,
+}: {
+  marketplaceOpen: boolean;
+  marketBack: Ref<HTMLButtonElement>;
+  close: Ref<HTMLButtonElement>;
+  back: () => void;
+  dismiss: () => void;
+}) {
+  const { copy } = useGizmoUi();
+  const [sounds, setSounds] = useState(gizmoSoundsEnabled);
+  return (
+    <header>
+      {marketplaceOpen && (
+        <button type="button" ref={marketBack} onClick={back}>
+          {copy.gizmoBack}
+        </button>
+      )}
+      <h2 id="gizmo-title">{marketplaceOpen ? copy.gizmoMarketplace : copy.gizmoGallery}</h2>
+      {!marketplaceOpen && (
+        <button
+          type="button"
+          aria-label={copy.gizmoSounds}
+          aria-pressed={sounds}
+          title={copy.gizmoSounds}
+          onClick={() => {
+            setGizmoSoundsEnabled(!sounds);
+            setSounds(!sounds);
+            if (!sounds) playGizmoCue("pickup");
+          }}
+        >
+          <Icon name={sounds ? "SoundOn" : "SoundOff"} />
+        </button>
+      )}
+      <button type="button" aria-label={copy.close} onClick={dismiss} ref={close}>
+        <Icon name="Close" />
+      </button>
+    </header>
+  );
+}
+
+function DrawerStatus({
+  failed,
+  status,
+  online,
+  hasPieces,
+}: {
+  failed: boolean;
+  status?: string;
+  online: boolean;
+  hasPieces: boolean;
+}) {
+  const { copy } = useGizmoUi();
+  const tableStatus = hasPieces ? copy.gizmoPlace : copy.gizmoEmpty;
+  const message = failed
+    ? copy.gizmoPlaceFailed
+    : status || (online ? tableStatus : copy.connectionLost);
+  return <p role="status">{message}</p>;
+}
+
+function useMarketplaceRoute({
+  install,
+  request,
+  arrival,
+  status,
+  custom,
+  empty,
+  hasListings,
+}: {
+  install?: (url: string) => Promise<Piece>;
+  request?: (url: string) => Promise<RequestStatus>;
+  arrival?: string;
+  status?: string;
+  custom: boolean;
+  empty: boolean;
+  hasListings: boolean;
+}) {
+  const [browsing, setBrowsing] = useState<{ arrival?: string } | null>();
+  const [installed, setInstalled] = useState<{ url: string; arrival?: string } | null>(null);
+  const arriving = installed !== null && installed.arrival === arrival ? installed.url : arrival;
+  const canBrowse = hasListings || (custom && (!!install || !!request));
+  const marketplaceOpen =
+    browsing === undefined
+      ? canBrowse && !status && !arriving && empty
+      : browsing !== null && browsing.arrival === arrival;
+  async function installOrRequest(url: string) {
+    if (install) {
+      const piece = await install(url);
+      setInstalled({ url: piece.url, arrival });
+      setBrowsing(null);
+      return "installed" as const;
+    }
+    return request ? request(url) : (false as const);
+  }
+
+  return {
+    arriving,
+    canBrowse,
+    marketplaceOpen,
+    browse: () => setBrowsing({ arrival }),
+    back: () => setBrowsing(null),
+    installOrRequest,
+  };
+}
+
+export function GizmoDrawer({
+  editor,
+  online,
+  deck,
+  pieces,
+  install,
+  marketplace = [],
+  request,
+  requested = [],
+  declined = [],
+  custom = true,
+  arrival,
+  status,
+  seats,
+}: {
+  seats?: string[];
+  editor: Editor;
+  online: boolean;
+  deck: DeckActions;
+  pieces: readonly Piece[];
+  marketplace?: readonly GizmoListing[];
+  install?: (url: string) => Promise<Piece>;
+  request?: (url: string) => Promise<RequestStatus>;
+  requested?: readonly string[];
+  declined?: readonly string[];
+  custom?: boolean;
+  arrival?: string;
+  status?: string;
+}) {
+  const { copy, locale, close: closePanel } = useGizmoUi();
+  const dismiss = useCallback(() => {
+    closePanel("gizmos");
+    editor
+      .getContainer()
+      .querySelector<HTMLElement>('[data-testid="main-menu.button"]')
+      ?.focus({ preventScroll: true });
+  }, [closePanel, editor]);
+  const { arriving, canBrowse, marketplaceOpen, browse, back, installOrRequest } =
+    useMarketplaceRoute({
+      install,
+      request,
+      arrival,
+      status,
+      custom,
+      empty: pieces.length === 0,
+      hasListings: marketplace.length > 0,
+    });
+  const { shelf, close, arrivalTile, marketBack, marketLink } = useDrawerFocus(
+    marketplaceOpen,
+    arriving,
+    pieces.some((piece) => piece.url === arriving),
+  );
+  const { busy, failed, drag, clearGrip, place, grab, move, release, cancel } = useGizmoPlacement({
+    editor,
+    online,
+    deck,
+    seats,
+    dismiss: () => {
+      if (shelf.current?.isConnected) dismiss();
+    },
+  });
+  const escape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    clearGrip();
+    if (marketplaceOpen) back();
+    else dismiss();
+  });
+  useEffect(() => {
+    globalThis.addEventListener("keydown", escape);
+    return () => globalThis.removeEventListener("keydown", escape);
+  }, []);
+
   return (
     <>
       <dialog
@@ -383,32 +535,13 @@ export function GizmoDrawer({
         aria-labelledby="gizmo-title"
         id={PANEL_ID.gizmos}
       >
-        <header>
-          {marketplaceOpen && (
-            <button type="button" ref={marketBack} onClick={() => setBrowsing(null)}>
-              {copy.gizmoBack}
-            </button>
-          )}
-          <h2 id="gizmo-title">{marketplaceOpen ? copy.gizmoMarketplace : copy.gizmoGallery}</h2>
-          {!marketplaceOpen && (
-            <button
-              type="button"
-              aria-label={copy.gizmoSounds}
-              aria-pressed={sounds}
-              title={copy.gizmoSounds}
-              onClick={() => {
-                setGizmoSoundsEnabled(!sounds);
-                setSounds(!sounds);
-                if (!sounds) playGizmoCue("pickup");
-              }}
-            >
-              <Icon name={sounds ? "SoundOn" : "SoundOff"} />
-            </button>
-          )}
-          <button type="button" aria-label={copy.close} onClick={dismiss} ref={close}>
-            <Icon name="Close" />
-          </button>
-        </header>
+        <DrawerHeader
+          marketplaceOpen={marketplaceOpen}
+          marketBack={marketBack}
+          close={close}
+          back={back}
+          dismiss={dismiss}
+        />
         {marketplaceOpen ? (
           <Marketplace
             entries={marketplace}
@@ -450,23 +583,14 @@ export function GizmoDrawer({
                 ))}
               </div>
             )}
-            <p role="status">
-              {failed
-                ? copy.gizmoPlaceFailed
-                : status ||
-                  (online
-                    ? pieces.length > 0
-                      ? copy.gizmoPlace
-                      : copy.gizmoEmpty
-                    : copy.connectionLost)}
-            </p>
+            <DrawerStatus
+              failed={failed}
+              status={status}
+              online={online}
+              hasPieces={pieces.length > 0}
+            />
             {canBrowse && (
-              <button
-                type="button"
-                data-gizmo-open-market
-                ref={marketLink}
-                onClick={() => setBrowsing({ arrival })}
-              >
+              <button type="button" data-gizmo-open-market ref={marketLink} onClick={browse}>
                 {copy.gizmoBrowse}
               </button>
             )}

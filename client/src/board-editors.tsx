@@ -17,8 +17,9 @@ import { BoardLoading } from "./board-loading";
 import { BoardMainMenu, components } from "./chrome";
 import { type DeckActions, DeckContext } from "./deck";
 import { DeckImageUtil } from "./deck-piece";
-import { MEDIA_PROPS } from "./file-flows";
 import { GizmoGeoUtil } from "./gizmo-geo";
+
+import { MEDIA_PROPS } from "./file-flows";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
@@ -92,39 +93,38 @@ export function BoardEditors({
   }, [copy.loading, overlay, landing]);
 
   // WARNING: Keep the foreground editor isolated so tldraw's z-index 300 UI cannot cover the board's sheets.
-  return (
+  const canvas = (
     <div
       className="absolute inset-0 isolate"
       data-board-editor
       inert={!active}
       ref={editorLayerRef}
     >
-      <DeckContext.Provider value={deck}>
-        <Tldraw
-          {...MEDIA_PROPS}
-          assetUrls={assetUrls}
-          autoFocus={active}
-          bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
-          colorScheme="system"
-          components={canvasComponents}
-          hideUi={!showUi}
-          licenseKey={licenseKey === "" ? undefined : licenseKey}
-          locale={language}
-          onMount={(mounted) => {
-            // WARNING: tldraw's menus read the user preference rather than the locale prop.
-            mounted.user.updateUserPreferences({ locale: language });
-            if (landing !== undefined) rememberExistingArrows(mounted);
-            onEditor(mounted);
-            return () => onEditor(null);
-          }}
-          shapeUtils={landing ? LANDING_SHAPE_UTILS : SHAPE_UTILS}
-          store={store}
-        >
-          {active && <BoardFileHandlers />}
-          {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
-          <ThemeKeeper />
-        </Tldraw>
-      </DeckContext.Provider>
+      <Tldraw
+        {...MEDIA_PROPS}
+        assetUrls={assetUrls}
+        autoFocus={active}
+        bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
+        colorScheme="system"
+        components={canvasComponents}
+        hideUi={!showUi}
+        licenseKey={licenseKey === "" ? undefined : licenseKey}
+        locale={language}
+        onMount={(mounted) => {
+          // WARNING: tldraw's menus read the user preference rather than the locale prop.
+          mounted.user.updateUserPreferences({ locale: language });
+          if (landing !== undefined) rememberExistingArrows(mounted);
+          onEditor(mounted);
+          return () => onEditor(null);
+        }}
+        shapeUtils={landing ? LANDING_SHAPE_UTILS : SHAPE_UTILS}
+        store={store}
+      >
+        {active && <BoardFileHandlers />}
+        {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
+        <ThemeKeeper />
+      </Tldraw>
     </div>
   );
+  return <DeckContext.Provider value={deck}>{canvas}</DeckContext.Provider>;
 }

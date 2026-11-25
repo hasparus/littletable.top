@@ -49,15 +49,11 @@ export function normalizeGizmoLink(input: string) {
   if (!match) return null;
   const [, owner, repo, view, target] = match;
   const path = view === "tree" ? target!.replace(/\/$/u, "") + "/gizmo.json" : target!;
-  if (!safePath(path) || !path.endsWith("/gizmo.json")) return null;
-  return (
-    "https://github.com/" +
-    owner!.toLowerCase() +
-    "/" +
-    repo!.toLowerCase() +
-    "/blob/" +
-    path.replace(/^[a-f\d]{40}(?=\/)/iu, (sha) => sha.toLowerCase())
-  );
+  const url =
+    "https://github.com/" + owner!.toLowerCase() + "/" + repo!.toLowerCase() + "/blob/" + path;
+  const pinned = gizmoSource(url);
+  if (pinned) return pinned.url;
+  return safePath(path) && path.endsWith("/gizmo.json") ? url : null;
 }
 
 /** Both outbound targets and persisted identities originate from this restricted grammar. */
