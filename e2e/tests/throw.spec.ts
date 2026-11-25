@@ -343,9 +343,8 @@ test("the hamburger menu paints above the visible dice tray", async ({ page }) =
   });
   const aboveDice = await pixels();
   await setVisibility(canvas, "hidden");
-  expect((await pixels()).equals(aboveDice), "the overlapping canvas cannot cover the menu").toBe(
-    true,
-  );
+  const withoutDice = await pixels();
+  expect(withoutDice.equals(aboveDice), "the overlapping canvas cannot cover the menu").toBe(true);
 });
 
 test("a new roll takes the tray over from the one before", async ({ browser, page }) => {
