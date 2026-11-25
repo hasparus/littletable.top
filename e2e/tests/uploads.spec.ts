@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 import { png } from "../fixtures/png";
 import { boardAt, HOST, HOSTED, STANDALONE } from "../ports";
-import { collectCspViolations, expectNoCspViolations, joinAs, phone } from "./helpers";
+import { collectCspViolations, expectNoCspViolations, joinAs, phone, reviewShot } from "./helpers";
 import {
   documentOf,
   documentOfFile,
@@ -200,6 +200,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 test("a large import shows progress, explains a failed upload and can be retried", async ({
   page,
 }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
   await collectCspViolations(page);
   await page.goto(`${HOST}/sign-in?name=Sid`);
   await page.getByRole("button", { name: "New board" }).click();
@@ -224,9 +225,21 @@ test("a large import shows progress, explains a failed upload and can be retried
   });
   try {
     await chooseImport();
-    await expect(page.getByText("Importing large.tldr")).toBeInViewport();
-    await expect(page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" })).toBeVisible();
+    const progress = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
+    const fullScreen = page.getByRole("dialog", { name: "Importing large.tldr" });
+    await expect(fullScreen).toBeVisible();
+    await expect(fullScreen).toContainText("Importing large.tldr");
+    await expect(progress).toBeVisible();
+    expect(await fullScreen.boundingBox()).toEqual({ height: 844, width: 390, x: 0, y: 0 });
+    await page.keyboard.press("Escape");
+    await expect(fullScreen).toBeVisible();
+    await reviewShot(page, "import-phone-full-screen");
+
+    await page.setViewportSize({ height: 900, width: 1200 });
+    await expect(fullScreen).toBeHidden();
+    await expect(progress).toBeVisible();
     await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
+    await reviewShot(page, "import-desktop-progress");
   } finally {
     response.resolve(null);
   }

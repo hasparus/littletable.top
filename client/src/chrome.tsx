@@ -35,6 +35,7 @@ import {
   useValue,
 } from "tldraw";
 
+import { BoardBackgroundMenu } from "./board-background";
 import { BoardFileMenuItems } from "./board-files";
 import { FoundHighlight } from "./highlight";
 import { Icon, type IconName } from "./icons";
@@ -206,6 +207,7 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
         </TldrawUiMenuGroup>
       )}
       <BoardFileMenuItems />
+      <BoardBackgroundMenu />
       <DefaultMainMenuContent />
     </DefaultMainMenu>
   );

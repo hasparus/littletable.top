@@ -1,7 +1,6 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import {
-  DefaultBackground,
   type Editor,
   EmbedShapeUtil,
   Tldraw,
@@ -12,6 +11,7 @@ import {
 
 import type { PublicLanding } from "./public-landing";
 
+import { BoardBackground } from "./board-background";
 import { BoardFileHandlers } from "./board-files";
 import { BoardMainMenu, components } from "./chrome";
 import { MEDIA_PROPS } from "./file-flows";
@@ -80,13 +80,13 @@ export function BoardEditors({
     () =>
       landing === undefined
         ? backdrop === undefined
-          ? components
+          ? { ...components, Background: BoardBackground }
           : { ...components, Background: null }
         : {
             ...components,
             Background: () => (
               <>
-                <DefaultBackground />
+                <BoardBackground />
                 <PublicBoardIntro {...landing} />
               </>
             ),
@@ -108,6 +108,7 @@ export function BoardEditors({
             assetUrls={assetUrls}
             autoFocus={false}
             colorScheme="system"
+            components={{ Background: BoardBackground }}
             hideUi
             licenseKey={licenseKey === "" ? undefined : licenseKey}
             locale={language}
