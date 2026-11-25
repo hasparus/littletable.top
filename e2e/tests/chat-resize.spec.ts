@@ -82,6 +82,25 @@ for (const textSize of ["default", "compact"]) {
   });
 }
 
+test("shrinking the left border with larger text keeps the right border fixed", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 740, width: 1000 });
+  const chat = await openThread(page);
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "20px";
+  });
+  const initial = await box(chat);
+  await dragBorder(page, initial.x + 2, initial.y + initial.height / 2, initial.width, 0);
+  const resized = await box(chat);
+  expect(resized.width).toBeLessThan(initial.width);
+  expect(resized.x + resized.width).toBeCloseTo(initial.x + initial.width, 0);
+  await expect(chat.getByRole("separator", { name: "Resize chat" })).toHaveAttribute(
+    "aria-valuetext",
+    `${Math.round(resized.width)} × ${Math.round(resized.height)} px`,
+  );
+});
+
 test("desktop chat resizes by mouse and keyboard and keeps the message being read", async ({
   page,
 }) => {

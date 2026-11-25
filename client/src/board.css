@@ -370,7 +370,9 @@
 
 @media (min-width: 40rem) {
   [data-chat-size] {
-    --used-chat-width: clamp(16rem, var(--chat-width, 24rem), calc(100dvw - 16px));
+    --chat-min-width: min(16rem, calc(100dvw - 16px));
+    min-width: var(--chat-min-width);
+    --used-chat-width: clamp(var(--chat-min-width), var(--chat-width, 24rem), calc(100dvw - 16px));
     width: var(--used-chat-width);
     left: clamp(
       8px,

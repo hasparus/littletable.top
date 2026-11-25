@@ -17,6 +17,7 @@ type Edge = (typeof edges)[number];
 type Drag = {
   edge: Edge;
   pointer: number;
+  minWidth: number;
   rect: DOMRect;
   size: ChatSize;
   x: number;
@@ -26,13 +27,22 @@ type Drag = {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const desktop = () => matchMedia("(min-width: 40rem)").matches;
 
-function resize(size: ChatSize, rect: DOMRect, edge: Edge, dx: number, dy: number) {
+function resize(
+  size: ChatSize,
+  rect: DOMRect,
+  minWidth: number,
+  edge: Edge,
+  dx: number,
+  dy: number,
+) {
   const next = { ...size };
   const margin = 8;
   if (desktop() && (edge.includes("e") || edge.includes("w"))) {
-    const left = edge.includes("w") ? clamp(rect.left + dx, margin, rect.right - 256) : rect.left;
+    const left = edge.includes("w")
+      ? clamp(rect.left + dx, margin, rect.right - minWidth)
+      : rect.left;
     const right = edge.includes("e")
-      ? clamp(rect.right + dx, left + 256, innerWidth - margin)
+      ? clamp(rect.right + dx, left + minWidth, innerWidth - margin)
       : rect.right;
     next.width = right - left;
     next.left = left;
@@ -73,7 +83,11 @@ export function ChatResize({
     const panel = sheet.current;
     if (!panel) return;
     const observer = new ResizeObserver(() => {
-      control.current?.setAttribute("aria-valuenow", String(Math.round(panel.offsetHeight)));
+      control.current?.setAttribute("aria-valuenow", String(panel.offsetHeight));
+      control.current?.setAttribute(
+        "aria-valuetext",
+        `${panel.offsetWidth} × ${panel.offsetHeight} px`,
+      );
       control.current?.setAttribute("aria-valuemax", String(innerHeight));
     });
     observer.observe(panel);
@@ -81,18 +95,20 @@ export function ChatResize({
   }, [sheet]);
 
   function keyDown(event: KeyboardEvent) {
-    const rect = sheet.current?.getBoundingClientRect();
-    if (!rect) return;
+    const panel = sheet.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const minWidth = Number.parseFloat(getComputedStyle(panel).minWidth);
     const dx = event.key === "ArrowLeft" ? -24 : event.key === "ArrowRight" ? 24 : 0;
     const dy = event.key === "ArrowUp" ? -24 : event.key === "ArrowDown" ? 24 : 0;
     if (event.key === "Enter" || event.key === " ") {
       change(
         size.width !== undefined || size.height !== undefined
           ? {}
-          : resize(size, rect, "ne", 120, -120),
+          : resize(size, rect, minWidth, "ne", 120, -120),
       );
     } else if (dy || (dx && desktop())) {
-      change(resize(size, rect, dy ? "n" : "e", dx, dy));
+      change(resize(size, rect, minWidth, dy ? "n" : "e", dx, dy));
     } else return;
     event.preventDefault();
     event.stopPropagation();
@@ -103,6 +119,7 @@ export function ChatResize({
     event.preventDefault();
     drag.current = {
       pointer: event.pointerId,
+      minWidth: Number.parseFloat(getComputedStyle(sheet.current).minWidth),
       rect: sheet.current.getBoundingClientRect(),
       size,
       edge,
@@ -118,7 +135,7 @@ export function ChatResize({
     if (from?.pointer !== event.pointerId) return;
     const dx = event.clientX - from.x;
     const dy = event.clientY - from.y;
-    change(resize(from.size, from.rect, from.edge, dx, dy));
+    change(resize(from.size, from.rect, from.minWidth, from.edge, dx, dy));
   }
 
   return (
