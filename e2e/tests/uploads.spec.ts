@@ -226,17 +226,19 @@ test("a large import shows progress, explains a failed upload and can be retried
   try {
     await chooseImport();
     const progress = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
-    const fullScreen = page.getByRole("dialog", { name: "Importing large.tldr" });
-    await expect(fullScreen).toBeVisible();
-    await expect(fullScreen).toContainText("Importing large.tldr");
+    const card = page.locator("[data-board-import]");
+    await expect(card).toContainText("Importing large.tldr");
     await expect(progress).toBeVisible();
-    expect(await fullScreen.boundingBox()).toEqual({ height: 844, width: 390, x: 0, y: 0 });
-    await page.keyboard.press("Escape");
-    await expect(fullScreen).toBeVisible();
-    await reviewShot(page, "import-phone-full-screen");
+    const bounds = (await card.boundingBox())!;
+    const menu = (await page.locator(".tlui-menu-zone").boundingBox())!;
+    const actions = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
+    expect(bounds.x).toBeCloseTo(menu.x, 0);
+    expect(bounds.x + bounds.width).toBeCloseTo(actions.x + actions.width, 0);
+    expect(bounds.height).toBeLessThan(120);
+    await expect(page.getByTestId("page-menu.button")).toBeVisible();
+    await reviewShot(page, "import-phone-progress");
 
     await page.setViewportSize({ height: 900, width: 1200 });
-    await expect(fullScreen).toBeHidden();
     await expect(progress).toBeVisible();
     await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
     await reviewShot(page, "import-desktop-progress");

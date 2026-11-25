@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent } from "react";
 import {
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
@@ -50,7 +50,7 @@ export function BoardStatus({ offline }: { offline: boolean }) {
   const percent = uploads.total === 0 ? 0 : Math.round((uploads.loaded / uploads.total) * 100);
   const pill = "w-fit rounded-full bg-ink px-4 py-2 text-center text-white shadow-toast";
   return (
-    <div className="pointer-events-none fixed inset-x-4 top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex max-w-sm flex-col items-center gap-2 text-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
+    <div className="pointer-events-none fixed right-(--board-toolbar-right) left-(--board-left) top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex flex-col items-center gap-2 text-sm sm:inset-x-4 sm:max-w-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
       {offline && (
         <p className={pill} role="status">
           {copy.connectionLost}
@@ -68,16 +68,6 @@ export function BoardStatus({ offline }: { offline: boolean }) {
   );
 }
 
-const PHONE_IMPORT = "(width < 640px)";
-
-function subscribePhoneImport(change: () => void) {
-  const media = matchMedia(PHONE_IMPORT);
-  media.addEventListener("change", change);
-  return () => media.removeEventListener("change", change);
-}
-
-const isPhoneImport = () => matchMedia(PHONE_IMPORT).matches;
-
 function ImportStatus({
   copy,
   name,
@@ -87,17 +77,14 @@ function ImportStatus({
   name: string;
   progress: ImportProgress;
 }) {
-  const fullScreen = useSyncExternalStore(subscribePhoneImport, isPhoneImport);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const title = fill(copy.boardFileImporting, { name });
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, [fullScreen]);
   const label = importStage(copy, progress);
   const percent = "percent" in progress ? progress.percent : undefined;
-  const status = (
-    <>
-      <p className="text-xl font-semibold wrap-anywhere sm:truncate sm:text-sm">{title}</p>
+  return (
+    <div
+      className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 shadow-board-control"
+      data-board-import
+    >
+      <p className="truncate font-semibold">{fill(copy.boardFileImporting, { name })}</p>
       <div
         className="mt-1 flex items-baseline justify-between gap-2 text-foreground-secondary"
         role="status"
@@ -111,7 +98,7 @@ function ImportStatus({
       </div>
       <progress
         aria-label={label}
-        className="mt-4 block h-2 w-full accent-primary sm:mt-2 sm:h-1"
+        className="mt-2 block h-1 w-full accent-primary"
         max={100}
         value={percent}
       />
@@ -120,22 +107,6 @@ function ImportStatus({
           {copy.boardFileWaiting}
         </p>
       )}
-    </>
-  );
-  return fullScreen ? (
-    <dialog
-      aria-label={title}
-      className="pointer-events-auto fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-auto bg-background text-foreground"
-      onCancel={(event) => event.preventDefault()}
-      ref={dialog}
-    >
-      <div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-6 py-[max(1.5rem,env(safe-area-inset-top),env(safe-area-inset-bottom))]">
-        {status}
-      </div>
-    </dialog>
-  ) : (
-    <div className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 shadow-board-control">
-      {status}
     </div>
   );
 }
