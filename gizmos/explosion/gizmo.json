@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "button",
+  "effect": "shake",
+  "name": { "en": "Explosion button", "pl": "Przycisk wybuchu" },
+  "preview": "button.webp",
+  "width": 126,
+  "height": 126
+}
