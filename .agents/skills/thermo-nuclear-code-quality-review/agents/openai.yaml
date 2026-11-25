@@ -1,0 +1,6 @@
+interface:
+  display_name: "Thermo-Nuclear Code Quality Review"
+  short_description: "Audit a diff for structural and maintainability regressions"
+  default_prompt: "Use $thermo-nuclear-code-quality-review to review the current diff."
+policy:
+  allow_implicit_invocation: false

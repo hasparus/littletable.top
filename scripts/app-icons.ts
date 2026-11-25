@@ -6,7 +6,7 @@ import { THEME_COLOR } from "../client/settings";
 
 // Run with Bun and Playwright Chromium installed: bun scripts/app-icons.ts
 const publicDir = new URL("../client/public/", import.meta.url);
-const mark = await readFile(new URL("favicon.svg", publicDir));
+const mark = await readFile(new URL("table-mark.svg", import.meta.url));
 const icons = [
   { filename: "icon-192.png", size: 192 },
   { filename: "icon-512.png", size: 512 },

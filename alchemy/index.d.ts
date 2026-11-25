@@ -68,6 +68,8 @@ export type StandaloneProps = Shared & {
     surveyId: string;
   };
   mode: "standalone";
+  /** WorkOS user ID that owns the public landing board. */
+  publicBoardOwnerId?: string;
   /**
    * The private key (PKCS#8 PEM) the Worker signs its own passes with. The
    * committed dev key is refused.
