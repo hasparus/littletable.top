@@ -104,6 +104,8 @@ const deckDeal = T.object({
   prepared: T.boolean.optional(),
 });
 
+const deckWarm = T.object({ action: T.literal("warm"), deck: imageId, page: pageIdValidator });
+
 const deckPrepare = T.object({
   action: T.literal("prepare"),
   deck: imageId,
@@ -130,6 +132,7 @@ const deckFlip = T.object({
 export const deckCommand = T.union("action", {
   place: deckPlace,
   draw: deckDeal,
+  warm: deckWarm,
   prepare: deckPrepare,
   cancel: deckCancel,
   flip: deckFlip,
@@ -402,14 +405,20 @@ function prepareDeck(
   drawing: Drawing,
   storage: Decks,
   resolve: ResolvePackage,
-  command: DeckPrepare,
+  command: DeckPrepare | T.TypeOf<typeof deckWarm>,
 ) {
-  const { deck, id, page } = command;
+  const { deck, page } = command;
   const state = stackState(storage, deck);
   if (!state) return null;
   const game = playableDeck(drawing, resolve, state, deck, page);
   if (!game) return null;
   const { manifest } = game;
+  if (command.action === "warm") {
+    const top = state.remaining.at(-1);
+    const card = top === undefined ? undefined : manifest.cards[top];
+    return card ? { face: card.src } : null;
+  }
+  const { id } = command;
   const result = priorDeal(drawing, storage, resolve, state, deck, id);
   if (result) {
     const face = "faceDown" in result ? privateFace(storage, result.card) : null;
@@ -734,6 +743,7 @@ export function changeDeck(
       return placeDeck(drawing, storage, resolve, command);
     case "draw":
       return drawDeck(drawing, storage, resolve, command);
+    case "warm":
     case "prepare":
       return prepareDeck(drawing, storage, resolve, command);
     case "cancel":

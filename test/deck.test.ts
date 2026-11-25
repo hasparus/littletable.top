@@ -29,8 +29,8 @@ function table() {
     command(payload: Record<string, unknown>) {
       const { action } = payload;
       const command = deckCommand.validate({
-        ...(action === "flip" ? {} : { id: crypto.randomUUID() }),
-        ...(action === "cancel" ? {} : { language: "en" }),
+        ...(action === "flip" || action === "warm" ? {} : { id: crypto.randomUUID() }),
+        ...(action === "cancel" || action === "warm" ? {} : { language: "en" }),
         page: page.id,
         ...(action === "draw" || action === "place" ? { point: { x: 200, y: 200 } } : {}),
         ...payload,
@@ -78,6 +78,7 @@ describe("installable physical decks", () => {
     }
     expect(new Set(names)).toEqual(new Set(tarot.cards.map(({ name }) => name.en)));
     expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 0 } });
+    expect(command({ action: "warm", deck })).toBeNull();
     expect(names).toContain(revealed(command(draw(deck))));
   });
 
@@ -215,6 +216,26 @@ describe("installable physical decks", () => {
     expect(reversed.meta).not.toHaveProperty("deckFlightDuration");
     expect(reversed.meta).not.toHaveProperty("deckFlightRotation");
     expect(reversed.rotation).toBe(landed.rotation);
+  });
+
+  it("warms the current face without affecting the stack, a pending pickup or the drawing", () => {
+    const { command, records, stored } = table();
+    const deck = placed(command(place));
+    const warm = { action: "warm", deck };
+    const initial = structuredClone({ records, stored });
+    const warmed = command(warm);
+    expect(warmed).toHaveProperty("face");
+    expect(command(warm)).toEqual(warmed);
+    expect(command({ ...warm, page: "page:other" })).toBeNull();
+    expect({ records, stored }).toEqual(initial);
+
+    const id = crypto.randomUUID();
+    expect(command({ action: "prepare", deck, id })).toEqual(warmed);
+    const reserved = structuredClone({ records, stored });
+    expect(command(warm)).toEqual(warmed);
+    expect({ records, stored }).toEqual(reserved);
+    expect(command({ ...draw(deck), id, prepared: true })).toHaveProperty("name");
+    expect(command(warm)).not.toEqual(warmed);
   });
 
   it("reserves the exact top card without consuming it on cancellation", () => {
@@ -413,8 +434,10 @@ describe("installable physical decks", () => {
     function request(token: string, payload: Record<string, unknown>) {
       return call(`/rooms/${board}/deck`, token, {
         body: JSON.stringify({
-          ...(payload.action === "flip" ? {} : { id: crypto.randomUUID() }),
-          ...(payload.action === "cancel" ? {} : { language: "en" }),
+          ...(payload.action === "flip" || payload.action === "warm"
+            ? {}
+            : { id: crypto.randomUUID() }),
+          ...(payload.action === "cancel" || payload.action === "warm" ? {} : { language: "en" }),
           page: "page:page",
           ...(payload.action === "draw" || payload.action === "place"
             ? { point: { x: 200, y: 200 } }
@@ -438,6 +461,13 @@ describe("installable physical decks", () => {
     const response = await request(owner, command);
     expect(response.status).toBe(200);
     const { deck } = await response.json<{ deck: string }>();
+    const warm = { action: "warm", deck };
+    expect((await request(guest, warm)).status).toBe(403);
+    expect((await request(stale, warm)).status).toBe(403);
+    const warmed = await request(owner, warm);
+    expect(warmed.status).toBe(200);
+    expect(warmed.headers.get("Cache-Control")).toBe("no-store");
+    expect((await warmed.json<{ face: string }>()).face).toMatch(/\/front\.png$/u);
     expect((await request(stale, draw(deck))).status).toBe(403);
     expect((await request(guest, { action: "prepare", deck })).status).toBe(403);
     const dealt = await request(owner, { ...draw(deck), language: "pl" });

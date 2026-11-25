@@ -36,6 +36,15 @@ type DealOptions = {
   release?: { at: number; grip: CardGrip; track: (drop: DeckDrop) => void };
 };
 
+export function preloadDeckFace(src: string) {
+  const image = new Image();
+  image.fetchPriority = "high";
+  image.decoding = "async";
+  image.src = src;
+  void image.decode().catch(() => null);
+  return image;
+}
+
 function useDeckActions(canDeal: boolean, send: Transport) {
   const pending = useRef(false);
   const requests = useRef<Promise<unknown> | null>(null);
@@ -85,7 +94,17 @@ function useDeckActions(canDeal: boolean, send: Transport) {
     return next;
   }
 
-  function prepare(editor: Editor, deck: Deal["deck"]) {
+  async function topFace(editor: Editor, deck: Deal["deck"]) {
+    if (!canDeal || editor.getIsReadonly()) return null;
+    const result = await send(editor, {
+      action: "warm",
+      deck,
+      page: editor.getCurrentPageId(),
+    }).catch(() => null);
+    return result && "face" in result ? result.face : null;
+  }
+
+  function prepare(editor: Editor, deck: Deal["deck"], warmed: HTMLImageElement | null) {
     const id = crypto.randomUUID();
     const page = editor.getCurrentPageId();
     let cancelled = false;
@@ -114,12 +133,11 @@ function useDeckActions(canDeal: boolean, send: Transport) {
       };
       const result = await sendGesture(editor, command);
       if (!result || !("face" in result) || cancelled) return;
-      const image = new Image();
-      image.fetchPriority = "high";
-      image.decoding = "async";
-      pickup.image = image;
-      image.src = result.face;
-      void image.decode().catch(() => null);
+      pickup.image =
+        warmed?.src === new URL(result.face, document.baseURI).href &&
+        (!warmed.complete || warmed.naturalWidth > 0)
+          ? warmed
+          : preloadDeckFace(result.face);
     });
     return pickup;
   }
@@ -200,7 +218,7 @@ function useDeckActions(canDeal: boolean, send: Transport) {
     return true;
   }
 
-  return { canDeal, draw, drawing, failedDeck, flip, lastDrop, place, prepare, revealed };
+  return { canDeal, draw, drawing, failedDeck, flip, lastDrop, place, prepare, revealed, topFace };
 }
 
 export function useBoardDeck(keeper: PassKeeper, canDeal: boolean) {

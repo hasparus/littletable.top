@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
@@ -28,7 +29,7 @@ import {
   takeCardGlide,
   useCardGlide,
 } from "./card-glide";
-import { DeckContext, type DeckDrop, type DeckPickup } from "./deck";
+import { DeckContext, type DeckDrop, type DeckPickup, preloadDeckFace } from "./deck";
 import { suggestDeckGrid } from "./deck-grid";
 import { loadedDeckArt, revealDeckCard, turnFlyingBack } from "./deck-motion";
 import { playGizmoCue } from "./gizmo-feedback";
@@ -495,7 +496,15 @@ function heldAt(grip: Grip, x: number, y: number) {
   };
 }
 
-function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
+function DeckDraw({
+  id,
+  back,
+  remaining,
+}: {
+  id: BoardImage["id"];
+  back: string;
+  remaining: number;
+}) {
   const actions = useContext(DeckContext);
   const hintId = useId();
   const { copy } = useGizmoUi();
@@ -505,6 +514,20 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     () => editor.getIsReadonly() || editor.isShapeOrAncestorLocked(id),
     [editor, id],
   );
+  const warmed = useRef<HTMLImageElement | null>(null);
+  const topFace = useEffectEvent(() => actions?.topFace(editor, id));
+  const canWarm = !!actions?.canDeal && !readonly;
+  useEffect(() => {
+    if (!canWarm || remaining === 0) return;
+    let active = true;
+    void topFace()?.then((src) => {
+      if (active && src) warmed.current = preloadDeckFace(src);
+    });
+    return () => {
+      active = false;
+      warmed.current = null;
+    };
+  }, [canWarm, editor, id, remaining]);
   const grip = useRef<Grip | null>(null);
   const heldPaper = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
@@ -539,7 +562,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     moved.current = false;
     grip.current?.pickup.cancel();
     grip.current = {
-      pickup: actions.prepare(editor, id),
+      pickup: actions.prepare(editor, id, warmed.current),
       motion: trackRelease(event),
       pointer: event.pointerId,
       pressed: event.timeStamp,
@@ -732,7 +755,7 @@ export class DeckImageUtil extends ImageUtil {
             {meta.deckRemaining}
             <i />
           </span>
-          <DeckDraw back={meta.deckBack} id={image.id} />
+          <DeckDraw back={meta.deckBack} id={image.id} remaining={meta.deckRemaining} />
         </div>
       );
     }
