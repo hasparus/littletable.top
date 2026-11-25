@@ -233,7 +233,7 @@ function BrandLockup() {
         <text fill="#252220" fontSize="76" fontWeight="748" letterSpacing="-2.7" x="64" y="350">
           little table
         </text>
-        <text fill="#5c534a" fontSize="24" fontWeight="430" x="64" y="397">
+        <text fill="#000" fillOpacity={0.66} fontSize="24" fontWeight="430" x="64" y="397">
           <tspan>{"draw, roll dice, chat, find text in images, "}</tspan>
           <tspan x="64" dy="30">
             pretend to be an elf
