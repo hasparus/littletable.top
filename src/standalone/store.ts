@@ -10,6 +10,7 @@ export type Account = { avatar: string | null; avatarUrl: string | null; id: str
 
 export type Board = {
   createdAt: number;
+  hasThumbnail: boolean;
   id: string;
   linkVersion: number;
   ownerId: string;
@@ -19,12 +20,25 @@ export type Board = {
 
 export type Session = { account: Account; csrf: string; providerSession: string | null };
 
-export type Listed = { createdAt: number; id: string; shareCode: string; title: string };
+export type Listed = {
+  createdAt: number;
+  hasThumbnail?: true;
+  id: string;
+  shareCode: string;
+  title: string;
+};
 // shareCode is null once the owner has reset the link the visitor came by.
-export type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
+export type Visited = {
+  hasThumbnail?: true;
+  id: string;
+  shareCode: string | null;
+  title: string;
+  visitedAt: number;
+};
 
 type BoardRow = {
   created_at: number;
+  has_thumbnail: number;
   id: string;
   link_version: number;
   owner_id: string;
@@ -34,6 +48,7 @@ type BoardRow = {
 
 const board = (row: BoardRow): Board => ({
   createdAt: row.created_at,
+  hasThumbnail: row.has_thumbnail === 1,
   id: row.id,
   linkVersion: row.link_version,
   ownerId: row.owner_id,
@@ -124,14 +139,14 @@ export class Store {
     await this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
   }
 
-  async createBoard(input: Omit<Board, "linkVersion">): Promise<Board> {
+  async createBoard(input: Omit<Board, "hasThumbnail" | "linkVersion">): Promise<Board> {
     await this.db
       .prepare(
         "INSERT INTO boards (id, owner_id, title, share_code, link_version, created_at) VALUES (?, ?, ?, ?, 0, ?)",
       )
       .bind(input.id, input.ownerId, input.title, input.shareCode, input.createdAt)
       .run();
-    return { ...input, linkVersion: 0 };
+    return { ...input, hasThumbnail: false, linkVersion: 0 };
   }
 
   async boardsCreatedSince(ownerId: string, since: number): Promise<number> {
@@ -198,17 +213,41 @@ export class Store {
       .run();
   }
 
+  // The owner and visitors with the current link may see the shared thumbnail.
+  async thumbnailAccess(id: string, accountId: string) {
+    const row = await this.db
+      .prepare(
+        `SELECT b.link_version, b.has_thumbnail FROM boards b WHERE b.id = ?1
+         AND (b.owner_id = ?2 OR EXISTS (
+           SELECT 1 FROM visits v WHERE v.board_id = b.id AND v.account_id = ?2
+             AND v.share_code = b.share_code
+         ))`,
+      )
+      .bind(id, accountId)
+      .first<{ has_thumbnail: number; link_version: number }>();
+    return row === null ? null : { hasThumbnail: row.has_thumbnail === 1, link: row.link_version };
+  }
+
+  async markThumbnail(id: string, link: number): Promise<void> {
+    await this.db
+      .prepare(
+        "UPDATE boards SET has_thumbnail = 1 WHERE id = ? AND link_version = ? AND has_thumbnail = 0",
+      )
+      .bind(id, link)
+      .run();
+  }
+
   async list(accountId: string): Promise<{ owned: Listed[]; visited: Visited[] }> {
     const [owned, visited] = await this.db.batch([
       this.db
         .prepare(
-          "SELECT id, title, share_code, created_at FROM boards WHERE owner_id = ? ORDER BY created_at DESC",
+          "SELECT id, title, share_code, created_at, has_thumbnail FROM boards WHERE owner_id = ? ORDER BY created_at DESC",
         )
         .bind(accountId),
       this.db
         .prepare(
           `SELECT b.id, b.title, CASE WHEN v.share_code = b.share_code THEN b.share_code END AS share_code,
-             v.visited_at FROM visits v JOIN boards b ON b.id = v.board_id
+             v.visited_at, b.has_thumbnail FROM visits v JOIN boards b ON b.id = v.board_id
            WHERE v.account_id = ? AND b.owner_id != v.account_id ORDER BY v.visited_at DESC LIMIT 100`,
         )
         .bind(accountId),
@@ -216,11 +255,15 @@ export class Store {
     return {
       owned: (owned!.results as Record<string, unknown>[]).map((row) => ({
         createdAt: row.created_at as number,
+        ...(row.has_thumbnail === 1 ? { hasThumbnail: true as const } : {}),
         id: row.id as string,
         shareCode: row.share_code as string,
         title: row.title as string,
       })),
       visited: (visited!.results as Record<string, unknown>[]).map((row) => ({
+        ...(row.share_code !== null && row.has_thumbnail === 1
+          ? { hasThumbnail: true as const }
+          : {}),
         id: row.id as string,
         shareCode: row.share_code as string | null,
         title: row.title as string,

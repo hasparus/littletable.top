@@ -14,6 +14,8 @@ export type Bootstrap = {
   secretPass?: string;
   // The place on the host the board belongs to, where a guest leaves to.
   home: { name: string; url: string };
+  // Only an authenticated member on a standalone private board may refresh its thumbnail.
+  thumbnail?: { csrf: string; link: number; needed: boolean };
   title: string;
 };
 

@@ -12,6 +12,7 @@ import { isShape } from "@tldraw/tlschema";
 import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
+import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
 import type { Pass } from "./pass";
 import type { EngineKey } from "./text-result";
@@ -40,6 +41,7 @@ import {
   type TextListing,
   type TextRefusal,
 } from "./text-store";
+import { type ThumbnailWrite, writeThumbnail } from "./thumbnail-store";
 
 type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
 
@@ -88,6 +90,7 @@ export class BoardRoom extends DurableObject<Env> {
   private files!: FileLedger;
   private texts!: TextLedger;
   private readonly textUploads = new Map<string, number>();
+  private thumbnailPending = false;
   private readonly pendingUploads = new Set<Promise<unknown>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -408,6 +411,25 @@ export class BoardRoom extends DurableObject<Env> {
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
     return this.admit(pass) ?? this.trackUpload(this.files.store(pass.board, pass.sub, body));
+  }
+
+  async storeThumbnail(
+    board: string,
+    link: number,
+    body: ArrayBuffer,
+    type: ThumbnailType,
+  ): Promise<ThumbnailWrite> {
+    if (this.retired || link < this.link()) return "forbidden";
+    if (this.thumbnailPending) return { retryAt: Date.now() + 5000 };
+    if (link > this.link()) this.moveLink(board, link);
+    this.thumbnailPending = true;
+    try {
+      return await this.trackUpload(
+        writeThumbnail(this.ctx.storage.sql, this.env.Files, board, body, type, Date.now()),
+      );
+    } finally {
+      this.thumbnailPending = false;
+    }
   }
 
   private async trackUpload<T>(upload: Promise<T>): Promise<T> {

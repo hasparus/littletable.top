@@ -3,13 +3,26 @@ import { type ReactNode, useState, useSyncExternalStore } from "react";
 import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
 
+import { thumbnailUrl } from "../../src/board-thumbnail";
 import { fill } from "./copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
-export type Owned = { createdAt: number; id: string; shareCode: string; title: string };
-type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
+export type Owned = {
+  createdAt: number;
+  hasThumbnail?: boolean;
+  id: string;
+  shareCode: string;
+  title: string;
+};
+type Visited = {
+  hasThumbnail?: boolean;
+  id: string;
+  shareCode: string | null;
+  title: string;
+  visitedAt: number;
+};
 export type Lists = { owned: Owned[]; visited: Visited[] };
 
 const DATE_FORMATS = {
@@ -21,11 +34,33 @@ export type Action = (typeof ACTIONS)[number];
 export type Editing = { id: string; kind: Action } | null;
 
 const ROW =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
 const BOARD_LINK =
-  "col-start-1 row-start-1 self-end rounded-sm font-semibold wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus @3xl:self-center";
+  "col-start-2 row-start-1 self-end rounded-sm font-semibold wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus @3xl:self-center";
 const BOARD_DATE =
-  "col-start-1 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-2 @3xl:row-start-1 @3xl:self-center";
+  "col-start-2 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-3 @3xl:row-start-1 @3xl:self-center";
+
+function BoardThumbnail({ board }: { board: Owned | Visited }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="col-start-1 row-span-2 row-start-1 aspect-video w-12 overflow-hidden rounded-md border border-border bg-bg-secondary sm:w-16 @3xl:row-span-1"
+    >
+      {board.hasThumbnail === true && board.shareCode !== null && (
+        <img
+          alt=""
+          className="size-full object-cover"
+          decoding="async"
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+          src={thumbnailUrl(board.id)}
+        />
+      )}
+    </span>
+  );
+}
 
 function BoardDate({
   date,
@@ -79,11 +114,12 @@ function OwnedRow({
   return (
     <li className="py-2">
       <div className={`${ROW} min-h-11`}>
+        <BoardThumbnail board={board} />
         <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
           {board.title}
         </a>
         <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
-        <div className="col-start-2 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-3 @3xl:row-span-1">
+        <div className="col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
           <button
             aria-label={shareLabel}
             className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium hover:bg-bg-secondary focus-visible:outline-2 focus-visible:outline-border-focus"
@@ -268,9 +304,10 @@ export function BoardList({
       <ul className="divide-y divide-border border-t border-border">
         {lists.visited.map((board) => (
           <li className={`${ROW} min-h-15 py-2`} key={board.id}>
+            <BoardThumbnail board={board} />
             {board.shareCode === null ? (
               <>
-                <span className="self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
+                <span className="col-start-2 row-start-1 self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
                   {board.title}
                 </span>
                 <span className={BOARD_DATE}>{copy.linkWasReset}</span>
