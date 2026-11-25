@@ -37,6 +37,7 @@ import {
 
 import { BoardBackgroundMenu } from "./board-background";
 import { BoardFileMenuItems } from "./board-files";
+import { RenameBoardItem } from "./board-name";
 import { useFeedback } from "./feedback";
 import { FoundHighlight } from "./highlight";
 import { Icon, type IconName } from "./icons";
@@ -192,6 +193,7 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
     <DefaultMainMenu>
       {!hideExit && (
         <TldrawUiMenuGroup id="board-exit">
+          <RenameBoardItem />
           <TldrawUiMenuItem
             id="board-exit"
             label={exit.label}

@@ -465,3 +465,36 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expectNoCspViolations(guest);
   await guest.context().close();
 });
+
+test("an owner can rename a board from its secret layer", async ({ browser, page }) => {
+  await page.goto(`${STANDALONE}/boards`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Keeper");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+
+  const guest = await phone(browser, page.url());
+  try {
+    await joinAs(guest, "Player");
+    await guest.getByRole("button", { exact: true, name: "Menu" }).click();
+    await expect(guest.getByRole("menuitem", { name: "Rename board" })).toHaveCount(0);
+
+    const layer = page.getByRole("button", { name: "Secret layer" });
+    await layer.click();
+    await expect(layer).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { exact: true, name: "Menu" }).click();
+    await page.getByRole("menuitem", { name: "Rename board" }).click();
+    await page.getByLabel("Board name", { exact: true }).fill("Midnight at the keep");
+    await page.getByRole("button", { exact: true, name: "Save" }).click();
+    await expect(page).toHaveTitle("Midnight at the keep");
+    await expect(layer).toHaveAttribute("aria-pressed", "true");
+
+    await guest.reload();
+    await expect(guest).toHaveTitle("Midnight at the keep");
+    await page.goto(`${STANDALONE}/boards`);
+    await expect(page.getByRole("link", { name: "Midnight at the keep" })).toBeVisible();
+  } finally {
+    await guest.context().close();
+  }
+});

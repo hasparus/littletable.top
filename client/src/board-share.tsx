@@ -7,6 +7,7 @@ import { useValue } from "tldraw";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 
+import { useBoardName } from "./board-name";
 import { MENU_BUTTON } from "./front-menu";
 
 export function BoardShare({
@@ -18,7 +19,8 @@ export function BoardShare({
   editor: Editor | null;
   keeper: PassKeeper;
 }) {
-  const { publication, board, title } = keeper.bootstrap;
+  const { publication, board } = keeper.bootstrap;
+  const title = useBoardName()?.title ?? keeper.bootstrap.title;
   const endpoint = `/api/boards/${encodeURIComponent(board)}/publish`;
   const [published, setPublished] = useState(publication?.url ?? null);
   const [busy, setBusy] = useState(false);

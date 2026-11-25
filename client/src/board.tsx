@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { Language } from "../settings";
 import type { PublicLanding } from "./public-landing";
 
+import { BoardNameProvider } from "./board-name";
 import { BoardShare } from "./board-share";
 import {
   type Answer,
@@ -243,14 +244,16 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
       );
     case "ready":
       return (
-        <ReadyBoard
-          copy={copy}
-          exit={stage.exit}
-          keeper={stage.keeper}
-          landing={landing}
-          language={language}
-          licenseKey={licenseKey}
-        />
+        <BoardNameProvider keeper={stage.keeper}>
+          <ReadyBoard
+            copy={copy}
+            exit={stage.exit}
+            keeper={stage.keeper}
+            landing={landing}
+            language={language}
+            licenseKey={licenseKey}
+          />
+        </BoardNameProvider>
       );
   }
 }
