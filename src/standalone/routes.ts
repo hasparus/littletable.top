@@ -104,6 +104,11 @@ function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
 }
 
+function accountSummary({ account, csrf }: Session) {
+  const avatar = account.avatar === null ? null : `/api/avatars/${account.avatar}`;
+  return { account: { avatar, id: account.id, name: account.name }, csrf };
+}
+
 const json = (status: number, body: object, headers: HeadersInit = {}) =>
   Response.json(body, { headers: { "Cache-Control": "no-store", ...headers }, status });
 
@@ -333,15 +338,14 @@ export class Standalone {
   private async me(request: Request): Promise<Response> {
     const found = await this.session(request);
     if (found === null) return json(200, { account: null, csrf: null });
-    const { account, csrf } = found.session;
-    const avatar = account.avatar === null ? null : `/api/avatars/${account.avatar}`;
-    return json(200, { account: { avatar, id: account.id, name: account.name }, csrf });
+    return json(200, accountSummary(found.session));
   }
 
   private async list(request: Request): Promise<Response> {
     const found = await this.session(request);
     if (found === null) return refuse(401, "signed-out");
-    return json(200, await this.store.list(found.session.account.id));
+    const lists = await this.store.list(found.session.account.id);
+    return json(200, { ...accountSummary(found.session), ...lists });
   }
 
   private async thumbnail(request: Request, id: string): Promise<Response> {

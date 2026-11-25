@@ -267,7 +267,7 @@ note outside the shared document.
   SameSite=Lax, 30 days. Only a SHA-256 of its token is stored.
 - Every state-changing route needs `Origin` equal to the tabletop's own and
   a JSON body, which no other origin sends without a preflight. Owner
-  actions and sign-out also need `X-CSRF-Token`, from `GET /api/me`.
+  actions and sign-out also need `X-CSRF-Token`, from `GET /api/boards` or `GET /api/me`.
 - A guest's id and name live in `__Host-tabletop-guest`, signed under its
   own audience. The public board assigns guests a name immediately and keeps
   it in `__Host-tabletop-public-guest`. Share links still ask new guests for
@@ -279,22 +279,22 @@ note outside the shared document.
 
 ### Routes
 
-| Route                                     | Does                                                                           |
-| ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /`                                   | Opens the shared public whiteboard                                             |
-| `GET /boards`                             | Sign-in and the account's boards                                               |
-| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                           |
-| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out              |
-| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out     |
-| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                     |
-| `GET /api/boards`                         | `{"owned", "visited"}`; a visited board's `shareCode` is null after a reset    |
-| `POST /api/boards`                        | `{"title"}`: makes a board (201)                                               |
-| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                        |
-| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only |
-| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                         |
-| `GET /b/<share code>/preview.png`         | Branded link image with the shared board thumbnail when available              |
-| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
-| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
+| Route                                     | Does                                                                                           |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /`                                   | Opens the shared public whiteboard                                                             |
+| `GET /boards`                             | Sign-in and the account's boards                                                               |
+| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                           |
+| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                              |
+| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                     |
+| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                                     |
+| `GET /api/boards`                         | `{"account", "csrf", "owned", "visited"}`; a visited board's `shareCode` is null after a reset |
+| `POST /api/boards`                        | `{"title"}`: makes a board (201)                                                               |
+| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                        |
+| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only                 |
+| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                                         |
+| `GET /b/<share code>/preview.png`         | Branded link image with the shared board thumbnail when available                              |
+| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                                          |
+| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                                             |
 
 Board creation also accepts `"language": "pl"` to start with a Polish page name.
 
