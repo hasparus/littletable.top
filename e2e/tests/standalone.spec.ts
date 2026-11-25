@@ -215,6 +215,28 @@ test("two guests can chat live and see their messages after reloading", async ({
   }
 });
 
+test("a public shape can acquire a pattern fill after the editor mounts", async ({ page }) => {
+  await page.goto(STANDALONE);
+  await page.locator("[data-public-board-note]").waitFor();
+  await reachEditor(page);
+  const id = String(createShapeId());
+  try {
+    await page.evaluate((id) => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      editor.createShape({ id: id as TLShapeId, type: "geo" });
+      editor.updateShape({ id: id as TLShapeId, props: { fill: "pattern" }, type: "geo" });
+    }, id);
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+    await page.reload();
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+  } finally {
+    await reachEditor(page);
+    await page.evaluate((id) => {
+      (globalThis as unknown as { __editor: Editor }).__editor.deleteShape(id as TLShapeId);
+    }, id);
+  }
+});
+
 test("a public arrow saves its moved endpoint for the expiry sweep", async ({ page }) => {
   await page.goto(`${STANDALONE}/`);
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
