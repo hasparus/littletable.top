@@ -358,8 +358,9 @@ function applyAction(
 				]
 				props.scale = (current.scale as number) * Math.max(0.01, Math.min(...ratios))
 			}
-			if (action.text !== undefined && 'richText' in current) {
-				props.richText = toRichText(action.text)
+			if (action.text !== undefined) {
+				if (shape.type === 'frame') props.name = action.text
+				else if ('richText' in current) props.richText = toRichText(action.text)
 			}
 			if (action.color !== undefined && 'color' in current) {
 				props.color = action.color

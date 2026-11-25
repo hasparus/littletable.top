@@ -1,6 +1,7 @@
 import type { TLArrowBinding, TLGeoShape, TLRecord, TLShape } from "@tldraw/tlschema";
 
-import { createTLSchema } from "@tldraw/tlschema";
+import { createShapeId, createTLSchema } from "@tldraw/tlschema";
+import { getIndexAbove } from "@tldraw/utils";
 import { describe, expect, it } from "vitest";
 
 import { applyOps, type ApplyOpsResponse } from "../../src/mcp/board";
@@ -203,9 +204,50 @@ describe("apply_ops on a board nobody has open", () => {
     );
     expect(result).toMatchObject({ errors: [], pageId: "page:two", pageName: "Dungeon" });
     expect(shape(await b.records(), "trap")).toMatchObject({ parentId: "page:two" });
+    for (const page of [undefined, 0, "page:page"]) {
+      const wrongPage = applied(
+        await b.apply(
+          [
+            { op: "remove", targets: ["trap"] },
+            { at: { x: 0, y: 0 }, id: "trap", op: "add", text: "Duplicate ID" },
+          ],
+          { page },
+        ),
+      );
+      expect(wrongPage.errors).toEqual([
+        'Op 0 (remove): Unknown shape "trap"',
+        'Op 1 (add): Shape "trap" already exists; use a new id',
+      ]);
+      expect(shape(await b.records(), "trap")).toMatchObject({ parentId: "page:two" });
+    }
     expect(await b.apply([{ op: "remove", targets: ["trap"] }], { page: 5 })).toMatchObject({
       kind: "no-page",
     });
+  });
+
+  it("renames a frame using its name property", async () => {
+    const b = board();
+    const snapshot = await b.read();
+    const frame = schema.types.shape.create({
+      id: createShapeId("room"),
+      index: getIndexAbove(null),
+      parentId: snapshot.records.find((record) => record.typeName === "page")!.id,
+      props: { color: "black", h: 100, name: "Old room", w: 200 },
+      type: "frame",
+    });
+    expect(
+      await b.room.commitDocument(b.grant, {
+        absent: [frame.id],
+        puts: [frame],
+        removes: [],
+        since: snapshot.clock,
+        unchanged: [],
+      }),
+    ).toMatchObject({ kind: "committed" });
+
+    const renamed = applied(await b.apply([{ op: "rename", target: "room", text: "Library" }]));
+    expect(renamed.errors).toEqual([]);
+    expect(shape(await b.records(), "room")).toMatchObject({ props: { name: "Library" } });
   });
 
   it("sends the whole batch to a connected browser as one patch", async () => {

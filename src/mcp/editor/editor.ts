@@ -247,8 +247,9 @@ export class StandInEditor {
 
   // --- reading -------------------------------------------------------------
 
-  private find(value: IdOrShape): TLShape | undefined {
-    return this.doc.shape(idOf(value));
+  private lookup(value: IdOrShape): TLShape | undefined {
+    const record = this.doc.shape(idOf(value));
+    return record !== undefined && this.doc.pageOf(record) === this.pageId ? record : undefined;
   }
 
   /**
@@ -257,9 +258,13 @@ export class StandInEditor {
    * docs/mcp-design.md); page-wide scans go through other calls and are not.
    */
   getShape<T extends TLShape = TLShape>(value: IdOrShape): T | undefined {
-    const shape = this.find(value);
+    const shape = this.lookup(value);
     if (shape !== undefined && typeof value === "string") this.doc.depend(shape.id);
     return shape as T | undefined;
+  }
+
+  hasRecord(id: string) {
+    return this.doc.get(id) !== undefined;
   }
 
   getCurrentPageId(): TLPageId {
@@ -279,12 +284,12 @@ export class StandInEditor {
   }
 
   getShapePageBounds(value: IdOrShape): Box | undefined {
-    const shape = this.find(value);
+    const shape = this.lookup(value);
     return shape === undefined ? undefined : Box.from(pageBounds(this.doc, shape));
   }
 
   getShapePageTransform(value: IdOrShape): Transform {
-    const shape = this.find(value);
+    const shape = this.lookup(value);
     const matrix = shape === undefined ? null : pageTransform(this.doc, shape);
     return {
       applyToPoint: (point) => (matrix === null ? point : apply(matrix, point)),
@@ -293,7 +298,7 @@ export class StandInEditor {
   }
 
   getShapeGeometry(value: IdOrShape): Geometry {
-    const shape = this.find(value)!;
+    const shape = this.lookup(value)!;
     const bounds = Box.from(localBounds(this.doc, shape));
     const closed = !["arrow", "line"].includes(shape.type);
     return {
@@ -317,7 +322,7 @@ export class StandInEditor {
   }
 
   isShapeOrAncestorLocked(value: IdOrShape): boolean {
-    let shape = this.find(value);
+    let shape = this.lookup(value);
     for (let depth = 0; shape !== undefined && depth < 1000; depth++) {
       if (shape.isLocked) return true;
       shape = this.doc.shape(shape.parentId);
@@ -328,7 +333,7 @@ export class StandInEditor {
   getShapeAndDescendantIds(ids: TLShapeId[]): Set<TLShapeId> {
     const out = new Set<TLShapeId>();
     for (const id of ids) {
-      if (this.doc.shape(id) === undefined) continue;
+      if (this.lookup(id) === undefined) continue;
       out.add(id);
       for (const child of this.doc.descendants(id)) out.add(child.id);
     }
@@ -336,7 +341,7 @@ export class StandInEditor {
   }
 
   getSelectedShapeIds(): TLShapeId[] {
-    return this.selected.filter((id) => this.doc.shape(id) !== undefined);
+    return this.selected.filter((id) => this.lookup(id) !== undefined);
   }
 
   getBindingsFromShape(value: IdOrShape, type: string): TLArrowBinding[] {
@@ -415,6 +420,9 @@ export class StandInEditor {
 
   createShape<T extends TLShape = TLShape>(partial: Partial | TLShapePartial<T>): this {
     const given = partial as Partial;
+    if (given.id !== undefined && this.hasRecord(given.id)) {
+      throw new Error(`Shape "${given.id.slice("shape:".length)}" already exists; use a new id`);
+    }
     if (this.getCurrentPageShapeIds().size + 1 > MAX_SHAPES_PER_PAGE) return this;
     const defaults = DEFAULT_PROPS[given.type];
     if (defaults === undefined) throw new Error(`This board cannot create a ${given.type} shape`);
@@ -581,7 +589,7 @@ export class StandInEditor {
   }
 
   updateShape(partial: TLShapePartial): this {
-    const prev = this.find(partial.id);
+    const prev = this.lookup(partial.id);
     if (prev === undefined || this.isShapeOrAncestorLocked(prev)) return this;
     const { meta, props, ...rest } = partial as TLShapePartial & { meta?: object; props?: object };
     const merged = {
@@ -699,7 +707,7 @@ export class StandInEditor {
     scale: Vec,
     options: { scaleAxisRotation?: number; scaleOrigin?: Vec } = {},
   ): this {
-    const shape = this.find(value);
+    const shape = this.lookup(value);
     if (shape === undefined || this.isShapeOrAncestorLocked(shape)) return this;
     const origin = options.scaleOrigin ?? this.getShapePageBounds(shape)!.center;
     const onPage = apply(pageTransform(this.doc, shape), { x: 0, y: 0 });
@@ -748,7 +756,7 @@ export class StandInEditor {
   /** Rotates each shape about its own centre. */
   rotateShapesBy(ids: TLShapeId[], delta: number): this {
     for (const id of ids) {
-      const shape = this.find(id);
+      const shape = this.lookup(id);
       if (shape === undefined) continue;
       const centre = this.getShapePageBounds(shape)!.center;
       const origin = apply(pageTransform(this.doc, shape), { x: 0, y: 0 });

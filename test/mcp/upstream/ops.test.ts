@@ -315,6 +315,50 @@ describe('connect', () => {
 		expect(describeShapes(editor).find((s) => s.id === 'short-label')?.text).toBe('Yes')
 	})
 
+
+	it('carries a short arrow caption over to a longer shaft when replacement omits text', () => {
+		const from = { point: { x: 100, y: 100 } }
+		const short = applyOps(editor, [
+			{ op: 'connect', from, to: { point: { x: 160, y: 100 } }, text: 'Walk', id: 'route' },
+		])
+		expect(short.errors).toEqual([])
+		expect(describeShapes(editor).find((s) => s.id === 'route-label')?.text).toBe('Walk')
+
+		const long = applyOps(editor, [
+			{ op: 'connect', from, to: { point: { x: 400, y: 100 } }, id: 'route' },
+		])
+		expect(long.errors).toEqual([])
+		expect(describeShapes(editor).find((s) => s.id === 'route')?.text).toBe('Walk')
+		expect(editor.getShape(id('route-label'))).toBeUndefined()
+	})
+
+	it('preserves an unrelated shape at the preferred caption id during replacement', () => {
+		const from = { point: { x: 100, y: 100 } }
+		seed([{ type: 'create_text', id: 'route-label', text: 'Independent', x: 900, y: 500 }])
+		const unrelated = editor.getShape(id('route-label'))
+		const long = applyOps(editor, [
+			{ op: 'connect', from, to: { point: { x: 400, y: 100 } }, text: 'Walk', id: 'route' },
+		])
+		expect(long.errors).toEqual([])
+
+		const short = applyOps(editor, [
+			{ op: 'connect', from, to: { point: { x: 160, y: 100 } }, id: 'route' },
+		])
+		expect(short.errors).toEqual([])
+		const [, captionId] = short.results[0].shapeIds
+		expect(captionId).not.toBe('route-label')
+		expect(describeShapes(editor).find((s) => s.id === captionId)?.text).toBe('Walk')
+		expect(editor.getShape(id('route-label'))).toEqual(unrelated)
+
+		const rerouted = applyOps(editor, [
+			{ op: 'connect', from, to: { point: { x: 100, y: 160 } }, id: 'route' },
+		])
+		expect(rerouted.errors).toEqual([])
+		expect(rerouted.results[0].shapeIds).toEqual(['route', captionId])
+		expect(describeShapes(editor).find((s) => s.id === captionId)?.text).toBe('Walk')
+		expect(editor.getShape(id('route-label'))).toEqual(unrelated)
+	})
+
 	it('keeps a label on a long arrow', () => {
 		const result = applyOps(editor, [
 			{

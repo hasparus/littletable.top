@@ -1093,13 +1093,23 @@ function applyOp(ctx: OpContext, op: CanvasOp, index: number): OpResult {
 							dash?: 'solid' | 'dashed' | 'dotted' | 'draw'
 						})
 					: undefined
-			// Replacing an arrow keeps its text unless the op gives new text; a side label the old
-			// arrow had is re-made below if the new shaft is short.
+			// A caption is part of the arrow only when both records identify each other.
+			const linkedId = existingArrow?.meta.canvasOpsLabelId
+			const linkedLabel =
+				typeof linkedId === 'string' ? editor.getShape(toShapeId(linkedId)) : undefined
+			const oldLabel =
+				existingArrow?.type === 'arrow' &&
+				linkedLabel?.type === 'text' &&
+				linkedLabel.meta.canvasOpsArrowId === existingArrow.id
+					? linkedLabel
+					: undefined
+			const shaftText =
+				existingArrow?.type === 'arrow'
+					? editor.getShapeUtil(existingArrow).getText(existingArrow)
+					: undefined
 			const text =
-				op.text ??
-				(existingArrow ? editor.getShapeUtil(existingArrow).getText(existingArrow) : undefined)
+				op.text ?? (shaftText || (oldLabel && editor.getShapeUtil(oldLabel).getText(oldLabel)))
 			if (existingArrow?.type === 'arrow') {
-				const oldLabel = editor.getShape(toShapeId(`${op.id}-label`))
 				ctx.apply({
 					type: 'delete_shapes',
 					shapeIds: [
@@ -1125,6 +1135,7 @@ function applyOp(ctx: OpContext, op: CanvasOp, index: number): OpResult {
 			const short = !!text && arrowIsTooShortForLabel(editor, text, visibleFrom, visibleTo)
 			let adjusted: string | undefined
 			if (short) {
+				const preferred = oldLabel ? fromShapeId(oldLabel.id) : op.id && `${op.id}-label`
 				const labelId = materialise(
 					ctx,
 					{
@@ -1132,11 +1143,21 @@ function applyOp(ctx: OpContext, op: CanvasOp, index: number): OpResult {
 						text: text!,
 						color: op.color,
 						size: 'm',
-						id: op.id ? `${op.id}-label` : undefined,
+						id: preferred && !editor.hasRecord(toShapeId(preferred)) ? preferred : undefined,
 					},
 					{ x: (visibleFrom.x + visibleTo.x) / 2, y: (visibleFrom.y + visibleTo.y) / 2 }
 				)
 				adjusted = placeShortArrowLabel(ctx, labelId, visibleFrom, visibleTo)
+				editor.updateShape({
+					id: ids[0],
+					type: 'arrow',
+					meta: { canvasOpsLabelId: labelId },
+				})
+				editor.updateShape({
+					id: labelId,
+					type: 'text',
+					meta: { canvasOpsArrowId: ids[0] },
+				})
 				ids.push(labelId)
 			} else if (text) ctx.apply({ type: 'update_shape', shapeId: created[0], text })
 			return ok(
