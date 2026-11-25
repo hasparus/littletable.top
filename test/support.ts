@@ -1,6 +1,10 @@
 import { createTLSchema } from "@tldraw/tlschema";
+import { runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
+import { expect } from "vitest";
+
+import type { BoardRoom } from "../src/board-room";
 
 // WARNING: Keep this version in sync with sync-core’s internal protocol. A mismatch fails every seat() with an incompatibility error.
 const TLSYNC_PROTOCOL_VERSION = 8;
@@ -96,6 +100,15 @@ export function roll(board: string, token: string, dice: unknown) {
   return call(`/rooms/${board}/roll`, token, { body: JSON.stringify({ dice }), method: "POST" });
 }
 
+export async function restartRoom(board: string) {
+  const namespace = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> }).BoardRoom;
+  const room = namespace.get(namespace.idFromName(board));
+  const reason = "restart board room for test";
+  await expect(runInDurableObject(room, (_room, state) => state.abort(reason))).rejects.toThrow(
+    reason,
+  );
+}
+
 export async function open(board: string, token: string, sessionId = crypto.randomUUID()) {
   const response = await worker.fetch(
     new Request(`https://board.test/rooms/${board}/connect?sessionId=${sessionId}&pass=${token}`, {
@@ -135,6 +148,7 @@ export async function seat(board: string, token: string) {
   );
   await until(() => received.some((message) => message.type === "connect"));
   return {
+    close: () => socket.close(1000),
     closure,
     isClosed: () => closed,
     received,

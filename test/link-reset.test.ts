@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { call, deletion, destroy, linkReset, now, open, pass, seat, until } from "./support";
+import {
+  call,
+  deletion,
+  destroy,
+  linkReset,
+  now,
+  open,
+  pass,
+  restartRoom,
+  seat,
+  until,
+} from "./support";
 
 const reset = (board: string, token: string | null) =>
   call(`/rooms/${board}/link`, token, { method: "POST" });
@@ -18,6 +29,20 @@ describe("resetting a hosted link", () => {
       "link-reset",
     );
     expect((await call(`/rooms/${board}/rolls`, await pass({ board, link: 2 }))).status).toBe(200);
+  });
+
+  it("rejects the old pass when it reconnects first after a room restart", async () => {
+    const board = "reset-restart";
+    const oldPass = await pass({ board, link: 0, sub: "g:guest" });
+    const currentPass = await pass({ board, link: 2, sub: "g:guest" });
+    expect((await reset(board, await linkReset({ board, link: 2 }))).status).toBe(204);
+    await restartRoom(board);
+
+    const rejected = await open(board, oldPass);
+    expect(rejected.response.status).toBe(101);
+    await expect(rejected.closure).resolves.toEqual({ code: 4099, reason: "FORBIDDEN" });
+    const guest = await seat(board, currentPass);
+    guest.close();
   });
 
   it("ignores a retry and an older version", async () => {
