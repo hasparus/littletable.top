@@ -20,7 +20,7 @@ No bloat and no forms to fill.
 
 ## Development
 
-[Run locally and test](docs/development.md) · [Deploy Little Table](docs/deployment.md) · [Connect a host app](docs/hosting.md) · [Internals](docs/internals.md)
+[Run locally and test](docs/development.md) · [Internals](docs/internals.md)
 
 ## Licence
 
