@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   THEME_COLOR,
 } from "./client/settings";
+import { LANDING_COPY } from "./client/src/front-copy";
 import { boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
@@ -64,6 +65,10 @@ const escapeHtml = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+
+const LANDING_PREVIEW = `<section data-landing-preview data-prerendered lang="en" aria-label="${escapeHtml(LANDING_COPY.publicBoard)}">${LANDING_COPY.publicStory
+  .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+  .join("")}<footer>${escapeHtml(LANDING_COPY.publicExpiry)}</footer></section>`;
 
 const BRAND_MODULE = "virtual:tabletop-brand.css";
 
@@ -129,7 +134,14 @@ function tabletop(): Plugin {
       if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
         html = html.replace("<!-- boards-shell -->", boardShell);
       }
+      if (settings.mode === "standalone" && !bundle && originalUrl?.split("?")[0] === "/") {
+        html = html.replace("<!-- landing-preview -->", LANDING_PREVIEW);
+      }
       if (settings.mode === "standalone" && bundle) {
+        html = html.replace(
+          "<!-- landing-preview -->",
+          `<template data-landing-prerender>${LANDING_PREVIEW}</template>`,
+        );
         const board = Object.values(bundle).find(
           (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",
         );

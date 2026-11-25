@@ -184,7 +184,8 @@ test("the landing introduction keeps its typography and position when the board 
     await route.continue();
   });
 
-  await page.goto(STANDALONE, { waitUntil: "commit" });
+  const documentResponse = await page.goto(STANDALONE, { waitUntil: "commit" });
+  expect(await documentResponse?.text()).toContain("<section data-landing-preview");
   const preview = page.locator("[data-landing-preview]");
   try {
     await expect(page.getByRole("status")).toBeAttached();
@@ -215,6 +216,20 @@ test("the landing introduction keeps its typography and position when the board 
   } finally {
     release.resolve(null);
     font.resolve(null);
+  }
+});
+
+test("the prerendered landing intro uses dark mode before JavaScript runs", async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: "dark", javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(STANDALONE);
+    const intro = page.locator("[data-landing-preview]");
+    await expect(intro).toBeVisible();
+    await expect(intro).toHaveCSS("color", "rgb(250, 250, 250)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(10, 10, 10)");
+  } finally {
+    await context.close();
   }
 });
 
