@@ -12,6 +12,7 @@ export type Bootstrap = {
   person: Person;
   /** The Worker adds this only for the signed-in owner of a standalone account board. */
   secretPass?: string;
+  publication?: { csrf: string; url: string | null };
   /** The place on the host the board belongs to, where a guest leaves to. */
   home: { name: string; url: string };
   /** Only an authenticated member on a standalone private board may refresh its thumbnail. */

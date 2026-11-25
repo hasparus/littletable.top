@@ -14,6 +14,54 @@ import {
 
 const ON_TABLETOP = boardAt(HOSTED);
 
+test("the board uses one synchronized spinner during bootstrap and connection", async ({
+  page,
+}) => {
+  const bootstrap = Promise.withResolvers<null>();
+  const connection = Promise.withResolvers<null>();
+  await page.route("**/b/*/bootstrap/", async (route) => {
+    await bootstrap.promise;
+    await route.continue();
+  });
+  await page.routeWebSocket(/\/connect/u, (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage(async (message) => {
+      await connection.promise;
+      socket.send(message);
+    });
+  });
+
+  try {
+    await page.goto(`${HOST}/sign-in?name=Spinner`);
+    await page.getByRole("button", { name: "New board" }).click();
+    await expect(page).toHaveURL(ON_TABLETOP);
+
+    const loading = page.getByRole("status").filter({ hasText: "Opening the board…" });
+    const spinner = page.locator(".tl-spinner:visible");
+    await expect(loading).toHaveCount(1);
+    await expect(loading.getByText("Opening the board…")).toHaveCSS("clip-path", "inset(50%)");
+    await expect(spinner).toHaveCount(1);
+    const box = await spinner.boundingBox();
+    const rotationStart = () => spinner.evaluate((node) => node.getAnimations()[0]?.startTime);
+    expect(await rotationStart()).toBe(0);
+
+    bootstrap.resolve(null);
+    await expect(page.locator("[data-board-editor]").locator(spinner)).toBeVisible();
+    await expect(spinner).toHaveCount(1);
+    expect(await rotationStart()).toBe(0);
+    const syncedBox = await spinner.boundingBox();
+    expect(syncedBox!.x + syncedBox!.width / 2).toBeCloseTo(box!.x + box!.width / 2);
+    expect(syncedBox!.y + syncedBox!.height / 2).toBeCloseTo(box!.y + box!.height / 2);
+
+    connection.resolve(null);
+    await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+    await expect(loading).toHaveCount(0);
+  } finally {
+    bootstrap.resolve(null);
+    connection.resolve(null);
+  }
+});
+
 test("a member and a guest share a board the host signed them onto", async ({ browser, page }) => {
   await collectCspViolations(page);
 

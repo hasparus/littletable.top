@@ -7,12 +7,14 @@ import type { SignInProvider } from "./provider";
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
 import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
 import { isThumbnailType, thumbnailByteLimit } from "../board-thumbnail";
-import { readCapped } from "../file-store";
+import { publicationKey, readCapped, sniff } from "../file-store";
 import { serveStored } from "../files";
+import { imageDimensions } from "../image-size";
 import { addressKey } from "../limiter";
 import {
   MAX_BOARDS_PER_ACCOUNT,
   MAX_BOARDS_PER_HOUR,
+  MAX_FILE_BYTES,
   MAX_NAME_LENGTH,
   MAX_PASSES_PER_MINUTE,
   MAX_SIGN_INS_PER_MINUTE,
@@ -146,6 +148,14 @@ export class Standalone {
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
     if (picture !== null && (method === "GET" || method === "HEAD")) {
       return this.avatar(request, picture[1]!);
+    }
+    const publication = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/publish$/u.exec(pathname);
+    if (publication !== null && (method === "POST" || method === "DELETE")) {
+      return this.publish(request, publication[1]!);
+    }
+    const published = /^\/p\/([A-Za-z0-9]{1,64})\/([a-f0-9-]{36})$/u.exec(pathname);
+    if (published !== null && (method === "GET" || method === "HEAD")) {
+      return this.published(request, published[1]!, published[2]!);
     }
     const thumbnail = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/thumbnail$/u.exec(pathname);
     if (thumbnail !== null) {
@@ -352,6 +362,42 @@ export class Standalone {
     });
   }
 
+  private async published(request: Request, id: string, code: string) {
+    if (!(await this.store.exists(id))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    if ((await room.publicationCode()) !== code) return refuse(404, "not-found");
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: publicationKey(id, code),
+      name: "page",
+      secret: true,
+    });
+  }
+
+  private async publish(request: Request, id: string) {
+    const remove = request.method === "DELETE";
+    const found = await this.member(request, remove ? "application/json" : "image/png");
+    if ("refusal" in found) return found.refusal;
+    if (!(await this.store.owned(id, found.session.account.id))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    if (remove) {
+      await room.setPublication(id, null);
+      return new Response(null, { status: 204 });
+    }
+    const image = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: MAX_FILE_BYTES,
+    });
+    if (image === "too-large") return refuse(413, "too-large");
+    const bytes = new Uint8Array(image);
+    if (sniff(bytes) !== "image/png" || imageDimensions(bytes) === null) {
+      return refuse(415, "invalid-image");
+    }
+    const code = await room.setPublication(id, image);
+    return code === null ? refuse(404, "not-found") : json(200, { url: `/p/${id}/${code}` });
+  }
+
   private async updateThumbnail(request: Request, id: string): Promise<Response> {
     const type = request.headers.get("Content-Type");
     if (!isThumbnailType(type)) return refuse(415, "invalid-thumbnail");
@@ -508,7 +554,7 @@ export class Standalone {
       owner: person.owner,
       sub: person.id,
     };
-    const [pass, secretPass] = await Promise.all([
+    const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
       person.owner && found !== null
         ? signPass(this.keys, {
@@ -516,6 +562,9 @@ export class Standalone {
             board: secretLayerOf(board.id),
             sessionHash: found.hash,
           })
+        : null,
+      person.owner
+        ? this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board.id)).publicationCode()
         : null,
     ]);
     log("pass.issued", {
@@ -530,7 +579,15 @@ export class Standalone {
         home: { name: this.config.displayName, url: "/" },
         pass,
         person: { id: person.id, name: person.name, owner: person.owner },
-        ...(secretPass === null ? {} : { secretPass }),
+        ...(secretPass !== null && found !== null
+          ? {
+              secretPass,
+              publication: {
+                csrf: found.session.csrf,
+                url: published === null ? null : `/p/${board.id}/${published}`,
+              },
+            }
+          : {}),
         ...(saved === null || found === null
           ? {}
           : {

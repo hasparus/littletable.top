@@ -252,7 +252,7 @@
   margin: var(--board-style-panel-top, var(--board-top)) var(--board-right) 0 0;
 }
 
-[data-board-layout]:has(> [data-secret-layer-toggle]),
+[data-board-layout]:has(> [data-board-sharing]),
 [data-board-shell]:has(> [data-public-board-controls]) {
   --board-style-panel-top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
 }
@@ -262,7 +262,7 @@
 }
 
 [data-public-board-controls] > :is(a, button),
-[data-secret-layer-toggle] {
+[data-board-sharing] > button {
   display: grid;
   min-height: var(--board-top-control-size);
   align-items: center;
@@ -284,21 +284,26 @@
 }
 
 [data-public-board-controls] > :is(a, button):hover,
-[data-secret-layer-toggle]:hover,
+[data-board-sharing] > button:hover,
 [data-public-board-chat][aria-expanded="true"] {
   background: var(--color-bg-tertiary);
 }
 
 [data-public-board-controls] > :is(a, button):focus-visible,
-[data-secret-layer-toggle]:focus-visible {
+[data-board-sharing] > button:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
-[data-secret-layer-toggle] {
+[data-board-sharing] {
+  display: flex;
+  gap: 4px;
   position: fixed;
   z-index: 20;
   inset: var(--board-top) var(--board-right) auto auto;
+}
+
+[data-board-sharing] > button {
   place-items: center;
   cursor: pointer;
 }

@@ -35,14 +35,20 @@ test("the owner can write over the shared board without sharing the note", async
   };
   expect(await canUndo()).toBe(true);
   const sharedPosition = await onBoard(owner, sharedText).boundingBox();
+  const draw = owner.getByTestId("tools.draw");
+  await draw.click();
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(owner.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+  await expect(draw).toHaveAttribute("aria-pressed", "true");
   const backdropText = onBoard(owner, sharedText).filter({ visible: true });
   await expect(backdropText).toBeVisible();
   await expect.poll(() => backdropText.boundingBox()).toEqual(sharedPosition);
   await expect(owner.locator("[inert] .tl-theme__dark").first()).toBeVisible();
+  const arriving = "The bridge is raised";
+  await putNote(guest, { at: { x: 105, y: 460 }, text: arriving });
+  await expect(onBoard(owner, arriving)).toBeVisible();
   await putNote(owner, { at: { x: 110, y: 380 }, text: privateText });
   await expect(onBoard(owner, privateText)).toBeVisible();
   await expect(onBoard(guest, privateText)).toHaveCount(0);
@@ -52,7 +58,10 @@ test("the owner can write over the shared board without sharing the note", async
   await secondTab.getByRole("button", { name: "Secret layer" }).click();
   await expect(onBoard(secondTab, privateText)).toBeVisible();
 
+  const hand = owner.getByTestId("tools.hand");
+  await hand.click();
   await toggle.click();
+  await expect(hand).toHaveAttribute("aria-pressed", "true");
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect.poll(canUndo).toBe(true);
   await expect(onBoard(owner, sharedText)).toBeVisible();

@@ -8,12 +8,12 @@ import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { PublicLanding } from "./public-landing";
-import type { SharedView } from "./secret-backdrop";
 
 import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { BoardLoading } from "./board-loading";
 import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
@@ -75,7 +75,9 @@ function warmUpDice(): () => void {
 
 export function BoardCanvas({
   active,
-  backdrop,
+  backdrop = false,
+  overlay = false,
+  waiting = false,
   copy,
   exit,
   keeper,
@@ -83,10 +85,11 @@ export function BoardCanvas({
   language,
   licenseKey,
   onEditor,
-  onLayerFull,
 }: {
   active: boolean;
-  backdrop?: SharedView;
+  backdrop?: boolean;
+  overlay?: boolean;
+  waiting?: boolean;
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
@@ -94,7 +97,6 @@ export function BoardCanvas({
   language: string;
   licenseKey: string;
   onEditor?: (editor: Editor | null) => void;
-  onLayerFull?: () => void;
 }) {
   const { person } = keeper.bootstrap;
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
@@ -129,6 +131,7 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [editorLayer, setEditorLayer] = useState<HTMLDivElement | null>(null);
   const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
   useEffect(() => {
     const grant = keeper.bootstrap.thumbnail;
@@ -231,7 +234,7 @@ export function BoardCanvas({
     [active, editor, open],
   );
   if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
-  if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
+  if (refusal !== null) return active ? <BoardLoading text={copy.loading} /> : null;
   if (store.status === "error") {
     return active ? (
       <Notice
@@ -249,19 +252,21 @@ export function BoardCanvas({
       <div
         className="fixed inset-0 overflow-hidden"
         data-board-shell
-        hidden={!active}
+        hidden={!active && !backdrop}
+        style={keeper.secret && editor === null ? { visibility: "hidden" } : undefined}
         ref={keepBoardZoom}
       >
         <BoardEditors
           active={active}
-          backdrop={backdrop}
+          editorLayerRef={setEditorLayer}
+          overlay={overlay}
+          showUi={active || waiting}
           landing={landing}
           licenseKey={licenseKey}
           onEditor={(mounted) => {
             setEditor(mounted);
             onEditor?.(mounted);
           }}
-          onLayerFull={onLayerFull}
           secret={keeper.secret}
           store={store}
         />
@@ -296,10 +301,11 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
-        {active && rolls.arrived !== null && (
+        {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage
               copy={copy}
+              editorLayer={editorLayer}
               onRoll={rolls.roll}
               onSettled={rolls.settle}
               roll={rolls.arrived}
