@@ -7,7 +7,7 @@ const EN = {
   boardName: "Board name",
   cancel: "Cancel",
   copyLink: "Copy link",
-  created: "Created",
+  created: "Boards created",
   createdOn: "Created %(date)s",
   delete: "Delete",
   deleteConfirm: "Delete “%(title)s” and everything drawn on it? This cannot be undone.",
@@ -39,7 +39,7 @@ const EN = {
   signOut: "Sign out",
   tooManyBoards: "You have as many boards as you can keep. Delete one first.",
   tooManyNewBoards: "You made many boards just now. Wait a while before the next.",
-  visited: "Boards you joined",
+  visited: "Boards joined",
   yourBoards: "Your boards",
 };
 
@@ -50,7 +50,7 @@ const PL: FrontCopy = {
   boardName: "Nazwa tablicy",
   cancel: "Anuluj",
   copyLink: "Kopiuj link",
-  created: "Utworzone",
+  created: "Utworzone tablice",
   createdOn: "Utworzono %(date)s",
   delete: "Usuń",
   deleteConfirm:

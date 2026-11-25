@@ -151,9 +151,13 @@ function SignedIn({
       <main className="mx-auto max-w-6xl px-4 pt-5 pb-16 sm:px-6 sm:pt-6 lg:px-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.yourBoards}</h1>
-          <button className="btn btn-primary min-h-11" onClick={() => void create()} type="button">
-            <Icon className="size-4" name="Plus" />
+          <button
+            className="btn btn-primary min-h-11 font-semibold"
+            onClick={() => void create()}
+            type="button"
+          >
             {copy.newBoard}
+            <Icon className="size-4 stroke-current stroke-1" name="Plus" />
           </button>
         </div>
         {error !== null && (
