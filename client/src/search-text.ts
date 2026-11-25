@@ -1,11 +1,3 @@
-// Folding, matching and excerpts for the board's search. Everything here is
-// pure text, so the index and the results list agree on what matched.
-
-// Folds one UTF-16 unit for matching: lower case, Polish ł to l, other
-// diacritics dropped (ż, ó, ę, á, ü…). A unit that would fold to more or
-// fewer than one unit (İ, ß, a lone surrogate) is only lower-cased or kept,
-// so a folded text is exactly as long as its source and a position found in
-// one is the same position in the other.
 function foldUnit(unit: string): string {
   const lower = unit.toLowerCase();
   if (lower === "ł") return "l";
@@ -16,7 +8,7 @@ function foldUnit(unit: string): string {
 
 export function fold(text: string): string {
   let folded = "";
-  // NOTE: by UTF-16 unit, not by code point (for…of), so lengths stay equal.
+  // WARNING: Iterate UTF-16 units, not code points, to preserve the source offsets.
   for (let index = 0; index < text.length; index++) folded += foldUnit(text.charAt(index));
   return folded;
 }
@@ -33,10 +25,7 @@ function lowerAligned(text: string): string {
 
 type RichNode = { content?: unknown; text?: unknown; type?: unknown };
 
-// The words of a tldraw rich text (a TipTap document), blocks and line
-// breaks as spaces. tldraw's own renderPlaintextFromRichText runs TipTap's
-// generateText, about 0.3 ms a shape, which is most of a second on a
-// large board; this walk reads the same words from the JSON directly.
+/** Extracts rich-text words directly from TipTap JSON, treating block and line breaks as spaces. */
 export function richTextWords(richText: unknown): string {
   const words: string[] = [];
   const walk = (node: RichNode) => {
@@ -50,13 +39,11 @@ export function richTextWords(richText: unknown): string {
   return oneLine(words.join(""));
 }
 
-// Text as the results list shows it: one line, single spaces.
 export const oneLine = (text: string): string => text.replaceAll(/\s+/gu, " ").trim();
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const isWordUnit = (unit: string | undefined) => unit !== undefined && /[\p{L}\p{N}]/u.test(unit);
 
-// Where `needle` starts a word in `haystack`, or -1.
 function wordStart(haystack: string, needle: string): number {
   if (needle.length === 0) return -1;
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
@@ -65,9 +52,7 @@ function wordStart(haystack: string, needle: string): number {
   return -1;
 }
 
-// How closely a result's text holds the query, best first: the query as
-// typed, diacritics and all (3), the query once both are folded (2), or
-// only the index's prefix and typo matching (1). Case never counts.
+/** Match priority: original spelling, folded spelling, or prefix and typo match. Case never counts. */
 export type Closeness = 1 | 2 | 3;
 
 export function closeness(query: string, text: string): Closeness {
@@ -79,16 +64,11 @@ export function closeness(query: string, text: string): Closeness {
 
 export type ExcerptPart = { mark: boolean; text: string };
 
-// Up to about this many characters of a long text show in a result.
 export const EXCERPT_LENGTH = 90;
-// How much of the text before the first match stays in view.
 const LEAD = 28;
 
 type Span = { end: number; start: number };
 
-// What to emphasise: the whole query where the text holds it at the start
-// of a word, else every whole word the index matched (its terms are folded
-// words, typos and prefixes already resolved to the word on the board).
 function spansOf(text: string, query: string, terms: readonly string[]): Span[] {
   const folded = fold(text);
   const phrase = fold(oneLine(query));
@@ -100,8 +80,7 @@ function spansOf(text: string, query: string, terms: readonly string[]): Span[] 
     .map((word) => ({ end: word.index + word[0].length, start: word.index }));
 }
 
-// A window of a result's text around its first match, cut at word edges,
-// with the matches marked; a short text shows whole.
+/** Returns a word-aligned excerpt with matches marked. Short text is returned whole. */
 export function excerpt(source: string, query: string, terms: readonly string[]): ExcerptPart[] {
   const text = oneLine(source);
   const spans = spansOf(text, query, terms);

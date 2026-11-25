@@ -1,6 +1,3 @@
-// tldraw builds hatch tiles for every zoom level and both themes the first
-// time these SVG defs mount. Keep its renderer, but wait for a patterned
-// shape (local or remote), or for the user to select the pattern fill.
 import {
   ArrowShapeUtil,
   computed,
@@ -34,8 +31,7 @@ function watchPattern(editor: Editor) {
 
 const patterns = new WeakCache<Editor, ReturnType<typeof watchPattern>>();
 
-// DefaultCanvas tracks getCanvasSvgDefs reactively and deduplicates by key.
-// All three stock providers have to defer the shared pattern definition.
+// WARNING: All three stock providers share this SVG definition. Leaving even one eager mounts the pattern tiles.
 export class BoardDrawShapeUtil extends DrawShapeUtil {
   override getCanvasSvgDefs() {
     return patterns.get(this.editor, watchPattern).get() ? super.getCanvasSvgDefs() : [];

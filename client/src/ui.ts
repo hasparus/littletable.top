@@ -10,39 +10,39 @@ import type { ImageText } from "./image-text";
 import type { Rolls } from "./rolls";
 import type { BoardSearch } from "./search-board";
 
-// The search sheet is also where the board's places are listed.
+/** The search sheet is also where the board's places are listed. */
 export type Panel = "chat" | "dice" | "people" | "search";
 
 type RollDraft = { expression: string; pool: number[] };
 
-// What the board's own controls share: the buttons sit inside tldraw's
-// toolbar and the sheets beside the canvas, so both read it from here.
+/**
+ * What the board's own controls share: the buttons sit inside tldraw's
+ * toolbar and the sheets beside the canvas, so both read it from here.
+ */
 export type BoardUi = {
   board: string;
   close: (panel: Panel) => void;
-  // This person's cursor colour.
   color: string;
   copy: Copy;
   editor: Editor | null;
-  // The board's images: uploads, their progress, and the asset store.
   files: BoardFiles;
-  // Where the board's menu leads out: their boards, or the board's home for a guest.
+  /** Where the board's menu leads out: their boards, or the board's home for a guest. */
   exit: { href: string; label: string };
-  // What a chosen search result flashes, on this screen only.
+  /** What a chosen search result flashes, on this screen only. */
   highlight: Atom<Flash | null>;
-  // The text in the board's images; null until the canvas is up.
+  /** The text in the board's images; null until the canvas is up. */
   imageText: ImageText | null;
   locale: string;
-  // The shape whose new place name is being typed.
   naming: TLShapeId | null;
-  // `typing`: the person asked from the keyboard, so the search field
-  // takes focus even on a touch screen.
+  /**
+   * `typing`: the person asked from the keyboard, so the search field
+   * takes focus even on a touch screen.
+   */
   open: (panel: Panel | null, options?: { typing: boolean }) => void;
   panel: Panel | null;
   person: Person;
   rollDraft: RollDraft;
   rolls: Rolls;
-  // Null until the canvas is up.
   search: BoardSearch | null;
   setNaming: (id: TLShapeId | null) => void;
   setRollDraft: Dispatch<SetStateAction<RollDraft>>;

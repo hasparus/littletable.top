@@ -67,7 +67,7 @@ export async function feedbackRoute(
 
   const bytes = await readCapped(request.body, {
     declared: Number(request.headers.get("Content-Length")),
-    // JSON escapes can take six bytes for each UTF-16 code unit.
+    // WARNING: Each UTF-16 code unit can take six bytes in JSON before decoding.
     max: 6 * MAX_FEEDBACK_LENGTH + 512,
   });
   if (bytes === "too-large") return reply(413);

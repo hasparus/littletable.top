@@ -1,42 +1,44 @@
-import { useEffect, useState } from "react";
-import { createTLStore, type Editor, react, type TLPage, type TLStore } from "tldraw";
+import { react, type Editor } from "tldraw";
 
-export type SharedView = {
-  camera: ReturnType<Editor["getCamera"]>;
-  page: Pick<TLPage, "id" | "name">;
-  store: TLStore;
-};
-
-export function captureSharedView(editor: Editor): SharedView {
-  return {
-    camera: editor.getCamera(),
-    page: editor.getCurrentPage(),
-    // SAFETY: only document records, on a store with no sync connection.
-    store: createTLStore({
-      assets: {
-        resolve: editor.store.props.assets.resolve,
-        upload: async () => {
-          throw new Error("board: the shared backdrop is read-only");
-        },
-      },
-      schema: editor.store.schema,
-      snapshot: editor.store.getStoreSnapshot(),
-    }),
-  };
+export function carryTool(from: Editor, to: Editor) {
+  const tool = from.getCurrentToolId();
+  const state = from.getInstanceState();
+  from.complete();
+  from.blur();
+  to.updateInstanceState({
+    isToolLocked: state.isToolLocked,
+    opacityForNextShape: state.opacityForNextShape,
+    stylesForNextShape: state.stylesForNextShape,
+  });
+  to.setCurrentTool(tool);
 }
 
-export function useSharedBackdrop(source: Editor | null) {
-  const [backdrop, setBackdrop] = useState<Editor | null>(null);
-  useEffect(() => {
-    if (backdrop === null || source === null) return;
-    return react("align shared backdrop", () => {
-      const page = source.getCurrentPageId();
-      const visible = backdrop.getPage(page) !== undefined;
-      backdrop.getContainer().style.visibility = visible ? "visible" : "hidden";
-      if (!visible) return;
-      if (page !== backdrop.getCurrentPageId()) backdrop.setCurrentPage(page);
-      backdrop.setCamera(source.getCamera(), { immediate: true });
-    });
-  }, [backdrop, source]);
-  return setBackdrop;
+export function openOverlay(shared: Editor, secret: Editor) {
+  const page = shared.getCurrentPage();
+  if (!secret.getPage(page.id)) {
+    if (secret.getPages().length >= secret.options.maxPages) return false;
+    secret.createPage({ id: page.id, name: page.name });
+  }
+  if (secret.getCurrentPageId() !== page.id) secret.setCurrentPage(page.id);
+  secret.setCamera(shared.getCamera(), { immediate: true });
+  carryTool(shared, secret);
+  return true;
+}
+
+export function alignLayers(shared: Editor, secret: Editor) {
+  const container = shared.getContainer();
+  const stop = react("align shared canvas", () => {
+    const page = secret.getCurrentPageId();
+    const visible = shared.getPage(page) !== undefined;
+    container.style.visibility = visible ? "" : "hidden";
+    if (!visible) return;
+    if (page !== shared.getCurrentPageId()) {
+      shared.run(() => shared.setCurrentPage(page), { history: "ignore" });
+    }
+    shared.setCamera(secret.getCamera(), { immediate: true });
+  });
+  return () => {
+    stop();
+    container.style.visibility = "";
+  };
 }

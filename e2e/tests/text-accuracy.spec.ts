@@ -8,15 +8,6 @@ import { score, type Truth } from "../text-score";
 import { collectCspViolations, expectNoCspViolations } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
 
-// How well the real engines read the committed fixtures, in a real
-// browser, through the board itself: one person uploads all six, their
-// browser reads them, and the stored readings are scored against the
-// ground truth. Floors sit a little below what both engines measured
-// (docs/internals.md, "Text in images"), so a regression in the pipeline, a model
-// or a parameter fails here. Slow (a cold start of both engines and six
-// images): `bun run e2e -- --grep @accuracy` runs it alone. The
-// artifact is accuracy.json, every score.
-
 type Floor = { diacritics: number; names: number; tesseractLocated: number };
 
 const FLOORS: Record<string, Floor> = {
@@ -50,8 +41,7 @@ test(
     await page.goto(`${HOST}/sign-in?name=Ola`);
     await page.getByRole("button", { name: "New board" }).click();
     await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-    // The canvas can still be displaying a local blob when the uploads finish.
-    // Use the actual room endpoint that accepted an image.
+    // WARNING: The canvas may still show a local blob after upload. Read back from the room endpoint that accepted the image.
     const [upload] = await Promise.all([
       page.waitForResponse(
         (response) =>

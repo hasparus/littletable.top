@@ -1,33 +1,25 @@
-// The dice as plain data: each a convex polyhedron with rounded edges (its
-// shrunk "core" swept by a ball of radius r), its faces, and which value each
-// face (a d4: each corner) shows. Coordinates are closed forms in square
-// roots, so every engine builds the same numbers (see dice-math.ts). The
-// d100 is a ball of a hundred small faces: it rolls as a sphere and may show
-// any face on top.
-
 import { add, cross, dot, length, normalize, scale, sub, type Vec } from "./dice-math";
 
 export type DieKind = "d4" | "d6" | "d8" | "d10" | "d12" | "d20" | "d100";
 
 export type Face = { center: Vec; normal: Vec; verts: number[] };
 
-// What a die shows when `dir` (model space) points straight up: a face's
-// outward normal, or for a d4 a corner's direction.
+/** The face or d4 corner that shows its value when dir points straight up in model space. */
 export type Feature = { dir: Vec; ring: Vec[]; text: string; up: Vec | null; value: number };
 
 export type Solid = {
-  // Rolls as a sphere of radius `inradius`; any rotation shows a face on top.
+  /** Rolls as a sphere of radius inradius. */
   ball: boolean;
   core: Vec[];
   faces: Face[];
-  // The numeral's "up" on each face, in the face plane.
+  /** Up vector of the numeral in each face plane. */
   faceUp: Vec[];
   features: Feature[];
   inradius: number;
   kind: DieKind;
-  // Rounding radius.
+  /** Radius of the ball swept over the core to round the edges. */
   r: number;
-  // Circumradius of the rounded die.
+  /** Circumradius including the rounding. */
   radius: number;
   verts: Vec[];
 };
@@ -38,7 +30,6 @@ const COS36 = (1 + SQRT5) / 4;
 const SIN36 = Math.sqrt(10 - 2 * SQRT5) / 4;
 const COS72 = (SQRT5 - 1) / 4;
 const SIN72 = Math.sqrt(10 + 2 * SQRT5) / 4;
-// Multiples of 36°, as [cos, sin].
 const RING: [number, number][] = [
   [1, 0],
   [COS36, SIN36],
@@ -51,10 +42,8 @@ const RING: [number, number][] = [
   [COS72, -SIN72],
   [COS36, -SIN36],
 ];
-// Pentagonal trapezohedron: the kites are planar when apex = z0 (1 + cos 36°) / (1 - cos 36°).
 const D10_RING_HEIGHT = 0.105;
 
-// Circumradius of the sharp solid, and the rounding as a share of it.
 type Polyhedron = Exclude<DieKind, "d100">;
 const SIZE: Record<Polyhedron, number> = {
   d4: 1.05,
@@ -72,10 +61,8 @@ const ROUNDING: Record<Polyhedron, number> = {
   d12: 0.08,
   d20: 0.07,
 };
-// The d100: the radius of the sphere its faces touch, and its rounding.
 const BALL = { faces: 100, r: 0.035, size: 1.2 };
-// NOTE: cos and sin of the golden angle, π(3 - √5), as literals: Math.cos
-// and Math.sin may differ between engines.
+// WARNING: Use literal cos and sin of the golden angle π(3 − √5). Math.cos and Math.sin can vary across engines.
 const GOLDEN: [number, number] = [-0.7373688780783197, 0.6754902942615238];
 
 const SIGNS = [1, -1];
@@ -137,7 +124,6 @@ function sharpVerts(kind: Polyhedron): Vec[] {
   }
 }
 
-// A monotonic stand-in for atan2 that needs no trigonometry.
 export function pseudoAngle(x: number, y: number): number {
   const p = y / (Math.abs(x) + Math.abs(y));
   if (x < 0) return 2 - p;
@@ -146,8 +132,6 @@ export function pseudoAngle(x: number, y: number): number {
 
 const EPSILON = 1e-9;
 
-// Every plane through three vertices that has all vertices on one side is a
-// face; its vertices are ordered counter-clockwise seen from outside.
 function facesOf(verts: Vec[]): Face[] {
   const faces: Face[] = [];
   const count = verts.length;
@@ -182,7 +166,6 @@ function facesOf(verts: Vec[]): Face[] {
 
 type Label = { text: string; value: number };
 
-// Opposite faces sum to n + 1 (a d10's digits to 9), as on real dice.
 function faceLabels(kind: DieKind, faces: Face[]): Label[] {
   const labels: Label[] = Array.from({ length: faces.length });
   const taken = new Set<number>();
@@ -211,7 +194,6 @@ function faceLabels(kind: DieKind, faces: Face[]): Label[] {
 function numeralUp(kind: DieKind, verts: Vec[], face: Face): Vec {
   const first = verts[face.verts[0]!]!;
   let toward = first;
-  // A d6 numeral sits square to an edge, a d10's points to the pole.
   if (kind === "d6") toward = scale(add(first, verts[face.verts[1]!]!), 0.5);
   if (kind === "d10")
     for (const index of face.verts)
@@ -220,24 +202,18 @@ function numeralUp(kind: DieKind, verts: Vec[], face: Face): Vec {
   return normalize(sub(up, scale(face.normal, dot(up, face.normal))));
 }
 
-// A hundred directions spread evenly over the sphere, along a spiral from
-// pole to pole that turns by the golden angle each step.
 function spiral(): Vec[] {
   let [c, s] = [1, 0];
   return Array.from({ length: BALL.faces }, (_, i): Vec => {
     const y = 1 - (2 * i + 1) / BALL.faces;
     const ring = Math.sqrt(1 - y * y);
     const at: Vec = [ring * c, y, ring * s];
-    // The next turn, kept a unit vector against drift.
     const turned = normalize([c * GOLDEN[0] - s * GOLDEN[1], 0, c * GOLDEN[1] + s * GOLDEN[0]]);
     [c, s] = [turned[0], turned[2]];
     return at;
   });
 }
 
-// The ball's faces: the planes that touch the unit sphere at `normals`. Each
-// corner is where the planes of three neighbouring normals meet, and three
-// normals are neighbours when all the others lie on one side of their plane.
 function ballFaces(normals: Vec[]): { faces: Face[]; verts: Vec[] } {
   const count = normals.length;
   const verts: Vec[] = [];
@@ -276,8 +252,6 @@ function ballFaces(normals: Vec[]): { faces: Face[]; verts: Vec[] } {
   return { faces, verts };
 }
 
-// The ball: numbers scattered so that neighbours are far apart in value,
-// each read with its top toward the spiral's first pole.
 function ball(): Solid {
   const unit = ballFaces(spiral());
   const verts = unit.verts.map((v) => scale(v, BALL.size));

@@ -11,7 +11,7 @@ export type DieShapeProps = {
   sides: number;
   size?: Size;
   tone?: Tone;
-  // The text on the shape; defaults to the die's face count, as on a button.
+  /** The text on the shape; defaults to the die's face count, as on a button. */
   value?: number;
 };
 
@@ -21,8 +21,6 @@ type Outline = {
   ticks?: string;
 };
 
-// NOTE: classic die silhouettes in a 32-unit box, drawn so that no two share an
-// outline at 28px: triangle, rounded square, rhombus, kite, pentagon, hexagon, and a many-sided ball for the d100.
 const OUTLINES: Record<number, Outline> = {
   4: { points: "16,3 29,26.5 3,26.5", text: { size: 12, y: 19 } },
   6: { text: { size: 14, y: 16.5 } },
@@ -73,8 +71,10 @@ function Silhouette({ className, sides }: { className: string; sides: number }) 
   return <polygon className={className} points={(OUTLINES[sides] ?? FALLBACK).points} />;
 }
 
-// A die's face count and value on its own flat silhouette, in the colours of
-// the theme. The name read aloud is "d20: 2"; only the number is drawn.
+/**
+ * A die's face count and value on its own flat silhouette, in the colours of
+ * the theme. The name read aloud is "d20: 2"; only the number is drawn.
+ */
 export function DieShape({
   copy,
   dropped = false,

@@ -17,32 +17,16 @@ import { imageHash } from "./search-board";
 import { TextReader } from "./text-reader";
 import { PARAMS, savingData } from "./text-support";
 
-// Text in the board's images, in this browser (docs/internals.md, "Text in images").
-// It loads what has been read off the board's images already, follows the
-// room's notices as more is read, and, when this person is not busy and
-// the tab is in view, takes one image nobody has read yet with the
-// engines this device can run, under a lease the board's Durable Object
-// keeps so that two browsers do not read the same image. The uploader's
-// browser takes its own images first, right away.
-
 const KEY_OF: Record<EngineName, EngineKey> = {
   ppocr: "ppocr-v6tiny.1",
   tesseract: "tesseract-6.0.1",
 };
 
-// How long the board must have been left alone before a browser that did
-// not upload an image starts reading it, and how often a lease is renewed
-// (the room keeps one 30 s past its last renewal).
 const IDLE_MS = 4000;
 const RENEW_MS = 10_000;
-// A browser asks for an image when the room's notices or a new image say
-// there may be one. Only a lease that ran out goes unannounced: while
-// someone else reads, it asks again once their lease could have lapsed.
-// The slow fallback covers notices missed on a dropped socket.
 const TAKEOVER_MS = 32_000;
 const FALLBACK_MS = 5 * 60_000;
 const SETTLE_MS = 500;
-// After a failed reading, the next waits this long, doubling to the most.
 const BACKOFF_MS = { first: 30_000, most: 10 * 60_000 };
 
 type Pair = string;
@@ -62,8 +46,10 @@ const isNotice = (message: unknown): message is Notice =>
 const INPUT = ["pointerdown", "keydown", "wheel"] as const;
 
 export class ImageText {
-  // How many of the board's images are being read, or will be: the
-  // search sheet says so while there are any.
+  /**
+   * How many of the board's images are being read, or will be: the
+   * search sheet says so while there are any.
+   */
   readonly pending = atom("images being read", 0);
   readonly #editor: Editor;
   readonly #files: BoardFiles;
@@ -74,7 +60,6 @@ export class ImageText {
   readonly #listing: Listing = { failed: new Set(), reading: new Set(), stored: new Set() };
   readonly #results = new Map<string, Map<EngineKey, TextResult>>();
   readonly #fetching = new Set<Pair>();
-  // Images this person uploaded, read first and whatever the connection.
   readonly #own = new Set<string>();
   #images = new Set<string>();
   #reading: string | null = null;
@@ -138,8 +123,6 @@ export class ImageText {
     this.#reader.stop();
   }
 
-  // The board's images that can carry text, by the SHA-256 of their bytes:
-  // those an image shape on any page shows now.
   #boardImages(): Set<string> {
     const hashes = new Set<string>();
     for (const record of this.#editor.store.allRecords()) {
@@ -173,8 +156,6 @@ export class ImageText {
     });
   }
 
-  // What the room has read and is reading, for when a notice was missed
-  // (a socket that dropped, a lease that ran out).
   async #refresh(thenRead = true): Promise<void> {
     try {
       const response = await this.#request("/text");
@@ -191,7 +172,6 @@ export class ImageText {
     if (thenRead) this.#schedule(0);
   }
 
-  // Fetches each stored reading of the image this browser does not have.
   #fetchStored(hash: string): void {
     for (const key of Object.keys(TEXT_ENGINES) as EngineKey[]) {
       const id = pair(hash, key);
@@ -218,8 +198,7 @@ export class ImageText {
     this.#count();
   }
 
-  // A notice from the room (docs/internals.md, "Text in images"): a reading under
-  // way, given up or stored.
+  /** Updates the local OCR listing when the room starts, releases, or stores a reading. */
   receive(message: unknown): void {
     if (!isNotice(message)) return;
     for (const { engine, hash } of message.readings) {
@@ -238,8 +217,6 @@ export class ImageText {
     return this.#listing[list].has(pair(hash, key));
   }
 
-  // The engines of this device that have not read the image yet and have
-  // not given up on it (someone may be reading it now).
   #missing(hash: string): EngineKey[] {
     return this.#engines.filter(
       (key) => !this.#has(hash, key, "stored") && !this.#has(hash, key, "failed"),
@@ -257,15 +234,12 @@ export class ImageText {
     this.pending.set(pending);
   }
 
-  // Images this device could still read.
   #candidates(): string[] {
     return [...new Set([...this.#images, ...this.#own])].filter(
       (hash) => this.#missing(hash).length > 0,
     );
   }
 
-  // Nothing to claim now: waits for a notice, or for someone else's lease
-  // to lapse when they may have left.
   #wait(): void {
     const othersReading = this.#candidates().some((hash) =>
       this.#missing(hash).some((key) => this.#has(hash, key, "reading")),
@@ -285,8 +259,7 @@ export class ImageText {
   async #tick(): Promise<void> {
     if (this.#disposed || this.#reading !== null || this.#engines.length === 0) return;
     if (document.visibilityState === "hidden") return;
-    // NOTE: an image someone else reads counts too: only the room knows
-    // when their lease ran out, which no notice says.
+    // WARNING: Lease expiration sends no notice. Include images other browsers were reading so the room can reclaim them.
     const candidates = this.#candidates();
     if (candidates.length === 0) return;
     const prefer = candidates.find((hash) => this.#own.has(hash)) ?? null;
@@ -294,7 +267,6 @@ export class ImageText {
       const now = performance.now();
       const wait = Math.max(this.#lastInput + IDLE_MS, this.#notBefore) - now;
       if (wait > 0) return this.#schedule(wait);
-      // NOTE: someone else's image waits for a browser not saving data.
       if (savingData()) return;
     }
     let claim: Claim | null = null;

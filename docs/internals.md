@@ -6,10 +6,9 @@ and why the security choices were made. Limits are in `src/limits.ts`.
 ## Secret layer
 
 On a standalone account board, **Secret layer** switches the owner to an
-editable overlay. The shared board is a read-only snapshot taken when the
-owner enters the layer. The canvas starts on the same page and at the same
-zoom and position. Switch back to see live shared edits, or switch back and
-enter the layer again to refresh the snapshot.
+editable overlay above the live shared canvas. The overlay opens at the
+same page, zoom and position, and the selected tool follows the owner
+between layers. Shared edits from other participants remain visible.
 
 The standalone bootstrap issues a separate signed `secretPass` only when
 the account owns the board. The pass is tied to the issuing account session.
@@ -19,13 +18,19 @@ readings use `/rooms/<board>/secret` with that pass. Its signed room ID and
 Durable Object name are `<board>/secret`, and the images and readings live
 under `boards/<board>/secret/`. Private image and reading responses use
 `Cache-Control: no-store`. Shared passes, including the owner's ordinary
-pass, open only the shared room. The backdrop's local store contains only
-shared document records. It has no socket and sends no cursor or camera
-activity to the shared room.
+pass, open only the shared room. While the owner edits the overlay, the
+shared editor receives document updates and suppresses outgoing presence.
 
 Resetting the share link revokes previous passes for both rooms and keeps
 both documents. Deleting the board closes both rooms and removes their
 records and files. The public board and hosted boards have no secret layer.
+
+## Sharing a page
+
+**Share** copies the collaborative board link or exports the current shared
+page as a PNG. Standalone owners can also publish that PNG at a read-only
+link. Publishing again updates the image at the same URL. Unpublishing
+revokes the link. Export and publication read only the shared editor.
 
 ## Images
 

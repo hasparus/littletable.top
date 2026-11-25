@@ -27,8 +27,7 @@ type Grip = {
   y: number;
 };
 
-// Only the projected surfaces of the settled dice take pointer input. A
-// captured drag moves its die on a raised plane until it is released.
+/** Hit-tests the projected surfaces of settled dice and drags them in a raised plane. */
 export function addDiceControls(
   host: HTMLElement,
   poses: Pose[],

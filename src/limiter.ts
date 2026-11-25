@@ -1,7 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-// A fixed-window counter, one object per hashed client address: no address
-// is stored in the clear, and each object forgets a window once it passes.
+/** Counts requests in a fixed window per hashed client address without storing raw addresses. */
 export class Limiter extends DurableObject {
   private windows = new Map<string, { count: number; window: number }>();
 
@@ -16,8 +15,7 @@ export class Limiter extends DurableObject {
 }
 
 export async function addressKey(request: Request): Promise<string> {
-  // NOTE: Cloudflare sets CF-Connecting-IP to the client's address; the
-  // other forwarding headers can be written by anyone.
+  // WARNING: Clients can spoof ordinary forwarding headers to evade per-address limits.
   const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(address));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

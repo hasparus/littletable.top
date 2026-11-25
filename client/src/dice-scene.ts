@@ -1,7 +1,3 @@
-// Plays the shared throw on a transparent canvas inside `host`: simulates it
-// from the roll's seed, turns each die's numbering so the server's value is
-// on top, and draws the recorded frames. Values never come from the physics.
-
 import type { DiceLaunch } from "../../src/dice-notation";
 import type { DieKind } from "./dice-solids";
 
@@ -26,26 +22,19 @@ type ThrowOptions = DiceControls & { kept: readonly boolean[]; launch?: DiceLaun
 
 export type DiceThrow = {
   dispose: () => void;
-  // Settles when the dice lie still, or at once when another roll replaces it.
+  /** Resolves when the dice settle or another roll replaces them. */
   roll: (dice: Die[], options: ThrowOptions) => Promise<void>;
 };
 
-// The dice wear the deployer's brand colour; "ivory" is the other look.
 const LOOK: "brand" | "ivory" = "brand";
 const IVORY: Look = { body: [0.945, 0.91, 0.847], ink: [0.165, 0.129, 0.114] };
 const LIGHT_INK: Rgb = [1, 0.973, 0.949];
 const FALLBACK_BODY: Rgb = [0.184, 0.435, 0.875];
-// How far a ball's faces are lit as a sphere, and the frames it takes to dim
-// dice dropped by the notation.
 const BALL_SMOOTH = 0.5;
 const SETTLE_FADE_FRAMES = 15;
-// The simulation's share of a frame on a slow device, before it yields.
 const SLICE_MS = 6;
-// NOTE: for looking at a tier on a device that would pick the other one:
-// localStorage.setItem("tabletop.dice-tier", "low" | "full").
 const TIER_KEY = "tabletop.dice-tier";
 
-// "#rgb" or "#rrggbb", as the build writes the brand colours.
 function parseHex(text: string): Rgb | null {
   const hex = /^#([\da-f]{3}|[\da-f]{6})$/iu.exec(text.trim())?.[1];
   if (hex === undefined) return null;
@@ -58,7 +47,6 @@ function lookOf(): Look {
   if (LOOK === "ivory") return IVORY;
   const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand-primary");
   const body = parseHex(brand) ?? FALLBACK_BODY;
-  // A pale brand takes the dark ink, as a pale die does.
   const brightness = 0.2126 * body[0] + 0.7152 * body[1] + 0.0722 * body[2];
   return { body, ink: brightness > 0.6 ? IVORY.ink : LIGHT_INK };
 }
@@ -68,7 +56,7 @@ function forcedTier(): Tier | null {
     const forced = localStorage.getItem(TIER_KEY);
     return forced === "low" || forced === "full" ? forced : null;
   } catch {
-    // Storage can be denied outright; the device then picks its own tier.
+    // WARNING: Reading localStorage can throw when the browser blocks storage.
     return null;
   }
 }
@@ -79,9 +67,7 @@ function modelOf(kind: DieKind): Model {
   const known = models.get(kind);
   if (known !== undefined) return known;
   const { ball, core, r } = solid(kind);
-  // NOTE: the clearcoat's highlight is a point on a rounded edge, but a
-  // whole face of a ball when that face mirrors the light, and it whites the
-  // number out; the ball goes without.
+  // WARNING: A clearcoat highlight can obscure the entire numeric face of a d100.
   const coat = ball ? 0 : 1;
   const made = {
     atlas: drawAtlas(kind),
@@ -95,12 +81,10 @@ function modelOf(kind: DieKind): Model {
   return made;
 }
 
-// Dropped dice start to dim once they come to rest.
 function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)[] {
   return thrown.frames.map((frames, index) => {
     if (kept[index] !== false) return null;
     const last = frames.length - FRAME_STRIDE;
-    // NOTE: the height is left out: the last frame alone sets it exactly.
     const still = (at: number) =>
       [0, 2, 3, 4, 5, 6].every((k) => Math.abs(frames[at + k]! - frames[last + k]!) < 1e-9);
     let from = last;
@@ -109,8 +93,6 @@ function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)
   });
 }
 
-// The dice between two recorded frames. The mesh and its engraved numbers
-// move together for the entire throw.
 function posesAt(
   { bodies, numbering, thrown }: Planned,
   dimming: (number | null)[],
@@ -144,22 +126,18 @@ function posesAt(
   });
 }
 
-// `onError` hears of a failure outside a roll: a redraw after a resize or a
-// restored context.
+/** onError receives failures during redraws outside a roll, including resizes and context restoration. */
 export async function createDiceThrow(
   host: HTMLElement,
   onError: (error: unknown) => void,
 ): Promise<DiceThrow> {
-  // NOTE: the numerals are drawn on a canvas, which uses whatever font is
-  // ready at that moment; this waits for Outfit's file.
+  // WARNING: Wait for Outfit before drawing the atlas. Canvas would otherwise keep the fallback glyphs.
   await document.fonts.load(NUMERAL_FONT, "0123456789");
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   canvas.className = "pointer-events-none absolute inset-0 size-full";
   let shown: Pose[] = [];
   let controls: ReturnType<typeof addDiceControls> | null = null;
-  // NOTE: the board's own theme (tldraw's, a class on its container) decides
-  // how strong the shadows are, not the device's.
   function redraw() {
     renderer.draw(shown, document.querySelector(".tl-theme__dark") !== null);
     controls?.measure();
@@ -221,7 +199,6 @@ export async function createDiceThrow(
               dimming = dimFrom(planned, kept);
               facing = cameraFacingOf(planned, EYE);
               startedAt = now;
-              // Include the fades of dice that came to rest late.
               length = Math.max(
                 planned.thrown.frames[0]!.length / FRAME_STRIDE - 1,
                 ...dimming.map((dim) => (dim === null ? 0 : dim + SETTLE_FADE_FRAMES)),

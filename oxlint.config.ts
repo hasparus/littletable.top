@@ -1,12 +1,13 @@
-import baseConfig from "@hasparus/oxlint-config";
+import baseConfig, { ignorePatterns } from "@hasparus/oxlint-config";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "oxlint";
 
 const tailwindEntryPoint = fileURLToPath(new URL("client/src/app.css", import.meta.url));
 
 export default defineConfig({
-  extends: [baseConfig, { options: { typeAware: false } }],
-  ignorePatterns: ["dist", "node_modules", "e2e/test-results", "e2e/report"],
+  extends: [baseConfig],
+  options: { typeAware: false },
+  ignorePatterns: [...ignorePatterns, "e2e/test-results", "e2e/report"],
   jsPlugins: ["@shadcn/lint"],
   overrides: [
     // The Worker logs one JSON line per event to the console, which is what

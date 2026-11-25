@@ -1,7 +1,5 @@
 import { MAX_NAME_LENGTH, MAX_TITLE_LENGTH } from "./limits";
 
-// Whitespace runs become one space; control and format characters, and a
-// name with none left, are refused.
 const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}]/u;
 
 function clean(text: unknown, max: number): string | null {

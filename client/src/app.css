@@ -1,4 +1,3 @@
-/* The tabletop's Tailwind entry: its tokens, font and buttons (theme/). */
 @import "tailwindcss" source(none);
 @import "./theme/theme.css";
 @import "./theme/buttons.css";
@@ -56,6 +55,15 @@ body {
   visibility: hidden;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:has([data-landing-preview][data-prerendered]) {
+    color-scheme: dark;
+    --color-background: var(--dark-board-background);
+    --color-foreground: var(--dark-board-foreground);
+    --color-foreground-muted: var(--dark-board-muted);
+  }
+}
+
 body:has([data-landing-preview]) {
   background-color: var(--color-background);
 }
@@ -95,5 +103,51 @@ body:has([data-landing-preview]) {
 
 [data-feedback-dialog]::backdrop {
   background: rgb(0 0 0 / 12%);
-  backdrop-filter: blur(2px);
+}
+
+:root {
+  --surface-ease: cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes surface-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-front-menu][open] > div,
+  [data-board-confirmation] {
+    /* Each opens below a right-aligned, 44px-wide summary. */
+    transform-origin: calc(100% - 22px) top;
+    animation: surface-enter 150ms var(--surface-ease);
+  }
+
+  [data-board-shell] [role="dialog"][data-entering] {
+    transform-origin: center bottom;
+    animation: surface-enter 180ms var(--surface-ease);
+  }
+
+  [data-feedback-dialog][data-entering] {
+    animation: surface-enter 200ms var(--surface-ease);
+  }
+
+  [data-sheet-scrim],
+  [data-feedback-dialog][open]::backdrop {
+    animation: surface-fade 150ms ease-out;
+  }
 }

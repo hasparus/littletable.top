@@ -1,19 +1,3 @@
-// How well a reading of a fixture image serves the board's search, against
-// the fixture's ground truth (e2e/fixtures/text/*.gt.json, written by
-// generate.py). Used by the filter's unit test (test/text-filter.test.ts)
-// and the engines' accuracy test (e2e/tests/text-accuracy.spec.ts).
-//
-// - names found: of the words a person would search for (`searchable`),
-//   the share some read word matches folded within the search's own typo
-//   allowance (one edit up to five letters, two from six), alone or joined
-//   with the next word (engines drop and add spaces);
-// - junk: read words with a letter or digit that match no word of the
-//   image within that allowance: what a search would turn up for nothing;
-// - located: the share of the image's words that a read word with the
-//   same text covers with IoU ≥ 0.5;
-// - diacritics: the share of Polish letters with diacritics in the
-//   image's words that survive in the words read over them.
-
 export type TruthWord = { angle: number; bbox: number[]; curved: boolean; text: string };
 export type Truth = {
   category: string;
@@ -85,6 +69,7 @@ export type Score = {
   namesMissed: string[];
 };
 
+/** Scores searchable names, spurious tokens, word locations, and preserved Polish diacritics. */
 export function score(truth: Truth, read: readonly ScoredWord[]): Score {
   const tokens = read.map((word) => foldWord(word.text)).filter((token) => token.length > 0);
   const joined = tokens.flatMap((token, at) =>

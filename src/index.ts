@@ -23,7 +23,7 @@ import {
   verifyPass,
 } from "./pass";
 import { isSecretLayer, secretLayerOf } from "./secret-layer";
-import { aliasRedirect, serveSite } from "./site";
+import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
@@ -31,7 +31,7 @@ import { hasActiveSession } from "./standalone/store";
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
 
-// DB and Limiter are bound in standalone mode only.
+/** The standalone deployment alone binds D1 and the address limiter. */
 export type Env = ConfigEnv &
   FeedbackEnv &
   Partial<Pick<StandaloneEnv, "DB" | "Limiter">> & {
@@ -40,9 +40,6 @@ export type Env = ConfigEnv &
     Files: R2Bucket;
   };
 
-// NOTE: the pass travels in the request itself, never in a cookie. The
-// client is served from this origin, so the rooms API needs no CORS:
-// another origin's page can neither read an answer nor send a pass it has.
 const REFUSAL_STATUS: Record<Refusal, number> = { full: 429, "link-reset": 403, "too-fast": 429 };
 
 function answer(result: Refusal | object): Response {
@@ -111,8 +108,6 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 }
 
 const ROOMS = /^\/rooms\//u;
-// A board's files: its images and their text readings, the cookie, and
-// people's pictures (src/files.ts tells them apart).
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
 const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?)$/u;
 
@@ -262,8 +257,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       { BoardRoom: env.BoardRoom, DB: env.DB, Files: env.Files, Limiter: env.Limiter },
       config,
       verifiers.keys!,
-    ).route(request);
-    if (own !== null) return own;
+    );
+    if (pathname === "/boards" && (request.method === "GET" || request.method === "HEAD")) {
+      return serveBoards(request, env.ASSETS, config, own);
+    }
+    const route = own.route(request);
+    if (route !== null) return route;
   }
   return serveSite(request, env, config);
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
 
 import type { Language } from "../settings";
 import type { Action, Editing, Lists, Owned } from "./front-board-list";
@@ -14,11 +13,6 @@ import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { boardShell } from "./front-skeleton";
 import { Icon, TableMark } from "./icons";
 
-// The standalone tabletop's account page: sign in, then the account's boards
-// (made here, or joined by someone else's link) with what an owner can do
-// to them. The Worker's API: docs/internals.md, "Standalone mode".
-
-// avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
 
 type BoardPage = Lists & { account: Account; csrf: string };
@@ -150,7 +144,9 @@ function SignedIn({
             {feedback !== null && (
               <button
                 className="btn btn-secondary min-h-11"
-                onClick={() => feedback.open({ role: "member", screen: "boards" })}
+                onClick={(event) =>
+                  feedback.open({ role: "member", screen: "boards" }, event.currentTarget)
+                }
                 type="button"
               >
                 {feedback.label}
@@ -184,9 +180,16 @@ function SignedIn({
   );
 }
 
-function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
-  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(null);
-  const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
+type FrontProps = {
+  copy: FrontCopy;
+  failed?: boolean;
+  initialPage?: "signed-out" | BoardPage;
+  locale: Language;
+  name: string;
+};
+
+export function Front({ copy, failed, initialPage, locale, name }: FrontProps) {
+  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(initialPage ?? null);
   const reload = useCallback(async () => {
     try {
       const response = await fetch("/api/boards");
@@ -198,8 +201,9 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name
     }
   }, []);
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    // oxlint-disable-next-line react/set-state-in-effect -- The fallback load updates state when the fetch settles.
+    if (initialPage === undefined) void reload();
+  }, [initialPage, reload]);
   if (page === "failed") {
     return (
       <p className="p-6 text-danger-text" role="alert">
@@ -216,20 +220,16 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name
     );
   }
   return page === "signed-out" ? (
-    <SignedOut copy={copy} failed={failed} name={name} />
+    <SignedOut copy={copy} failed={failed === true} name={name} />
   ) : (
     <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} />
   );
 }
 
-export function mountFront(
-  element: HTMLElement,
-  props: { copy: FrontCopy; locale: Language; name: string },
-) {
-  element.classList.add("overflow-y-auto", "bg-background");
-  createRoot(element).render(
+export function BoardsApp(props: FrontProps) {
+  return (
     <FeedbackProvider enabled language={props.locale}>
       <Front {...props} />
-    </FeedbackProvider>,
+    </FeedbackProvider>
   );
 }

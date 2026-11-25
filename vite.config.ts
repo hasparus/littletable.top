@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   THEME_COLOR,
 } from "./client/settings";
+import { LANDING_COPY } from "./client/src/front-copy";
 import { boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
@@ -65,10 +66,12 @@ const escapeHtml = (text: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+const LANDING_PREVIEW = `<section data-landing-preview data-prerendered lang="en" aria-label="${escapeHtml(LANDING_COPY.publicBoard)}">${LANDING_COPY.publicStory
+  .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+  .join("")}<footer>${escapeHtml(LANDING_COPY.publicExpiry)}</footer></section>`;
+
 const BRAND_MODULE = "virtual:tabletop-brand.css";
 
-// Writes what depends on the settings: the page's title and language, the
-// brand colours, and the web app manifest.
 function tabletop(): Plugin {
   let settings = DEFAULT_SETTINGS;
   const manifest = () =>
@@ -131,7 +134,14 @@ function tabletop(): Plugin {
       if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
         html = html.replace("<!-- boards-shell -->", boardShell);
       }
+      if (settings.mode === "standalone" && !bundle && originalUrl?.split("?")[0] === "/") {
+        html = html.replace("<!-- landing-preview -->", LANDING_PREVIEW);
+      }
       if (settings.mode === "standalone" && bundle) {
+        html = html.replace(
+          "<!-- landing-preview -->",
+          `<template data-landing-prerender>${LANDING_PREVIEW}</template>`,
+        );
         const board = Object.values(bundle).find(
           (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",
         );
@@ -224,7 +234,6 @@ const SERVED_AS: Record<string, string> = {
 function textEngineFiles(): Plugin {
   let serving = false;
   const served = new Map<string, string>();
-  // Where each file is published, with its bytes.
   const layout = () => {
     const files = Object.entries(ENGINE_FILES).map(([key, { from, name }]) => {
       const source = readFileSync(from);
@@ -278,16 +287,14 @@ function textEngineFiles(): Plugin {
 
 export default defineConfig({
   build: {
-    // NOTE: tldraw's fonts and translations stay files: the tabletop's
-    // Content-Security-Policy allows no data: fonts and no host but its own.
+    // WARNING: Keep tldraw fonts as files. The tabletop’s CSP forbids data: fonts and cross-origin fonts.
     assetsInlineLimit: (file) => (file.includes("@tldraw/assets") ? false : undefined),
     emptyOutDir: true,
     outDir: fileURLToPath(new URL("dist", import.meta.url)),
     sourcemap: true,
   },
   define: { __TABLETOP__: JSON.stringify(settingsFromEnv()) },
-  // NOTE: the dependency pre-bundler cannot follow @tldraw/assets' `?url`
-  // imports; Vite serves the package as it is instead.
+  // WARNING: The Vite dependency pre-bundler cannot follow @tldraw/assets’ ?url imports. Serve that package as-is.
   optimizeDeps: { exclude: ["@tldraw/assets"] },
   plugins: [
     react(),
@@ -303,8 +310,6 @@ export default defineConfig({
     textEngineFiles(),
   ],
   publicDir: fileURLToPath(new URL("client/public", import.meta.url)),
-  // NOTE: the text worker is a module worker (client/src/text-worker.ts),
-  // built with the plugin that hands it the engines' files.
   worker: { format: "es", plugins: () => [textEngineFiles()] },
   root: fileURLToPath(new URL("client", import.meta.url)),
   server: {

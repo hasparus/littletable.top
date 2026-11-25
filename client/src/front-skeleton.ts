@@ -1,4 +1,4 @@
-// Static, account-independent markup shared by the HTTP shell and React.
+/** Static, account-independent markup shared by the HTTP shell and React. */
 export const boardRows = `<div aria-hidden="true" class="mt-6">
   ${["w-36", "w-48", "w-28"]
     .map(
