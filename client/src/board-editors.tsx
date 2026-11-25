@@ -20,7 +20,7 @@ import { fitPublicBoardIntro } from "./landing-preview";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
-import { PublicBoardIntro } from "./public-landing";
+import { PublicBoardIntro, PublicPageDeleteGuard } from "./public-landing";
 import { useBoardUi } from "./ui";
 
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
@@ -118,6 +118,7 @@ export function BoardEditors({
         store={store}
       >
         {active && <BoardFileHandlers />}
+        {landing !== undefined && <PublicPageDeleteGuard />}
         {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
         <ThemeKeeper />
       </Tldraw>
