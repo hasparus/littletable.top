@@ -1,14 +1,17 @@
+import { useRef } from "react";
 import { useEditor, useValue } from "tldraw";
 
 import type { FrontCopy } from "./front-copy";
 
 import { PUBLIC_DEMO_SHAPE } from "../../src/public-board-demo-ids";
+import { goToBounds } from "./places";
 
 export type PublicLanding = { copy: FrontCopy };
 
 // The note is rendered in canvas coordinates, outside the shared document.
 export function PublicBoardIntro({ copy }: PublicLanding) {
   const editor = useEditor();
+  const featuresRef = useRef<HTMLDivElement>(null);
   const position = useValue(
     "public board introduction",
     () => {
@@ -40,7 +43,41 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
         transform: `translate(${x}px, ${y}px) scale(${zoom})`,
       }}
     >
-      <div className="mb-4">
+      <button
+        className="pointer-events-auto mb-2 inline-flex min-h-11 cursor-pointer items-center gap-2 underline-offset-4 hover:underline focus-visible:underline"
+        type="button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => {
+          const features = featuresRef.current;
+          if (features === null) return;
+          const rect = features.getBoundingClientRect();
+          const { x, y } = editor.screenToPage({ x: rect.left, y: rect.top });
+          const zoom = editor.getZoomLevel();
+          goToBounds(editor, editor.getCurrentPageId(), {
+            x,
+            y,
+            w: rect.width / zoom,
+            h: rect.height / zoom,
+          });
+          features.focus({ preventScroll: true });
+        }}
+      >
+        {copy.publicSeeFeatures}
+        <svg
+          aria-hidden="true"
+          width="28"
+          height="24"
+          viewBox="0 0 28 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 4c13-2 18 5 17 15m-5-5 5 5 5-5" />
+        </svg>
+      </button>
+      <div ref={featuresRef} className="mb-4" tabIndex={-1}>
         {hasDemo && (
           <>
             <p>{copy.publicDemo}</p>

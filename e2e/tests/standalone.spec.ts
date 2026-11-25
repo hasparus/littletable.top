@@ -133,6 +133,12 @@ test("the public handout is searchable and the prompt rolls a d20", async ({ pag
     .getByTestId("canvas")
     .locator('img.tl-image[alt="Note from the north gate"]');
   await expect(handout).toBeInViewport();
+  const featuresCue = page.getByRole("button", { name: "see the features" });
+  await expect(featuresCue).toBeInViewport();
+  await featuresCue.click();
+  await expect(page.locator("[data-public-board-note] :focus")).toContainText(
+    /choose North Gate under Places/u,
+  );
   await reachEditor(page);
   await page.evaluate(() => {
     const editor = (globalThis as unknown as { __editor: Editor }).__editor;

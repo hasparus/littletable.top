@@ -24,6 +24,7 @@ const EN = {
   publicMakeBoard:
     "Sign in to make a board for your group. Share the link and your players can join with just a name. Only you can see what you put on the secret layer.",
   publicRoll: "Open Dice and enter 1d20. On a 10 or higher, you slip past the sleeping guard.",
+  publicSeeFeatures: "see the features",
   publicStory: [
     "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
     "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
@@ -72,6 +73,7 @@ const PL: FrontCopy = {
     "Zaloguj się, żeby założyć tablicę dla swojej grupy. Wyślij link i każda osoba dołączy po podaniu imienia. Tylko ty widzisz to, co zapisujesz na ukrytej warstwie.",
   publicRoll:
     "Otwórz Kości i wpisz 1k20. Przy wyniku 10 lub więcej przemkniesz obok śpiącego strażnika.",
+  publicSeeFeatures: "zobacz funkcje",
   publicStory: [
     "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
     "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",
