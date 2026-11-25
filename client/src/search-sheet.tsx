@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./icons";
 import { boundsOf } from "./image-quad";
 import { usePageNames } from "./pages";
 import {
-  goToPlace,
+  goTo,
   goToBounds,
   MAX_PLACE_NAME,
   nameAsPlace,
@@ -23,7 +23,7 @@ import {
 } from "./places";
 import { oneLine } from "./search-text";
 import { Sheet } from "./sheet";
-import { PANEL_ID, useBoardUi } from "./ui";
+import { useBoardUi } from "./ui";
 
 const ROW_BUTTON =
   "grid size-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus";
@@ -98,40 +98,21 @@ function PlacesList({
   pages: Map<TLPageId, string> | null;
   setMine: (id: TLShapeId | null) => void;
 }) {
-  const { copy, editor, placePreview } = useBoardUi();
-  useEffect(
-    () => () => {
-      placePreview.set(null);
-    },
-    [placePreview],
-  );
+  const { copy, editor, open } = useBoardUi();
   return (
     <>
       <h3 className="my-1 px-3 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
       <ul className="space-y-0.5">
         {list.map((place) => {
           const starred = place.id === mine;
-          const clearPreview = () => {
-            if (placePreview.get() === place.id) placePreview.set(null);
-          };
           return (
             <li className="flex items-center rounded-lg hover:bg-bg-tertiary" key={place.id}>
               <button
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus"
-                onBlur={(event) => {
-                  if (!event.currentTarget.matches(":hover")) clearPreview();
-                }}
-                onClick={(event) => {
+                onClick={() => {
                   if (editor === null) return;
-                  const index = event.currentTarget.closest(`#${PANEL_ID.search}`);
-                  goToPlace(editor, place.id, index?.getBoundingClientRect());
-                }}
-                onFocus={() => placePreview.set(place.id)}
-                onPointerEnter={(event) => {
-                  if (event.pointerType !== "touch") placePreview.set(place.id);
-                }}
-                onPointerLeave={(event) => {
-                  if (!event.currentTarget.matches(":focus-visible")) clearPreview();
+                  open(null);
+                  goTo(editor, place.id);
                 }}
                 type="button"
               >
@@ -325,6 +306,12 @@ export function SearchSheet() {
           setActive(0);
         }}
         onKeyDown={(event) => {
+          if (event.key === "Escape" && query !== "") {
+            event.preventDefault();
+            setQuery("");
+            setActive(0);
+            return;
+          }
           if (hits === null || hits.length === 0) return;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
@@ -348,27 +335,11 @@ export function SearchSheet() {
     list.length > 0 ? (
       <PlacesList list={list} mine={mine} pages={pages} setMine={setMine} />
     ) : (
-      hits === null && <p className="py-3 text-sm text-foreground-muted">{copy.noPlacesYet}</p>
+      hits === null && <p className="px-3 py-1 text-sm text-foreground-muted">{copy.noPlacesYet}</p>
     );
 
   return (
-    <Sheet
-      field={field}
-      onEscape={(event) => {
-        if (
-          event.target instanceof HTMLInputElement &&
-          event.target.id === SEARCH_FIELD_ID &&
-          query
-        ) {
-          setQuery("");
-          setActive(0);
-        } else {
-          open(null);
-        }
-      }}
-      panel="search"
-      title={copy.search}
-    >
+    <Sheet field={field} panel="search" title={copy.search}>
       {reading > 0 && naming === null && (
         <p className="pb-1 text-sm text-foreground-muted" role="status">
           {reading === 1

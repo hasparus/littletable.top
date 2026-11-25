@@ -4,7 +4,6 @@ import { atom, type Atom, type TLPageId, useEditor, useValue } from "tldraw";
 import type { Point } from "./search-index";
 
 import { fill } from "./copy";
-import { placeName } from "./places";
 import { useBoardUi } from "./ui";
 
 /**
@@ -117,40 +116,5 @@ export function FoundHighlight() {
         </p>
       )}
     </>
-  );
-}
-
-export function PlacePreview() {
-  const editor = useEditor();
-  const { placePreview } = useBoardUi();
-  const outline = useValue(
-    "place preview outline",
-    () => {
-      const id = placePreview.get();
-      if (id === null || editor.getAncestorPageId(id) !== editor.getCurrentPageId()) return null;
-      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Calling tldraw's editor API.
-      const target = editor.getShape(id);
-      if (target === undefined || placeName(target) === null) return null;
-      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Calling tldraw's editor API.
-      const bounds = editor.getShapeMaskedPageBounds(target);
-      if (bounds === undefined) return null;
-      const start = editor.pageToViewport(bounds.point);
-      const end = editor.pageToViewport({ x: bounds.maxX, y: bounds.maxY });
-      return { x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y };
-    },
-    [editor, placePreview],
-  );
-  if (outline === null) return null;
-
-  return (
-    <svg aria-hidden="true" className="pointer-events-none absolute inset-0 size-full">
-      <rect
-        {...outline}
-        className="fill-primary/10 stroke-primary"
-        data-board-place-preview
-        rx={4}
-        strokeWidth={2}
-      />
-    </svg>
   );
 }

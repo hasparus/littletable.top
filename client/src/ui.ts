@@ -7,7 +7,6 @@ import type { Person } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { Flash } from "./highlight";
 import type { ImageText } from "./image-text";
-import type { Place } from "./places";
 import type { Rolls } from "./rolls";
 import type { BoardSearch } from "./search-board";
 
@@ -42,7 +41,6 @@ export type BoardUi = {
   open: (panel: Panel | null, options?: { typing: boolean }) => void;
   panel: Panel | null;
   person: Person;
-  placePreview: Atom<Place["id"] | null>;
   rollDraft: RollDraft;
   rolls: Rolls;
   search: BoardSearch | null;

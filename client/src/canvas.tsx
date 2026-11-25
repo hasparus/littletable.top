@@ -1,13 +1,13 @@
+import type { Editor } from "tldraw";
+
 import { unlock } from "cuelume";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { atom, type Editor } from "tldraw";
 
 import "./board.css";
 
 import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
-import type { Place } from "./places";
 import type { PublicLanding } from "./public-landing";
 
 import { secretLayerOf } from "../../src/secret-layer";
@@ -28,7 +28,7 @@ import { Notice } from "./notice";
 import { PeopleSheet } from "./people";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
-import { SEARCH_FIELD_ID } from "./search-sheet";
+import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useSummon } from "./summon";
 import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
@@ -164,7 +164,6 @@ export function BoardCanvas({
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
   const [rollDraft, setRollDraft] = useState<BoardUi["rollDraft"]>({ expression: "", pool: [] });
   const highlight = useMemo(() => makeHighlight(), []);
-  const placePreview = useMemo(() => atom<Place["id"] | null>("place preview", null), []);
   const [search, setSearch] = useState<BoardSearch | null>(null);
   useEffect(() => {
     if (editor === null) return;
@@ -207,7 +206,6 @@ export function BoardCanvas({
       },
       panel,
       person,
-      placePreview,
       rollDraft,
       rolls,
       search,
@@ -230,7 +228,6 @@ export function BoardCanvas({
       naming,
       panel,
       person,
-      placePreview,
       rollDraft,
       rolls,
       search,
@@ -317,6 +314,7 @@ export function BoardCanvas({
         {active && <BoardStatus offline={offline} />}
         {active && landing !== undefined && <ChatSheet chat={chat} shown={panel === "chat"} />}
         {active && panel === "dice" && <DiceSheet />}
+        {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
         {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
