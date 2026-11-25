@@ -17,6 +17,15 @@ import {
 } from "./helpers";
 
 async function shot(page: Page, name: string): Promise<void> {
+  if (process.env.SHOTS_DIR) {
+    await page
+      .locator("#board-search")
+      .evaluateAll((panels) =>
+        Promise.allSettled(
+          panels.flatMap((panel) => panel.getAnimations().map(({ finished }) => finished)),
+        ),
+      );
+  }
   await reviewShot(page, `search-${name}`);
 }
 
@@ -68,6 +77,48 @@ async function nameAsPlace(page: Page, name: string): Promise<void> {
 
 const options = (page: Page) => results(page).getByRole("option");
 
+test("Board index previews places and keeps the canvas available after a jump", async ({
+  page,
+}) => {
+  await newBoard(page);
+  await putNote(page, { at: { x: 400, y: 210 }, text: "Basic Moves" });
+  await nameAsPlace(page, "Basic Moves");
+  await putNote(page, { at: { x: 850, y: 430 }, text: "The Old Road" });
+  await nameAsPlace(page, "The Old Road");
+
+  const index = await openSheet(page, "Search");
+  await shot(page, "desktop-index");
+  const moves = index.getByRole("button", { exact: true, name: "Basic Moves" });
+  const road = index.getByRole("button", { exact: true, name: "The Old Road" });
+  const preview = page.locator("[data-board-place-preview]");
+  await moves.hover();
+  await expect(preview).toBeVisible();
+  await shot(page, "desktop-index-preview");
+  await page.mouse.move(550, 135);
+  await expect(preview).toHaveCount(0);
+  await road.focus();
+  await expect(preview).toBeVisible();
+
+  await moves.click();
+  await expect(index).toBeVisible();
+  await expect
+    .poll(async () => {
+      const { x, width } = (await index.boundingBox())!;
+      return (await onBoard(page, "Basic Moves").boundingBox())!.x - (x + width);
+    })
+    .toBeGreaterThan(0);
+  await road.click();
+  await expect(index).toBeVisible();
+  await expect(onBoard(page, "The Old Road")).toBeInViewport();
+
+  await putNote(page, { at: { x: 960, y: 590 }, text: "New note with index open" });
+  await expect(index).toBeVisible();
+  await page.getByTestId("main-menu.button").click();
+  await page.getByRole("menuitem", { name: "Background color" }).hover();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Default" })).toBeVisible();
+  await expectNoCspViolations(page);
+});
+
 test("someone on another page finds what was typed, goes there and sees it flash", async ({
   browser,
   page: ada,
@@ -84,8 +135,17 @@ test("someone on another page finds what was typed, goes there and sees it flash
 
   const search = await openSheet(bea, "Search");
   await expect(field(bea)).not.toBeFocused();
-  await expect(search.getByRole("button", { exact: true, name: "Tavern Page 1" })).toBeVisible();
+  const tavern = search.getByRole("button", { exact: true, name: "Tavern Page 1" });
+  await expect(tavern).toBeVisible();
   await shot(bea, "phone-empty");
+  await tavern.tap();
+  await expect(search).toBeVisible();
+  await expect
+    .poll(async () => {
+      const place = (await onBoard(bea, "Tavern").boundingBox())!;
+      return (await search.boundingBox())!.y - below(place);
+    })
+    .toBeGreaterThan(0);
 
   await field(bea).fill("tav");
   await expect(options(bea)).toHaveText([/^Place: Tavern\s*Page 1$/u, /Tavern ledger.*Crypt$/u]);

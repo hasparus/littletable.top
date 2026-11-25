@@ -39,7 +39,7 @@ import { BoardBackgroundMenu } from "./board-background";
 import { BoardFileMenuItems } from "./board-files";
 import { RenameBoardItem } from "./board-name";
 import { useFeedback } from "./feedback";
-import { FoundHighlight } from "./highlight";
+import { FoundHighlight, PlacePreview } from "./highlight";
 import { Icon, type IconName } from "./icons";
 import { usePresent } from "./people";
 import { placeName, removePlace } from "./places";
@@ -237,7 +237,12 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
 export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,
-  InFrontOfTheCanvas: FoundHighlight,
+  InFrontOfTheCanvas: () => (
+    <>
+      <PlacePreview />
+      <FoundHighlight />
+    </>
+  ),
   MainMenu: () => <BoardMainMenu />,
   QuickActions: BoardQuickActions,
   SharePanel: null,

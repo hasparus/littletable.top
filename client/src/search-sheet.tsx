@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./icons";
 import { boundsOf } from "./image-quad";
 import { usePageNames } from "./pages";
 import {
-  goTo,
+  goToPlace,
   goToBounds,
   MAX_PLACE_NAME,
   nameAsPlace,
@@ -23,7 +23,7 @@ import {
 } from "./places";
 import { oneLine } from "./search-text";
 import { Sheet } from "./sheet";
-import { useBoardUi } from "./ui";
+import { PANEL_ID, useBoardUi } from "./ui";
 
 const ROW_BUTTON =
   "grid size-11 shrink-0 place-items-center rounded-full text-foreground-muted hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus";
@@ -98,25 +98,43 @@ function PlacesList({
   pages: Map<TLPageId, string> | null;
   setMine: (id: TLShapeId | null) => void;
 }) {
-  const { copy, editor, open } = useBoardUi();
+  const { copy, editor, placePreview } = useBoardUi();
+  useEffect(
+    () => () => {
+      placePreview.set(null);
+    },
+    [placePreview],
+  );
   return (
     <>
-      <h3 className="mt-2 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
-      <ul className="mt-1 divide-y divide-border">
+      <h3 className="my-1 px-3 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
+      <ul className="space-y-0.5">
         {list.map((place) => {
           const starred = place.id === mine;
+          const clearPreview = () => {
+            if (placePreview.get() === place.id) placePreview.set(null);
+          };
           return (
-            <li className="flex items-center gap-1" key={place.id}>
+            <li className="flex items-center rounded-lg hover:bg-bg-tertiary" key={place.id}>
               <button
-                className={`relative flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-lg text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${SEARCH_TEXT_PADDING}`}
-                onClick={() => {
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus"
+                onBlur={(event) => {
+                  if (!event.currentTarget.matches(":hover")) clearPreview();
+                }}
+                onClick={(event) => {
                   if (editor === null) return;
-                  open(null);
-                  goTo(editor, place.id);
+                  const index = event.currentTarget.closest(`#${PANEL_ID.search}`);
+                  goToPlace(editor, place.id, index?.getBoundingClientRect());
+                }}
+                onFocus={() => placePreview.set(place.id)}
+                onPointerEnter={(event) => {
+                  if (event.pointerType !== "touch") placePreview.set(place.id);
+                }}
+                onPointerLeave={(event) => {
+                  if (!event.currentTarget.matches(":focus-visible")) clearPreview();
                 }}
                 type="button"
               >
-                <Icon className={`${SEARCH_ICON} text-primary`} name="PinIcon" />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-base">{place.name}</span>
                   {pages !== null && (
@@ -307,12 +325,6 @@ export function SearchSheet() {
           setActive(0);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && query !== "") {
-            event.preventDefault();
-            setQuery("");
-            setActive(0);
-            return;
-          }
           if (hits === null || hits.length === 0) return;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
@@ -340,7 +352,23 @@ export function SearchSheet() {
     );
 
   return (
-    <Sheet field={field} panel="search" title={copy.search}>
+    <Sheet
+      field={field}
+      onEscape={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.id === SEARCH_FIELD_ID &&
+          query
+        ) {
+          setQuery("");
+          setActive(0);
+        } else {
+          open(null);
+        }
+      }}
+      panel="search"
+      title={copy.search}
+    >
       {reading > 0 && naming === null && (
         <p className="pb-1 text-sm text-foreground-muted" role="status">
           {reading === 1

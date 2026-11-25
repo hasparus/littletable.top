@@ -1,6 +1,13 @@
-import type { BoxLike, Editor, IndexKey, TLPageId, TLShape, TLShapeId } from "tldraw";
-
 import { useCallback, useState } from "react";
+import {
+  Box,
+  type BoxLike,
+  type Editor,
+  type IndexKey,
+  type TLPageId,
+  type TLShape,
+  type TLShapeId,
+} from "tldraw";
 
 const PLACE_KEY = "place";
 export const MAX_PLACE_NAME = 60;
@@ -53,27 +60,75 @@ export const nameAsPlace = (editor: Editor, id: TLShapeId, name: string) =>
 
 export const removePlace = (editor: Editor, id: TLShapeId) => setMeta(editor, id, null);
 
-export function goToBounds(editor: Editor, page: TLPageId, bounds: BoxLike): void {
+function openPlacePage(editor: Editor, page: TLPageId) {
   const away = page !== editor.getCurrentPageId();
   if (editor.getInstanceState().followingUserId !== null) editor.stopFollowingUser();
   if (away) {
     editor.markHistoryStoppingPoint("change-page");
     editor.setCurrentPage(page);
   }
-  editor.zoomToBounds(bounds, {
-    // WARNING: On a page switch, an animated zoom would start at that page's old camera position.
-    animation: away ? undefined : { duration: editor.options.animationMediumMs },
-    inset: 32,
+  // WARNING: On a page switch, an animated zoom would start at that page's old camera position.
+  return away ? undefined : { duration: editor.options.animationMediumMs };
+}
 
+const PLACE_INSET = 32;
+
+export function goToBounds(editor: Editor, page: TLPageId, bounds: BoxLike): void {
+  editor.zoomToBounds(bounds, {
+    animation: openPlacePage(editor, page),
+    inset: PLACE_INSET,
     targetZoom: 1,
   });
 }
 
-export function goTo(editor: Editor, id: TLShapeId): void {
+function canvasBesideIndex(screen: Box, index: DOMRectReadOnly): Box {
+  const viewport = globalThis.visualViewport;
+  const left = Math.max(screen.x, viewport?.offsetLeft ?? 0);
+  const top = Math.max(screen.y, viewport?.offsetTop ?? 0);
+  const right = Math.min(
+    screen.maxX,
+    (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
+  );
+  const bottom = Math.min(
+    screen.maxY,
+    (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight),
+  );
+  const above = new Box(left, top, right - left, Math.max(0, Math.min(bottom, index.top) - top));
+  const rightOf = Math.max(left, index.right);
+  const beside = new Box(rightOf, top, Math.max(0, right - rightOf), bottom - top);
+  return above.w * above.h > beside.w * beside.h ? above : beside;
+}
+
+export function goToPlace(editor: Editor, id: TLShapeId, index: DOMRectReadOnly | undefined): void {
   const page = editor.getAncestorPageId(id);
   const bounds = editor.getShapePageBounds(id);
   if (page === undefined || bounds === undefined) return;
-  goToBounds(editor, page, bounds);
+  const screen = editor.getViewportScreenBounds();
+  const available = index === undefined ? screen : canvasBesideIndex(screen, index);
+  if (available.w <= PLACE_INSET || available.h <= PLACE_INSET) {
+    goToBounds(editor, page, bounds);
+    return;
+  }
+  const animation = openPlacePage(editor, page);
+  const { zoomSteps } = editor.getCameraOptions();
+  const base = editor.getBaseZoom();
+  const z = Math.max(
+    zoomSteps[0]! * base,
+    Math.min(
+      1,
+      zoomSteps.at(-1)! * base,
+      (available.w - PLACE_INSET) / bounds.w,
+      (available.h - PLACE_INSET) / bounds.h,
+    ),
+  );
+  editor.setCamera(
+    {
+      x: (available.midX - screen.x) / z - bounds.midX,
+      y: (available.midY - screen.y) / z - bounds.midY,
+      z,
+    },
+    { animation },
+  );
 }
 
 /**
@@ -107,7 +162,7 @@ export function useMyPlace(board: string): [TLShapeId | null, (id: TLShapeId | n
 const byPage = (a: Place, b: Place) =>
   a.pageIndex < b.pageIndex ? -1 : a.pageIndex > b.pageIndex ? 1 : 0;
 
-export function ordered(places: Place[], mine: TLShapeId | null, locale: string): Place[] {
+export function ordered(places: Place[], mine: TLShapeId | null, locale: string) {
   return places.toSorted(
     (a, b) =>
       Number(b.id === mine) - Number(a.id === mine) ||

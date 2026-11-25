@@ -382,6 +382,21 @@
   display: none;
 }
 
+#board-search {
+  z-index: calc(var(--tl-layer-panels) + 1);
+  max-height: min(52dvh, calc(100dvh - var(--board-sheet-bottom) - var(--board-top)));
+}
+
+@media (width >= 40rem) {
+  #board-search {
+    inset: var(--sheet-keyboard-top, calc(var(--board-top) + var(--board-top-control-size) + 8px))
+      auto var(--sheet-keyboard-bottom, var(--board-sheet-bottom)) var(--board-left);
+    width: min(19rem, 40dvw);
+    max-height: none;
+    translate: none;
+  }
+}
+
 [data-chat-size] {
   --chat-padding: calc(var(--spacing) * 2);
   --chat-composer-radius: calc(var(--radius-2xl) - var(--chat-padding));

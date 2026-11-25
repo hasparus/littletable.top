@@ -2,6 +2,7 @@ import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import { type Ref, useEffect, useMemo } from "react";
 import {
   type Editor,
+  EditorPortal,
   EmbedShapeUtil,
   Tldraw,
   type TLStoreWithStatus,
@@ -22,6 +23,7 @@ import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pa
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
 import { PublicBoardIntro, PublicPageDeleteGuard } from "./public-landing";
 import { publicLandingPage } from "./public-landing-page";
+import { SearchSheet } from "./search-sheet";
 import { useBoardUi } from "./ui";
 
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
@@ -69,7 +71,7 @@ export function BoardEditors({
   secret: boolean;
   store: TLStoreWithStatus;
 }) {
-  const { board, copy, locale: language } = useBoardUi();
+  const { board, copy, locale: language, panel } = useBoardUi();
   const canvasComponents = useMemo(() => {
     const LoadingScreen = () => <BoardLoading text={copy.loading} />;
     return landing === undefined
@@ -122,6 +124,11 @@ export function BoardEditors({
         store={store}
       >
         {active && <BoardFileHandlers />}
+        {active && panel === "search" && (
+          <EditorPortal>
+            <SearchSheet />
+          </EditorPortal>
+        )}
         {landing !== undefined && <PublicPageDeleteGuard />}
         {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
         <ThemeKeeper />
