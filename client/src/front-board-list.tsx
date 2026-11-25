@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
 
 import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
@@ -189,6 +189,52 @@ function OwnedRow({
   );
 }
 
+// Match Tailwind's sm breakpoint so DOM order follows the visible layout.
+const phoneViewport = matchMedia("(width < 640px)");
+const isPhone = () => phoneViewport.matches;
+function subscribeToPhone(listener: () => void) {
+  phoneViewport.addEventListener("change", listener);
+  return () => phoneViewport.removeEventListener("change", listener);
+}
+
+function BoardCollection({
+  children,
+  className = "",
+  label,
+  phone,
+  showHeading = true,
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+  phone: boolean;
+  showHeading?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <details
+      className={`group @container min-w-0 ${className}`}
+      onToggle={(event) => {
+        if (phone) setExpanded(event.currentTarget.open);
+      }}
+      open={!phone || expanded}
+    >
+      <summary
+        className={
+          phone
+            ? "flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-semibold focus-visible:outline-2 focus-visible:outline-border-focus [&::-webkit-details-marker]:hidden"
+            : "hidden"
+        }
+      >
+        {label}
+        <Icon className="size-4 group-open:rotate-180" name="ChevronDown" />
+      </summary>
+      {!phone && <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>}
+      {children}
+    </details>
+  );
+}
+
 export function BoardList({
   copy,
   editing,
@@ -205,70 +251,73 @@ export function BoardList({
   setEditing: (editing: Editing) => void;
 }) {
   const format = DATE_FORMATS[locale];
+  const phone = useSyncExternalStore(subscribeToPhone, isPhone);
   const hasVisited = lists.visited.length > 0;
+  const joined = hasVisited ? (
+    <BoardCollection key="joined" label={copy.visited} phone={phone}>
+      <ul className="divide-y divide-border border-t border-border">
+        {lists.visited.map((board) => (
+          <li className={`${ROW} min-h-15 py-2`} key={board.id}>
+            {board.shareCode === null ? (
+              <>
+                <span className="self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
+                  {board.title}
+                </span>
+                <span className={BOARD_DATE}>{copy.linkWasReset}</span>
+              </>
+            ) : (
+              <>
+                <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+                  {board.title}
+                </a>
+                <BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </BoardCollection>
+  ) : null;
+  const created = (
+    <BoardCollection
+      className={
+        hasVisited
+          ? "self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
+          : ""
+      }
+      key="created"
+      label={copy.created}
+      phone={phone}
+      showHeading={hasVisited}
+    >
+      {lists.owned.length === 0 ? (
+        <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
+      ) : (
+        <ul className="divide-y divide-border border-t border-border">
+          {lists.owned.map((board) => (
+            <OwnedRow
+              board={board}
+              copy={copy}
+              editing={editing}
+              format={format}
+              key={board.id}
+              onAction={onAction}
+              setEditing={setEditing}
+            />
+          ))}
+        </ul>
+      )}
+    </BoardCollection>
+  );
   return (
     <div
       className={
-        hasVisited ? "mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]" : "mt-6"
+        hasVisited
+          ? "mt-6 grid gap-4 sm:gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]"
+          : "mt-6"
       }
     >
-      {hasVisited && (
-        <section aria-labelledby="joined-boards" className="@container min-w-0">
-          <h2 className="mb-2 font-semibold" id="joined-boards">
-            {copy.visited}
-          </h2>
-          <ul className="divide-y divide-border border-t border-border">
-            {lists.visited.map((board) => (
-              <li className={`${ROW} min-h-15 py-2`} key={board.id}>
-                {board.shareCode === null ? (
-                  <>
-                    <span className="self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
-                      {board.title}
-                    </span>
-                    <span className={BOARD_DATE}>{copy.linkWasReset}</span>
-                  </>
-                ) : (
-                  <>
-                    <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-                      {board.title}
-                    </a>
-                    <BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section
-        aria-labelledby="created-boards"
-        className={
-          hasVisited
-            ? "@container min-w-0 self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
-            : "@container min-w-0"
-        }
-      >
-        <h2 className={hasVisited ? "mb-2 font-semibold" : "sr-only"} id="created-boards">
-          {copy.created}
-        </h2>
-        {lists.owned.length === 0 ? (
-          <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
-        ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {lists.owned.map((board) => (
-              <OwnedRow
-                board={board}
-                copy={copy}
-                editing={editing}
-                format={format}
-                key={board.id}
-                onAction={onAction}
-                setEditing={setEditing}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
+      {phone ? [created, joined] : [joined, created]}
     </div>
   );
 }
