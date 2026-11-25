@@ -17,6 +17,8 @@ import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 const KEYBOARD_MIN_PX = 120;
 const GAP_PX = 8;
 
+const pixels = (value: number | undefined) => (value === undefined ? undefined : `${value}px`);
+
 // WARNING: The on-screen keyboard can cover the layout viewport without resizing it. Position the sheet using the visual viewport.
 function useAboveKeyboard(): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties>();
@@ -71,10 +73,10 @@ export function Sheet({
   const { height, width, left, bottom } = chatResize?.size ?? {};
   const style: CSSProperties & Partial<Record<`--chat-${string}`, string>> = {
     ...aboveKeyboard,
-    "--chat-height": height === undefined ? undefined : `${height}px`,
-    "--chat-left": left === undefined ? undefined : `${left}px`,
-    "--chat-bottom": bottom === undefined ? undefined : `${bottom}px`,
-    "--chat-width": width === undefined ? undefined : `${width}px`,
+    "--chat-height": pixels(height),
+    "--chat-left": pixels(left),
+    "--chat-bottom": pixels(bottom),
+    "--chat-width": pixels(width),
   };
 
   useLayoutEffect(() => {
