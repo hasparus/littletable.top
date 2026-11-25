@@ -7,6 +7,7 @@ const EN = {
   boardName: "Board name",
   cancel: "Cancel",
   copyLink: "Copy link",
+  created: "Created",
   createdOn: "Created %(date)s",
   delete: "Delete",
   deleteConfirm: "Delete “%(title)s” and everything drawn on it? This cannot be undone.",
@@ -18,7 +19,6 @@ const EN = {
   newBoard: "New board",
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
-  owned: "Owned",
   publicBoard: "Public whiteboard",
   publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
   publicStory: [
@@ -50,6 +50,7 @@ const PL: FrontCopy = {
   boardName: "Nazwa tablicy",
   cancel: "Anuluj",
   copyLink: "Kopiuj link",
+  created: "Utworzone",
   createdOn: "Utworzono %(date)s",
   delete: "Usuń",
   deleteConfirm:
@@ -62,7 +63,6 @@ const PL: FrontCopy = {
   newBoard: "Nowa tablica",
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
-  owned: "Własne",
   publicBoard: "Tablica publiczna",
   publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
   publicStory: [

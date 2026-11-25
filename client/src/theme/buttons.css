@@ -57,19 +57,23 @@
   }
 
   .btn-primary {
-    /* Deepened toward primary-strong so white text clears 4.5:1 on a
-       light brand colour such as the coral. */
-    --bg: color-mix(in oklab, var(--color-primary-hover), var(--brand-primary-strong) 25%);
+    --bg: color-mix(in oklab, var(--color-primary), var(--color-primary-hover) 45%);
+    --face-top: color-mix(in oklab, var(--color-primary), var(--color-white) 9%);
     --hl1: rgba(255, 255, 255, 0.3);
     --hl2: rgba(255, 255, 255, 0.22);
 
     color: white;
-    background-image: linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--color-primary-hover), var(--brand-primary-strong) 15%),
-      var(--bg)
-    );
+    background-image: linear-gradient(180deg, var(--face-top), var(--bg));
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+  }
+
+  @supports (color: rgb(from white r g b)) {
+    .btn-primary {
+      /* Ludamus's #fb6953 to #ef4f2d gradient for our default orange.
+         Offsets keep the face tied to the deployer's primary color. */
+      --face-top: rgb(from var(--color-primary) calc(r + 3) calc(g + 15) calc(b + 23));
+      --bg: rgb(from var(--color-primary) calc(r - 9) calc(g - 11) calc(b - 15));
+    }
   }
 
   .dark .btn-primary {
@@ -78,6 +82,13 @@
 
     font-weight: 600;
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
+  }
+
+  @media (prefers-contrast: more) {
+    .btn-primary {
+      --bg: color-mix(in oklab, var(--color-primary-hover), var(--brand-primary-strong) 25%);
+      background-image: none;
+    }
   }
 
   .btn-secondary {

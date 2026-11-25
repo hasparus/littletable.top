@@ -91,7 +91,7 @@ function OwnedRow({
             type="button"
           >
             <Icon className="size-4" name="Link" />
-            <span className="hidden sm:inline">{shareLabel}</span>
+            <span className="hidden @md:inline">{shareLabel}</span>
           </button>
           <FrontMenu label={manageLabel} trigger={<Icon className="size-4" name="More" />}>
             {ACTIONS.map((kind) => (
@@ -212,36 +212,8 @@ export function BoardList({
         hasVisited ? "mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]" : "mt-6"
       }
     >
-      <section aria-labelledby="owned-boards" className="@container min-w-0">
-        <h2
-          className={hasVisited ? "sr-only lg:not-sr-only lg:mb-2 lg:font-semibold" : "sr-only"}
-          id="owned-boards"
-        >
-          {copy.owned}
-        </h2>
-        {lists.owned.length === 0 ? (
-          <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
-        ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {lists.owned.map((board) => (
-              <OwnedRow
-                board={board}
-                copy={copy}
-                editing={editing}
-                format={format}
-                key={board.id}
-                onAction={onAction}
-                setEditing={setEditing}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
       {hasVisited && (
-        <section
-          aria-labelledby="joined-boards"
-          className="@container min-w-0 self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
-        >
+        <section aria-labelledby="joined-boards" className="@container min-w-0">
           <h2 className="mb-2 font-semibold" id="joined-boards">
             {copy.visited}
           </h2>
@@ -268,6 +240,35 @@ export function BoardList({
           </ul>
         </section>
       )}
+      <section
+        aria-labelledby="created-boards"
+        className={
+          hasVisited
+            ? "@container min-w-0 self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
+            : "@container min-w-0"
+        }
+      >
+        <h2 className={hasVisited ? "mb-2 font-semibold" : "sr-only"} id="created-boards">
+          {copy.created}
+        </h2>
+        {lists.owned.length === 0 ? (
+          <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
+        ) : (
+          <ul className="divide-y divide-border border-t border-border">
+            {lists.owned.map((board) => (
+              <OwnedRow
+                board={board}
+                copy={copy}
+                editing={editing}
+                format={format}
+                key={board.id}
+                onAction={onAction}
+                setEditing={setEditing}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
