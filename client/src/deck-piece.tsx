@@ -19,11 +19,10 @@ import {
   useValue,
 } from "tldraw";
 
-import { dealtDeckCard, deckStack } from "../../src/deck-records";
-import { DeckContext, type DeckDrop } from "./deck";
-import { usePreloadDeckArt } from "./deck-art";
+import { dealtDeckCard, deckStack, faceDownDeckCard } from "../../src/deck-records";
+import { DeckContext, type DeckDrop, type DeckPickup } from "./deck";
 import { suggestDeckGrid } from "./deck-grid";
-import { revealDeckCard, turnHeldBack } from "./deck-motion";
+import { revealDeckCard } from "./deck-motion";
 import { playGizmoCue } from "./gizmo-feedback";
 import { useGizmoUi } from "./gizmo-ui";
 import { landPaper, liftPaper, paperLift } from "./paper-landing";
@@ -78,10 +77,137 @@ function DealtPaper({
   return <div ref={paper}>{children}</div>;
 }
 
+function FaceDownPaper({
+  id,
+  width,
+  height,
+  art,
+}: {
+  id: BoardImage["id"];
+  width: number;
+  height: number;
+  art: ReactNode;
+}) {
+  const editor = useEditor();
+  const actions = useContext(DeckContext);
+  const { copy } = useGizmoUi();
+  const press = useRef<AbortController | null>(null);
+  const turning = useRef(false);
+  const locked = useValue(
+    "card access",
+    () => editor.getIsReadonly() || editor.isShapeOrAncestorLocked(id),
+    [editor, id],
+  );
+  useEffect(() => () => press.current?.abort(), []);
+  function flip(keyboardButton?: HTMLButtonElement) {
+    if (!actions || turning.current || editor.getIsReadonly() || editor.isShapeOrAncestorLocked(id))
+      return;
+    turning.current = true;
+    void actions.flip(editor, id).then(
+      (ok) => {
+        turning.current = ok;
+        if (!ok || !keyboardButton || !editor.getShape(id)) return;
+        const { activeElement, body } = keyboardButton.ownerDocument;
+        if (
+          activeElement === keyboardButton ||
+          (!keyboardButton.isConnected && activeElement === body)
+        ) {
+          editor.select(id);
+          editor.getContainer().focus({ preventScroll: true });
+        }
+      },
+      () => {
+        turning.current = false;
+      },
+    );
+  }
+  function point(event: PointerEvent<HTMLButtonElement>) {
+    if (
+      !event.isPrimary ||
+      event.button !== 0 ||
+      event.shiftKey ||
+      event.altKey ||
+      event.metaKey ||
+      event.ctrlKey ||
+      !editor.isIn("select")
+    )
+      return;
+    press.current?.abort();
+    const controller = new AbortController();
+    press.current = controller;
+    const { clientX, clientY, pointerId } = event;
+    const maxDistance =
+      event.pointerType === "touch"
+        ? editor.options.coarseDragDistanceSquared
+        : editor.options.dragDistanceSquared;
+    const options = { capture: true, signal: controller.signal };
+    const view = event.currentTarget.ownerDocument.defaultView ?? globalThis.window;
+    function moved(e: globalThis.PointerEvent) {
+      return (e.clientX - clientX) ** 2 + (e.clientY - clientY) ** 2 > maxDistance;
+    }
+    view.addEventListener(
+      "pointermove",
+      (e) => {
+        if (e.pointerId === pointerId && moved(e)) controller.abort();
+      },
+      options,
+    );
+    view.addEventListener("pointercancel", () => controller.abort(), options);
+    view.addEventListener(
+      "pointerup",
+      (e) => {
+        if (e.pointerId !== pointerId) return;
+        controller.abort();
+        const local = editor.getPointInShapeSpace(
+          id,
+          editor.screenToPage({ x: e.clientX, y: e.clientY }),
+        );
+        if (
+          local.x >= 0 &&
+          local.x <= width &&
+          local.y >= 0 &&
+          local.y <= height &&
+          !moved(e) &&
+          !editor.inputs.getIsDragging() &&
+          !editor.inputs.getIsPanning() &&
+          !editor.inputs.getIsPinching()
+        )
+          flip();
+      },
+      options,
+    );
+  }
+  return (
+    <DealtPaper id={id} width={width}>
+      <div data-deck-down style={{ width, height }}>
+        {art}
+        {actions && !locked && (
+          <button
+            type="button"
+            data-deck-flip
+            aria-label={copy.deckFlip}
+            onPointerDown={point}
+            onClick={(event) => {
+              if (event.detail === 0) flip(event.currentTarget);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+            }}
+            onKeyUp={(event) => {
+              if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+            }}
+          />
+        )}
+      </div>
+    </DealtPaper>
+  );
+}
+
 function DeckRevealEffect({
   id,
   art,
   back,
+  face,
   dealtAt,
   height,
   travelX,
@@ -91,6 +217,7 @@ function DeckRevealEffect({
   id: BoardImage["id"];
   art: ReactNode;
   back: string;
+  face: string;
   dealtAt: number;
   height: number;
   travelX: number;
@@ -98,26 +225,24 @@ function DeckRevealEffect({
   width: number;
 }) {
   const card = useRef<HTMLDivElement>(null);
+  const front = useRef<HTMLDivElement>(null);
   const sheen = useRef<HTMLSpanElement>(null);
-  const lastDrop = useContext(DeckContext)?.lastDrop;
   useLayoutEffect(() => {
-    const paper = card.current;
-    const target = sheen.current;
-    if (!paper || !target || Date.now() - dealtAt > RECENT_REVEAL_MS) return;
-    const drop = lastDrop?.current;
-    return revealDeckCard(paper, target, travelX, travelY, drop?.card === id ? drop.at : undefined);
-  }, [dealtAt, id, lastDrop, travelX, travelY]);
+    if (!card.current || !front.current || !sheen.current) return;
+    return revealDeckCard(
+      card.current,
+      front.current,
+      sheen.current,
+      face,
+      Date.now() - dealtAt <= RECENT_REVEAL_MS,
+      travelX,
+      travelY,
+    );
+  }, [dealtAt, face, travelX, travelY]);
   return (
     <DealtPaper id={id} width={width}>
-      <div data-deck-card ref={card} style={{ height, width }}>
-        <div
-          data-deck-front
-          style={{ backgroundImage: `url("${back}")`, backgroundSize: "100% 100%" }}
-          onLoadCapture={(event) => {
-            if (event.target instanceof HTMLImageElement)
-              event.currentTarget.style.backgroundImage = "none";
-          }}
-        >
+      <div data-deck-card data-deck-waiting="" ref={card} style={{ height, width }}>
+        <div data-deck-front ref={front}>
           {art}
           <span aria-hidden="true" data-deck-reveal ref={sheen} />
         </div>
@@ -129,6 +254,7 @@ function DeckRevealEffect({
 
 type Point = { x: number; y: number };
 type Grip = {
+  pickup: DeckPickup;
   pointer: number;
   pressed: number;
   start: Point;
@@ -156,19 +282,12 @@ function HeldPaper({
   back: string;
   grip: RefObject<HTMLDivElement | null>;
 }) {
-  const paper = useRef<HTMLImageElement>(null);
   const { tilt, released } = held;
   useLayoutEffect(() => {
     const target = grip.current;
-    const face = paper.current;
-    if (!target || !face || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!target || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (released === undefined) return liftPaper(target, tilt);
-    const relax = landPaper(target, tilt, released.lift, released.at);
-    const turn = turnHeldBack(face, released.at);
-    return () => {
-      relax?.();
-      turn.cancel();
-    };
+    return landPaper(target, tilt, released.lift, released.at);
   }, [grip, released, tilt]);
   return createPortal(
     <div
@@ -191,7 +310,6 @@ function HeldPaper({
         }}
       >
         <img
-          ref={paper}
           data-deck-paper
           alt=""
           draggable={false}
@@ -220,9 +338,17 @@ function heldAt(grip: Grip, x: number, y: number) {
   };
 }
 
-function DeckArtPreload({ back }: { back: string }) {
-  const marker = usePreloadDeckArt(back);
-  return <span aria-hidden="true" hidden ref={marker} />;
+function nearDeck(card: Point, top: HTMLElement, rotation: number, zoom: number) {
+  const rect = top.getBoundingClientRect();
+  const dx = card.x - rect.left - rect.width / 2;
+  const dy = card.y - rect.top - rect.height / 2;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const margin = 0.12 * Math.min(top.offsetWidth, top.offsetHeight) * zoom;
+  return (
+    Math.abs(dx * cos + dy * sin) <= (top.offsetWidth * zoom) / 2 + margin &&
+    Math.abs(dy * cos - dx * sin) <= (top.offsetHeight * zoom) / 2 + margin
+  );
 }
 
 function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
@@ -244,6 +370,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     editor,
     cardId,
   ]);
+  useEffect(() => () => grip.current?.pickup.cancel(), []);
   const holding = held !== null && held.released === undefined;
   if (landed && held) setHeld(null);
   useEffect(() => {
@@ -251,21 +378,24 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !grip.current) return;
       moved.current = true;
+      grip.current.pickup.cancel();
       grip.current = null;
       setHeld(null);
     };
     globalThis.addEventListener("keydown", escape);
     return () => globalThis.removeEventListener("keydown", escape);
   }, [holding]);
-  if (actions === undefined || readonly) return <img alt="" data-deck-top src={back} />;
+  if (!actions?.canDeal || readonly) return <img alt="" data-deck-top src={back} />;
   function grab(event: PointerEvent<HTMLButtonElement>) {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (!actions || !event.isPrimary || event.button !== 0) return;
     event.stopPropagation();
     const target = event.currentTarget;
     const rect = target.getBoundingClientRect();
     const zoom = editor.getZoomLevel();
     moved.current = false;
+    grip.current?.pickup.cancel();
     grip.current = {
+      pickup: actions.prepare(editor, id),
       pointer: event.pointerId,
       pressed: event.timeStamp,
       start: { x: event.clientX, y: event.clientY },
@@ -293,8 +423,23 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
   function cancel(event: PointerEvent<HTMLButtonElement>) {
     if (grip.current?.pointer !== event.pointerId) return;
     moved.current = true;
+    grip.current.pickup.cancel();
     grip.current = null;
     setHeld(null);
+  }
+  function dealToGrid(top: HTMLElement, pickup?: DeckPickup) {
+    const stack = top.closest("[data-deck-stack]");
+    if (!stack || !actions) {
+      pickup?.cancel();
+      return;
+    }
+    const rect = stack.getBoundingClientRect();
+    const grid = suggestDeckGrid(editor, rect, top.getBoundingClientRect());
+    const origin = editor.screenToPage({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+    void actions.draw(editor, id, grid, origin, { grid, pickup });
   }
   function release(event: PointerEvent<HTMLButtonElement>) {
     const start = grip.current;
@@ -302,16 +447,24 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     event.stopPropagation();
     grip.current = null;
     if (!moved.current && event.timeStamp - start.pressed >= HOLD_MS) moved.current = true;
-    if (!moved.current || !actions) {
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    if (!actions || !target?.closest(".tl-canvas") || !editor.getContainer().contains(target)) {
+      start.pickup.cancel();
       setHeld(null);
       return;
     }
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (!target?.closest(".tl-canvas") || !editor.getContainer().contains(target)) {
+    if (!moved.current) {
       setHeld(null);
+      dealToGrid(event.currentTarget, start.pickup);
       return;
     }
     const land = heldAt(start, event.clientX, event.clientY);
+    const faceDown = nearDeck(
+      land,
+      event.currentTarget,
+      editor.getShapePageTransform(id).rotation(),
+      editor.getZoomLevel(),
+    );
     const point = editor.screenToPage(land);
     const at = performance.now();
     const lift = paperLift(heldPaper.current);
@@ -328,7 +481,11 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
       y: land.pivot.y / land.height,
     };
     void actions
-      .draw(editor, id, point, point, { release: { at, track, grip: gripPoint } })
+      .draw(editor, id, point, point, {
+        pickup: start.pickup,
+        faceDown,
+        release: { at, track, grip: gripPoint },
+      })
       .then((ok) => {
         if (!ok) setHeld((current) => (current?.released?.at === at ? null : current));
       });
@@ -351,16 +508,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
         onPointerCancel={cancel}
         onClick={(event) => {
           event.stopPropagation();
-          if (event.detail !== 0 && moved.current) return;
-          const stack = event.currentTarget.closest("[data-deck-stack]");
-          if (!stack) return;
-          const rect = stack.getBoundingClientRect();
-          const grid = suggestDeckGrid(editor, rect, event.currentTarget.getBoundingClientRect());
-          const origin = editor.screenToPage({
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-          });
-          void actions.draw(editor, id, grid, origin, { grid });
+          if (event.detail === 0) dealToGrid(event.currentTarget);
         }}
       >
         <img alt="" draggable={false} src={back} />
@@ -400,9 +548,18 @@ export class DeckImageUtil extends ImageUtil {
             {meta.deckRemaining}
             <i />
           </span>
-          <DeckArtPreload back={meta.deckBack} />
           <DeckDraw back={meta.deckBack} id={image.id} />
         </div>
+      );
+    }
+    if (faceDownDeckCard.isValid(meta) && meta.deckCardId === image.id) {
+      return (
+        <FaceDownPaper
+          id={image.id}
+          art={illustration}
+          width={image.props.w}
+          height={image.props.h}
+        />
       );
     }
     if (dealtDeckCard.isValid(meta)) {
@@ -411,10 +568,11 @@ export class DeckImageUtil extends ImageUtil {
           id={image.id}
           art={illustration}
           back={meta.deckBack}
-          dealtAt={meta.deckDealtAt}
+          face={meta.deckFace}
+          dealtAt={meta.deckTurnedAt ?? meta.deckDealtAt}
           height={image.props.h}
-          travelX={meta.deckTravelX}
-          travelY={meta.deckTravelY}
+          travelX={meta.deckTurnedAt === undefined ? meta.deckTravelX : 0}
+          travelY={meta.deckTurnedAt === undefined ? meta.deckTravelY : 0}
           width={image.props.w}
         />
       );

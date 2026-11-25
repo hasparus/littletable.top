@@ -1,6 +1,6 @@
 import type { TLRecord } from "@tldraw/tlschema";
 
-import { PageRecordType } from "@tldraw/tlschema";
+import { createShapeId, PageRecordType } from "@tldraw/tlschema";
 import { getIndexAbove } from "@tldraw/utils";
 import { describe, expect, it } from "vitest";
 
@@ -25,12 +25,14 @@ function table() {
   records.set(page.id, page);
   return {
     records,
+    stored,
     command(payload: Record<string, unknown>) {
+      const { action } = payload;
       const command = deckCommand.validate({
-        id: crypto.randomUUID(),
-        language: "en",
+        ...(action === "flip" ? {} : { id: crypto.randomUUID() }),
+        ...(action === "cancel" ? {} : { language: "en" }),
         page: page.id,
-        point: { x: 200, y: 200 },
+        ...(action === "draw" || action === "place" ? { point: { x: 200, y: 200 } } : {}),
         ...payload,
       });
       return changeDeck(records, stored, (url) => (url === pack.url ? pack : null), command);
@@ -168,19 +170,134 @@ describe("installable physical decks", () => {
     expect(card.index > stack.index).toBe(true);
   });
 
+  it("reserves the exact top card without consuming it on cancellation", () => {
+    const { command, records } = table();
+    const deck = placed(command(place));
+    const id = crypto.randomUUID();
+    const prepare = { action: "prepare", deck, id };
+    const prepared = command(prepare);
+    expect(prepared).toHaveProperty("face");
+    expect(command(prepare)).toEqual(prepared);
+    expect(command({ action: "prepare", deck })).toBeNull();
+    expect(command(draw(deck))).toBeNull();
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 78 } });
+
+    expect(command({ action: "cancel", deck, id })).toEqual({ cancelled: true });
+    expect(command(prepare)).toBeNull();
+    const early = crypto.randomUUID();
+    expect(command({ action: "cancel", deck, id: early })).toEqual({ cancelled: true });
+    expect(command({ action: "prepare", deck, id: early })).toBeNull();
+    expect(command({ ...draw(deck), prepared: true, id })).toBeNull();
+    const next = crypto.randomUUID();
+    expect(command({ action: "prepare", deck, id: next })).toEqual(prepared);
+    const result = command({ ...draw(deck), prepared: true, id: next });
+    expect(result).toHaveProperty("name");
+    expect(command({ action: "prepare", deck, id: next })).toEqual(prepared);
+    const dealt = records.get(dealtCardId(deck, next));
+    expect(dealt).toMatchObject({
+      meta: { deckFace: prepared && "face" in prepared ? prepared.face : "" },
+    });
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
+  });
+
+  it("keeps a long hold valid until another action steals its expired reservation", () => {
+    const { command, stored } = table();
+    const deck = placed(command(place));
+    const id = crypto.randomUUID();
+    const first = command({ action: "prepare", deck, id });
+    const key = `gizmoDeck:${deck}`;
+    function expire() {
+      const state = stored.get(key);
+      if (!state || !("reservation" in state) || !state.reservation) throw new Error("No pickup");
+      stored.set(key, { ...state, reservation: { ...state.reservation, until: Date.now() - 1 } });
+    }
+    expire();
+    expect(command({ ...draw(deck), id, prepared: true })).toHaveProperty("name");
+    expect(command({ action: "prepare", deck, id })).toEqual(first);
+    const stale = crypto.randomUUID();
+    command({ action: "prepare", deck, id: stale });
+    expire();
+    expect(command({ action: "prepare", deck })).toHaveProperty("face");
+    expect(command({ ...draw(deck), id: stale, prepared: true })).toBeNull();
+  });
+
+  it("persists only the back on the board until a retryable flip turns the prepared face", () => {
+    const { command, records, stored } = table();
+    const deck = placed(command(place));
+    const id = crypto.randomUUID();
+    const pickup = command({ action: "prepare", deck, id });
+    if (!pickup || !("face" in pickup)) throw new Error("No prepared face");
+    const drop = { ...draw(deck), id, prepared: true, faceDown: true, precise: true };
+    const card = dealtCardId(deck, id);
+    expect(command(drop)).toEqual({ card, faceDown: true });
+    expect(command(drop)).toEqual({ card, faceDown: true });
+    const before = records.get(card);
+    if (before?.typeName !== "shape" || before.type !== "image" || !before.props.assetId)
+      throw new Error("Face-down card is missing");
+    const back = records.get(before.props.assetId);
+    expect(back).toMatchObject({ props: { src: "/gizmos/tarot/art/back.webp" } });
+    expect(before).toMatchObject({
+      meta: { deckDown: true },
+      props: { altText: "Face-down card" },
+    });
+    expect(before.meta).not.toHaveProperty("deckFace");
+    expect(JSON.stringify([...records.values()])).not.toContain(pickup.face);
+    expect(command({ action: "prepare", deck, id })).toEqual(pickup);
+
+    records.delete(card);
+    expect(stored.has(`gizmoDeckCard:${card}`)).toBe(true);
+    expect(command({ action: "flip", card })).toBeNull();
+    for (let discarded = 0; discarded < 17; discarded++) {
+      const discardedId = crypto.randomUUID();
+      const discardedCard = dealtCardId(deck, discardedId);
+      expect(command({ ...draw(deck), id: discardedId, faceDown: true })).toEqual({
+        card: discardedCard,
+        faceDown: true,
+      });
+      records.delete(discardedCard);
+    }
+    expect(command(drop)).toEqual({ card, faceDown: true });
+    records.set(card, { ...before, isLocked: true });
+    expect(command({ action: "flip", card })).toBeNull();
+    const group = createShapeId("locked-group");
+    records.set(group, { ...before, id: group, type: "group", props: {}, isLocked: true });
+    records.set(card, { ...before, parentId: group });
+    expect(command({ action: "flip", card })).toBeNull();
+    records.delete(group);
+    records.set(card, before);
+    const turned = command({ action: "flip", card });
+    expect(turned).toHaveProperty("name");
+    expect(command({ action: "flip", card, language: "pl" })).toEqual(turned);
+    expect(records.get(card)).toMatchObject({
+      x: before.x,
+      y: before.y,
+      rotation: before.rotation,
+      meta: { deckFace: pickup.face },
+      props: { w: before.props.w, h: before.props.h },
+    });
+    expect(command(drop)).toEqual({ card, faceDown: true });
+    expect(command({ action: "prepare", deck, id })).toEqual(pickup);
+    expect(stored.has(`gizmoDeckCard:${card}`)).toBe(false);
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 60 } });
+  });
+
   it("places and draws a package pinned on the board with current owner access", async () => {
     const board = "deck-admission";
-    const guest = await pass({ board });
+    const guest = await pass({ board, link: 1, sub: "g:guest" });
     const owner = await pass({ board, link: 1, owner: true });
     const stale = await pass({ board, owner: true });
+    const staleGuest = await pass({ board, sub: "g:guest" });
+    const wrongRoom = await pass({ board: "another-board", link: 1, sub: "g:guest" });
     const source = "https://github.com/test/gizmos/blob/" + "1".repeat(40) + "/deck/gizmo.json";
     function request(token: string, payload: Record<string, unknown>) {
       return call(`/rooms/${board}/deck`, token, {
         body: JSON.stringify({
-          id: crypto.randomUUID(),
-          language: "en",
+          ...(payload.action === "flip" ? {} : { id: crypto.randomUUID() }),
+          ...(payload.action === "cancel" ? {} : { language: "en" }),
           page: "page:page",
-          point: { x: 200, y: 200 },
+          ...(payload.action === "draw" || payload.action === "place"
+            ? { point: { x: 200, y: 200 } }
+            : {}),
           ...payload,
         }),
         method: "POST",
@@ -201,8 +318,22 @@ describe("installable physical decks", () => {
     expect(response.status).toBe(200);
     const { deck } = await response.json<{ deck: string }>();
     expect((await request(stale, draw(deck))).status).toBe(403);
+    expect((await request(guest, { action: "prepare", deck })).status).toBe(403);
     const dealt = await request(owner, { ...draw(deck), language: "pl" });
     expect(dealt.status).toBe(200);
     expect(await dealt.json()).toEqual({ card: "moon", name: "Księżyc", width: 380 });
+    const id = crypto.randomUUID();
+    const pickup = await request(owner, { action: "prepare", deck, id });
+    expect((await pickup.json<{ face: string }>()).face).toMatch(/\/front\.png$/u);
+    expect(pickup.headers.get("Cache-Control")).toBe("no-store");
+    const hidden = await request(owner, { ...draw(deck), id, prepared: true, faceDown: true });
+    const card = dealtCardId(deck, id);
+    expect(await hidden.json()).toEqual({ card, faceDown: true });
+    const flip = { action: "flip", card, language: "pl" };
+    expect((await request(staleGuest, flip)).status).toBe(403);
+    expect((await request(wrongRoom, flip)).status).toBe(403);
+    const turned = await request(guest, flip);
+    expect(turned.status).toBe(200);
+    expect(await turned.json()).toEqual({ card: "moon", name: "Księżyc", width: 380 });
   });
 });

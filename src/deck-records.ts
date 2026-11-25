@@ -1,3 +1,4 @@
+import { idValidator, type TLRecord } from "@tldraw/tlschema";
 import { T } from "@tldraw/validate";
 
 import { isGizmoAssetUrl } from "./gizmo-packages";
@@ -6,7 +7,13 @@ const deckArt = T.string.check((src) => {
   if (!isGizmoAssetUrl(src)) throw new Error("Invalid deck art");
 });
 
-export const deckPlaced = T.object({ deck: T.string });
+type ImageId = Extract<TLRecord, { typeName: "shape"; type: "image" }>["id"];
+const cardId = idValidator<ImageId>("shape");
+export const deckPlaced = T.object({ deck: cardId });
+export const deckPrepared = T.object({ face: deckArt });
+export const deckCancelled = T.object({ cancelled: T.literal(true) });
+export const deckDropped = T.object({ card: cardId, faceDown: T.literal(true) });
+export type DeckDropResult = T.TypeOf<typeof deckDropped>;
 
 export const deckRevealed = T.object({
   card: T.string,
@@ -23,6 +30,13 @@ export const deckStack = T.object({
   deckSize: T.positiveInteger,
 }).allowUnknownProperties();
 
+export const faceDownDeckCard = T.object({
+  deckId: T.string,
+  deckBack: deckArt,
+  deckCardId: T.string,
+  deckDown: T.literal(true),
+}).allowUnknownProperties();
+
 export const dealtDeckCard = T.object({
   deckId: T.string,
   deckFace: deckArt,
@@ -30,4 +44,7 @@ export const dealtDeckCard = T.object({
   deckDealtAt: T.number,
   deckTravelX: T.number,
   deckTravelY: T.number,
+  deckTurnedAt: T.number.optional(),
+  deckCardId: T.string.optional(),
+  deckFaceId: T.string.optional(),
 }).allowUnknownProperties();

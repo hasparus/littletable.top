@@ -106,8 +106,9 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
-  const deck = useBoardDeck(keeper);
-  const canPlaceGizmos = person.owner && !keeper.secret && landing === undefined;
+  const canUseGizmos = !keeper.secret && landing === undefined;
+  const canPlaceGizmos = person.owner && canUseGizmos;
+  const deck = useBoardDeck(keeper, canPlaceGizmos);
   const chat = useChat(keeper, landing !== undefined);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
   const { refusal, store } = useBoardStore({
@@ -267,7 +268,7 @@ export function BoardCanvas({
         <BoardInstallations keeper={keeper}>
           <BoardEditors
             active={active}
-            deck={active && online && canPlaceGizmos ? deck : undefined}
+            deck={active && online && canUseGizmos ? deck : undefined}
             editorLayerRef={setEditorLayer}
             overlay={overlay}
             showUi={active || waiting}
@@ -315,7 +316,7 @@ export function BoardCanvas({
         {active && canPlaceGizmos && editor && panel === "gizmos" && (
           <BoardGizmoGallery editor={editor} online={online} deck={deck} keeper={keeper} />
         )}
-        {active && canPlaceGizmos && <DeckAnnouncement name={deck.revealed?.name ?? ""} />}
+        {active && canUseGizmos && <DeckAnnouncement name={deck.revealed?.name ?? ""} />}
         {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage

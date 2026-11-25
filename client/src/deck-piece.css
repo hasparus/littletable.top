@@ -1,10 +1,10 @@
 /* The scan includes the scanner bed beyond the paper. Trim that bleed before
    rounding each physical face. Percentages follow the piece through canvas zoom. */
-:where([data-deck-stack], [data-deck-card], [data-deck-ghost], [data-gizmo-fan]) {
+:where([data-deck-stack], [data-deck-card], [data-deck-down], [data-deck-ghost], [data-gizmo-fan]) {
   --deck-paper-radius: 9.6% / 5.7%;
 }
 
-:is([data-deck-stack], [data-deck-front]) .tl-image,
+:is([data-deck-stack], [data-deck-front], [data-deck-down]) .tl-image,
 [data-deck-draw] img,
 img[data-deck-top],
 [data-deck-paper],
@@ -15,6 +15,8 @@ img[data-deck-top],
 
 [data-deck-stack],
 [data-deck-stack] > .tl-html-container,
+[data-deck-down],
+[data-deck-down] .tl-html-container,
 [data-deck-card],
 [data-deck-front],
 [data-deck-top],
@@ -178,6 +180,7 @@ img[data-deck-top],
 }
 
 [data-deck-turn] {
+  object-fit: cover;
   transform: rotateY(180deg);
 }
 
@@ -185,4 +188,40 @@ img[data-deck-top],
   box-shadow:
     0.5px 1px 0 #a08f70,
     1px 2px 4px #35291835;
+}
+
+[data-deck-down] {
+  position: relative;
+  box-shadow:
+    0.5px 1px 0 #a08f70,
+    1px 2px 4px #35291835;
+}
+
+[data-deck-flip] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+[data-deck-flip]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+[data-deck-waiting] [data-deck-front] {
+  visibility: hidden;
+}
+[data-deck-waiting] [data-deck-turn] {
+  transform: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-deck-waiting] {
+    transform: translate(var(--deck-travel-x, 0px), var(--deck-travel-y, 0px));
+  }
 }

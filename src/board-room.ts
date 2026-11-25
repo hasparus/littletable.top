@@ -258,7 +258,8 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   deck(pass: Pass, command: DeckCommand) {
-    if (!pass.owner || this.admit(pass) !== null) return "link-reset";
+    if ((!pass.owner && command.action !== "flip") || this.admit(pass) !== null)
+      return "link-reset";
     const { kv, sql } = this.ctx.storage;
     return this.drawing.transaction((store) =>
       changeDeck(
@@ -267,6 +268,9 @@ export class BoardRoom extends DurableObject<Env> {
           get: (key) => kv.get(key),
           set: (key, value) => {
             kv.put(key, value);
+          },
+          delete: (key) => {
+            kv.delete(key);
           },
         },
         (url) => readInstalledGizmo(sql, url),

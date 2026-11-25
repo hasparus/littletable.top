@@ -242,7 +242,6 @@ async function rooms(
     return room.fetch(forwarded);
   }
   if (action === "deck") {
-    if (!pass.owner) return new Response(null, { status: 403 });
     const body = await readCapped(request.body, {
       declared: Number(request.headers.get("Content-Length")),
       max: 1024,
@@ -250,6 +249,7 @@ async function rooms(
     if (body === "too-large") return new Response(null, { status: 413 });
     const value: unknown = await new Response(body).json().catch(() => null);
     if (!deckCommand.isValid(value)) return new Response(null, { status: 400 });
+    if (!pass.owner && value.action !== "flip") return new Response(null, { status: 403 });
     const result = await room.deck(pass, value);
     return result === null ? new Response(null, { status: 409 }) : answer(result);
   }

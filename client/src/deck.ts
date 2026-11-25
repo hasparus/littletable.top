@@ -6,10 +6,17 @@ import type { InstalledGizmo } from "../../src/gizmo-packages";
 import type { PassKeeper } from "./bootstrap";
 
 import { changeDeck, dealtCardId, type DeckCommand, type DeckState } from "../../src/deck";
-import { deckPlaced, deckRevealed, type DeckReveal } from "../../src/deck-records";
+import {
+  deckCancelled,
+  deckDropped,
+  deckPlaced,
+  deckPrepared,
+  deckRevealed,
+  type DeckReveal,
+} from "../../src/deck-records";
 import { playGizmoCue } from "./gizmo-feedback";
 
-type DeckResponse = { deck: string } | DeckReveal | null;
+type DeckResponse = ReturnType<typeof changeDeck>;
 type Transport = (
   editor: Editor,
   command: DeckCommand,
@@ -19,23 +26,26 @@ type Transport = (
 type Deal = Extract<DeckCommand, { action: "draw" }>;
 type CardGrip = { lift: number; tilt: number; x: number; y: number };
 export type DeckDrop = { at: number; card: Deal["deck"]; grip: CardGrip };
+export type DeckPickup = { id: string; cancel: () => void; image: HTMLImageElement | null };
+
 type DealOptions = {
+  pickup?: DeckPickup;
+  faceDown?: boolean;
   grid?: Deal["grid"];
   release?: { at: number; grip: CardGrip; track: (drop: DeckDrop) => void };
 };
 
-function useDeckActions(send: Transport) {
+function useDeckActions(canDeal: boolean, send: Transport) {
   const pending = useRef(false);
-  const requests = useRef<Promise<boolean> | null>(null);
+  const requests = useRef<Promise<unknown> | null>(null);
   const lastDrop = useRef<DeckDrop | null>(null);
   const previousPlacement = useRef<{ id: string; key: string } | null>(null);
-  const previousDraws = useRef(new Map<string, string>());
   const [drawing, setDrawing] = useState<string | null>(null);
   const [failedDeck, setFailedDeck] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<DeckReveal | null>(null);
 
   async function place(editor: Editor, point: VecModel, installed: InstalledGizmo) {
-    if (pending.current || editor.getIsReadonly() || installed.manifest.kind !== "deck")
+    if (!canDeal || pending.current || editor.getIsReadonly() || installed.manifest.kind !== "deck")
       return false;
     const page = editor.getCurrentPageId();
     const key = `${installed.url}:${page}:${point.x}:${point.y}`;
@@ -62,6 +72,57 @@ function useDeckActions(send: Transport) {
     return true;
   }
 
+  function sendGesture(editor: Editor, command: DeckCommand) {
+    return send(editor, command)
+      .catch(() => send(editor, command))
+      .catch(() => null);
+  }
+
+  function enqueue<T>(run: () => Promise<T>) {
+    const next = (requests.current ?? Promise.resolve()).then(run, run);
+    requests.current = next;
+    return next;
+  }
+
+  function prepare(editor: Editor, deck: Deal["deck"]) {
+    const id = crypto.randomUUID();
+    const page = editor.getCurrentPageId();
+    let cancelled = false;
+    let requested = false;
+    const pickup: DeckPickup = {
+      id,
+      image: null,
+      cancel() {
+        if (cancelled) return;
+        cancelled = true;
+        pickup.image = null;
+        if (requested)
+          void enqueue(() => send(editor, { action: "cancel", deck, id, page }).catch(() => null));
+      },
+    };
+    void enqueue(async () => {
+      if (!canDeal || cancelled || editor.getIsReadonly() || editor.getCurrentPageId() !== page)
+        return;
+      requested = true;
+      const command: DeckCommand = {
+        action: "prepare",
+        deck,
+        id,
+        page,
+        language: editor.user.getLocale() === "pl" ? "pl" : "en",
+      };
+      const result = await sendGesture(editor, command);
+      if (!result || !("face" in result) || cancelled) return;
+      const image = new Image();
+      image.fetchPriority = "high";
+      image.decoding = "async";
+      pickup.image = image;
+      image.src = result.face;
+      void image.decode().catch(() => null);
+    });
+    return pickup;
+  }
+
   function draw(
     editor: Editor,
     deck: Deal["deck"],
@@ -71,10 +132,14 @@ function useDeckActions(send: Transport) {
   ) {
     const page = editor.getCurrentPageId();
     const run = async () => {
-      if (pending.current || editor.getIsReadonly() || editor.getCurrentPageId() !== page)
+      if (
+        !canDeal ||
+        pending.current ||
+        editor.getIsReadonly() ||
+        editor.getCurrentPageId() !== page
+      )
         return false;
-      const id = previousDraws.current.get(deck) ?? crypto.randomUUID();
-      previousDraws.current.set(deck, id);
+      const id = options.pickup?.id ?? crypto.randomUUID();
       if (options.release) {
         const drop = {
           at: options.release.at,
@@ -88,7 +153,7 @@ function useDeckActions(send: Transport) {
       setDrawing(deck);
       setFailedDeck(null);
       setRevealed(null);
-      const result = await send(editor, {
+      const command: Deal = {
         action: "draw",
         deck,
         id,
@@ -98,27 +163,45 @@ function useDeckActions(send: Transport) {
         point: { x: point.x, y: point.y },
         precise: !!options.release,
         ...(options.grid && { grid: options.grid }),
-      }).catch(() => null);
+        ...(options.faceDown && { faceDown: true }),
+        ...(options.pickup && { prepared: true }),
+      };
+      const result = await sendGesture(editor, command);
       pending.current = false;
       setDrawing(null);
       if (result === null || !("card" in result)) {
         setFailedDeck(deck);
         return false;
       }
-      previousDraws.current.delete(deck);
       playGizmoCue("deal");
-      setRevealed(result);
+      if ("name" in result) setRevealed(result);
       return true;
     };
-    requests.current = requests.current ? requests.current.then(run, run) : run();
-    return requests.current;
+    return enqueue(run).then((ok) => {
+      if (!ok) options.pickup?.cancel();
+      return ok;
+    });
   }
 
-  return { draw, drawing, failedDeck, lastDrop, place, revealed };
+  async function flip(editor: Editor, card: Deal["deck"]) {
+    if (editor.getIsReadonly() || editor["isShapeOrAncestorLocked"](card)) return false;
+    const result = await send(editor, {
+      action: "flip",
+      card,
+      page: editor.getCurrentPageId(),
+      language: editor.user.getLocale() === "pl" ? "pl" : "en",
+    }).catch(() => null);
+    if (!result || !("name" in result)) return false;
+    playGizmoCue("deal");
+    setRevealed(result);
+    return true;
+  }
+
+  return { canDeal, draw, drawing, failedDeck, flip, lastDrop, place, prepare, revealed };
 }
 
-export function useBoardDeck(keeper: PassKeeper) {
-  return useDeckActions(async (_, command) => {
+export function useBoardDeck(keeper: PassKeeper, canDeal: boolean) {
+  return useDeckActions(canDeal, async (_, command) => {
     const response = await fetch(`${keeper.room}/deck`, {
       body: JSON.stringify(command),
       headers: {
@@ -131,9 +214,17 @@ export function useBoardDeck(keeper: PassKeeper) {
       keeper.end("link-reset");
       return null;
     }
+    if (response.status === 409) return null;
     if (!response.ok) throw new Error(`status ${response.status}`);
     const result: unknown = await response.json();
-    if (deckPlaced.isValid(result) || deckRevealed.isValid(result)) return result;
+    if (
+      deckPlaced.isValid(result) ||
+      deckRevealed.isValid(result) ||
+      deckPrepared.isValid(result) ||
+      deckCancelled.isValid(result) ||
+      deckDropped.isValid(result)
+    )
+      return result;
     throw new Error("Invalid deck result");
   });
 }
@@ -141,7 +232,7 @@ export function useBoardDeck(keeper: PassKeeper) {
 export function useLocalDeck() {
   const decks = useRef(new Map<string, DeckState>());
   const packages = useRef(new Map<string, InstalledGizmo>());
-  return useDeckActions(async (editor, command, installed) => {
+  return useDeckActions(true, async (editor, command, installed) => {
     if (installed !== undefined) packages.current.set(installed.url, installed);
     let result: ReturnType<typeof changeDeck> = null;
     editor.run(
