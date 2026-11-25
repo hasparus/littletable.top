@@ -28,6 +28,59 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+function listBoard(prefix: string, index: number) {
+  return { id: `${prefix}${index}`, shareCode: `${prefix}${index}`, title: `${prefix} ${index}` };
+}
+
+test("board sections collapse on phones only when both lists have three boards", async ({
+  page,
+}) => {
+  const owned = Array.from({ length: 3 }, (_, index) => ({
+    ...listBoard("Created", index),
+    createdAt: 1_700_000_000,
+  }));
+  const visited = Array.from({ length: 3 }, (_, index) => ({
+    ...listBoard("Joined", index),
+    visitedAt: 1_700_000_000,
+  }));
+  let lists = { owned, visited: visited.slice(0, 2) };
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.route("**/api/boards", (route) => route.fulfill({ json: lists }));
+  await page.goto(`${STANDALONE}/boards?lang=en`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Board Lists");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  const created = page.getByRole("button", { exact: true, name: "Boards created" });
+  const joined = page.getByRole("button", { exact: true, name: "Boards joined" });
+  const row = page.getByRole("link", { exact: true, name: "Joined 0" });
+  await expect(row).toBeVisible();
+  await expect(created.or(joined)).toHaveCount(0);
+
+  lists = { owned, visited };
+  await page.reload();
+  await expect(created).toHaveAttribute("aria-expanded", "true");
+  await expect(joined).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("main h2")).toHaveText(["Boards created", "Boards joined"]);
+  await joined.press("Enter");
+  await expect(joined).toHaveAttribute("aria-expanded", "false");
+  await expect(row).toBeHidden();
+  await expect(created).toHaveAttribute("aria-expanded", "true");
+  await reviewShot(page, "boards-collapsible-phone");
+  await joined.press("Space");
+  await expect(row).toBeVisible();
+
+  await page.setViewportSize({ height: 900, width: 1200 });
+  await expect(created.or(joined)).toHaveCount(0);
+  await expect(row).toBeVisible();
+
+  lists = { owned, visited: [] };
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(page.getByRole("link", { exact: true, name: "Created 0" })).toBeVisible();
+  await expect(created.or(joined)).toHaveCount(0);
+});
+
 test("the board menu and right-hand controls share guides on public and private boards", async ({
   browser,
   page,
@@ -212,6 +265,28 @@ test("two guests can chat live and see their messages after reloading", async ({
     await expectNoCspViolations(guest);
   } finally {
     await guest.context().close();
+  }
+});
+
+test("a public shape can acquire a pattern fill after the editor mounts", async ({ page }) => {
+  await page.goto(STANDALONE);
+  await page.locator("[data-public-board-note]").waitFor();
+  await reachEditor(page);
+  const id = String(createShapeId());
+  try {
+    await page.evaluate((id) => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      editor.createShape({ id: id as TLShapeId, type: "geo" });
+      editor.updateShape({ id: id as TLShapeId, props: { fill: "pattern" }, type: "geo" });
+    }, id);
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+    await page.reload();
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+  } finally {
+    await reachEditor(page);
+    await page.evaluate((id) => {
+      (globalThis as unknown as { __editor: Editor }).__editor.deleteShape(id as TLShapeId);
+    }, id);
   }
 });
 

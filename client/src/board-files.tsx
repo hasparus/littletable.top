@@ -38,7 +38,9 @@ function importStage(copy: Copy, progress: ImportProgress): string {
     case "reading":
       return copy.boardFileReading;
     case "uploading":
-      return fill(copy.boardFileUploading, { count: progress.count, done: progress.done });
+      return progress.waiting
+        ? copy.boardFileWaiting
+        : fill(copy.boardFileUploading, { count: progress.count, done: progress.done });
   }
 }
 
@@ -81,12 +83,12 @@ function ImportStatus({
   const percent = "percent" in progress ? progress.percent : undefined;
   return (
     <div
-      className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 shadow-board-control"
+      className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 sm:max-w-xs"
       data-board-import
     >
-      <p className="truncate font-semibold">{fill(copy.boardFileImporting, { name })}</p>
+      <p className="truncate font-medium">{fill(copy.boardFileImporting, { name })}</p>
       <div
-        className="mt-1 flex items-baseline justify-between gap-2 text-foreground-secondary"
+        className="mt-1 flex items-baseline justify-between gap-2 text-xs text-foreground-secondary"
         role="status"
       >
         <span>{label}</span>
@@ -98,15 +100,10 @@ function ImportStatus({
       </div>
       <progress
         aria-label={label}
-        className="mt-2 block h-1 w-full accent-primary"
+        className="mt-1 block h-1 w-full accent-primary"
         max={100}
         value={percent}
       />
-      {progress.kind === "uploading" && progress.waiting && (
-        <p className="mt-2 text-foreground-secondary" role="status">
-          {copy.boardFileWaiting}
-        </p>
-      )}
     </div>
   );
 }

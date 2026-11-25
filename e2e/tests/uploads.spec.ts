@@ -265,6 +265,49 @@ test("a large import shows progress, explains a failed upload and can be retried
   await expectNoCspViolations(page);
 });
 
+test("the import card keeps its height when all uploads pause", async ({ page }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`${HOST}/sign-in?name=Iris`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  const permits = [Promise.withResolvers<null>(), Promise.withResolvers<null>()];
+  let uploads = 0;
+  await page.route("**/files", async (route) => {
+    const permit = permits[uploads++];
+    await permit?.promise;
+    await route.fulfill({ json: { error: "too-fast" }, status: 429 });
+  });
+
+  const title = page.getByText("Importing table.tldr", { exact: true });
+  const card = title.locator("..");
+  const count = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
+  const waiting = page.getByRole("progressbar", { name: "Upload limit reached. Retrying…" });
+  try {
+    await openTldr(page, "table.tldr");
+    await expect(count).toBeVisible();
+    const before = await card.boundingBox();
+    await reviewShot(page, "import-uploading-phone");
+
+    const first = page.waitForResponse(
+      (response) => response.url().endsWith("/files") && response.status() === 429,
+    );
+    permits[0]!.resolve(null);
+    await first;
+    await expect(count).toBeVisible();
+
+    permits[1]!.resolve(null);
+    await expect(waiting).toBeVisible();
+    const after = await card.boundingBox();
+    expect(after?.height).toBe(before?.height);
+    await reviewShot(page, "import-waiting-phone");
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await expect(waiting).toBeVisible();
+    await reviewShot(page, "import-waiting-desktop");
+  } finally {
+    for (const permit of permits) permit.resolve(null);
+  }
+});
+
 // An image's address on another board opens only with that board's files
 // cookie, which a person holds while they are on it. Pasted from another
 // board's tab, or in a .tldr that points at one, the image is copied to

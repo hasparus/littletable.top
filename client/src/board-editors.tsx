@@ -16,6 +16,7 @@ import { BoardFileHandlers } from "./board-files";
 import { BoardMainMenu, components } from "./chrome";
 import { MEDIA_PROPS } from "./file-flows";
 import { PageKeeper } from "./pages";
+import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
 import { PublicBoardIntro } from "./public-landing";
 import { type SharedView, useSharedBackdrop } from "./secret-backdrop";
@@ -39,6 +40,13 @@ function ThemeKeeper() {
 // A pasted YouTube or Figma link would become a frame onto that site, which
 // the Content-Security-Policy refuses; it stays a plain link instead.
 const SHAPE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] })];
+
+const LANDING_SHAPE_UTILS = [
+  ...SHAPE_UTILS,
+  BoardArrowShapeUtil,
+  BoardDrawShapeUtil,
+  BoardGeoShapeUtil,
+];
 
 const PUBLIC_BINDING_UTILS = [PublicArrowBindingUtil];
 
@@ -144,7 +152,7 @@ export function BoardEditors({
             onEditor(mounted);
             return () => onEditor(null);
           }}
-          shapeUtils={SHAPE_UTILS}
+          shapeUtils={landing ? LANDING_SHAPE_UTILS : SHAPE_UTILS}
           store={store}
         >
           {active && <BoardFileHandlers />}

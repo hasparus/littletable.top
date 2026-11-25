@@ -5,6 +5,33 @@
 
 @source "./";
 
+@theme {
+  --animate-collapsible-down: collapsible-down 200ms ease-out;
+  --animate-collapsible-up: collapsible-up 200ms ease-out;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+      overflow: clip;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      overflow: clip;
+    }
+  }
+
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      overflow: clip;
+    }
+    to {
+      height: 0;
+      overflow: clip;
+    }
+  }
+}
+
 :where(*) {
   -webkit-tap-highlight-color: transparent;
 }
