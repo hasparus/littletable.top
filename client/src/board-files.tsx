@@ -1,9 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import {
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
   useEditor,
-  useEvent,
   useToasts,
   useTranslation,
   useValue,
@@ -21,10 +20,11 @@ export function BoardFileHandlers() {
   const { copy, files } = useBoardUi();
   const editor = useEditor();
   const toasts = useToasts();
-  const msg = useEvent(useTranslation());
+  const msg = useTranslation();
+  const translate = useEffectEvent((id: string) => msg(id));
   useEffect(
-    () => handleFiles(editor, { copy, files, msg, toasts }),
-    [copy, editor, files, msg, toasts],
+    () => handleFiles(editor, { copy, files, msg: (id) => translate(id), toasts }),
+    [copy, editor, files, toasts],
   );
   return null;
 }
