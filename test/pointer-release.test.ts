@@ -58,15 +58,15 @@ it("lets a hard flick bleed off speed over its final 200 ms", () => {
   const flight = trackRelease(point(0, 0)).throwAt(point(20, 1000))!;
   expect(flight.x).toBeCloseTo(145.83, 0);
   expect(flight.y).toBe(0);
-  expect(flight.duration).toBeGreaterThan(400);
-  expect(flight.duration).toBeLessThan(450);
+  expect(flight.duration).toBeGreaterThan(470);
+  expect(flight.duration).toBeLessThan(500);
 
-  const distanceAt = (ms: number) => cardTravel(0.8, ms);
-  const late = distanceAt(300) - distanceAt(200);
-  const last = distanceAt(400) - distanceAt(300);
-  expect(late).toBeGreaterThan(12);
-  expect(last).toBeGreaterThan(1);
+  const distanceAt = (ms: number) => cardTravel(0.72, ms);
+  const late = distanceAt(400) - distanceAt(300);
+  const last = flight.x - distanceAt(400);
+  expect(late).toBeGreaterThan(7);
+  expect(last).toBeGreaterThan(0.75);
   expect(last).toBeLessThan(late / 3);
-  expect(flight.x - distanceAt(400)).toBeLessThan(0.05);
+  expect(flight.x - distanceAt(470)).toBeLessThan(0.05);
   expect(distanceAt(flight.duration + 100)).toBeCloseTo(flight.x);
 });

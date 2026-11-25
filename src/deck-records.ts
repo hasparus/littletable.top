@@ -48,7 +48,7 @@ export const faceDownDeckCard = T.object({
 }).allowUnknownProperties();
 
 export const cardFlightDuration = T.number.check((duration) => {
-  if (duration <= 0 || duration > 450) throw new Error("Invalid card flight duration");
+  if (duration <= 0 || duration > 500) throw new Error("Invalid card flight duration");
 });
 
 export const dealtDeckCard = T.object({

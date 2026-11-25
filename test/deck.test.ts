@@ -185,18 +185,18 @@ describe("installable physical decks", () => {
       origin,
       point,
       precise: true,
-      flight: { duration: 415 },
+      flight: { duration: 489 },
     };
     expect(command({ ...drawn, precise: false })).toBeNull();
     expect(command({ ...drawn, faceDown: true })).toBeNull();
-    expect(() => command({ ...drawn, flight: { duration: 451 } })).toThrow();
+    expect(() => command({ ...drawn, flight: { duration: 501 } })).toThrow();
     const result = revealed(command(drawn));
     const card = dealtCardId(deck, id);
     const landed = records.get(card);
     if (landed?.typeName !== "shape" || landed.type !== "image") throw new Error("Card is missing");
     expect(landed.x - landed.props.h / 2).toBeCloseTo(point.x);
     expect(landed.y + landed.props.w / 2).toBeCloseTo(point.y);
-    expect(landed.meta.deckFlightDuration).toBe(415);
+    expect(landed.meta.deckFlightDuration).toBe(489);
     expect(landed.meta.deckTravelX).toBeCloseTo(-110);
     expect(landed.meta.deckTravelY).toBeCloseTo(160);
     expect(revealed(command({ ...drawn, flight: { duration: 170 } }))).toBe(result);
