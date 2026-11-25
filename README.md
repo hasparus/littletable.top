@@ -1,11 +1,8 @@
 # Little Table
 
-Filling out forms in Roll20 felt like paperwork. My friends and I had more fun
-with a whiteboard. We'd drop in screenshots from our PDFs and draw on them
-just like on a real table.
-
-Little Table is the whiteboard I wanted for those games. It rolls dice, finds
-text in screenshots, and gives the GM a secret layer for notes.
+A shared whiteboard for tabletop RPGs, built on tldraw. You can flick a d20
+across the map to roll it again. The server picks the number. Your browser
+handles the bounce.
 
 [Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
 
