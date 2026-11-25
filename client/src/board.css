@@ -368,6 +368,11 @@
   pointer-events: none;
 }
 
+[data-chat-size] {
+  --chat-padding: calc(var(--spacing) * 2);
+  --chat-composer-radius: calc(var(--radius-2xl) - var(--chat-padding));
+}
+
 [data-chat-size="fixed"] {
   height: var(--chat-height);
   max-height: calc(100dvh - var(--board-sheet-bottom) - var(--board-top));
@@ -391,6 +396,12 @@
 @media (min-width: 40rem) {
   [data-chat-size] {
     --chat-min-width: min(16rem, calc(100dvw - 16px));
+    --chat-min-bottom: var(--sheet-keyboard-bottom, 8px);
+    --chat-available-height: var(--sheet-keyboard-height, calc(100dvh - 16px));
+    --chat-used-height: min(
+      var(--chat-height, var(--chat-measured-height, 0px)),
+      var(--chat-available-height)
+    );
     min-width: var(--chat-min-width);
     --used-chat-width: clamp(var(--chat-min-width), var(--chat-width, 24rem), calc(100dvw - 16px));
     width: var(--used-chat-width);
@@ -399,12 +410,29 @@
       var(--chat-left, calc(50% - var(--used-chat-width) / 2)),
       calc(100dvw - var(--used-chat-width) - 8px)
     );
+    bottom: clamp(
+      var(--chat-min-bottom),
+      var(--chat-bottom, 5rem),
+      calc(var(--chat-min-bottom) + var(--chat-available-height) - var(--chat-used-height))
+    );
     translate: none;
   }
 
   [data-chat-size="fixed"] {
-    bottom: clamp(8px, var(--chat-bottom, 5rem), max(8px, calc(100dvh - var(--chat-height) - 8px)));
     max-height: calc(100dvh - 16px);
+  }
+
+  [data-chat-size] > header > h2 {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+  }
+
+  [data-chat-size] > header > h2:active {
+    cursor: grabbing;
   }
 
   [data-chat-edge] {
