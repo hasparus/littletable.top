@@ -144,7 +144,9 @@ function SignedIn({
             {feedback !== null && (
               <button
                 className="btn btn-secondary min-h-11"
-                onClick={() => feedback.open({ role: "member", screen: "boards" })}
+                onClick={(event) =>
+                  feedback.open({ role: "member", screen: "boards" }, event.currentTarget)
+                }
                 type="button"
               >
                 {feedback.label}

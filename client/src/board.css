@@ -48,6 +48,17 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Radix positions an outer wrapper and computes this origin after collision
+     handling. Scale only its content so placement stays fixed during entry. */
+  [data-board-editor] :is(.tlui-menu, .tlui-popover__content)[data-side][data-state="open"] {
+    transform-origin: var(--radix-popper-transform-origin);
+    animation: surface-enter 150ms var(--surface-ease);
+  }
+
+  [data-board-editor] .tlui-dialog__content[data-state="open"] {
+    animation: surface-enter 200ms var(--surface-ease);
+  }
+
   [data-board-import-track]:not([aria-valuenow]) > div {
     animation: board-import-sweep 1.45s ease-in-out infinite alternate;
   }

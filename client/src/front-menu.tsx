@@ -28,6 +28,7 @@ export function FrontMenu({
   return (
     <details
       className="relative"
+      data-front-menu
       name="board-list-menu"
       onBlur={({ currentTarget, relatedTarget }) => {
         if (relatedTarget !== null && !currentTarget.contains(relatedTarget)) {

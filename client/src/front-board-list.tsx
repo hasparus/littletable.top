@@ -203,6 +203,7 @@ function OwnedRow({
           aria-labelledby={`confirm-${board.id}`}
           className="static mt-2 w-full rounded-xl bg-bg-secondary p-3 text-foreground"
           open
+          data-board-confirmation
           role="alertdialog"
         >
           <p id={`confirm-${board.id}`}>
