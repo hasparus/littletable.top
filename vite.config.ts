@@ -2,7 +2,7 @@ import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig, normalizePath, type Plugin } from "vite";
@@ -106,6 +106,11 @@ function tabletop(): Plugin {
       if (typeof value === "string") settings = JSON.parse(value) as ClientSettings;
     },
     configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url?.split("?")[0] === "/research/gizmos/")
+          request.url = request.url.replace("/research/gizmos/", "/research/gizmos/index.html");
+        next();
+      });
       server.middlewares.use("/manifest.webmanifest", (_request, response) => {
         response.setHeader("Content-Type", "application/manifest+json");
         response.end(manifest());
@@ -285,6 +290,63 @@ function textEngineFiles(): Plugin {
   };
 }
 
+// Only the practice table uses this local shelf. Real board installs go through the room.
+function practicePackages(): Plugin {
+  const root = new URL("gizmos/", import.meta.url);
+  const types: Record<string, string> = {
+    json: "application/json",
+    webp: "image/webp",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    avif: "image/avif",
+  };
+  function files() {
+    const assets = new Map<string, { source: URL; type: string }>();
+    const manifests: string[] = [];
+    function visit(folder: URL, prefix: string) {
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        const path = prefix + entry.name;
+        const source = new URL(entry.name + (entry.isDirectory() ? "/" : ""), folder);
+        if (entry.isDirectory()) visit(source, path + "/");
+        if (!entry.isFile()) continue;
+        const extension = entry.name.split(".").at(-1) ?? "";
+        if (extension === "json") {
+          if (!/^gizmos\/[\w-]+\/gizmo\.json$/u.test(path)) continue;
+          manifests.push("/" + path);
+        }
+        if (types[extension]) assets.set(path, { source, type: types[extension] });
+      }
+    }
+    visit(root, "gizmos/");
+    return { assets, catalog: JSON.stringify(manifests.sort()) };
+  }
+  return {
+    name: "gizmo-practice-packages",
+    configureServer(server) {
+      server.middlewares.use("/gizmos/", (request, response, next) => {
+        const path = "gizmos" + request.url?.split("?")[0];
+        const { assets, catalog } = files();
+        if (path === "gizmos/catalog.json") {
+          response.setHeader("Content-Type", types.json!);
+          response.end(catalog);
+          return;
+        }
+        const asset = assets.get(path);
+        if (!asset) return next();
+        response.setHeader("Content-Type", asset.type);
+        response.end(readFileSync(asset.source));
+      });
+    },
+    generateBundle() {
+      const { assets, catalog } = files();
+      this.emitFile({ type: "asset", fileName: "gizmos/catalog.json", source: catalog });
+      for (const [fileName, asset] of assets)
+        this.emitFile({ type: "asset", fileName, source: readFileSync(asset.source) });
+    },
+  };
+}
+
 export default defineConfig({
   build: {
     // WARNING: Keep tldraw fonts as files. The tabletop’s CSP forbids data: fonts and cross-origin fonts.
@@ -307,6 +369,7 @@ export default defineConfig({
     }),
     tailwindcss(),
     tabletop(),
+    practicePackages(),
     textEngineFiles(),
   ],
   publicDir: fileURLToPath(new URL("client/public", import.meta.url)),

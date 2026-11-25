@@ -1,0 +1,10 @@
+{
+  "manifest": {
+    "version": 1,
+    "widget": "spotlight",
+    "title": "Duet spotlight",
+    "seats": ["Ash", "Rowan"],
+    "advance": "owner"
+  },
+  "rule": "add 3\ncap 6"
+}

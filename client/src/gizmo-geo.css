@@ -1,0 +1,76 @@
+[data-gizmo-tracker] {
+  position: relative;
+}
+[data-gizmo-tracker] > svg {
+  display: block;
+  overflow: visible;
+}
+[data-tracker-seat],
+[data-tracker-join] {
+  position: absolute;
+  touch-action: manipulation;
+  cursor: pointer;
+  border: 0;
+  pointer-events: auto;
+}
+[data-tracker-seat] {
+  left: 38.46%;
+  width: 56.15%;
+  background: transparent;
+  border-radius: 6px;
+}
+[data-tracker-seat]:focus-visible,
+[data-tracker-join]:focus-visible {
+  outline: 3px solid #ffbe3d;
+  outline-offset: 1px;
+}
+[data-tracker-seat]:hover:enabled {
+  background: rgb(254 232 166 / 0.1);
+}
+[data-tracker-seat]:disabled {
+  pointer-events: none;
+}
+[data-tracker-join] {
+  left: 26%;
+  top: 55%;
+  border-radius: 100%;
+  background: #fff0be;
+  color: #3b2d18;
+  font: 700 16px/1 system-ui;
+  height: 25px;
+  width: 25px;
+}
+[data-tracker-handoff] {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+[data-gizmo-actuator] {
+  position: relative;
+}
+[data-gizmo-actuator] img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(1px 5px 3px #201b1e4d);
+}
+[data-gizmo-button] {
+  position: absolute;
+  inset: 21%;
+  border-radius: 50%;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+[data-gizmo-button]:focus-visible {
+  outline: 3px solid #ffbe3d;
+  outline-offset: 1px;
+}
+[data-gizmo-button]:active:enabled {
+  background: #33090028;
+}
+[data-gizmo-button]:disabled {
+  pointer-events: none;
+}

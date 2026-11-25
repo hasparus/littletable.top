@@ -16,7 +16,7 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
     `rm -rf .wrangler/e2e-${mode} dist-e2e/${mode}`,
     `vite build --logLevel warn --outDir "$PWD/dist-e2e/${mode}"`,
     ...setUp,
-    `exec wrangler dev --port ${port} --assets dist-e2e/${mode} --persist-to .wrangler/e2e-${mode} ${extra}`,
+    `exec wrangler dev e2e/gizmo-worker.mjs --port ${port} --assets dist-e2e/${mode} --persist-to .wrangler/e2e-${mode} ${extra}`,
   ].join(" && ");
 
 export default defineConfig({

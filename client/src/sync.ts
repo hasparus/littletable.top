@@ -43,6 +43,7 @@ export function useBoardStore({
   const { person } = keeper.bootstrap;
   const [attempt, setAttempt] = useState(0);
 
+  const [gizmoRevision, setGizmoRevision] = useState(0);
   const { receive } = rolls;
   // WARNING: useSync reconnects when this object changes, so recreating it on every render causes a loop.
   const syncOptions = useMemo(() => {
@@ -56,6 +57,7 @@ export function useBoardStore({
       assets: files.store,
       attempt,
       onCustomMessageReceived: (message: unknown) => {
+        if (message === "gizmos-changed") setGizmoRevision((value) => value + 1);
         receive(message);
         receiveChat(message);
         if (summonMessage.isValid(message)) receiveSummon(message);
@@ -78,5 +80,5 @@ export function useBoardStore({
     return () => clearTimeout(retry);
   }, [keeper, refusal]);
 
-  return { refusal, store };
+  return { refusal, store, gizmoRevision };
 }

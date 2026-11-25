@@ -1,0 +1,12 @@
+{
+  "name": "spotlight-shader-research",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "@typegpu/kit": "0.1.0",
+    "typegpu": "0.12.11"
+  }
+}

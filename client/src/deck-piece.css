@@ -1,0 +1,271 @@
+/* The scan includes the scanner bed beyond the paper. Trim that bleed before
+   rounding each physical face. Percentages follow the piece through canvas zoom. */
+:where(
+  [data-deck-stack],
+  [data-deck-card],
+  [data-deck-piece],
+  [data-deck-down],
+  [data-deck-ghost],
+  [data-gizmo-fan]
+) {
+  --deck-paper-radius: 9.6% / 5.7%;
+}
+
+:is([data-deck-stack], [data-deck-front], [data-deck-down]) .tl-image,
+[data-deck-draw] img,
+img[data-deck-top],
+[data-deck-paper],
+[data-deck-turn],
+[data-gizmo-fan] img {
+  object-view-box: inset(1.7% 3%);
+}
+
+[data-deck-stack],
+[data-deck-stack] > .tl-html-container,
+[data-deck-down],
+[data-deck-down] .tl-html-container,
+[data-deck-card],
+[data-deck-front],
+[data-deck-top],
+[data-deck-turn],
+[data-deck-paper],
+[data-gizmo-fan] img {
+  border-radius: var(--deck-paper-radius);
+}
+
+[data-deck-art] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  object-view-box: inset(1.7% 3%);
+  pointer-events: none;
+}
+
+[data-deck-card]:not([data-deck-waiting], [data-deck-turning]) > [data-deck-turn] {
+  visibility: hidden;
+}
+
+[data-deck-stack] {
+  position: relative;
+  box-shadow:
+    1px 2px #e8d8b3,
+    2px 3px #766653,
+    3px 5px #e8d8b3,
+    4px 6px #766653,
+    7px 10px 14px #36281b55;
+}
+
+[data-deck-stack][data-deck-thin] {
+  box-shadow:
+    1px 2px #e8d8b3,
+    2px 3px #766653,
+    4px 7px 11px #36281b55;
+}
+
+[data-deck-top] {
+  position: absolute;
+  z-index: 1;
+  top: -13%;
+  left: -2%;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  box-shadow:
+    0.6px 1.5px 0 #c2ac83,
+    1px 3px 5px #382d234d;
+  pointer-events: none;
+}
+[data-deck-draw] {
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+[data-deck-draw] img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+[data-deck-draw]:active {
+  cursor: grabbing;
+}
+[data-deck-draw][data-deck-lifted] {
+  opacity: 0;
+}
+[data-deck-draw]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 3px;
+}
+[data-deck-base] {
+  position: absolute;
+  inset: auto 0 0;
+  height: 13%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7%;
+  color: #443622;
+  /* The exposed strip occupies the bottom 13% of the full card. */
+  border-radius: 0 0 9.6% 9.6% / 0 0 44% 44%;
+  background: #efdfbe;
+  font:
+    600 10px/1 Georgia,
+    serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+[data-deck-base] i {
+  width: 15%;
+  height: 4px;
+  border-block: 1px solid #a69370;
+}
+[data-deck-hint] {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font:
+    500 11px/1.45 system-ui,
+    sans-serif;
+  color: #483a28;
+  background: #f6edda;
+  border-radius: 4px;
+  padding: 2px 6px;
+  pointer-events: none;
+  opacity: 0;
+}
+[data-deck-stack]:is([data-deck-full], :has([data-deck-draw]:focus-visible), :hover)
+  [data-deck-hint] {
+  opacity: 1;
+}
+[data-deck-stack]:has([data-deck-lifted], [data-deck-error]) [data-deck-hint] {
+  opacity: 0;
+}
+[data-deck-error] {
+  position: absolute;
+  inset: calc(100% + 8px) 0 auto;
+  padding: 3px;
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  color: var(--color-foreground);
+  font-size: 11px;
+}
+
+[data-deck-ghost] {
+  position: fixed;
+  z-index: 400;
+  display: block;
+  pointer-events: none;
+}
+
+[data-deck-paper] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-shadow: 0 4px 14px #36281b55;
+}
+
+[data-deck-reveal] {
+  position: absolute;
+  inset: 0;
+  background: url("./deck-sheen.webp") center / 100% 100% no-repeat;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-deck-card] {
+  position: relative;
+  transform-origin: center;
+  transform-style: preserve-3d;
+}
+
+[data-deck-front],
+[data-deck-turn] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+
+[data-deck-front] {
+  overflow: hidden;
+}
+
+[data-deck-turn] {
+  object-fit: cover;
+  transform: rotateY(180deg);
+}
+
+[data-deck-card] {
+  box-shadow:
+    0.5px 1px 0 #a08f70,
+    1px 2px 4px #35291835;
+}
+
+[data-deck-down] {
+  position: relative;
+  box-shadow:
+    0.5px 1px 0 #a08f70,
+    1px 2px 4px #35291835;
+}
+
+[data-deck-flip] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+[data-deck-flip]:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+[data-deck-waiting] :is([data-deck-front], [data-deck-to-back]) {
+  visibility: hidden;
+}
+[data-deck-waiting] :is([data-deck-turn], [data-deck-from]) {
+  transform: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-deck-waiting] {
+    transform: translate(var(--deck-travel-x, 0px), var(--deck-travel-y, 0px));
+  }
+}
+
+[data-deck-piece] {
+  position: relative;
+}
+[data-deck-flight],
+[data-deck-card],
+[data-deck-back-scene] {
+  width: 100%;
+  height: 100%;
+}
+[data-deck-back-scene] {
+  position: relative;
+  transform-style: preserve-3d;
+}
+[data-deck-to-back],
+[data-deck-from] {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--deck-paper-radius);
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+[data-deck-from] {
+  transform: rotateY(180deg);
+  pointer-events: none;
+}

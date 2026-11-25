@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Gizmos · Little Table research</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="./report.css" />
+    <link rel="stylesheet" href="./lab.css" />
+    <script type="module" src="./lab.js"></script>
+    <script type="module" src="./tarot.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#report">Skip to report</a>
+    <header class="mast">
+      <a class="brand" href="#report"
+        ><img src="/favicon.svg" width="28" height="28" alt="" /> little table</a
+      ><span>Research notebook</span>
+    </header>
+    <main id="report">
+      <div class="opening">
+        <div>
+          <p class="kicker">Gizmos · Design alternatives</p>
+          <h1>What can your table make?</h1>
+          <p class="intro">
+            At one table, changing a tracker means ticking a box. At another, it means teaching a
+            clock a house rule. At a third, it means inventing a prop nobody has seen before. Each
+            calls for a different kind of workbench. What happens when a player makes something
+            worth sharing?
+          </p>
+          <a class="cta" href="#decision">Compare three approaches ↓</a>
+        </div>
+        <figure class="model">
+          <div class="sheet-label">At tonight’s table</div>
+          <h2>The ferryman knows Sable’s real name.</h2>
+          <p>
+            Mira was due a turn, but Sable steps forward to bargain. Give Sable the moment. Can you
+            keep track of who has been waiting?
+          </p>
+          <button class="cta" id="scene-mark" type="button" disabled>Mark Sable’s moment</button>
+          <p id="scene-result" role="status">Spotlight order: Mira, Otto, Sable, Kit.</p>
+          <figcaption><a href="#experiments">Change how this tracker works ↓</a></figcaption>
+        </figure>
+      </div>
+      <nav class="contents" aria-label="In this report">
+        <a href="./contract.html">Authoring and release spec</a
+        ><a href="#starters">Official starters</a><a href="#office">tldraw office</a
+        ><a href="#decision">Alternatives</a><a href="#security">Security concerns</a
+        ><a href="#experiments">Workbench</a><a href="#field-notes">Field notes</a
+        ><a href="#precedents">Plugin models</a><a href="#agent-workshop">Agent workspaces</a>
+      </nav>
+      <section class="chapter" id="starters">
+        <header><h2>Two Gizmos worth bringing to game night</h2></header>
+        <div class="prose">
+          <p class="lead">
+            A spotlight tracker remembers who’s been waiting to speak. A tarot deck gives the next
+            person something to say. Both could come from Little Table, and a player with a house
+            rule could make either their own.
+          </p>
+          <p>
+            <strong>Spotlight tracker.</strong> Give the quiet player the next scene. Mark whoever
+            actually took the spotlight, even out of turn. A duet table might count two turns toward
+            a shared clock. <a href="#experiments">Play with the tracker</a>
+          </p>
+          <p>
+            <strong>Tarot deck.</strong> Draw a card as the ferryman names his price. The official
+            starter asks a question anyone can answer. Fork it as a player, write a question for
+            your campaign, then take the owner’s seat to try that edition. This tab simulates both
+            seats with a 22-card Major Arcana deck.
+          </p>
+          <div class="tarot" id="tarot-lab" hidden>
+            <h3 id="tarot-title">Tarot deck</h3>
+            <p id="tarot-credit">Little Table · Official starter · Edition 1</p>
+            <div class="tarot-card" aria-live="polite">
+              <strong id="tarot-face">The deck is shuffled.</strong>
+              <span id="tarot-prompt"></span>
+              <small id="tarot-count"></small>
+            </div>
+            <div class="tarot-actions">
+              <button type="button" id="tarot-draw">Draw a card</button>
+              <button type="button" id="tarot-shuffle">Reshuffle</button>
+            </div>
+            <details id="tarot-fork">
+              <summary>Fork the official deck</summary>
+              <form id="tarot-form">
+                <label for="tarot-question">Your question after each draw</label>
+                <input id="tarot-question" maxlength="140" required />
+                <button type="submit">Propose fork as player</button>
+              </form>
+            </details>
+            <div id="tarot-review" hidden>
+              <h4>Owner review</h4>
+              <p id="tarot-diff"></p>
+              <div class="tarot-actions">
+                <button type="button" id="tarot-install">Install this edition</button>
+                <button type="button" id="tarot-dismiss">Keep current deck</button>
+              </div>
+            </div>
+            <p role="status" id="tarot-status"></p>
+          </div>
+          <h3>What earns a place in the marketplace?</h3>
+          <p>
+            A link-only fork lets Mira hand her deck to a friend tonight. A curated shelf makes good
+            forks discoverable and gives Little Table a review queue. Open publishing lets strangers
+            surprise each other and calls for reporting, delisting and a way to disable a harmful
+            release. All three can carry the original creator, fork author, remix license and exact
+            parent edition.
+          </p>
+          <p>
+            Publishing should copy the definition and redistributable assets. The party’s private
+            readings, shuffle order and provider credentials belong to the session or author. An
+            owner installs a specific edition after seeing its behavior and requested access.
+            Another author publishing a revision should never silently change tonight’s game.
+          </p>
+          <p>
+            <strong>My first playtest would be a handoff.</strong> Give one player the official deck
+            and ask them to make a reading another table wants. Can that owner explain the change
+            before installing it? Do they want to pass it on after playing? That tests the reason to
+            build a marketplace while leaving its publishing model open.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="office">
+        <header><h2>What tldraw office puts inside the file</h2></header>
+        <div class="prose">
+          <p class="lead">
+            The closest example is a map with clickable dice. tldraw publishes it as a downloadable
+            document. The same file carries the drawing and the behavior that turns it into a game
+            accessory. <a href="https://office.tldraw.com/">Office example gallery</a>
+          </p>
+          <p>
+            I inspected the published tabletop archive. It contains a SQLite database, a preview
+            image and five JavaScript files. Two modules define dice shapes, one adds the grid, and
+            the entry point creates eight starter dice only where their IDs are missing. That gives
+            a returning player a concrete benefit: opening the document again needn’t scatter a
+            second set of dice across the map. This was an archive inspection. Peer synchronization
+            is part of the example brief and still needs a two-client playtest.
+            <a href="https://pub-6ce42c104372415d97d2ee86b717059f.r2.dev/tabletop-game.tldraw"
+              >Original tabletop example</a
+            >
+          </p>
+          <p>
+            Office lets a trusted external coding agent inspect and edit an open canvas. A document
+            can carry a script that runs on opening. The desktop app works with local files, and
+            tldraw also offers a self-hosted collaboration server in preview. The published gallery
+            demonstrates distribution by file. The marketplace, fork lineage and owner installation
+            described here are proposals for Little Table.
+            <a href="https://github.com/tldraw/tldraw-office/blob/main/README.md"
+              >Desktop file and trust model</a
+            >
+            · <a href="https://office.tldraw.com/">Team server and gallery</a>
+          </p>
+          <p>
+            For a shared table, the portable unit could be one Gizmo plus a sample scene. An agent
+            could draw its own controls and rehearse a turn with sample players. Installing a
+            stranger’s fork would then give it just the actions its owner approved. A public listing
+            preview could render a static image before the viewer decides to run a rehearsal.
+          </p>
+          <h3>Where does the author sign in?</h3>
+          <p>
+            <strong>Bring the agent to the draft.</strong> A player working in Claude could connect
+            to Little Table through a remote MCP connector. Little Table would authorize access to
+            one draft, accept a proposed revision and leave installation to the owner. Players could
+            also edit the same package by hand. This path adds a handoff between apps and keeps the
+            coding conversation in the author’s chosen tool.
+            <a
+              href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+              >Claude connector guide</a
+            >
+          </p>
+          <p>
+            <strong>Bring the agent into Little Table.</strong> The author could prompt beside a
+            live preview. OpenAI documents website sign-in for selected partners and a separate
+            consent for eligible ChatGPT plan usage. Its public plan flow covers open-source and
+            locally hosted clients, with an interest process for remotely hosted apps. Anthropic
+            requires prior approval to offer Claude account login or subscription limits in a
+            third-party product. A hosted workshop could instead pay for API calls and set a
+            spending limit per author. Eligibility for Little Table’s hosted service is unverified.
+            <a href="https://developers.openai.com/siwc/quickstart">ChatGPT sign-in</a> ·
+            <a href="https://developers.openai.com/siwc/token-sharing-open-source"
+              >Hosted and local availability</a
+            >
+            ·
+            <a href="https://platform.claude.com/docs/en/agent-sdk/overview"
+              >Claude Agent SDK terms for login</a
+            >
+          </p>
+          <p>
+            Each author chooses MCP publishing or the Workshop. In either path, Little Table decides
+            who can publish a fork or install it on a table. Keep the author’s model credentials
+            outside the Gizmo. Once installed, a deck draw or spotlight pass should work even after
+            the author disconnects their agent.
+            <a href="./contract.html">Read the authoring and release contract</a>.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="decision">
+        <header>
+          <p class="kicker">Open design question</p>
+          <h2>Three ways to build the ferryman’s clock</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            Suppose the ferryman wakes after two character moments. Only the GM can mark a moment,
+            but everyone can see the water rise. What should the GM be able to change when the next
+            session takes a different turn?
+          </p>
+          <h3>A. Configure a tool during play</h3>
+          <p>
+            The GM picks a first-party clock, sets its length to two, and chooses who can tick it.
+            On a phone this could take three taps. The team owns rendering, accessibility and
+            upgrades. A request to draw a different kind of prop becomes product work.
+          </p>
+          <p>
+            <strong>Security cost.</strong> Fixed controls keep the permission surface small. The
+            room still needs to reject unauthorized ticks, and reconnections must preserve the
+            correct count. <strong>First experiment.</strong> Give a GM a two-segment dial midway
+            through a scene. Watch whether they can configure it without interrupting the
+            conversation. The case for this path is strongest if several tables want the same tool
+            with different settings.
+          </p>
+          <h3>B. Fork a recipe and teach it a house rule</h3>
+          <p>
+            The GM copies a tracker and links two existing actions: mark a character moment and
+            advance the clock. An agent can edit the recipe and rehearse it with sample players. The
+            validated catalog supplies the controls. Inventing a new gesture or drawing surface
+            would require a catalog extension.
+          </p>
+          <p>
+            <strong>Security cost.</strong> A valid recipe can still request an unwanted privilege.
+            Show the owner exactly which player actions change, pin the reviewed revision, and
+            authorize each action in the room. <strong>First experiment.</strong> Try the duet
+            recipe, then ask three GMs for one variation each. Count how many they can express with
+            existing actions and how often they correctly predict the player experience.
+            <a href="#experiments">Try the recipe workbench</a>
+          </p>
+          <h3>C. Let an agent build a little application</h3>
+          <p>
+            The GM sketches a tide chart on which players place lanterns. A coding agent could build
+            the gesture, artwork and rules in a disposable workspace. A reusable blueprint lets
+            another GM take the code into their own game with fresh state. This gives unusual table
+            rituals room to become genuinely new software. It also makes Little Table responsible
+            for hosting, compatibility, recovery and resource costs.
+          </p>
+          <p>
+            <strong>Security cost.</strong> Generated code introduces an execution boundary. Give
+            the draft synthetic data and narrow bindings, meter computation and outbound access, and
+            keep a host-controlled pause and rollback path.
+            <strong>First experiment.</strong> Commission one prop that the catalog cannot express.
+            Measure authoring time, startup latency and recovery after a stalled rule before
+            offering it to a second table.
+            <a href="#agent-workshop">Cloudflare OS and coding environments</a> ·
+            <a href="#execution">Local runtime results</a>
+          </p>
+          <h3>Where I lean, and what would change it</h3>
+          <p>
+            I’d personally prototype B first
+            <em>if the question is whether owners enjoy remixing tools</em>. The duet took one
+            recipe file and yielded an observable change from both seats. That trial establishes
+            feasibility for one brief; it tells us little about demand. If the goal is helping a GM
+            keep a scene moving tonight, A has the shorter path to a useful test. If the ambition is
+            to let tables invent entirely new interfaces, C directly tests that ambition. I’d bring
+            one real house rule from your table to the next conversation and see which approach
+            gives it enough room.
+          </p>
+          <details>
+            <summary>Possible implementation for the recipe approach</summary>
+            <h3>Install and undo</h3>
+            <p>
+              On install, show the panel preview, author, definition version and actions that guests
+              may take. Store the validated definition and its digest on the table. An edited or
+              updated definition gets a new revision and an explicit owner confirmation. Preserve
+              state on compatible upgrades. Refuse incompatible updates until the owner chooses a
+              migration or reset. Pausing leaves the state intact. Removing a Gizmo removes its
+              instance from that table.
+            </p>
+            <h3>One authoritative transition</h3>
+            <p>
+              Reuse the standalone owner session and CSRF checks for installation. For play, send
+              the room a typed intent with an instance ID, expected revision and request ID. The
+              room authenticates the actor, checks the role and current definition, deduplicates
+              retries, applies one transition and broadcasts the committed revision. A stale click
+              gets the current state. Two players passing simultaneously must produce one advance
+              from the old revision. The browser role switch in the workshop is a local simulation
+              of this contract.
+            </p>
+            <h3>Keep the two rooms separate</h3>
+            <p>
+              Mount the panel beside the existing board controls. Route a public Gizmo action only
+              through the shared BoardRoom. A future GM-only Gizmo should live wholly in the owner’s
+              separate secret room. A hidden field in shared JSON still reaches everyone with the
+              shared pass. Keep player names, secret data, image URLs and room credentials out of
+              extension inputs unless an approved action explicitly requires a narrow projection.
+            </p>
+            <h3>When to expand the API</h3>
+            <p>
+              Have three GMs build a spotlight tracker and adapt it for their own table. Watch
+              whether they can predict who can press each button, fix a failed edit and recover the
+              old version. Then ask for a tool the catalog cannot express. A reusable missing action
+              argues for extending the catalog. A rule requiring genuinely novel computation is a
+              candidate for an isolated runtime.
+            </p>
+            <h3>Release gates</h3>
+            <ul>
+              <li>
+                Replaying a request after reconnect produces one state change. Concurrent stale
+                requests converge on the same revision.
+              </li>
+              <li>
+                An owner can pause a broken Gizmo and open the board normally. A guest cannot
+                install, edit or retrieve GM-only state.
+              </li>
+              <li>
+                Unknown catalog versions and malformed definitions leave the previous working
+                install in place. Measure render and action latency on a phone with several panels
+                before setting production limits.
+              </li>
+            </ul>
+          </details>
+        </div>
+      </section>
+      <section class="chapter" id="security">
+        <header>
+          <p class="kicker">Security judgment</p>
+          <h2>What could hurt a real table?</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            My main concern is an ordinary-looking Gizmo gaining the GM’s authority. A spoiler sent
+            to a player cannot be taken back. An agent can author a draft with sample data;
+            installing it and reading the secret layer are separate privileges.
+          </p>
+          <h3>A copied clock spoils the ambush</h3>
+          <p>
+            A GM shares a clock face. Its title is public, but its trigger names the hidden traitor.
+            If both fields travel to every client, hiding the trigger in the UI is too late. The
+            shared room should receive only the public projection. The private room keeps the
+            trigger. <strong>Release test:</strong> inspect a guest’s initial sync, reconnect data
+            and export. None may contain the private fixture string.
+          </p>
+          <h3>A minor update changes who can act</h3>
+          <p>
+            An agent edits a label and also broadens <code>advance</code> from owner to table. The
+            owner may miss that in a JSON diff. Pin the installed revision and display the
+            behavioral change in plain language. Bind approval to its content digest and base
+            revision. The room must check the actor on every action even if the button is disabled.
+            <strong>Release test:</strong> a guest submitting an owner action directly leaves the
+            queue untouched, and editing a reviewed draft invalidates its approval.
+          </p>
+          <h3>A broken rule stalls the session</h3>
+          <p>
+            A malformed recipe or expensive program can consume the room’s time while everyone
+            waits. Keep catalog actions bounded. If arbitrary code becomes necessary, give it a
+            separate invocation, a deadline, explicit resource limits and no ambient room
+            credentials or outbound network. The room validates the proposed result.
+            <strong>Release test:</strong> a timed-out rule leaves its last good state intact; the
+            next player can still draw and the owner can pause the Gizmo.
+          </p>
+          <p>
+            <strong>What is proven today?</strong> The tab demo demonstrates the interaction and
+            rejects unsupported rules. The local Wasm trial terminates one runaway fixture. Neither
+            establishes guest isolation across clients, safe handling of arbitrary uploads or a
+            production memory ceiling. Those are shipping gates for the corresponding capability.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="field-notes">
+        <header>
+          <p class="kicker">Field notes</p>
+          <h2>The GM screen as a workbench</h2>
+        </header>
+        <div class="prose" id="video-notes">
+          <p class="lead">
+            In <cite>Why are DM Screens Missing these?</cite>, Corkboards &amp; Curiosities builds
+            paper mechanisms for recurring decisions at the table. Reading the full public
+            transcript surfaced three requirements for a digital version.
+          </p>
+          <h3>Record who actually had a moment</h3>
+          <p>
+            The GM moves a character’s name to the back of a queue after that player gets the
+            spotlight. A checkbox can serve the same purpose. A two-mark slider can carry some
+            history into the next session. A player can have a great scene out of order, so a
+            tracker must let the GM mark that person directly. The tabletop procedure belongs to the
+            owner.
+            <a href="https://www.youtube.com/watch?v=MLX4CiTOW9M&amp;t=88s"
+              >Spotlight tracker, 1:28</a
+            >
+            · <a href="https://www.youtube.com/watch?v=MLX4CiTOW9M&amp;t=148s">Slider, 2:28</a>
+          </p>
+          <h3>Separate tracking from revealing</h3>
+          <p>
+            The GM can use a clock to follow a complicated outcome and decide whether to announce a
+            tick. Sharing a clock’s face and sharing the GM’s reasoning are different permissions.
+            In Little Table an owner could reveal a six-segment count while keeping the trigger or
+            its consequences private.
+            <a href="https://www.youtube.com/watch?v=MLX4CiTOW9M&amp;t=203s"
+              >Tension and clocks, 3:23</a
+            >
+          </p>
+          <h3>Let one tool suggest the next move</h3>
+          <p>
+            A completed clock can lead the GM to a prompt. A few words about a character’s stakes
+            help the GM choose a hook for an overlooked player. A Gizmo could suggest that hook and
+            leave the decision to the GM. The browser experiment instead couples a spotlight pass to
+            a pressure tick so the effect of editing a rule is immediately visible.
+            <a href="https://www.youtube.com/watch?v=MLX4CiTOW9M&amp;t=569s"
+              >Clock and complication, 9:29</a
+            >
+            ·
+            <a href="https://www.youtube.com/watch?v=MLX4CiTOW9M&amp;t=773s"
+              >Spotlight and stakes, 12:53</a
+            >
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="precedents">
+        <header>
+          <p class="kicker">Comparative report</p>
+          <h2>What an install gives the table</h2>
+        </header>
+        <div>
+          <p class="lead">
+            Three decisions recur across the platforms: who installs a tool, where it runs, and who
+            authorizes its effects. A single “enable mods” switch would collapse all three.
+          </p>
+          <div class="cases">
+            <article>
+              <h3>Room-level installation</h3>
+              <p>
+                Owlbear Rodeo lets a user add an extension by manifest URL and enable it per room.
+                An extension can open an iframe popover and contribute tools through the SDK.
+                Foundry separates installing a module from activating it for a game world. Its
+                modules can load JavaScript, and a GM can deactivate modules together when
+                diagnosing a broken world.
+              </p>
+              <p>
+                <strong>Borrow for Little Table</strong> Keep a library of definitions and an
+                independent install record on each table. Give the owner a way to open a board with
+                all Gizmos paused.
+              </p>
+              <p class="sources">
+                <a
+                  href="https://docs.owlbear.rodeo/extensions/tutorial-hello-world/install-your-extension/"
+                  >Owlbear installation</a
+                >
+                ·
+                <a href="https://docs.owlbear.rodeo/extensions/reference/manifest/"
+                  >Manifest reference</a
+                >
+                · <a href="https://foundryvtt.com/article/modules/">Foundry module management</a> ·
+                <a href="https://foundryvtt.com/article/module-development/">Foundry module API</a>
+              </p>
+            </article>
+            <article>
+              <h3>Host-rendered UI</h3>
+              <p>
+                Shopify checkout extensions contribute UI at named targets. The target determines
+                the available data and operations. In json-render, the application defines a catalog
+                of components and actions, then supplies their implementations through a registry. A
+                JSON description can compose a control without bringing its own DOM or rendering
+                code.
+              </p>
+              <p>
+                <strong>Borrow</strong> Start with one table-panel target and a small catalog. A
+                schema can establish that “pass” is a valid action. The table service must still
+                decide whether this particular player may invoke it.
+              </p>
+              <p class="sources">
+                <a href="https://shopify.dev/docs/api/checkout-ui-extensions/latest"
+                  >Checkout extension API</a
+                >
+                · <a href="https://json-render.dev/docs/catalog">json-render catalog</a> ·
+                <a href="https://json-render.dev/docs/registry">Registry</a>
+              </p>
+            </article>
+            <article>
+              <h3>A separate runtime</h3>
+              <p>
+                Figma gives plugin logic a sandbox with a document API and allows an optional
+                browser iframe for UI. Messages connect the two. VS Code can load declarative
+                contributions without running extension code. Web extensions execute in a browser
+                worker, where <code>fetch</code> is available. Moving work off the UI thread alone
+                does not confine its network access.
+              </p>
+              <p>
+                <strong>Borrow</strong> Treat the Gizmo's inputs and proposed actions as an explicit
+                protocol. Keep board passes, the editor object and the secret-layer store outside
+                it.
+              </p>
+              <p class="sources">
+                <a href="https://developers.figma.com/docs/plugins/how-plugins-run/"
+                  >Figma runtime</a
+                >
+                ·
+                <a href="https://code.visualstudio.com/api/extension-guides/web-extensions"
+                  >VS Code web extensions</a
+                >
+              </p>
+            </article>
+            <article>
+              <h3>Full application trust</h3>
+              <p>
+                Obsidian asks the user to leave Restricted Mode to run community plugins. An enabled
+                plugin has the app’s access, including files and the network. A personal vault has a
+                single decision-maker. At a shared table the installer can invite people who have
+                never inspected the extension.
+              </p>
+              <p>
+                <strong>Decision</strong> An owner's installation should grant capabilities on that
+                table. Guests should not have to run code with access to their browser session to
+                sit down and play.
+              </p>
+              <p class="sources">
+                <a href="https://obsidian.md/help/plugin-security">Obsidian plugin security</a>
+              </p>
+            </article>
+            <article>
+              <h3>Hosted user code</h3>
+              <p>
+                Cloudflare Dynamic Workers can execute developer-supplied code with explicit service
+                bindings, network egress policy and CPU and subrequest limits. An isolate with the
+                host's default network policy may still make outbound requests. Cloudflare also
+                distinguishes local Miniflare development from hardened execution.
+              </p>
+              <p>
+                <strong>Later experiment</strong> Start an isolated invocation with no outbound
+                network and only a frozen projection of one Gizmo’s state. Accept a small, validated
+                proposal in return. Measure cold start, invocation cost and termination under load
+                before choosing a service.
+              </p>
+              <p class="sources">
+                <a href="https://developers.cloudflare.com/dynamic-workers/api-reference/"
+                  >Dynamic Workers API</a
+                >
+                ·
+                <a href="https://developers.cloudflare.com/dynamic-workers/usage/egress-control/"
+                  >Egress control</a
+                >
+                ·
+                <a href="https://developers.cloudflare.com/dynamic-workers/usage/limits/"
+                  >Resource limits</a
+                >
+                ·
+                <a
+                  href="https://developers.cloudflare.com/dynamic-workers/examples/dynamic-workers-starter/"
+                  >Local development caveat</a
+                >
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="chapter" id="agent-workshop">
+        <header>
+          <p class="kicker">Authoring environments</p>
+          <h2>Ask the table to change</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            A GM should be able to point at a working Gizmo and describe how tonight’s table plays.
+            The agent needs a copy it can edit, a table it can rehearse on, and a way to hand the
+            result back to the owner.
+          </p>
+          <h3>Cloudflare OS makes the application itself editable</h3>
+          <p>
+            Cloudflare OS treats a Gadget as a shareable application backed by a Durable Object. Its
+            coding agent builds and tests Gadgets. Sharing a Blueprint lets someone take a copy of
+            the code and change it independently. Gatekeepers mediate access to specific external
+            resources and can simulate side effects for review. This offers two distinct Little
+            Table interactions: invite a player to tonight’s tracker, or give another GM a recipe
+            they can fork with a fresh roster and empty clock.
+            <a href="https://github.com/cloudflare/cloudflare-os">Cloudflare OS architecture</a>
+          </p>
+          <h3>Where a coding agent works</h3>
+          <p>
+            E2B exposes a Linux VM lifecycle for agents, including pause, resume and termination.
+            That is useful for running a compiler, package tools or browser tests across several
+            authoring sessions. Cloudflare OS can also connect an existing GitHub repository. A
+            repository-backed workflow gives maintainers a diff and review history. A GM at the
+            table needs a working preview and a readable account of what changed. Both can refer to
+            the same immutable revision.
+            <a href="https://e2b.dev/sandbox">E2B sandbox lifecycle</a> ·
+            <a href="https://blog.cloudflare.com/managed-cloudflare-os/"
+              >Repository-backed work in Cloudflare OS</a
+            >
+          </p>
+          <h3>A workshop for one Gizmo</h3>
+          <ol>
+            <li>
+              <strong>Fork.</strong> Copy the installed definition and rule into a private draft.
+              Give the agent the catalog, its version and synthetic player data. Keep the live room
+              token and GM notes outside the workspace.
+            </li>
+            <li>
+              <strong>Rehearse.</strong> Let the agent edit files, run acceptance tests and render
+              the draft in a disposable table. Run one trace as the owner and one as a player. A
+              rejected edit should leave the game in progress.
+            </li>
+            <li>
+              <strong>Adopt.</strong> Show the behavioral diff, requested permissions and any state
+              migration. The owner can apply that exact revision, discard it or keep it as a
+              separate Gizmo. Changing a running instance should require a matching base revision.
+            </li>
+          </ol>
+          <p>
+            <strong>Build choice.</strong> The manifest editor and a disposable preview are
+            sufficient for catalog-backed tools. Add a resumable coding VM when authors need
+            third-party build tools or multi-file projects. A table can continue playing an
+            installed revision after the authoring VM shuts down. Guest actions still go through the
+            room’s authorization checks.
+          </p>
+          <h3>Authoring trial: a two-player session</h3>
+          <p>
+            We gave a coding agent the working tracker and this brief: “Prep this tracker for a duet
+            with Ash and Rowan. Only I can mark moments. Two marks should fill the pressure track.”
+            The deliverable is a two-seat manifest with owner-only controls and a rule adding three
+            segments per mark. A saved
+            <a
+              href="https://github.com/hasparus/littletable.top/blob/b62c0d4dc21800ee4c4a3cf4c04d31b6feacb2b0/scripts/gizmos-research/duet.json"
+              >duet recipe</a
+            >
+            makes the candidate revision inspectable.
+          </p>
+          <p id="duet-observation">
+            In Chromium, an attempted player mark left both the queue and pressure unchanged. The
+            owner marked Ash and pressure rose to 3 of 6. Marking Rowan filled the clock and
+            restored the original queue order. Only the recipe changed. We ran this trial in the
+            project coding environment with sample data. It tests the authoring workflow; it does
+            not benchmark Cloudflare OS or E2B.
+          </p>
+        </div>
+      </section>
+      <section class="workshop" id="experiments">
+        <header>
+          <p class="kicker">Interactive experiments</p>
+          <h2>Try a table of your own</h2>
+          <p>
+            Edit the tool, install it, then take a player’s seat. Changes live in this tab for this
+            session.
+          </p>
+        </header>
+        <div id="gizmo-lab"></div>
+        <details class="lab-findings">
+          <summary>What the browser experiments showed</summary>
+          <p>
+            Marking Kit in the middle of the queue moved only Kit to the back. Installing an
+            owner-only manifest disabled the player's pass action. An unsupported rule produced a
+            validation error and the previous working rule still ran. These checks establish the
+            editing and recovery behavior in a single tab. The implementation proposal describes the
+            next tests for multi-client authorization and persistence.
+          </p>
+        </details>
+        <noscript
+          >The experiments require JavaScript. The reports and implementation proposal can be read
+          without it.</noscript
+        >
+      </section>
+      <section class="chapter" id="execution">
+        <header>
+          <p class="kicker">Execution experiment</p>
+          <h2>What can a rule actually do?</h2>
+        </header>
+        <div class="prose" id="runtime-notes">
+          <p class="lead">
+            A third experiment runs compiled WebAssembly in a fresh Node worker. The module receives
+            one integer and returns a proposed next value for a six-segment clock. The host decides
+            whether to accept it.
+          </p>
+          <pre><code>node scripts/gizmos-research/clock-wasm.mjs</code></pre>
+          <p>
+            <strong>Observed in the local run.</strong> The increment rule proposed 4 from 3. From 6
+            the same rule proposed 7 and the host rejected it. A fixture requesting an import was
+            denied, as was a module declaring private linear memory. The host terminated a
+            non-returning fixture at its 1.5-second wall-clock deadline.
+          </p>
+          <p>
+            This fixture runner accepts a deliberately narrow subset of Wasm, limits modules to 512
+            bytes and contains no upload endpoint. Startup and compilation count toward its
+            approximate deadline. Node worker threads share a process and do not establish a hard
+            memory ceiling for each tenant. Before opening execution to third-party code, repeat
+            this test in a hardened service with measured resource limits, versioned inputs and
+            server-side action authorization.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer>Little Table · Gizmo research notebook <a href="#report">Back to top ↑</a></footer>
+  </body>
+</html>

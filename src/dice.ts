@@ -2,6 +2,7 @@ import type { DiceLaunch } from "./dice-notation";
 
 import { DIE_SIDES, MAX_DICE } from "./limits";
 
+export { rollDie } from "./roll-die";
 export type { Roll } from "./dice-notation";
 
 export function parsePool(body: unknown): number[] | null {
@@ -17,15 +18,6 @@ export function parseLaunch(value: unknown): DiceLaunch | null {
   if (typeof value !== "object" || value === null) return null;
   const { vx, vz, x, z } = value as Partial<DiceLaunch>;
   return fraction(vx) && fraction(vz) && fraction(x) && fraction(z) ? { vx, vz, x, z } : null;
-}
-
-// WARNING: A plain modulo would bias rolls toward the low faces.
-export function rollDie(sides: number): number {
-  const limit = 2 ** 32 - (2 ** 32 % sides);
-  const draw = new Uint32Array(1);
-  do crypto.getRandomValues(draw);
-  while (draw[0]! >= limit);
-  return (draw[0]! % sides) + 1;
 }
 
 /** Draws an animation seed independently of the dice values. */

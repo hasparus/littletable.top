@@ -186,7 +186,7 @@ function PlaceMenuItems() {
 }
 
 export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
-  const { exit, person } = useBoardUi();
+  const { canPlaceGizmos, copy, exit, open, person } = useBoardUi();
   const feedback = useFeedback();
   const editor = useEditor();
   return (
@@ -199,6 +199,11 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
             label={exit.label}
             onSelect={() => location.assign(exit.href)}
           />
+        </TldrawUiMenuGroup>
+      )}
+      {canPlaceGizmos && (
+        <TldrawUiMenuGroup id="board-gizmos">
+          <TldrawUiMenuItem id="open-gizmos" label={copy.gizmos} onSelect={() => open("gizmos")} />
         </TldrawUiMenuGroup>
       )}
       <BoardFileMenuItems />

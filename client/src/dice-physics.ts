@@ -18,6 +18,9 @@ import {
   type Vec,
 } from "./dice-math";
 import { type DieKind, solid, type Solid } from "./dice-solids";
+import { advancePhysicsFrame, DT, fallingSpeed, FPS, reboundSpeed } from "./table-physics";
+
+export { FPS } from "./table-physics";
 
 /** Tray width in die units. X goes across the screen, z goes down, and y goes up. */
 export const TRAY_WIDTH = 10;
@@ -25,19 +28,13 @@ export const TRAY_DEPTH = 14;
 export const FLICK_REACH_X = TRAY_WIDTH / 2 - 1.3;
 export const FLICK_REACH_Z = TRAY_DEPTH / 2 - 1.3;
 export const FLICK_SPEED = 16;
-export const FPS = 60;
 /** Numbers per frame per die in order x, y, z, qx, qy, qz, qw. */
 export const FRAME_STRIDE = 7;
 
-const SUBSTEPS = 4;
-const DT = 1 / (FPS * SUBSTEPS);
-const GRAVITY = 70;
 const ITERATIONS = 8;
 const FLOOR_FRICTION = 0.45;
 const PRESSED_FRICTION = 0.06;
-const RESTITUTION = 0.32;
 const DICE_RESTITUTION = 0.4;
-const BOUNCE_MIN = 1.2;
 const SLOP = 0.005;
 const BAUMGARTE = 0.25;
 // WARNING: Use literal damping factors per substep. Math.pow can vary across engines.
@@ -188,7 +185,7 @@ function floorContacts(body: Body, index: number, contacts: Contact[]) {
       friction: [0, 0, 0],
       impulse: 0,
       normal: UP,
-      target: speed < -BOUNCE_MIN ? -RESTITUTION * speed : 0,
+      target: reboundSpeed(speed),
     });
     return;
   }
@@ -207,7 +204,7 @@ function floorContacts(body: Body, index: number, contacts: Contact[]) {
       friction: [0, 0, 0],
       impulse: 0,
       normal: UP,
-      target: speed < -BOUNCE_MIN ? -RESTITUTION * speed : 0,
+      target: reboundSpeed(speed),
     });
   }
 }
@@ -225,7 +222,7 @@ function wallContacts(body: Body, index: number, contacts: Contact[]) {
       friction: [0, 0, 0],
       impulse: 0,
       normal: wall.normal,
-      target: speed < -BOUNCE_MIN ? -RESTITUTION * speed : 0,
+      target: reboundSpeed(speed),
     });
   }
 }
@@ -256,7 +253,7 @@ function pairsOf(bodies: Body[]): Pair[] {
         depth,
         impulse: 0,
         normal,
-        target: speed < -BOUNCE_MIN ? -DICE_RESTITUTION * speed : 0,
+        target: reboundSpeed(speed, DICE_RESTITUTION),
       });
     }
   return pairs;
@@ -306,7 +303,7 @@ function step(bodies: Body[]) {
   const contacts: Contact[] = [];
   for (const [index, body] of bodies.entries()) {
     if (body.asleep) continue;
-    body.velocity[1] -= GRAVITY * DT;
+    body.velocity[1] = fallingSpeed(body.velocity[1]);
     wallContacts(body, index, contacts);
     floorContacts(body, index, contacts);
   }
@@ -368,6 +365,7 @@ export type Simulation = {
 /** Pausing at different deadlines produces the same recorded frames. */
 export function simulation(kinds: DieKind[], seed: number, launch?: DiceLaunch): Simulation {
   const bodies = spawn(kinds, seed);
+  const stepBodies = () => step(bodies);
   const die = bodies[0];
   if (launch !== undefined && bodies.length === 1 && die !== undefined) {
     die.position = [launch.x * FLICK_REACH_X, die.sphere + 0.9, launch.z * FLICK_REACH_Z];
@@ -405,7 +403,7 @@ export function simulation(kinds: DieKind[], seed: number, launch?: DiceLaunch):
     advance(deadline) {
       while (!done) {
         frame += 1;
-        for (let k = 0; k < SUBSTEPS; k += 1) step(bodies);
+        advancePhysicsFrame(stepBodies);
         record();
         if (bodies.every((body) => body.asleep)) settledAt = frame / FPS;
         if (bodies.every((body) => body.asleep) || frame >= cap) finish();

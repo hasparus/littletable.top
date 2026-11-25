@@ -1,0 +1,718 @@
+{
+  "version": 1,
+  "kind": "deck",
+  "name": {
+    "en": "Tarot deck",
+    "pl": "Talia tarota"
+  },
+  "preview": "art/back.webp",
+  "width": 86,
+  "height": 148,
+  "back": "art/back.webp",
+  "backWidth": 371,
+  "cardHeight": 640,
+  "cards": [
+    {
+      "id": "major-00",
+      "name": {
+        "en": "The Fool",
+        "pl": "Głupiec"
+      },
+      "width": 369,
+      "src": "art/major-00.webp"
+    },
+    {
+      "id": "major-01",
+      "name": {
+        "en": "The Magician",
+        "pl": "Mag"
+      },
+      "width": 380,
+      "src": "art/major-01.webp"
+    },
+    {
+      "id": "major-02",
+      "name": {
+        "en": "The High Priestess",
+        "pl": "Kapłanka"
+      },
+      "width": 361,
+      "src": "art/major-02.webp"
+    },
+    {
+      "id": "major-03",
+      "name": {
+        "en": "The Empress",
+        "pl": "Cesarzowa"
+      },
+      "width": 378,
+      "src": "art/major-03.webp"
+    },
+    {
+      "id": "major-04",
+      "name": {
+        "en": "The Emperor",
+        "pl": "Cesarz"
+      },
+      "width": 369,
+      "src": "art/major-04.webp"
+    },
+    {
+      "id": "major-05",
+      "name": {
+        "en": "The Hierophant",
+        "pl": "Kapłan"
+      },
+      "width": 376,
+      "src": "art/major-05.webp"
+    },
+    {
+      "id": "major-06",
+      "name": {
+        "en": "The Lovers",
+        "pl": "Kochankowie"
+      },
+      "width": 364,
+      "src": "art/major-06.webp"
+    },
+    {
+      "id": "major-07",
+      "name": {
+        "en": "The Chariot",
+        "pl": "Rydwan"
+      },
+      "width": 372,
+      "src": "art/major-07.webp"
+    },
+    {
+      "id": "major-08",
+      "name": {
+        "en": "Strength",
+        "pl": "Siła"
+      },
+      "width": 370,
+      "src": "art/major-08.webp"
+    },
+    {
+      "id": "major-09",
+      "name": {
+        "en": "The Hermit",
+        "pl": "Pustelnik"
+      },
+      "width": 378,
+      "src": "art/major-09.webp"
+    },
+    {
+      "id": "major-10",
+      "name": {
+        "en": "Wheel of Fortune",
+        "pl": "Koło Fortuny"
+      },
+      "width": 363,
+      "src": "art/major-10.webp"
+    },
+    {
+      "id": "major-11",
+      "name": {
+        "en": "Justice",
+        "pl": "Sprawiedliwość"
+      },
+      "width": 368,
+      "src": "art/major-11.webp"
+    },
+    {
+      "id": "major-12",
+      "name": {
+        "en": "The Hanged Man",
+        "pl": "Wisielec"
+      },
+      "width": 365,
+      "src": "art/major-12.webp"
+    },
+    {
+      "id": "major-13",
+      "name": {
+        "en": "Death",
+        "pl": "Śmierć"
+      },
+      "width": 373,
+      "src": "art/major-13.webp"
+    },
+    {
+      "id": "major-14",
+      "name": {
+        "en": "Temperance",
+        "pl": "Umiarkowanie"
+      },
+      "width": 369,
+      "src": "art/major-14.webp"
+    },
+    {
+      "id": "major-15",
+      "name": {
+        "en": "The Devil",
+        "pl": "Diabeł"
+      },
+      "width": 374,
+      "src": "art/major-15.webp"
+    },
+    {
+      "id": "major-16",
+      "name": {
+        "en": "The Tower",
+        "pl": "Wieża"
+      },
+      "width": 366,
+      "src": "art/major-16.webp"
+    },
+    {
+      "id": "major-17",
+      "name": {
+        "en": "The Star",
+        "pl": "Gwiazda"
+      },
+      "width": 378,
+      "src": "art/major-17.webp"
+    },
+    {
+      "id": "major-18",
+      "name": {
+        "en": "The Moon",
+        "pl": "Księżyc"
+      },
+      "width": 362,
+      "src": "art/major-18.webp"
+    },
+    {
+      "id": "major-19",
+      "name": {
+        "en": "The Sun",
+        "pl": "Słońce"
+      },
+      "width": 372,
+      "src": "art/major-19.webp"
+    },
+    {
+      "id": "major-20",
+      "name": {
+        "en": "Judgement",
+        "pl": "Sąd Ostateczny"
+      },
+      "width": 375,
+      "src": "art/major-20.webp"
+    },
+    {
+      "id": "major-21",
+      "name": {
+        "en": "The World",
+        "pl": "Świat"
+      },
+      "width": 376,
+      "src": "art/major-21.webp"
+    },
+    {
+      "id": "cups-01",
+      "name": {
+        "en": "Ace of Cups",
+        "pl": "As Kielichów"
+      },
+      "width": 368,
+      "src": "art/cups-01.webp"
+    },
+    {
+      "id": "cups-02",
+      "name": {
+        "en": "Two of Cups",
+        "pl": "Dwójka Kielichów"
+      },
+      "width": 377,
+      "src": "art/cups-02.webp"
+    },
+    {
+      "id": "cups-03",
+      "name": {
+        "en": "Three of Cups",
+        "pl": "Trójka Kielichów"
+      },
+      "width": 362,
+      "src": "art/cups-03.webp"
+    },
+    {
+      "id": "cups-04",
+      "name": {
+        "en": "Four of Cups",
+        "pl": "Czwórka Kielichów"
+      },
+      "width": 375,
+      "src": "art/cups-04.webp"
+    },
+    {
+      "id": "cups-05",
+      "name": {
+        "en": "Five of Cups",
+        "pl": "Piątka Kielichów"
+      },
+      "width": 366,
+      "src": "art/cups-05.webp"
+    },
+    {
+      "id": "cups-06",
+      "name": {
+        "en": "Six of Cups",
+        "pl": "Szóstka Kielichów"
+      },
+      "width": 375,
+      "src": "art/cups-06.webp"
+    },
+    {
+      "id": "cups-07",
+      "name": {
+        "en": "Seven of Cups",
+        "pl": "Siódemka Kielichów"
+      },
+      "width": 360,
+      "src": "art/cups-07.webp"
+    },
+    {
+      "id": "cups-08",
+      "name": {
+        "en": "Eight of Cups",
+        "pl": "Ósemka Kielichów"
+      },
+      "width": 369,
+      "src": "art/cups-08.webp"
+    },
+    {
+      "id": "cups-09",
+      "name": {
+        "en": "Nine of Cups",
+        "pl": "Dziewiątka Kielichów"
+      },
+      "width": 368,
+      "src": "art/cups-09.webp"
+    },
+    {
+      "id": "cups-10",
+      "name": {
+        "en": "Ten of Cups",
+        "pl": "Dziesiątka Kielichów"
+      },
+      "width": 379,
+      "src": "art/cups-10.webp"
+    },
+    {
+      "id": "cups-11",
+      "name": {
+        "en": "Page of Cups",
+        "pl": "Paź Kielichów"
+      },
+      "width": 364,
+      "src": "art/cups-11.webp"
+    },
+    {
+      "id": "cups-12",
+      "name": {
+        "en": "Knight of Cups",
+        "pl": "Rycerz Kielichów"
+      },
+      "width": 373,
+      "src": "art/cups-12.webp"
+    },
+    {
+      "id": "cups-13",
+      "name": {
+        "en": "Queen of Cups",
+        "pl": "Królowa Kielichów"
+      },
+      "width": 368,
+      "src": "art/cups-13.webp"
+    },
+    {
+      "id": "cups-14",
+      "name": {
+        "en": "King of Cups",
+        "pl": "Król Kielichów"
+      },
+      "width": 377,
+      "src": "art/cups-14.webp"
+    },
+    {
+      "id": "pentacles-01",
+      "name": {
+        "en": "Ace of Pentacles",
+        "pl": "As Pentakli"
+      },
+      "width": 368,
+      "src": "art/pentacles-01.webp"
+    },
+    {
+      "id": "pentacles-02",
+      "name": {
+        "en": "Two of Pentacles",
+        "pl": "Dwójka Pentakli"
+      },
+      "width": 375,
+      "src": "art/pentacles-02.webp"
+    },
+    {
+      "id": "pentacles-03",
+      "name": {
+        "en": "Three of Pentacles",
+        "pl": "Trójka Pentakli"
+      },
+      "width": 362,
+      "src": "art/pentacles-03.webp"
+    },
+    {
+      "id": "pentacles-04",
+      "name": {
+        "en": "Four of Pentacles",
+        "pl": "Czwórka Pentakli"
+      },
+      "width": 372,
+      "src": "art/pentacles-04.webp"
+    },
+    {
+      "id": "pentacles-05",
+      "name": {
+        "en": "Five of Pentacles",
+        "pl": "Piątka Pentakli"
+      },
+      "width": 373,
+      "src": "art/pentacles-05.webp"
+    },
+    {
+      "id": "pentacles-06",
+      "name": {
+        "en": "Six of Pentacles",
+        "pl": "Szóstka Pentakli"
+      },
+      "width": 380,
+      "src": "art/pentacles-06.webp"
+    },
+    {
+      "id": "pentacles-07",
+      "name": {
+        "en": "Seven of Pentacles",
+        "pl": "Siódemka Pentakli"
+      },
+      "width": 363,
+      "src": "art/pentacles-07.webp"
+    },
+    {
+      "id": "pentacles-08",
+      "name": {
+        "en": "Eight of Pentacles",
+        "pl": "Ósemka Pentakli"
+      },
+      "width": 370,
+      "src": "art/pentacles-08.webp"
+    },
+    {
+      "id": "pentacles-09",
+      "name": {
+        "en": "Nine of Pentacles",
+        "pl": "Dziewiątka Pentakli"
+      },
+      "width": 368,
+      "src": "art/pentacles-09.webp"
+    },
+    {
+      "id": "pentacles-10",
+      "name": {
+        "en": "Ten of Pentacles",
+        "pl": "Dziesiątka Pentakli"
+      },
+      "width": 372,
+      "src": "art/pentacles-10.webp"
+    },
+    {
+      "id": "pentacles-11",
+      "name": {
+        "en": "Page of Pentacles",
+        "pl": "Paź Pentakli"
+      },
+      "width": 363,
+      "src": "art/pentacles-11.webp"
+    },
+    {
+      "id": "pentacles-12",
+      "name": {
+        "en": "Knight of Pentacles",
+        "pl": "Rycerz Pentakli"
+      },
+      "width": 375,
+      "src": "art/pentacles-12.webp"
+    },
+    {
+      "id": "pentacles-13",
+      "name": {
+        "en": "Queen of Pentacles",
+        "pl": "Królowa Pentakli"
+      },
+      "width": 369,
+      "src": "art/pentacles-13.webp"
+    },
+    {
+      "id": "pentacles-14",
+      "name": {
+        "en": "King of Pentacles",
+        "pl": "Król Pentakli"
+      },
+      "width": 378,
+      "src": "art/pentacles-14.webp"
+    },
+    {
+      "id": "swords-01",
+      "name": {
+        "en": "Ace of Swords",
+        "pl": "As Mieczy"
+      },
+      "width": 366,
+      "src": "art/swords-01.webp"
+    },
+    {
+      "id": "swords-02",
+      "name": {
+        "en": "Two of Swords",
+        "pl": "Dwójka Mieczy"
+      },
+      "width": 375,
+      "src": "art/swords-02.webp"
+    },
+    {
+      "id": "swords-03",
+      "name": {
+        "en": "Three of Swords",
+        "pl": "Trójka Mieczy"
+      },
+      "width": 369,
+      "src": "art/swords-03.webp"
+    },
+    {
+      "id": "swords-04",
+      "name": {
+        "en": "Four of Swords",
+        "pl": "Czwórka Mieczy"
+      },
+      "width": 376,
+      "src": "art/swords-04.webp"
+    },
+    {
+      "id": "swords-05",
+      "name": {
+        "en": "Five of Swords",
+        "pl": "Piątka Mieczy"
+      },
+      "width": 364,
+      "src": "art/swords-05.webp"
+    },
+    {
+      "id": "swords-06",
+      "name": {
+        "en": "Six of Swords",
+        "pl": "Szóstka Mieczy"
+      },
+      "width": 374,
+      "src": "art/swords-06.webp"
+    },
+    {
+      "id": "swords-07",
+      "name": {
+        "en": "Seven of Swords",
+        "pl": "Siódemka Mieczy"
+      },
+      "width": 364,
+      "src": "art/swords-07.webp"
+    },
+    {
+      "id": "swords-08",
+      "name": {
+        "en": "Eight of Swords",
+        "pl": "Ósemka Mieczy"
+      },
+      "width": 376,
+      "src": "art/swords-08.webp"
+    },
+    {
+      "id": "swords-09",
+      "name": {
+        "en": "Nine of Swords",
+        "pl": "Dziewiątka Mieczy"
+      },
+      "width": 360,
+      "src": "art/swords-09.webp"
+    },
+    {
+      "id": "swords-10",
+      "name": {
+        "en": "Ten of Swords",
+        "pl": "Dziesiątka Mieczy"
+      },
+      "width": 373,
+      "src": "art/swords-10.webp"
+    },
+    {
+      "id": "swords-11",
+      "name": {
+        "en": "Page of Swords",
+        "pl": "Paź Mieczy"
+      },
+      "width": 366,
+      "src": "art/swords-11.webp"
+    },
+    {
+      "id": "swords-12",
+      "name": {
+        "en": "Knight of Swords",
+        "pl": "Rycerz Mieczy"
+      },
+      "width": 378,
+      "src": "art/swords-12.webp"
+    },
+    {
+      "id": "swords-13",
+      "name": {
+        "en": "Queen of Swords",
+        "pl": "Królowa Mieczy"
+      },
+      "width": 361,
+      "src": "art/swords-13.webp"
+    },
+    {
+      "id": "swords-14",
+      "name": {
+        "en": "King of Swords",
+        "pl": "Król Mieczy"
+      },
+      "width": 375,
+      "src": "art/swords-14.webp"
+    },
+    {
+      "id": "wands-01",
+      "name": {
+        "en": "Ace of Wands",
+        "pl": "As Buław"
+      },
+      "width": 360,
+      "src": "art/wands-01.webp"
+    },
+    {
+      "id": "wands-02",
+      "name": {
+        "en": "Two of Wands",
+        "pl": "Dwójka Buław"
+      },
+      "width": 376,
+      "src": "art/wands-02.webp"
+    },
+    {
+      "id": "wands-03",
+      "name": {
+        "en": "Three of Wands",
+        "pl": "Trójka Buław"
+      },
+      "width": 369,
+      "src": "art/wands-03.webp"
+    },
+    {
+      "id": "wands-04",
+      "name": {
+        "en": "Four of Wands",
+        "pl": "Czwórka Buław"
+      },
+      "width": 375,
+      "src": "art/wands-04.webp"
+    },
+    {
+      "id": "wands-05",
+      "name": {
+        "en": "Five of Wands",
+        "pl": "Piątka Buław"
+      },
+      "width": 363,
+      "src": "art/wands-05.webp"
+    },
+    {
+      "id": "wands-06",
+      "name": {
+        "en": "Six of Wands",
+        "pl": "Szóstka Buław"
+      },
+      "width": 373,
+      "src": "art/wands-06.webp"
+    },
+    {
+      "id": "wands-07",
+      "name": {
+        "en": "Seven of Wands",
+        "pl": "Siódemka Buław"
+      },
+      "width": 369,
+      "src": "art/wands-07.webp"
+    },
+    {
+      "id": "wands-08",
+      "name": {
+        "en": "Eight of Wands",
+        "pl": "Ósemka Buław"
+      },
+      "width": 377,
+      "src": "art/wands-08.webp"
+    },
+    {
+      "id": "wands-09",
+      "name": {
+        "en": "Nine of Wands",
+        "pl": "Dziewiątka Buław"
+      },
+      "width": 366,
+      "src": "art/wands-09.webp"
+    },
+    {
+      "id": "wands-10",
+      "name": {
+        "en": "Ten of Wands",
+        "pl": "Dziesiątka Buław"
+      },
+      "width": 373,
+      "src": "art/wands-10.webp"
+    },
+    {
+      "id": "wands-11",
+      "name": {
+        "en": "Page of Wands",
+        "pl": "Paź Buław"
+      },
+      "width": 369,
+      "src": "art/wands-11.webp"
+    },
+    {
+      "id": "wands-12",
+      "name": {
+        "en": "Knight of Wands",
+        "pl": "Rycerz Buław"
+      },
+      "width": 377,
+      "src": "art/wands-12.webp"
+    },
+    {
+      "id": "wands-13",
+      "name": {
+        "en": "Queen of Wands",
+        "pl": "Królowa Buław"
+      },
+      "width": 364,
+      "src": "art/wands-13.webp"
+    },
+    {
+      "id": "wands-14",
+      "name": {
+        "en": "King of Wands",
+        "pl": "Król Buław"
+      },
+      "width": 378,
+      "src": "art/wands-14.webp"
+    }
+  ]
+}
