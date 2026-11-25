@@ -305,7 +305,7 @@ function withExtraPages(extra: number): Buffer {
 async function openTldrBytes(page: Page, buffer: Buffer): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("main-menu.button").click();
-  await page.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  await page.getByRole("menuitem", { name: "Import a .tldr file…" }).click();
   const picker = await chooser;
   await picker.setFiles({ buffer, mimeType: "", name: "many.tldr" });
 }

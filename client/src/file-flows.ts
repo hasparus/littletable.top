@@ -2,7 +2,13 @@ import { defaultHandleExternalFileContent, type Editor, type TLUiToastsContextTy
 
 import type { Copy } from "./copy";
 
-import { type BoardFiles, bringImagesOver, keepLinksPlain, type UploadRefusal } from "./assets";
+import {
+  type BoardFiles,
+  bringImagesOver,
+  keepLinksPlain,
+  type UploadRefusal,
+  UploadRefused,
+} from "./assets";
 import { fill } from "./copy";
 import { fitForUpload, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from "./images";
 import { exportTldr, ImportRefused, importTldr, isTldrFile, MAX_TLDR_BYTES } from "./tldr";
@@ -46,46 +52,79 @@ function problemText(copy: Copy, refused: ImportRefused, max: number): string {
   switch (refused.problem) {
     case "damaged":
       return copy.boardFileDamaged;
+    case "damaged-image":
+      return fill(copy.boardFileDamagedImage, { name: refused.image ?? "" });
+    case "failed":
+      return copy.boardFileImportFailed;
     case "images":
-      return copy.boardFileImagesFailed;
+      return fill(copy.boardFileImageFailed, {
+        name: refused.image ?? "",
+        reason: refusalText(
+          copy,
+          refused.cause instanceof UploadRefused ? refused.cause.reason : "failed",
+        ),
+      });
+    case "legacy":
+      return copy.boardFileLegacy;
     case "not-tldraw":
       return copy.boardFileNotTldraw;
+    case "readonly":
+      return copy.boardFileReadOnly;
     case "too-large":
       return fill(copy.boardFileTooLarge, { size: megabytes(MAX_TLDR_BYTES) });
     case "too-many-pages":
       return fill(copy.boardFileTooManyPages, { max, room: refused.room });
     case "too-new":
       return copy.boardFileTooNew;
+    case "unreadable":
+      return copy.boardFileUnreadable;
   }
 }
 
 export type FileFlow = { copy: Copy; files: BoardFiles; toasts: TLUiToastsContextType };
 
-export async function openTldr(
+const IMPORT_RESULT = "board-file-import-result";
+
+async function importBoardFile(
   editor: Editor,
   file: File,
   { copy, files, toasts }: FileFlow,
 ): Promise<void> {
-  const opening = toasts.addToast({ keepOpen: true, title: copy.boardFileOpening });
-  try {
-    // NOTE: an embedded image keeps its exact bytes unless the Worker
-    // could not take them as they are.
-    await importTldr(editor, file, async (image) => {
-      const fitted = image.size > MAX_IMAGE_BYTES ? await fitForUpload(image) : image;
-      const uploaded = await files.upload(fitted);
-      return uploaded.src;
-    });
-    toasts.addToast({ severity: "success", title: copy.boardFileAdded });
-  } catch (error) {
-    console.error("board: could not open the file", error);
-    const refused = error instanceof ImportRefused ? error : new ImportRefused("damaged");
-    toasts.addToast({
-      severity: "error",
-      title: problemText(copy, refused, editor.options.maxPages),
-    });
-  } finally {
-    toasts.removeToast(opening);
-  }
+  if (editor.isDisposed) return;
+  const started = await files.runImport(file.name, async (signal, report) => {
+    toasts.removeToast(IMPORT_RESULT);
+    try {
+      await importTldr(editor, file, {
+        keepFirstPage: files.keepFirstPage,
+        report,
+        signal,
+        upload: async (image, uploadSignal, { onProgress, onThrottle }) => {
+          // Keep the exact bytes when they fit the board's per-image limit.
+          const fitted = image.size > MAX_IMAGE_BYTES ? await fitForUpload(image) : image;
+          const uploaded = await files.upload(fitted, uploadSignal, {
+            onProgress: (loaded) => {
+              if (fitted.size > 0) onProgress(Math.min(1, loaded / fitted.size));
+            },
+            onThrottle,
+          });
+          return uploaded.src;
+        },
+      });
+      toasts.addToast({ id: IMPORT_RESULT, severity: "success", title: copy.boardFileAdded });
+    } catch (error) {
+      if (signal.aborted || editor.isDisposed) return;
+      const refused = error instanceof ImportRefused ? error : new ImportRefused("failed");
+      console.error("board: .tldr import failed", error);
+      toasts.addToast({
+        description: problemText(copy, refused, editor.options.maxPages),
+        id: IMPORT_RESULT,
+        keepOpen: true,
+        severity: "error",
+        title: fill(copy.boardFileFailedTitle, { name: file.name }),
+      });
+    }
+  });
+  if (!started) toasts.addToast({ severity: "info", title: copy.boardFileBusy });
 }
 
 const fileName = (title: string) =>
@@ -112,13 +151,13 @@ export function pickTldr(editor: Editor, flow: FileFlow): void {
   // know, and it knows no .tldr. Anything else is refused once read.
   input.addEventListener("change", () => {
     const [file] = input.files ?? [];
-    if (file !== undefined) void openTldr(editor, file, flow);
+    if (file !== undefined) void importBoardFile(editor, file, flow);
   });
   input.click();
 }
 
 // Every way a file arrives (the picker, a drop, a paste) goes through one
-// handler, which opens .tldr files, redraws photos too large for the board,
+// handler, which imports .tldr files, redraws photos too large for the board,
 // and hands the rest to tldraw's own handling. Pasted images and
 // those another board holds are uploaded to this one. A refused upload says why,
 // once. Answers the cleanup.
@@ -150,7 +189,7 @@ export function handleFiles(
     toasts.addToast({ severity: "error", title: copy.imageFromOtherBoard }),
   );
   editor.registerExternalContentHandler("files", async (content) => {
-    for (const file of content.files.filter(isTldrFile)) await openTldr(editor, file, flow);
+    for (const file of content.files.filter(isTldrFile)) await importBoardFile(editor, file, flow);
     const images = content.files.filter((file) => !isTldrFile(file));
     if (images.length === 0) return;
     const fitted = await Promise.all(

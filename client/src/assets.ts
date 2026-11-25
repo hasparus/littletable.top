@@ -11,8 +11,9 @@ import {
 } from "tldraw";
 
 import type { PassKeeper } from "./bootstrap";
+import type { ImportProgress } from "./tldr";
 
-import { fileFromDataUrl } from "./tldr";
+import { fileFromDataUrl } from "./data-url-file";
 
 // A board's images live in the Worker's R2 bucket (docs/internals.md, "Images"): an
 // upload sends the bytes with the pass in its header, and the document keeps
@@ -50,11 +51,16 @@ const IDLE: UploadProgress = { count: 0, done: 0, loaded: 0, total: 0 };
 
 const wait = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
+    signal?.throwIfAborted();
+    const onAbort = () => {
       clearTimeout(timer);
-      reject(signal.reason);
-    });
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 
 type Sent = "network" | { body: unknown; status: number };
@@ -75,6 +81,7 @@ function send(
   },
 ): Promise<Sent> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const request = new XMLHttpRequest();
     request.open("POST", url);
     request.setRequestHeader("Authorization", `Bearer ${pass}`);
@@ -86,7 +93,9 @@ function send(
     request.addEventListener("error", () => resolve("network"));
     request.addEventListener("timeout", () => resolve("network"));
     request.addEventListener("abort", () => reject(signal?.reason ?? new Error("aborted")));
-    signal?.addEventListener("abort", () => request.abort());
+    const onAbort = () => request.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    request.addEventListener("loadend", () => signal?.removeEventListener("abort", onAbort));
     request.send(file);
   });
 }
@@ -95,6 +104,10 @@ export class BoardFiles {
   // Every upload since the last time none was running, for the progress
   // the board shows.
   readonly progress = atom<UploadProgress>("board uploads", IDLE);
+  readonly importProgress = atom<{ name: string; progress: ImportProgress } | null>(
+    "board import",
+    null,
+  );
   // The person's own picture on this board, once the Worker has said.
   readonly avatar = atom<string | null>("own avatar", null);
   // Whether the board's files (images, people's pictures) can be read now.
@@ -109,8 +122,34 @@ export class BoardFiles {
   private pendingAccess: Promise<void> | null = null;
   private readonly loaded = new Map<number, number>();
   private nextUpload = 0;
+  private importing: AbortController | null = null;
 
-  constructor(private readonly keeper: PassKeeper) {}
+  constructor(
+    private readonly keeper: PassKeeper,
+    readonly keepFirstPage: boolean,
+  ) {}
+
+  async runImport(
+    name: string,
+    task: (signal: AbortSignal, report: (progress: ImportProgress) => void) => Promise<void>,
+  ): Promise<boolean> {
+    if (this.importing !== null) return false;
+    const controller = new AbortController();
+    this.importing = controller;
+    const report = (progress: ImportProgress) => this.importProgress.set({ name, progress });
+    report({ kind: "reading", percent: 0 });
+    try {
+      await task(controller.signal, report);
+    } finally {
+      this.importing = null;
+      this.importProgress.set(null);
+    }
+    return true;
+  }
+
+  cancelImport(): void {
+    this.importing?.abort();
+  }
 
   get path(): string {
     return `${this.keeper.room}/files`;
@@ -177,16 +216,25 @@ export class BoardFiles {
   }
 
   // Sends one file, trying again on a dropped connection or a busy Worker.
-  async upload(file: File, signal?: AbortSignal): Promise<Uploaded> {
+  async upload(
+    file: File,
+    signal?: AbortSignal,
+    callbacks?: { onProgress: (loaded: number) => void; onThrottle: (waiting: boolean) => void },
+  ): Promise<Uploaded> {
+    signal?.throwIfAborted();
     const id = this.nextUpload++;
     this.started(id, file.size);
+    const moved = (loaded: number) => {
+      this.moved(id, loaded);
+      callbacks?.onProgress(loaded);
+    };
     try {
       let flaky = 0;
       let tooFast = 0;
       for (;;) {
         const sent = await send(this.path, {
           file,
-          onProgress: (loaded) => this.moved(id, loaded),
+          onProgress: moved,
           pass: await this.keeper.pass(),
           signal,
         });
@@ -200,13 +248,15 @@ export class BoardFiles {
         if (refusal !== undefined) throw new UploadRefused(refusal);
         if (status === 429 && tooFast < TOO_FAST_TRIES) {
           tooFast++;
+          callbacks?.onThrottle(true);
           await wait(TOO_FAST_RETRY_MS, signal);
+          callbacks?.onThrottle(false);
         } else if ((status === 0 || status >= 500) && flaky < RETRY_MS.length) {
           await wait(RETRY_MS[flaky++]!, signal);
         } else {
           throw new UploadRefused(status === 429 ? "too-fast" : "failed");
         }
-        this.moved(id, 0);
+        moved(0);
       }
     } finally {
       this.finished(id, file.size);

@@ -13,6 +13,7 @@ import type { SharedView } from "./secret-backdrop";
 import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
+import { BoardStatus } from "./board-files";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
 import { DiceSheet } from "./dice";
@@ -74,19 +75,6 @@ function warmUpDice(): () => void {
   return () => clearTimeout(handle);
 }
 
-// Below the top row, which holds tldraw's menus and the dice result toast,
-// and below the toast when that drops under the menus.
-function ConnectionBanner({ copy }: { copy: Copy }) {
-  return (
-    <p
-      className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.5rem)] [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)] z-30 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-ink px-4 py-2 text-center text-sm text-white shadow-lg"
-      role="status"
-    >
-      {copy.connectionLost}
-    </p>
-  );
-}
-
 export function BoardCanvas({
   active,
   backdrop,
@@ -115,7 +103,7 @@ export function BoardCanvas({
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
   const chat = useChat(keeper, landing !== undefined);
-  const files = useMemo(() => new BoardFiles(keeper), [keeper]);
+  const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
   const { refusal, store } = useBoardStore({
     active,
     color,
@@ -294,7 +282,7 @@ export function BoardCanvas({
             </a>
           </div>
         )}
-        {active && offline && <ConnectionBanner copy={copy} />}
+        {active && <BoardStatus offline={offline} />}
         {active && landing !== undefined && <ChatSheet chat={chat} shown={panel === "chat"} />}
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
