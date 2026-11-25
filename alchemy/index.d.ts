@@ -30,7 +30,7 @@ type Shared = {
   /** tldraw's licence key, built into the client: public by design. */
   licenseKey?: string;
   shortName?: string;
-  /** Directory with compiled client assets, Worker, database migrations, and runtime metadata. */
+  /** Directory with compiled client assets, Worker bundles and runtime metadata. */
   prebuilt?: string;
   /** The Worker's script name; Alchemy derives one from the stack otherwise. */
   workerName?: string;
@@ -58,6 +58,14 @@ export type HostedProps = Shared & {
   /** Where the bare name and an unexplained exit lead. Default: hostOrigin. */
   exitUrl?: string;
   homeUrl?: string;
+  /** Optional MCP Worker. It accepts the host's tokens for `audience` (default `tabletop-mcp`). */
+  mcp?: {
+    audience?: string;
+    authorizationServer: string;
+    /** The MCP hostname. Omit to use workers.dev. */
+    domain?: string;
+    workerName?: string;
+  };
 };
 
 export type StandaloneProps = Shared & {
@@ -84,12 +92,16 @@ export type StandaloneProps = Shared & {
    * key. Its redirect URI is https://<domain.primary>/auth/callback.
    */
   workOs: { apiKey: Redacted.Redacted<string> | string; clientId: string };
+  /** The AuthKit issuer origin and the MCP Worker's HTTPS hostname. */
+  mcp?: { authorizationServer: string; domain: string; workerName?: string };
 };
 
 export type TabletopProps = HostedProps | StandaloneProps;
 
 export type Tabletop = {
   files: Cloudflare.R2.Bucket;
+  /** The companion MCP Worker when configured. */
+  mcp: Cloudflare.Worker | undefined;
   url: Cloudflare.Worker["url"];
   worker: Cloudflare.Worker;
 };

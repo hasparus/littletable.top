@@ -83,3 +83,24 @@ partition, retaining account IDs, board IDs, share codes, link versions and
 visit records. Verify board access before retiring the legacy database.
 Empty previews switch directly, with the old database retained for recovery
 until an operator confirms the cutover and deletes it.
+
+### MCP for previews
+
+PR previews and the standalone staging deploy read GitHub Environment variables
+from `preview`. Set `MCP_AUTHKIT_ORIGIN` to the staging WorkOS AuthKit issuer
+origin and `MCP_DOMAIN` to a hostname such as `mcp.staging.littletable.top`.
+PR 42 then serves MCP at `https://pr-42.mcp.staging.littletable.top/mcp` and
+the standalone staging deploy uses `https://mcp.staging.littletable.top/mcp`.
+
+In staging WorkOS, register the wildcard Resource Indicator
+`https://pr-*.mcp.staging.littletable.top/mcp`. Register the standalone staging
+URL separately if you use it. The preview comment links to the PR's MCP
+endpoint when deployed. After connecting a client, sign in to the PR's board
+site and choose which boards it can access in `/assistants`. Each MCP Worker
+uses the same board partition as its preview site.
+
+Production reads the same variable names from `production`, with its own
+AuthKit issuer origin and exact MCP hostname. Register
+`https://<production-mcp-hostname>/mcp` in production WorkOS. Enable Client ID
+Metadata Documents or Dynamic Client Registration in each WorkOS environment
+you use. [WorkOS MCP setup](https://workos.com/docs/authkit/mcp)

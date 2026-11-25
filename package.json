@@ -37,11 +37,15 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "e2e": "playwright test -c e2e/playwright.config.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p client && tsc --noEmit -p e2e"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p client && tsc --noEmit -p e2e",
+    "build:workers": "wrangler deploy --dry-run --outdir .wrangler/dry/board && wrangler deploy --dry-run -c wrangler.mcp.json --outdir .wrangler/dry/mcp",
+    "serve:mcp": "wrangler dev -c wrangler.dev.json -c wrangler.json -c wrangler.mcp.json --port 8788",
+    "e2e:measure": "playwright test -c e2e/measure.config.ts && oxfmt --write test/mcp/fixtures"
   },
   "dependencies": {
     "@babel/core": "7.29.7",
     "@cf-wasm/photon": "0.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
     "@rolldown/plugin-babel": "0.3.1",
     "@tailwindcss/vite": "4.2.4",
     "@tldraw/assets": "5.6.2",
@@ -52,6 +56,7 @@
     "@vitejs/plugin-react": "6.3.0",
     "babel-plugin-react-compiler": "1.0.0",
     "cuelume": "0.2.8",
+    "fontkit": "2.0.4",
     "jose": "6.2.3",
     "minisearch": "7.2.0",
     "onnxruntime-web": "1.31.1",
@@ -63,7 +68,8 @@
     "tesseract.js-core": "6.1.2",
     "tldraw": "5.6.2",
     "unique-names-generator": "4.7.1",
-    "vite": "8.1.6"
+    "vite": "8.1.6",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
@@ -75,6 +81,7 @@
     "@playwright/test": "1.65.0",
     "@shadcn/lint": "0.2.5",
     "@types/babel__core": "7.20.5",
+    "@types/fontkit": "2.0.9",
     "@types/node": "24.10.1",
     "@types/react": "19.2.8",
     "@types/react-dom": "19.2.3",
@@ -82,6 +89,7 @@
     "effect": "4.1.2",
     "oxfmt": "0.56.0",
     "oxlint": "1.94.0",
+    "oxlint-tsgolint": "7.0.2005",
     "react-doctor": "0.9.23",
     "tsrs": "0.25.0-ts7.1.0-beta",
     "typescript": "5.9.3",

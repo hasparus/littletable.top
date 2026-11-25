@@ -181,7 +181,15 @@ jobs:
           ./node_modules/.bin/wrangler deploy src/index.ts --dry-run \
             --outdir "$PREVIEW_BUNDLE_DIR/worker" --assets "$PREVIEW_BUNDLE_DIR/client"
           jq '{compatibility_date}' wrangler.json > "$PREVIEW_BUNDLE_DIR/wrangler.json"
-          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" client worker wrangler.json
+          files=(client worker wrangler.json)
+          if [[ -f src/mcp/worker.ts && -f wrangler.mcp.json ]]; then
+            ./node_modules/.bin/wrangler deploy src/mcp/worker.ts --config wrangler.mcp.json --dry-run \
+              --outdir "$PREVIEW_BUNDLE_DIR/mcp" \
+              --compatibility-date "$(jq -r .compatibility_date "$PREVIEW_BUNDLE_DIR/wrangler.json")"
+            mv "$PREVIEW_BUNDLE_DIR/mcp/worker.js" "$PREVIEW_BUNDLE_DIR/mcp/index.js"
+            files+=(mcp)
+          fi
+          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" "${files[@]}"
 
       - name: Upload preview bundle
         uses: actions/upload-artifact@v7
@@ -250,6 +258,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID || secrets.WORKOS_CLIENT_ID }}
+          MCP_AUTHKIT_ORIGIN: ${{ vars.MCP_AUTHKIT_ORIGIN }}
+          MCP_DOMAIN: ${{ vars.MCP_DOMAIN }}
           PREVIEW_COMMIT: ${{ needs.build.outputs.commit }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -273,6 +283,13 @@ jobs:
           fi
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 "$url/" --output /dev/null
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          if [[ -f "$PREVIEW_BUNDLE_DIR/mcp/index.js" && -n "$MCP_DOMAIN" && -n "$MCP_AUTHKIT_ORIGIN" ]]; then
+            mcp_origin="https://$STAGE.$MCP_DOMAIN"
+            curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 \
+              "$mcp_origin/.well-known/oauth-protected-resource/mcp" |
+              jq -e --arg resource "$mcp_origin/mcp" --arg issuer "$MCP_AUTHKIT_ORIGIN" \
+                '.resource == $resource and .authorization_servers == [$issuer]' >/dev/null
+          fi
 
       - name: Remove preview
         if: github.event.action == 'closed'

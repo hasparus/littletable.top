@@ -4,6 +4,7 @@ import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
 
 import { thumbnailUrl } from "../../src/board-thumbnail";
+import { BoardPeople, type BoardRoleChange } from "./board-people";
 import { fill } from "./copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
@@ -36,9 +37,11 @@ const UTC_DATE_FORMATS = {
 const subscribeToDateFormats = () => () => null;
 const browserDateFormats = () => DATE_FORMATS;
 const serverDateFormats = () => UTC_DATE_FORMATS;
-const ACTIONS = ["rename", "reset", "delete"] as const;
-export type Action = (typeof ACTIONS)[number];
-export type Editing = { id: string; kind: Action } | null;
+export type Action = "rename" | "reset" | "delete";
+const ACTIONS = ["rename", "people", "reset", "delete"] as const;
+export type Editing = { id: string; kind: (typeof ACTIONS)[number] } | null;
+
+type Post = (path: string, body: BoardRoleChange) => Promise<Response>;
 
 const ROW =
   "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
@@ -92,6 +95,7 @@ function OwnedRow({
   editing,
   format,
   onAction,
+  post,
   setEditing,
 }: {
   board: Owned;
@@ -99,6 +103,7 @@ function OwnedRow({
   editing: Editing;
   format: Intl.DateTimeFormat;
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  post: Post;
   setEditing: (editing: Editing) => void;
 }) {
   const [title, setTitle] = useState(board.title);
@@ -209,6 +214,9 @@ function OwnedRow({
           {copy.actionFailed}
         </p>
       )}
+      {mode === "people" && (
+        <BoardPeople boardId={board.id} copy={copy} onClose={() => setEditing(null)} post={post} />
+      )}
       {(mode === "reset" || mode === "delete") && (
         <dialog
           aria-labelledby={`confirm-${board.id}`}
@@ -306,6 +314,7 @@ export function BoardList({
   lists,
   locale,
   onAction,
+  post,
   setEditing,
 }: {
   copy: FrontCopy;
@@ -313,6 +322,7 @@ export function BoardList({
   lists: Lists;
   locale: Language;
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  post: Post;
   setEditing: (editing: Editing) => void;
 }) {
   const format = useSyncExternalStore(
@@ -373,6 +383,7 @@ export function BoardList({
               format={format}
               key={board.id}
               onAction={onAction}
+              post={post}
               setEditing={setEditing}
             />
           ))}

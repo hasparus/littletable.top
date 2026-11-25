@@ -2,6 +2,7 @@ import type { Editor, TLArrowShape, TLShapeId } from "tldraw";
 
 import { expect, test } from "@playwright/test";
 import { createShapeId } from "@tldraw/tlschema";
+import { execFileSync } from "node:child_process";
 
 import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
@@ -551,5 +552,47 @@ test("an owner can rename a board from its secret layer", async ({ browser, page
     await expect(page.getByRole("link", { name: "Midnight at the keep" })).toBeVisible();
   } finally {
     await guest.context().close();
+  }
+});
+
+test("a signed-in owner saves and revokes an assistant grant in the browser", async ({ page }) => {
+  await page.goto(`${STANDALONE}/boards?lang=en`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Assistant Test Owner");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByLabel("Signed in as Assistant Test Owner", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+
+  const me = await page.request.get(`${STANDALONE}/api/me`);
+  const { account }: { account: { id: string } } = await me.json();
+  const accountId = account.id.replaceAll("'", "''");
+  execFileSync("wrangler", [
+    "d1",
+    "execute",
+    "DB",
+    "--local",
+    "--persist-to",
+    ".wrangler/e2e-standalone",
+    "--command",
+    `INSERT OR IGNORE INTO assistant_clients (account_id, client_id) VALUES ('${accountId}', 'e2e-assistant')`,
+  ]);
+
+  const settings = `${STANDALONE}/assistants`;
+  await page.goto(settings);
+  const access = page.getByRole("combobox", { name: /^Board /u });
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(access).toHaveValue("off");
+  for (const value of ["write", "off"]) {
+    await access.selectOption(value);
+    const posted = page.waitForResponse(
+      (response) => response.url() === settings && response.request().method() === "POST",
+    );
+    await save.click();
+    const response = await posted;
+    expect(response.status()).toBe(303);
+    await page.reload();
+    await expect(access).toHaveValue(value);
+    if (value === "write") await reviewShot(page, "assistant-grant-edit");
   }
 });

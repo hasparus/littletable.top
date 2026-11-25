@@ -27,10 +27,14 @@ export type Pass = {
   link: number;
   name: string;
   owner: boolean;
+  role: Role;
   /** Only a standalone secret-layer pass is bound to an account session. */
   sessionHash?: string;
   sub: string;
 };
+
+/** Owners and board managers can grant assistants access. Guests can draw. */
+export type Role = "owner" | "shaman" | "write";
 
 const MAX_AVATAR_CLAIM = 2048;
 
@@ -53,13 +57,19 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     requiredClaims: ["exp", "iat", "sub"],
   });
   const { avatar, board, link, name, owner, sessionHash, sub } = payload;
+  let { role } = payload;
+  if (role === undefined) {
+    if (owner === true) role = "owner";
+    if (owner === false) role = "write";
+  }
   if (
     typeof sub !== "string" ||
     typeof board !== "string" ||
     typeof name !== "string" ||
     name.length === 0 ||
     name.length > MAX_NAME_LENGTH ||
-    typeof owner !== "boolean" ||
+    (role !== "owner" && role !== "shaman" && role !== "write") ||
+    (sub.startsWith("g:") && role !== "write") ||
     !Number.isInteger(link) ||
     (link as number) < 0
   ) {
@@ -75,7 +85,8 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     board,
     link: link as number,
     name,
-    owner,
+    owner: role === "owner",
+    role,
     ...(typeof sessionHash === "string" ? { sessionHash } : {}),
     sub,
   };

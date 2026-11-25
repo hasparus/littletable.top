@@ -173,6 +173,7 @@ function SignedIn({
           lists={me}
           locale={locale}
           onAction={act}
+          post={post}
           setEditing={setEditing}
         />
       </main>
