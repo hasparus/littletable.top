@@ -86,6 +86,19 @@ function withValue(entry: Entry, value: number) {
 
 type Reroll = Extract<Rule, { kind: "reroll" | "unique" }>;
 type Explosion = Extract<Rule, { kind: "explode" }>;
+type Clamp = Extract<Rule, { kind: "minimum" | "maximum" }>;
+
+function withClamp(entry: Entry, rule: Clamp) {
+  const value =
+    rule.kind === "minimum"
+      ? Math.max(entry.value, rule.target)
+      : Math.min(entry.value, rule.target);
+  return withValue(entry, value);
+}
+
+function presentationOnly({ kind }: Rule) {
+  return kind === "sort" || kind === "critical" || kind === "botch" || kind === "matches";
+}
 
 function reroll(entry: Entry, rules: Reroll[], draw: () => Entry) {
   const used = new Set<Reroll>();
@@ -219,9 +232,11 @@ class Evaluator {
         const entries = node.totals
           ? parts.map(({ total, dice }) => ({ value: total, dice }))
           : (parts[0]!.entries ?? [{ value: parts[0]!.total, dice: parts[0]!.dice }]);
-        return !node.totals && node.rules.length === 0
-          ? parts[0]!
-          : this.modify(entries, node.rules);
+        if (!node.totals && node.rules.every(presentationOnly)) {
+          if (node.rules.length > 0) this.modify(entries, node.rules, undefined, parts[0]!.total);
+          return parts[0]!;
+        }
+        return this.modify(entries, node.rules);
       }
       case "dice": {
         const count = this.evaluate(node.count);
@@ -286,26 +301,30 @@ class Evaluator {
   }
 
   private sort(entries: Entry[], descending: boolean) {
-    const next = flat(
-      entries.toSorted((a, b) => (descending ? b.value - a.value : a.value - b.value)),
+    const ids = new Set(
+      flat(entries.toSorted((a, b) => (descending ? b.value - a.value : a.value - b.value))),
     );
-    const ids = new Set(next);
+    const next = [...ids];
     let at = 0;
     this.order = this.order.map((index) => (ids.has(index) ? next[at++]! : index));
   }
 
-  private modify(entries: Entry[], rules: Rule[], source?: Source) {
+  private modify(entries: Entry[], rules: Rule[], source?: Source, displayedTotal?: number) {
     const foundry = this.dialect === "foundry";
     const ordered = foundry
       ? rules
       : rules.toSorted((a, b) => ROLL20_ORDER[a.kind] - ROLL20_ORDER[b.kind]);
     const repeats = foundry ? [] : rules.filter((rule): rule is Reroll => rule.kind === "reroll");
+    const clamps = foundry
+      ? []
+      : ordered.filter((rule): rule is Clamp => rule.kind === "minimum" || rule.kind === "maximum");
     const draw = () => {
       if (source === undefined) throw new InvalidRoll("rule");
-      return this.draw(source);
+      let entry = this.draw(source);
+      for (const rule of clamps) entry = withClamp(entry, rule);
+      return entry;
     };
     let margin = 0;
-    if (repeats.length > 0) entries = entries.map((entry) => reroll(entry, repeats, draw));
     for (const rule of ordered) {
       switch (rule.kind) {
         case "bonus":
@@ -320,6 +339,8 @@ class Evaluator {
         }
         case "reroll":
           if (foundry) entries = entries.map((entry) => reroll(entry, [rule], draw));
+          else if (rule === repeats[0])
+            entries = entries.map((entry) => reroll(entry, repeats, draw));
           break;
         case "unique": {
           const seen = new Set<number>();
@@ -359,14 +380,7 @@ class Evaluator {
           break;
         case "minimum":
         case "maximum":
-          entries = entries.map((entry) =>
-            withValue(
-              entry,
-              rule.kind === "minimum"
-                ? Math.max(entry.value, rule.target)
-                : Math.min(entry.value, rule.target),
-            ),
-          );
+          entries = entries.map((entry) => withClamp(entry, rule));
           break;
         case "margin":
           margin += rule.target;
@@ -385,12 +399,7 @@ class Evaluator {
             this.mark(entry, "failure");
             return {
               ...entry,
-              score:
-                rule.kind === "subtract"
-                  ? -entry.value
-                  : entry.score === undefined
-                    ? entry.value - 1
-                    : -1,
+              score: rule.kind === "subtract" ? -entry.value : scoreOf(entry) - 1,
             };
           });
           break;
@@ -434,7 +443,7 @@ class Evaluator {
       }
     }
     const result = score(entries);
-    return { ...result, total: finite(result.total - margin) };
+    return { ...result, total: finite(displayedTotal ?? result.total - margin) };
   }
 }
 

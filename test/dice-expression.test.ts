@@ -25,6 +25,13 @@ describe("dice expressions", () => {
     ["4d6 t5", [5, 6, 1, 3], 2],
     ["4d6c[>=5]", [5, 6, 1, 3], 2],
     ["rpg:4d6>5", [5, 6, 1, 3], 1],
+    ["avrae:d6!=2", [2], 0],
+    ["avrae:d6!=2", [6], 1],
+    ["2d6>1f1", [1, 4], 1],
+    ["d6min2r1", [1], 2],
+    ["d6min2r2", [1, 1, 3], 3],
+    ["{3d6+5}sd", [1, 2, 3], 11],
+    ["{3d6+5}cs=6", [1, 2, 3], 11],
     ["avrae:4d6>5", [5, 6, 1, 3], 1],
     ["d6r1r2", [1, 2, 5], 5],
     ["d6ro<2", [2, 2], 2],
@@ -66,6 +73,12 @@ describe("dice expressions", () => {
     expect(dice[1]?.mark).toBe("critical");
     expect(outcome).toEqual({ kept: [false, true, false, true], total: 10 });
     expect(evaluate("3d6sd", [1, 6, 3]).dice.map(({ value }) => value)).toEqual([6, 3, 1]);
+  });
+
+  it("keeps each draw once when sorting entries with a shared rolled adjustment", () => {
+    const { dice, outcome } = evaluate("{3d6+floor(d8)}sd", [1, 2, 3, 5]);
+    expect(dice.map(({ value }) => value)).toEqual([3, 5, 2, 1]);
+    expect(outcome).toEqual({ kept: [true, true, true, true], total: 11 });
   });
 
   it("rejects stalled rolls within a fixed number of draws", () => {

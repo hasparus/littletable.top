@@ -23,9 +23,7 @@ export type Roll = {
   sub: string;
 };
 
-export type RollRequest =
-  | { dice: number[]; launch?: DiceLaunch }
-  | { chat?: true; expression: string };
+export type RollRequest = { dice: number[]; launch?: DiceLaunch } | { expression: string };
 
 type Rule = { count: number; kind: "dh" | "dl" | "kh" | "kl" };
 type Group = { count: number; rule: Rule | null; sides: number };

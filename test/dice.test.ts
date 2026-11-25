@@ -5,7 +5,10 @@ import type { BoardRoom } from "../src/board-room";
 import type { Roll } from "../src/dice-notation";
 
 import { addRollColumns, rollDie } from "../src/dice";
+import { ROLL_LOG_LENGTH } from "../src/limits";
 import { call, pass, roll, seat, until } from "./support";
+
+const boardRooms = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> }).BoardRoom;
 
 describe("rolling", () => {
   it("shows every seat the same dice and keeps them in the log", async () => {
@@ -53,30 +56,39 @@ describe("rolling", () => {
     expect(await log.json()).toEqual([rolled]);
   });
 
-  it("broadcasts a chat roll and stores its evaluated total", async () => {
-    const board = "chat-expression";
-    const token = await pass({ board });
-    const other = await seat(board, await pass({ board, sub: "g:1" }));
-    const response = await call("/rooms/" + board + "/roll", token, {
-      body: JSON.stringify({ chat: true, expression: "2d1count1+" }),
-      method: "POST",
-    });
-    expect(response.status).toBe(200);
-    const rolled: Roll = await response.json();
-    expect(rolled).toMatchObject({ chat: true, outcome: { kept: [true, true], total: 2 } });
-    await until(() => other.received.some((message) => message.type === "custom"));
-    expect(other.received.find((message) => message.type === "custom")?.data).toEqual({
-      roll: rolled,
-      type: "roll",
-    });
-    expect(await (await call("/rooms/" + board + "/rolls", token)).json()).toEqual([rolled]);
+  it("keeps a chat roll after the roll log reaches its retention limit", async () => {
+    const board = "chat-roll-retention";
+    const room = boardRooms.get(boardRooms.idFromName(board));
+    const person = {
+      avatar: null,
+      board,
+      link: 0,
+      name: "Roller",
+      owner: false,
+      role: "write",
+      sub: "u:chat",
+    } as const;
+    const message = await room.sendChat(person, "/r 2d1count1+");
+    expect(message).toMatchObject({ diceTotal: 2, text: "2d1count1+" });
+    expect(await room.rolls(person)).toMatchObject([
+      { chat: true, expression: "2d1count1+", outcome: { total: 2 } },
+    ]);
+
+    for (let index = 0; index < ROLL_LOG_LENGTH; index++) {
+      const rolled = await room.roll({ ...person, sub: "u:" + index }, { dice: [6] });
+      expect(rolled).toHaveProperty("dice");
+    }
+    expect(await room.rolls(person)).not.toContainEqual(
+      expect.objectContaining({ expression: "2d1count1+" }),
+    );
+    expect(await room.chatHistory(person)).toEqual([message]);
   });
 
   it("rejects an unbounded explosion without logging a result", async () => {
     const board = "endless-dice";
     const token = await pass({ board });
     const response = await call("/rooms/" + board + "/roll", token, {
-      body: JSON.stringify({ chat: true, expression: "d1!" }),
+      body: JSON.stringify({ expression: "d1!" }),
       method: "POST",
     });
     expect(response.status).toBe(400);
@@ -159,9 +171,7 @@ describe("rolling", () => {
     const board = "before-seeds";
     const token = await pass({ board });
     await roll(board, token, [6]);
-    const namespace = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> })
-      .BoardRoom;
-    const room = namespace.get(namespace.idFromName(board));
+    const room = boardRooms.get(boardRooms.idFromName(board));
     await runInDurableObject(room, (_instance, state) => {
       const { sql } = state.storage;
       sql.exec("DELETE FROM rolls");

@@ -9,6 +9,7 @@ export function rollCommand(message: string) {
 
 export type ChatMessage = {
   at: number;
+  diceTotal?: number;
   id: number;
   name: string;
   sub: string;

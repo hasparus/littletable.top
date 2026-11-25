@@ -2,15 +2,9 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { PassKeeper } from "./bootstrap";
 import type { ChatSize } from "./chat-resize";
-import type { RollRefusal } from "./rolls";
 
-import {
-  CHAT_HISTORY_LENGTH,
-  type ChatMessage,
-  MAX_CHAT_LENGTH,
-  rollCommand,
-} from "../../src/chat";
-import { rollResult } from "../../src/dice-notation";
+import { CHAT_HISTORY_LENGTH, type ChatMessage, MAX_CHAT_LENGTH } from "../../src/chat";
+import { EXPRESSION_ERRORS, type ExpressionError } from "../../src/dice-expression";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 import { notationMessage } from "./dice-labels";
@@ -18,7 +12,7 @@ import { Icon } from "./icons";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-type Refusal = "failed" | "too-fast";
+type Refusal = "failed" | "too-fast" | ExpressionError;
 
 const isChatMessage = (event: unknown): event is { message: ChatMessage; type: "chat" } =>
   typeof event === "object" &&
@@ -79,6 +73,10 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
       try {
         const response = await request({ body: text, method: "POST" });
         if (response.status === 429) return "too-fast";
+        if (response.status === 400) {
+          const body: { error?: unknown } | null = await response.json().catch(() => null);
+          return EXPRESSION_ERRORS.find((error) => error === body?.error) ?? "failed";
+        }
         if (!response.ok) return "failed";
         add([(await response.json()) as ChatMessage]);
         return null;
@@ -104,10 +102,7 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
 
 const MESSAGE_GROUP_GAP = 5 * 60 * 1000;
 
-function sameRun(
-  previous: Omit<ChatMessage, "text"> | undefined,
-  next: Omit<ChatMessage, "text"> | undefined,
-) {
+function sameRun(previous: ChatMessage | undefined, next: ChatMessage | undefined) {
   return (
     previous !== undefined &&
     next !== undefined &&
@@ -118,10 +113,10 @@ function sameRun(
 }
 
 export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; shown: boolean }) {
-  const { copy, locale, person, rolls } = useBoardUi();
+  const { copy, locale, person } = useBoardUi();
   const [text, setText] = useState("");
   const [size, setSize] = useState<ChatSize>({});
-  const [submission, setSubmission] = useState<"idle" | "sending" | RollRefusal>("idle");
+  const [submission, setSubmission] = useState<"idle" | "sending" | Refusal>("idle");
   const busy = submission === "sending";
   const input = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
@@ -130,36 +125,10 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   const resizeAnchor = useRef<{ element: Element; offset: number } | null>(null);
   const time = useMemo(() => new Intl.DateTimeFormat(locale, { timeStyle: "short" }), [locale]);
 
-  const entries = useMemo(
-    () =>
-      [
-        ...chat.messages.map((message) => ({
-          ...message,
-          diceTotal: null,
-          key: "message:" + message.id,
-        })),
-        ...rolls.log.flatMap((roll) =>
-          roll.chat === true && roll.expression !== undefined
-            ? [
-                {
-                  ...roll,
-                  diceTotal: rollResult(roll).total,
-                  key: "roll:" + roll.id,
-                  text: roll.expression,
-                },
-              ]
-            : [],
-        ),
-      ]
-        .sort((a, b) => a.at - b.at || a.id - b.id)
-        .slice(-CHAT_HISTORY_LENGTH),
-    [chat.messages, rolls.log],
-  );
-
   useLayoutEffect(() => {
     if (!shown) follow.current = true;
     if (follow.current && log.current !== null) log.current.scrollTop = log.current.scrollHeight;
-  }, [entries, shown]);
+  }, [chat.messages, shown]);
 
   useLayoutEffect(() => {
     const viewport = log.current;
@@ -205,9 +174,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   const send = async (message: string) => {
     input.current?.focus();
     setSubmission("sending");
-    const expression = rollCommand(message);
-    const result =
-      expression === null ? await chat.send(message) : await rolls.roll({ chat: true, expression });
+    const result = await chat.send(message);
     setSubmission(result ?? "idle");
     if (result === null) {
       setText((current) => (current.trim() === message ? "" : current));
@@ -246,18 +213,18 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The scrollable log needs keyboard focus for keyboard scrolling.
         tabIndex={0}
       >
-        {entries.map((message, index) => {
-          const { at, diceTotal, key, name, sub, text } = message;
+        {chat.messages.map((message, index, messages) => {
+          const { at, diceTotal, id, name, sub, text } = message;
           const own = sub === person.id;
-          const first = !sameRun(entries[index - 1], message);
-          const last = !sameRun(message, entries[index + 1]);
+          const first = !sameRun(messages[index - 1], message);
+          const last = !sameRun(message, messages[index + 1]);
           const author = own ? `${name} (${copy.you})` : name;
           const timestamp = time.format(at);
 
           return (
             <article
               className={`flex items-end gap-2 ${own ? "justify-end" : ""} ${first ? "not-first:mt-3" : "mt-0.5"}`}
-              key={key}
+              key={id}
             >
               {!own &&
                 (last ? (
@@ -287,7 +254,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
                   title={timestamp}
                 >
                   <span className="block" dir="auto">
-                    {diceTotal === null ? (
+                    {diceTotal === undefined ? (
                       text
                     ) : (
                       <>
@@ -303,7 +270,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
             </article>
           );
         })}
-        {entries.length === 0 && chat.load !== "failed" && (
+        {chat.messages.length === 0 && chat.load !== "failed" && (
           <p className="text-sm text-foreground-muted">
             {chat.load === "loading" ? copy.chatLoading : copy.chatEmpty}
           </p>

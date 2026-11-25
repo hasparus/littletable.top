@@ -31,7 +31,8 @@ export type Rule =
   | { kind: "score" | "deduct" | "subtract"; check: Check; failure: boolean }
   | { kind: "critical" | "botch"; check: Check | null }
   | { kind: "matches" | "tally" | "double"; check: Check; count: number }
-  | { kind: "minimum" | "maximum" | "margin"; target: number }
+  | { kind: "minimum" | "maximum"; target: number }
+  | { kind: "margin"; target: number }
   | { kind: "sort"; descending: boolean };
 
 type Arithmetic = "+" | "-" | "*" | "/" | "%" | "**";
@@ -303,6 +304,7 @@ class Parser {
       const pattern =
         /^(?:count|even|odd|min|max|mi|ma|cs|cf|df|sf|ms|kh|kl|km|dh|dl|ph|pl|adv|dis|irg|irx|ir|rg|rx|ro|rr|uo|xo|ra|ie|mt|sa|sd|sl|tl|ds|!!p|!!|!p|!|[kdrxetfcbpmusai])/iu;
       const word = this.rest.trimStart();
+      if (this.dialect === "avrae" && word.startsWith("!=")) return rules;
       const candidate = pattern.exec(word)?.[0];
       const spaced = word !== this.rest;
       const separated = candidate !== undefined && !/^[a-z]/iu.test(word.slice(candidate.length));
@@ -490,11 +492,11 @@ class Parser {
       case "mi":
       case "max":
       case "ma":
-      case "ms":
-        return {
-          kind: word.startsWith("mi") ? "minimum" : word.startsWith("ma") ? "maximum" : "margin",
-          target: this.integer(),
-        };
+      case "ms": {
+        const target = this.integer();
+        if (word === "ms") return { kind: "margin", target };
+        return { kind: word.startsWith("mi") ? "minimum" : "maximum", target };
+      }
       case "ds": {
         const target = this.target(check("any"))!;
         if (target.op === "=") target.op = ">=";

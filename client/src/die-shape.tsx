@@ -73,7 +73,7 @@ const MARK_LABEL: Record<DiceMark, keyof Copy> = {
   success: "dieSuccess",
 };
 
-const SHAPE_CLASS = "stroke-[2.5] [stroke-linejoin:round]";
+const OUTLINE_STROKE = "stroke-[2.5] [stroke-linejoin:round]";
 
 function Silhouette({ className, sides }: { className: string; sides: number }) {
   if (sides === 6) {
@@ -116,7 +116,7 @@ export function DieShape({ dropped = false, size = "md", ...die }: DieShapeProps
     ...die,
     dropped,
   });
-  const y = outline.text.y;
+  const { y } = outline.text;
   return (
     <svg
       aria-label={label}
@@ -125,7 +125,7 @@ export function DieShape({ dropped = false, size = "md", ...die }: DieShapeProps
       role="img"
       viewBox="0 0 32 32"
     >
-      <Silhouette className={`${stroke} ${SHAPE_CLASS}`} sides={silhouetteSides} />
+      <Silhouette className={`${stroke} ${OUTLINE_STROKE}`} sides={silhouetteSides} />
       {outline.ticks !== undefined && (
         <path
           className={`${colours.tick} fill-none stroke-[1.5]`}
