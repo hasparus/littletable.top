@@ -35,7 +35,6 @@ type Connection = { saveData?: boolean; type?: string };
 const connection = (): Connection | undefined =>
   (navigator as Navigator & { connection?: Connection }).connection;
 
-// Data saver on, or a mobile connection the browser names as such.
 export function savingData(): boolean {
   const current = connection();
   return current?.saveData === true || current?.type === "cellular";

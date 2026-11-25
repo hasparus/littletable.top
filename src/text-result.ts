@@ -30,15 +30,16 @@ export type EngineName = (typeof TEXT_ENGINES)[EngineKey]["name"];
 
 export const isEngineKey = (key: string): key is EngineKey => Object.hasOwn(TEXT_ENGINES, key);
 
-// [x0, y0, x1, y1], upright.
+/** [x0, y0, x1, y1], upright. */
 export type Box = [number, number, number, number];
-// Four corners, x and y in turn, clockwise from the top left of the text
-// as it reads: a tilted label's tilted outline.
+/**
+ * Four corners, x and y in turn, clockwise from the top left of the text
+ * as it reads: a tilted label's tilted outline.
+ */
 export type Quad = [number, number, number, number, number, number, number, number];
 
 export type TextWord = { b: Box; c: number; q?: Quad; t: string };
 export type TextLine = { box: Box; quad?: Quad; words: TextWord[] };
-// Who read it: the browser that uploaded the image, or another on the board.
 export type TextSource = "peer" | "uploader";
 
 export type TextResult = {
@@ -55,9 +56,7 @@ export type TextResult = {
   source: TextSource;
 };
 
-// NOTE: control and format characters go (a right-to-left override among
-// them, which would turn the text around where it shows), and so does any
-// space within a word.
+// WARNING: Accepting bidi overrides would let uploaded text change its display order.
 const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
 export function normaliseWord(text: string): string {
@@ -132,9 +131,11 @@ function params(value: unknown): TextResult["engine"]["params"] {
   return Object.fromEntries(entries) as TextResult["engine"]["params"];
 }
 
-// The image's size as it shows (src/image-size.ts). When that is not
-// `exact` (an orientation the Worker does not read), either way up is
-// accepted.
+/**
+ * The image's size as it shows (src/image-size.ts). When that is not
+ * `exact` (an orientation the Worker does not read), either way up is
+ * accepted.
+ */
 export type Expected = {
   createdAt: string;
   engine: EngineKey;
@@ -144,8 +145,6 @@ export type Expected = {
   width: number;
 };
 
-// A result as the Worker stores it, rebuilt from what was sent, keeping
-// only the fields of the format; or why it cannot be stored.
 export function validateTextResult(
   raw: unknown,
   expected: Expected,
@@ -171,8 +170,7 @@ export function validateTextResult(
     check(raw.source === "peer" || raw.source === "uploader", "source");
     check(Array.isArray(raw.lines), "lines");
     const dimensions = size as Size;
-    // NOTE: a word takes some pixels to print; this keeps a tiny image
-    // from carrying a whole book.
+    // WARNING: Using only the global word limit lets a tiny image carry an implausibly large reading.
     const most = Math.min(
       MAX_TEXT_WORDS,
       Math.max(64, Math.floor((dimensions.width * dimensions.height) / 64)),

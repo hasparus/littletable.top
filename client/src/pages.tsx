@@ -3,9 +3,11 @@ import { type Editor, react, type TLPageId, useEditor, useToasts, useValue } fro
 
 import { type Copy, fill } from "./copy";
 
-// Pages are tldraw's own records, so the page menu, sync and undo are
-// tldraw's; the board only says where each page's places and people are,
-// and only once there is more than one page to tell apart.
+/**
+ * Pages are tldraw's own records, so the page menu, sync and undo are
+ * tldraw's; the board only says where each page's places and people are,
+ * and only once there is more than one page to tell apart.
+ */
 export function usePageNames(editor: Editor | null): Map<TLPageId, string> | null {
   return useValue(
     "page names",

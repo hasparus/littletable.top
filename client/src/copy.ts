@@ -1,9 +1,7 @@
 import type { Language } from "../settings";
 
-// Every string the board shows, in English and Polish. In Polish the board is
-// "tablica", a page is "strona", a place is "miejsce", a die is "k6", and the
-// copy stays gender-neutral.
-// `%(name)s`-style placeholders are filled in by `fill`.
+// Use gender-neutral Polish and keep board (tablica), page (strona), place (miejsce),
+// and dice notation (k6) consistent.
 const EN = {
   addDie: "Add %(die)s",
   addToPlaces: "Add to places",
@@ -177,7 +175,6 @@ const PL: Copy = {
   clearPool: "Wyczyść",
   close: "Zamknij",
   connectionLost: "Łączymy ponownie…",
-  // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   diceExpression: "Notacja rzutu",
   die: "k%(sides)s",

@@ -55,7 +55,7 @@ const DICE_RESTITUTION = 0.4;
 const BOUNCE_MIN = 1.2;
 const SLOP = 0.005;
 const BAUMGARTE = 0.25;
-// Per substep. NOTE: literals, because Math.pow differs between engines.
+// WARNING: Use literal damping factors per substep. Math.pow can vary across engines.
 const LINEAR_DAMPING = 0.9992;
 const ANGULAR_DAMPING = 0.9985;
 const ROLLING_DAMPING = 0.998;
@@ -66,8 +66,7 @@ const SLEEP_SPEED2 = 0.04;
 const SLEEP_SPIN2 = 0.04;
 const SLEEP_SECONDS = 0.2;
 const MAX_SECONDS = 3.2;
-// Balls in a crowd take longer to find their places: frames added to the cap
-// per ball beyond the first `CALM_BALLS`, 4.2 s in all for twenty.
+// Allow extra time for crowded balls to settle.
 const CROWD_FRAMES = 4;
 const CALM_BALLS = 5;
 // The floor the dice may fill before the balls among them shrink, as the sum
@@ -125,7 +124,6 @@ export type Throw = {
   snapped: number;
 };
 
-// What walls and other dice take a die for.
 function sphereOf(shape: Solid): number {
   if (shape.ball) return shape.inradius;
   return shape.kind === "d4" ? shape.radius * 0.72 : shape.radius * 0.93;
@@ -464,7 +462,7 @@ export function simulate(kinds: DieKind[], seed: number): Throw {
   return run.result();
 }
 
-// FNV-1a over the raw bits of every recorded number: equal hashes, equal throws.
+// FNV-1a over the raw bits of every recorded number.
 export function hashThrow(thrown: Throw): string {
   const hash = Uint32Array.of(2_166_136_261);
   for (const frames of thrown.frames) {

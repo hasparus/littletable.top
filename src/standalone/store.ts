@@ -68,8 +68,6 @@ export async function hasActiveSession(db: D1Database | undefined, hash: string 
 export class Store {
   constructor(private readonly db: D1Database) {}
 
-  // The picture an account has now, before a sign-in decides whether to
-  // copy the provider's again.
   async avatarOf(id: string): Promise<{ avatar: string | null; avatarUrl: string | null }> {
     const row = await this.db
       .prepare("SELECT avatar_url, avatar_hash FROM accounts WHERE id = ?")

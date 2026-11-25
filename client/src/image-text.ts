@@ -42,7 +42,6 @@ const RENEW_MS = 10_000;
 const TAKEOVER_MS = 32_000;
 const FALLBACK_MS = 5 * 60_000;
 const SETTLE_MS = 500;
-// After a failed reading, the next waits this long, doubling to the most.
 const BACKOFF_MS = { first: 30_000, most: 10 * 60_000 };
 
 type Pair = string;
@@ -62,8 +61,10 @@ const isNotice = (message: unknown): message is Notice =>
 const INPUT = ["pointerdown", "keydown", "wheel"] as const;
 
 export class ImageText {
-  // How many of the board's images are being read, or will be: the
-  // search sheet says so while there are any.
+  /**
+   * How many of the board's images are being read, or will be: the
+   * search sheet says so while there are any.
+   */
   readonly pending = atom("images being read", 0);
   readonly #editor: Editor;
   readonly #files: BoardFiles;
@@ -191,7 +192,6 @@ export class ImageText {
     if (thenRead) this.#schedule(0);
   }
 
-  // Fetches each stored reading of the image this browser does not have.
   #fetchStored(hash: string): void {
     for (const key of Object.keys(TEXT_ENGINES) as EngineKey[]) {
       const id = pair(hash, key);
@@ -238,8 +238,6 @@ export class ImageText {
     return this.#listing[list].has(pair(hash, key));
   }
 
-  // The engines of this device that have not read the image yet and have
-  // not given up on it (someone may be reading it now).
   #missing(hash: string): EngineKey[] {
     return this.#engines.filter(
       (key) => !this.#has(hash, key, "stored") && !this.#has(hash, key, "failed"),
@@ -257,15 +255,12 @@ export class ImageText {
     this.pending.set(pending);
   }
 
-  // Images this device could still read.
   #candidates(): string[] {
     return [...new Set([...this.#images, ...this.#own])].filter(
       (hash) => this.#missing(hash).length > 0,
     );
   }
 
-  // Nothing to claim now: waits for a notice, or for someone else's lease
-  // to lapse when they may have left.
   #wait(): void {
     const othersReading = this.#candidates().some((hash) =>
       this.#missing(hash).some((key) => this.#has(hash, key, "reading")),
@@ -285,8 +280,7 @@ export class ImageText {
   async #tick(): Promise<void> {
     if (this.#disposed || this.#reading !== null || this.#engines.length === 0) return;
     if (document.visibilityState === "hidden") return;
-    // NOTE: an image someone else reads counts too: only the room knows
-    // when their lease ran out, which no notice says.
+    // WARNING: Lease expiration sends no notice. Include images other browsers were reading so the room can reclaim them.
     const candidates = this.#candidates();
     if (candidates.length === 0) return;
     const prefer = candidates.find((hash) => this.#own.has(hash)) ?? null;
@@ -294,7 +288,6 @@ export class ImageText {
       const now = performance.now();
       const wait = Math.max(this.#lastInput + IDLE_MS, this.#notBefore) - now;
       if (wait > 0) return this.#schedule(wait);
-      // NOTE: someone else's image waits for a browser not saving data.
       if (savingData()) return;
     }
     let claim: Claim | null = null;

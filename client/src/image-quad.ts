@@ -1,12 +1,13 @@
 import type { Point } from "./search-index";
 
-// A 2D affine matrix as tldraw's Mat holds it: x' = a·x + c·y + e,
-// y' = b·x + d·y + f. editor.getShapePageTransform(shape) is one.
+/**
+ * A 2D affine matrix as tldraw's Mat holds it: x' = a·x + c·y + e,
+ * y' = b·x + d·y + f. editor.getShapePageTransform(shape) is one.
+ */
 export type Affine = { a: number; b: number; c: number; d: number; e: number; f: number };
 
 export type Crop = { bottomRight: Point; topLeft: Point };
 
-// What of an image shape's props decides where its pixels land.
 export type ImageFit = {
   crop?: Crop | null;
   flipX?: boolean;
@@ -17,19 +18,21 @@ export type ImageFit = {
 
 export type Size = { h: number; w: number };
 
-// Maps a polygon in the SOURCE image's pixels (a line read off it) to page
-// coordinates for the image shape as it lies now: moved, resized, rotated,
-// flipped, cropped, inside rotated or scaled frames and groups.
-//
-// NOTE: tldraw 5.6 draws an image by mirroring the whole source inside its
-// uncropped box first and then shifting it by the crop, so `crop` is
-// measured in the flipped image (onResize flips the crop with the shape):
-//   u, v     source pixel / source size                      (0..1)
-//   u', v'   flipX ? 1 - u : u, flipY ? 1 - v : v            (as displayed)
-//   x, y     (u' - crop.x) / crop width · w, likewise for y  (shape space)
-//   page     transform · (x, y)
-// The part outside the crop is clipped off; a polygon wholly outside it is
-// not visible, and the answer is null.
+/**
+ * Maps a polygon in the SOURCE image's pixels (a line read off it) to page
+ * coordinates for the image shape as it lies now: moved, resized, rotated,
+ * flipped, cropped, inside rotated or scaled frames and groups.
+ *
+ * NOTE: tldraw 5.6 draws an image by mirroring the whole source inside its
+ * uncropped box first and then shifting it by the crop, so `crop` is
+ * measured in the flipped image (onResize flips the crop with the shape):
+ *   u, v     source pixel / source size                      (0..1)
+ *   u', v'   flipX ? 1 - u : u, flipY ? 1 - v : v            (as displayed)
+ *   x, y     (u' - crop.x) / crop width · w, likewise for y  (shape space)
+ *   page     transform · (x, y)
+ * The part outside the crop is clipped off; a polygon wholly outside it is
+ * not visible, and the answer is null.
+ */
 export function imageQuadToPage(
   quad: readonly Point[],
   source: Size,
@@ -57,7 +60,6 @@ export function imageQuadToPage(
 
 export type Box = { h: number; w: number; x: number; y: number };
 
-// The axis-aligned box around a polygon, as editor.zoomToBounds takes it.
 export function boundsOf(polygon: readonly Point[]): Box {
   const xs = polygon.map((point) => point.x);
   const ys = polygon.map((point) => point.y);

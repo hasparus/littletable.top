@@ -3,21 +3,9 @@ import type { Point } from "./search-index";
 
 import { fold } from "./search-text";
 
-// Which of what the engines read goes into the board's search (docs/internals.md,
-// "Text in images"). Engines also "read" a map's mountains, trees and
-// hatching as short words; those would answer searches with places that
-// say nothing. A word stays when:
-// - it holds a letter or a digit;
-// - its engine is confident enough (MIN_CONFIDENCE), and a Tesseract word
-//   that is only fairly sure (under SURE) is backed by another reading:
-//   PP-OCR read something in the same place, or its own line holds sure
-//   words around it;
-// - its box fits its letters (no needle or slab a few letters long);
-// - it is not one lone letter or symbol: alone, a letter is a mountain;
-// and where both engines read the same word in the same place, it is
-// indexed once (Tesseract's, which keeps diacritics better). Both
-// readings stay as text otherwise: a misread in one is often right in
-// the other.
+// OCR can mistake map symbols and hatching for words. A tentative Tesseract
+// match needs support from its line or PP-OCR. Keep distinct readings from
+// both engines so a correct match survives a misread in the other.
 
 export const MIN_CONFIDENCE = 0.5;
 export const SURE = 0.8;
@@ -134,12 +122,10 @@ function lineRegion(words: TextWord[], source: TextLine): Point[] {
   });
 }
 
-// Tesseract first: where both read the same word, its reading is the one
-// indexed.
+// Tesseract wins duplicate matches because it preserves diacritics better.
 const ORDER: Record<EngineName, number> = { ppocr: 1, tesseract: 0 };
 
-// The lines of an image to index, from every engine's reading of it, in
-// either order of arrival.
+// Results are independent of which engine finishes first.
 export function linesToIndex(readings: readonly TextResult[]): ReadLine[] {
   const sorted = readings.toSorted((a, b) => ORDER[a.engine.name] - ORDER[b.engine.name]);
   const byReading = sorted.map((reading) => ({ lines: candidates(reading), reading }));

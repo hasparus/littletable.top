@@ -11,7 +11,7 @@ export type DieShapeProps = {
   sides: number;
   size?: Size;
   tone?: Tone;
-  // The text on the shape; defaults to the die's face count, as on a button.
+  /** The text on the shape; defaults to the die's face count, as on a button. */
   value?: number;
 };
 
@@ -73,8 +73,10 @@ function Silhouette({ className, sides }: { className: string; sides: number }) 
   return <polygon className={className} points={(OUTLINES[sides] ?? FALLBACK).points} />;
 }
 
-// A die's face count and value on its own flat silhouette, in the colours of
-// the theme. The name read aloud is "d20: 2"; only the number is drawn.
+/**
+ * A die's face count and value on its own flat silhouette, in the colours of
+ * the theme. The name read aloud is "d20: 2"; only the number is drawn.
+ */
 export function DieShape({
   copy,
   dropped = false,

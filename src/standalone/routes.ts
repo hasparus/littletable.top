@@ -1,8 +1,3 @@
-// Standalone mode's own routes: sign-in through the provider, the account's
-// session, its boards, and the pass endpoint, which answers exactly as a
-// host's does (docs/hosting.md, "The host contract") so the client cannot tell the
-// two apart. Passes are signed with the Worker's own key.
-
 import { animals, colors, uniqueNamesGenerator } from "unique-names-generator";
 
 import type { StandaloneConfig } from "../config";
@@ -55,7 +50,7 @@ const PUBLIC_GUEST_ANIMALS = animals.filter((word) => word.length < MAX_NAME_LEN
 
 const ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-// Rejection sampling keeps every character equally likely.
+// WARNING: Taking a random byte modulo the alphabet size would bias share codes.
 function randomCode(length: number): string {
   let code = "";
   const byte = new Uint8Array(1);
@@ -145,7 +140,6 @@ export class Standalone {
     this.store = new Store(env.DB);
   }
 
-  // The routes this mode adds, or null for any other path.
   route(request: Request): Promise<Response> | null {
     const { pathname } = new URL(request.url);
     const { method } = request;
@@ -411,7 +405,7 @@ export class Standalone {
     }
     const id = randomCode(12);
     if (body?.language === "pl") {
-      // Seed the drawing before the share code can be used to enter the room.
+      // WARNING: A room opened before seeding gets the default page name instead of the localized one.
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
       await room.initializeDrawing("Strona 1");
     }
@@ -463,7 +457,7 @@ export class Standalone {
     return new Response(null, { status: 204 });
   }
 
-  // The host contract's pass endpoint, answered by the Worker itself.
+  // WARNING: Keep this response compatible with the hosted pass endpoint so the client can use either mode.
   private async bootstrap(request: Request, code: string | null): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
     if (!(await this.allowed(request, "pass", MAX_PASSES_PER_MINUTE))) {

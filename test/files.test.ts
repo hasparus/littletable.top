@@ -293,7 +293,6 @@ describe("the board's images stay with the board's people", () => {
     const old = await pass({ board: "reset" });
     const access = await roomCall("/rooms/reset/files/access", old, { method: "POST" }, hostedEnv);
     const [cookie = ""] = access.headers.getSetCookie()[0]!.split(";");
-    // A newer pass moves the board on.
     expect((await readAsImage("reset", await pass({ board: "reset", link: 1 }), src)).status).toBe(
       200,
     );

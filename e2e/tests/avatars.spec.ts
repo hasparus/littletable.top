@@ -10,11 +10,6 @@ import {
   reviewShot,
 } from "./helpers";
 
-// People's pictures, in both modes: a member's shows in someone else's
-// people list, loaded from the tabletop's own origin and never from the
-// host or the sign-in provider; a guest shows an initial. The artifacts
-// are the assertions and the screenshots.
-
 // A person's row in the people list. The avatar is decoration beside the
 // name, so the row is found by the name it says.
 const rowOf = (people: Locator, name: string): Locator =>
@@ -30,7 +25,6 @@ async function pictureOf(avatar: Locator): Promise<string | null> {
   );
 }
 
-// Every address the page asks for from now on.
 function requestsOf(page: Page): string[] {
   const asked: string[] = [];
   page.on("request", (request) => asked.push(request.url()));
@@ -72,11 +66,9 @@ test("hosted: a member's picture reaches a guest's people list from the tabletop
   const own = rowOf(people, "Bea");
   await expect(own.getByText("B", { exact: true })).toBeVisible();
   expect(await pictureOf(own)).toBeNull();
-  // The guest's browser asked the host for its pass and nothing else.
   expect(asked.filter((url) => url.startsWith(HOST) && !url.includes("/bootstrap/"))).toEqual([]);
   await reviewShot(guest, "avatars-people-phone");
 
-  // Ada sees her own picture, and Bea's initial.
   const hers = await openSheet(page, "People");
   await expect.poll(async () => pictureOf(rowOf(hers, "Ada"))).not.toBeNull();
   await expect(rowOf(hers, "Bea").getByText("B", { exact: true })).toBeVisible();
@@ -103,7 +95,6 @@ test("standalone: the account's picture is on the front page and on its boards",
   await expect
     .poll(async () => pictureOf(mine))
     .toMatch(new RegExp(String.raw`^${STANDALONE}/api/avatars/[0-9a-f]{64}$`, "u"));
-  // The browser went to the provider to sign in, never for a picture.
   expect(asked.filter((url) => url.startsWith(`${WORKOS}/avatars/`))).toEqual([]);
   await reviewShot(page, "avatars-front");
   await page.setViewportSize({ height: 844, width: 390 });

@@ -1,6 +1,3 @@
-// A board's images over HTTP: uploads, the cookie an <img> reads them with,
-// and the reads. See docs/internals.md, "Images".
-
 import { decodeJwt } from "jose";
 
 import type { AvatarSource, BoardRoom } from "./board-room";
@@ -14,8 +11,7 @@ import { harden } from "./site";
 import { type EngineKey, isEngineKey } from "./text-result";
 import { parseClaim } from "./text-store";
 
-// NOTE: an <img> cannot send an Authorization header. The pass rides in
-// this cookie instead, scoped to the board's files, for reads only.
+/** Carries the read pass for `<img>` loads, which cannot send an Authorization header. */
 export const FILE_COOKIE = "tabletop-files";
 
 const HASH = /^[0-9a-f]{64}$/u;
@@ -27,8 +23,6 @@ type FileRoute = {
   board: string;
   bucket: R2Bucket;
   config: Config;
-  // The verified pass in the request, from the header or (for reads) the
-  // cookie, or null when there is none for this board.
   passOf: (token: string | null) => Promise<Pass | null>;
   room: DurableObjectStub<BoardRoom>;
   secret: boolean;
@@ -121,8 +115,7 @@ async function access(request: Request, route: FileRoute): Promise<Response> {
   );
 }
 
-// NOTE: an image opened on its own is a document of this origin. It runs
-// no script and loads nothing; an SVG is also handed over as a download.
+// WARNING: Treat a directly opened upload as a document. This policy keeps SVG scripts inert.
 const FILE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 function contentRange(range: R2Range | undefined, size: number): string | null {
@@ -140,10 +133,10 @@ function contentRange(range: R2Range | undefined, size: number): string | null {
   return `bytes ${offset}-${offset + length - 1}/${size}`;
 }
 
-// One stored image of R2, as the board serves it: the type it was sniffed
-// as, cached for good (the key is the content), ranges, and a policy under
-// which it runs and loads nothing when opened on its own. Avatars are
-// served through it too.
+/**
+ * Serves an upload or avatar with its detected media type and supports byte
+ * ranges. Direct navigation applies the same script and resource restrictions.
+ */
 export async function serveStored(
   request: Request,
   {
@@ -168,7 +161,7 @@ export async function serveStored(
   object.writeHttpMetadata(headers);
   headers.set("ETag", object.httpEtag);
   headers.set("Accept-Ranges", "bytes");
-  // Content-addressed files can be cached, except where each read requires an owner pass.
+  // WARNING: Browsers must reauthorize every secret image read, even for immutable content.
   headers.set("Cache-Control", secret ? "no-store" : "private, max-age=31536000, immutable");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
   const type = object.httpMetadata?.contentType ?? "application/octet-stream";
@@ -195,8 +188,6 @@ export async function serveStored(
   return hardened;
 }
 
-// The pass a read of the board's files comes with, from the header or the
-// cookie, if it is good for the board now.
 async function reader(request: Request, route: FileRoute): Promise<Pass | null> {
   const pass = await route.passOf(bearer(request) ?? cookie(request, FILE_COOKIE));
   if (pass === null) return null;
@@ -252,8 +243,6 @@ async function jsonBody(request: Request, max: number): Promise<unknown> {
   }
 }
 
-// The lease a renew or release names, and for a release the engines
-// that failed.
 function leaseOf(body: unknown): { failed: EngineKey[]; lease: string } | null {
   if (typeof body !== "object" || body === null) return null;
   const { failed = [], lease } = body as Record<string, unknown>;
@@ -280,8 +269,6 @@ function logText(fields: {
   console.log(JSON.stringify({ event: "board.text_stored", ...rest, person }));
 }
 
-// The board's text readings (docs/internals.md, "Text in images"): what is stored and
-// under way, claiming an image to read, keeping and giving back the claim.
 async function textControl(request: Request, route: FileRoute, action: string): Promise<Response> {
   if (action === "" && (request.method === "GET" || request.method === "HEAD")) {
     const pass = await reader(request, route);
@@ -369,8 +356,7 @@ async function readText(
   { engine, hash }: { engine: EngineKey; hash: string },
 ): Promise<Response> {
   if ((await reader(request, route)) === null) return new Response("Forbidden", { status: 403 });
-  // NOTE: a result is written once, so its address holds it for good, as
-  // an image's does.
+  // WARNING: Immutable caching assumes a stored text result is never overwritten.
   return serveStored(request, {
     bucket: route.bucket,
     config: route.config,

@@ -20,17 +20,9 @@ import {
   reviewShot,
 } from "./helpers";
 
-// The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
-// and is checked here: two screens show different placements; the overlay
-// swallows taps meant for the board; the dice outlive their result toast; a logged
-// roll animates on load; reduced motion or a missing WebGL2 leaves someone
-// without their result; a lost context or a resize leaves a blank tray; the
-// page's Content-Security-Policy is broken by the dice code.
-// The artifacts are the attached tray screenshots.
-
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
-// The result toast; it joins the accessibility tree once the dice settle.
+// The result toast enters the accessibility tree once the dice settle.
 const toast = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
 const dieLabels = (container: Locator) =>
   container
@@ -39,8 +31,7 @@ const dieLabels = (container: Locator) =>
 const isRollRequest = (request: Request) =>
   request.method() === "POST" && new URL(request.url()).pathname.endsWith("/roll");
 
-// NOTE: without animations, so nothing passing over the tray, such as a
-// button's fade, can make two shots of the same dice differ.
+// WARNING: Disable animations in tray screenshots so a fading control cannot break the pixel comparison.
 const shoot = async (target: Locator): Promise<Buffer> =>
   target.screenshot({ animations: "disabled" });
 
@@ -116,7 +107,6 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   }
   expect(shots[0]!.equals(shots[1]!), "both screens show the same tray").toBe(true);
 
-  // A tap away from the dice reaches the board under the tray.
   const reachesBoard = await tray(page).evaluate((element) => {
     const box = element.getBoundingClientRect();
     return [0.25, 0.5, 0.75].some((x) =>
@@ -132,7 +122,6 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   await expect(tray(page)).toHaveCount(0);
   await expect(toast(page)).toHaveCount(0);
 
-  // The log does not throw again on load.
   await page.reload();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   const dice = await openSheet(page, "Dice");
@@ -272,11 +261,9 @@ const boxOf = async (target: Locator): Promise<Box> => (await target.boundingBox
 // screen undo, redo and the rest.
 const menuZone = (page: Page): Locator => page.locator(".tlui-menu-zone");
 
-// The toast shares the menu button's row without moving or covering it.
 async function expectInMenuRow(page: Page): Promise<Box> {
   const button = await boxOf(page.getByTestId("main-menu.button"));
   const zone = await boxOf(menuZone(page));
-  // Once its entrance is over.
   await expect
     .poll(async () => {
       const box = await boxOf(toast(page));
@@ -314,12 +301,10 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
     .getByRole("img")
     .evaluateAll((dice) => new Set(dice.map((die) => die.getBoundingClientRect().top)).size);
   expect(rows).toBe(1);
-  // The total stays in view at the end of a row of dice that scrolls.
   const sum = toast(page).getByText(/^\d+$/u).last();
   const end = await boxOf(sum);
   expect(end.x + end.width).toBeLessThanOrEqual(box.x + box.width);
 
-  // The tray starts below the toast and the menus.
   const tray = await boxOf(page.locator("[data-dice-tier]"));
   expect(tray.y).toBeGreaterThanOrEqual(box.y + box.height);
   const zone = await boxOf(menuZone(page));
@@ -445,8 +430,7 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
     await new Promise((resolve) => {
       canvas.addEventListener("webglcontextlost", resolve, { once: true });
     });
-    // NOTE: the browser allows a restore only once the lost event has been
-    // through every listener, so not from inside its dispatch.
+    // WARNING: WebGL permits restoring a context only after the loss event has reached every listener. Restore after dispatch returns.
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
@@ -516,9 +500,6 @@ test("the toast centres on desktop and fits beside the page menu on phones", asy
   }
 });
 
-// The dice and the total come before the roller's name: the name shows only
-// when every die fits beside it, never squeezing the seventh die into the
-// row's fade; with more dice than fit, the row scrolls and the total stays.
 test("the toast gives its row to the dice before the roller's name", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const pools = {

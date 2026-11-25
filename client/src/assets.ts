@@ -65,7 +65,7 @@ const wait = (ms: number, signal?: AbortSignal) =>
 
 type Sent = "network" | { body: unknown; status: number };
 
-// NOTE: fetch cannot report how much of a body has left; XMLHttpRequest can.
+// WARNING: Fetch does not expose upload progress. XMLHttpRequest is needed for byte counts.
 function send(
   url: string,
   {
@@ -101,19 +101,18 @@ function send(
 }
 
 export class BoardFiles {
-  // Every upload since the last time none was running, for the progress
-  // the board shows.
+  /**
+   * Every upload since the last time none was running, for the progress
+   * the board shows.
+   */
   readonly progress = atom<UploadProgress>("board uploads", IDLE);
   readonly importProgress = atom<{ name: string; progress: ImportProgress } | null>(
     "board import",
     null,
   );
   chooseImportFile: (() => void) | null = null;
-  // The person's own picture on this board, once the Worker has said.
   readonly avatar = atom<string | null>("own avatar", null);
-  // Whether the board's files (images, people's pictures) can be read now.
   readonly readable = atom("files readable", false);
-  // Set by the board: tells the person why an upload through tldraw failed.
   onRefused: ((reason: UploadRefusal) => void) | null = null;
   // Set by the board's image text (image-text.ts): an image this person
   // uploaded, to read first, and the room's notices about reading them.
@@ -170,8 +169,10 @@ export class BoardFiles {
     await this.pendingAccess;
   }
 
-  // For whoever is about to show a picture: the cookie may have run out
-  // while nobody looked at one. A failure leaves initials in their place.
+  /**
+   * For whoever is about to show a picture: the cookie may have run out
+   * while nobody looked at one. A failure leaves initials in their place.
+   */
   keepReadable(): void {
     this.access().catch((error: unknown) => {
       console.warn("board: could not open the board's files", error);
@@ -198,7 +199,6 @@ export class BoardFiles {
   private finished(id: number, size: number) {
     const current = this.progress.get();
     const done = current.done + 1;
-    // NOTE: the count starts over once the last running upload ends.
     if (done === current.count) {
       this.loaded.clear();
       this.progress.set(IDLE);
@@ -208,7 +208,6 @@ export class BoardFiles {
     this.progress.set({ ...current, done, loaded: this.sum() });
   }
 
-  // Sends one file, trying again on a dropped connection or a busy Worker.
   async upload(
     file: File,
     signal?: AbortSignal,
@@ -263,8 +262,7 @@ export class BoardFiles {
       try {
         await this.access();
       } catch (error) {
-        // NOTE: the image may still come from the browser's cache; the
-        // board's own ending, if any, comes through the pass renewal.
+        // WARNING: Preserve the image URL on access failure so the browser can use its cache. Board closure comes from pass renewal.
         console.warn("board: could not refresh image access", error);
       }
       return src;
@@ -281,9 +279,7 @@ export class BoardFiles {
   };
 }
 
-// NOTE: tldraw's own link handler fetches the pasted page to read its
-// preview, and the board's Content-Security-Policy refuses any host but
-// ours. A pasted link becomes a plain bookmark that names its address.
+// WARNING: tldraw's link preview fetches pasted URLs, which the board's Content-Security-Policy blocks for other origins.
 export function keepLinksPlain(editor: Editor): void {
   editor.registerExternalAssetHandler("url", async ({ url }) => ({
     id: AssetRecordType.createId(getHashForString(url)),
@@ -294,10 +290,12 @@ export function keepLinksPlain(editor: Editor): void {
   }));
 }
 
-// An image's address that is a board's files on this origin, but not this
-// board's: a paste from another board's tab, or a .tldr that points at one.
-// Its bytes are readable only while this browser holds that board's files
-// cookie, so the document must not keep the address.
+/**
+ * An image's address that is a board's files on this origin, but not this
+ * board's: a paste from another board's tab, or a .tldr that points at one.
+ * Its bytes are readable only while this browser holds that board's files
+ * cookie, so the document must not keep the address.
+ */
 export function isOtherBoardsFile(src: unknown, ownPath: string): src is string {
   if (typeof src !== "string" || src.startsWith("data:") || src.startsWith("blob:")) return false;
   let url: URL;
@@ -328,17 +326,19 @@ const fetched =
     return new File([blob], name || "image", { type: blob.type });
   };
 
-// Pasted images and images that point at another board's files land on
-// this board as its own uploads (docs/internals.md, "Images"):
-// - tldraw's copy embeds each image as a data: URL, and its paste reads
-//   one back with fetch, which the page's policy refuses; the board reads
-//   it itself instead;
-// - an address on another board (an image tldraw could not embed, or a
-//   .tldr pointing at one) opens only with that board's files cookie, so
-//   it is read now, while it can be, and uploaded here.
-// What cannot be read or uploaded is taken off the board with its shapes,
-// and `onDropped` says so (an upload refusal has said why already),
-// rather than leaving a picture that never loads. Answers the cleanup.
+/**
+ * Pasted images and images that point at another board's files land on
+ * this board as its own uploads (docs/internals.md, "Images"):
+ * - tldraw's copy embeds each image as a data: URL, and its paste reads
+ *   one back with fetch, which the page's policy refuses; the board reads
+ *   it itself instead;
+ * - an address on another board (an image tldraw could not embed, or a
+ *   .tldr pointing at one) opens only with that board's files cookie, so
+ *   it is read now, while it can be, and uploaded here.
+ * What cannot be read or uploaded is taken off the board with its shapes,
+ * and `onDropped` says so (an upload refusal has said why already),
+ * rather than leaving a picture that never loads.
+ */
 export function bringImagesOver(
   editor: Editor,
   files: BoardFiles,
@@ -357,7 +357,7 @@ export function bringImagesOver(
         editor.deleteShapes(using);
         editor.deleteAssets([id]);
       },
-      // NOTE: a map is often locked as the table's background.
+      // WARNING: A failed imported asset can still have locked shapes. Remove those too.
       { history: "ignore", ignoreShapeLock: true },
     );
   };

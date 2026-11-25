@@ -1,6 +1,3 @@
-// Folding, matching and excerpts for the board's search. Everything here is
-// pure text, so the index and the results list agree on what matched.
-
 // Folds one UTF-16 unit for matching: lower case, Polish ł to l, other
 // diacritics dropped (ż, ó, ę, á, ü…). A unit that would fold to more or
 // fewer than one unit (İ, ß, a lone surrogate) is only lower-cased or kept,
@@ -16,7 +13,7 @@ function foldUnit(unit: string): string {
 
 export function fold(text: string): string {
   let folded = "";
-  // NOTE: by UTF-16 unit, not by code point (for…of), so lengths stay equal.
+  // WARNING: Iterate UTF-16 units, not code points, to preserve the source offsets.
   for (let index = 0; index < text.length; index++) folded += foldUnit(text.charAt(index));
   return folded;
 }
@@ -33,10 +30,8 @@ function lowerAligned(text: string): string {
 
 type RichNode = { content?: unknown; text?: unknown; type?: unknown };
 
-// The words of a tldraw rich text (a TipTap document), blocks and line
-// breaks as spaces. tldraw's own renderPlaintextFromRichText runs TipTap's
-// generateText, about 0.3 ms a shape, which is most of a second on a
-// large board; this walk reads the same words from the JSON directly.
+// Walking the rich-text JSON avoids TipTap's generateText cost per shape.
+// Preserve spaces between blocks and at line breaks.
 export function richTextWords(richText: unknown): string {
   const words: string[] = [];
   const walk = (node: RichNode) => {
@@ -50,13 +45,11 @@ export function richTextWords(richText: unknown): string {
   return oneLine(words.join(""));
 }
 
-// Text as the results list shows it: one line, single spaces.
 export const oneLine = (text: string): string => text.replaceAll(/\s+/gu, " ").trim();
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const isWordUnit = (unit: string | undefined) => unit !== undefined && /[\p{L}\p{N}]/u.test(unit);
 
-// Where `needle` starts a word in `haystack`, or -1.
 function wordStart(haystack: string, needle: string): number {
   if (needle.length === 0) return -1;
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
@@ -79,7 +72,6 @@ export function closeness(query: string, text: string): Closeness {
 
 export type ExcerptPart = { mark: boolean; text: string };
 
-// Up to about this many characters of a long text show in a result.
 export const EXCERPT_LENGTH = 90;
 // How much of the text before the first match stays in view.
 const LEAD = 28;

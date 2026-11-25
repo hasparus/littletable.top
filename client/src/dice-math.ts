@@ -1,9 +1,4 @@
-// Vectors, quaternions and the seeded generator of the shared throw.
-//
-// SAFETY: every client must compute bit-identical throws. Only + - * / and
-// Math.sqrt (plus abs, min, max, floor and imul) are exact in every JS engine;
-// Math.sin, cos, atan2, pow, exp and hypot are not, and must stay out of
-// everything the simulation reaches.
+// WARNING: Keep shared throws bit-identical. Use only +, -, *, / and Math.sqrt, abs, min, max, floor and imul.
 
 export type Vec = [number, number, number];
 // x, y, z, w

@@ -21,7 +21,6 @@ export type Reading = { engine: EngineKey; hash: string };
 export type TextListing = {
   // Given up on: failed MAX_TEXT_FAILURES times.
   failed: Reading[];
-  // Being read now, under someone's lease.
   reading: Reading[];
   stored: Reading[];
 };
@@ -43,7 +42,6 @@ type Lease = Reading & { lease: string; sub: string; until: number };
 
 const pairOf = (hash: string, engine: string) => `${hash} ${engine}`;
 
-// What a claim's body says, or null when it is not one.
 export function parseClaim(body: unknown): ClaimRequest | null {
   if (typeof body !== "object" || body === null) return null;
   const { candidates, engines, prefer = null } = body as Record<string, unknown>;
@@ -55,7 +53,6 @@ export function parseClaim(body: unknown): ClaimRequest | null {
   return { candidates, engines: [...new Set(engines)], prefer };
 }
 
-// Spends one of a person's allowance per minute, or says it is spent.
 class Allowance {
   // NOTE: in memory, as the uploads' own: an evicted board forgets it,
   // which only lets one more minute's worth through.
@@ -132,9 +129,6 @@ export class TextLedger {
     return row !== undefined && row.type !== "image/svg+xml";
   }
 
-  // Hands one image to read, the preferred one first, for the engines
-  // that have not read it, are not reading it under someone else's lease
-  // and have not failed on it too often; null when nothing is left.
   claim(sub: string, request: ClaimRequest, at = Date.now()): "too-fast" | Claim | null {
     if (!this.claims.spend(sub, at)) return "too-fast";
     this.expire(at);
@@ -163,7 +157,6 @@ export class TextLedger {
     return [...this.leases.values()].filter((held) => held.lease === lease && held.sub === sub);
   }
 
-  // Keeps a lease for another TEXT_LEASE_MS; false once it has run out.
   renew(sub: string, lease: string, at = Date.now()): boolean {
     this.expire(at);
     const held = this.held(sub, lease);
@@ -171,7 +164,6 @@ export class TextLedger {
     return held.length > 0;
   }
 
-  // Gives a lease back, counting a failure for each engine that failed.
   release(sub: string, lease: string, failed: readonly EngineKey[], at = Date.now()): Reading[] {
     const held = this.held(sub, lease);
     for (const pair of held) {
@@ -252,15 +244,13 @@ export class TextLedger {
       ...size,
     });
     if ("problem" in checked) return { problem: checked.problem, refusal: "invalid" };
-    // NOTE: the size check awaited R2; another write of this pair may have
-    // landed meanwhile.
+    // WARNING: Another write of this image and engine can finish while the dimensions check awaits R2.
     if (this.has(hash, engine)) return this.stored(board, hash, engine);
     const body = JSON.stringify(checked.result);
     const bytes = new TextEncoder().encode(body).byteLength;
     if (bytesNow() + bytes > MAX_BOARD_FILE_BYTES) return "over-quota";
     const words = checked.result.lines.reduce((sum, line) => sum + line.words.length, 0);
-    // SAFETY: as for images, the row goes in before the write leaves, with
-    // no await between, so the quota counts it and a second write waits.
+    // WARNING: Reserve the row before awaiting R2 so concurrent writes respect the quota and first-write wins.
     this.sql.exec(
       "INSERT INTO texts (hash, engine, bytes, words, at) VALUES (?, ?, ?, ?, ?)",
       hash,

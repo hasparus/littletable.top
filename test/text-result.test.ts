@@ -8,15 +8,6 @@ import {
   validateTextResult,
 } from "../src/text-result";
 
-// A result is text from a client, so every way it could carry what the
-// board must not keep is a case here: a size that is not the image's, a
-// box outside the image or with no area, a confidence out of range, an
-// engine the board does not know or that names another model, a word
-// that hides characters (controls, a right-to-left override) or spells
-// one letter two ways (NFC), one that runs on, too many words for the
-// image or in all, too many bytes, fields the format does not have, and
-// a client's own timestamp.
-
 const SHA = "a".repeat(64);
 const EXPECTED: Expected = {
   createdAt: "2026-11-23T10:00:00.000Z",

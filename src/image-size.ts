@@ -1,15 +1,7 @@
-// How large an image is, read from the start of its bytes: PNG, JPEG,
-// WebP, GIF and AVIF. The Worker checks a text reading's stated size
-// against it (src/text-store.ts), so it never decodes an image. A JPEG's
-// size is as it shows: its EXIF orientation applied, as browsers apply it.
-// NOTE: PNG and WebP may carry EXIF too, and AVIF a rotation (irot, imir)
-// and a crop (clap); those are not read, so for them `exact` is false.
-
 export type Dimensions = { height: number; width: number };
 export type Shown = Dimensions & { exact: boolean };
 
-// The most of an image's start the reader needs: a JPEG's frame header can
-// sit behind tens of kilobytes of metadata and a thumbnail.
+/** Covers JPEG frame headers that follow large metadata blocks or embedded thumbnails. */
 export const SIZE_PREFIX_BYTES = 256 * 1024;
 
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
@@ -130,7 +122,6 @@ function webp(view: DataView, bytes: Uint8Array): Dimensions | null {
 
 type Box = { end: number; start: number; type: string };
 
-// The boxes of an ISO media file between `from` and `to`.
 function boxes(view: DataView, bytes: Uint8Array, from: number, to: number): Box[] {
   const found: Box[] = [];
   let at = from;
@@ -191,12 +182,14 @@ function avif(view: DataView, bytes: Uint8Array): Dimensions | null {
   return null;
 }
 
-// The size the image's header states, or null for anything else (an SVG
-// has none) or a header cut short. Orientation is not applied: a JPEG's
-// EXIF orientation or an AVIF's rotation can show it the other way up.
 const exactly = (size: Dimensions | null, exact: boolean): Shown | null =>
   size === null ? null : { ...size, exact };
 
+/**
+ * Reads PNG, JPEG, WebP, GIF or AVIF dimensions without decoding pixel data.
+ * JPEG orientation is applied. Formats with unparsed orientation or crops
+ * can return `exact: false`. Returns null if no supported header is present.
+ */
 export function imageDimensions(bytes: Uint8Array): Shown | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   try {
@@ -210,7 +203,6 @@ export function imageDimensions(bytes: Uint8Array): Shown | null {
     }
     if (ascii(bytes, 4, 8) === "ftyp") return exactly(avif(view, bytes), false);
   } catch (error) {
-    // A length that runs past the bytes: a damaged or cut-short header.
     if (error instanceof RangeError) return null;
     throw error;
   }

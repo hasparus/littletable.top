@@ -14,14 +14,6 @@ import {
   sheet,
 } from "./helpers";
 
-// Searching the board, against the hosted Worker: text one person types on
-// another page is found by someone else, choosing a result goes to its
-// page and flashes it there, places are found too, Polish letters fold
-// both ways, typos are forgiven, and a deleted shape leaves the results.
-// On a desktop the search is a keyboard path; on a phone its results stay
-// above the on-screen keyboard and leave tldraw's mark alone. The
-// artifacts are the assertions and the screenshots.
-
 async function shot(page: Page, name: string): Promise<void> {
   await reviewShot(page, `search-${name}`);
 }
@@ -88,24 +80,20 @@ test("someone on another page finds what was typed, goes there and sees it flash
   const bea = await guest(browser, boardUrl, PHONE_2X);
   await expect(pageButton(bea)).toHaveText("Page 1");
 
-  // Nothing typed: the places, the board's own way around.
   const search = await openSheet(bea, "Search");
   await expect(field(bea)).not.toBeFocused();
   await expect(search.getByRole("button", { exact: true, name: "Tavern Page 1" })).toBeVisible();
   await shot(bea, "phone-empty");
 
-  // A place and a note on another page, the place first, each with its page.
   await field(bea).fill("tav");
   await expect(options(bea)).toHaveText([/^Place: Tavern\s*Page 1$/u, /Tavern ledger.*Crypt$/u]);
   await shot(bea, "phone-results");
 
-  // Without its diacritics, and with a typo.
   await field(bea).fill("zolw");
   await expect(options(bea)).toHaveText([/^Żółw pod kamieniem\s*Crypt$/u]);
   await field(bea).fill("kamienem");
   await expect(options(bea)).toHaveText([/^Żółw pod kamieniem\s*Crypt$/u]);
 
-  // Choosing it puts the keyboard away and shows the note, flashing, on its page.
   await options(bea).first().tap();
   await expect(sheet(bea, "Search")).toBeHidden();
   await expect(field(bea)).toHaveCount(0);
@@ -113,11 +101,9 @@ test("someone on another page finds what was typed, goes there and sees it flash
   await expect(found(bea, "Żółw pod kamieniem")).toBeVisible();
   await expect(onBoard(bea, "Żółw pod kamieniem")).toBeInViewport();
   await shot(bea, "phone-highlight");
-  // The flash is Bea's alone, and it goes.
   await expect(found(ada, /^Found/u)).toHaveCount(0);
   await expect(found(bea, "Żółw pod kamieniem")).toHaveCount(0, { timeout: 5000 });
 
-  // Ada deletes the note; it leaves Bea's open results.
   await openSheet(bea, "Search");
   await field(bea).fill("zolw");
   await expect(options(bea)).toHaveCount(1);
@@ -127,7 +113,6 @@ test("someone on another page finds what was typed, goes there and sees it flash
   await expect(
     bea.getByRole("status").filter({ hasText: "Nothing on the board matches “zolw”." }),
   ).toBeVisible();
-  // The places stay in reach when nothing matches.
   await expect(
     sheet(bea, "Search").getByRole("button", { exact: true, name: "Tavern Page 1" }),
   ).toBeVisible();
@@ -147,7 +132,6 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   await putNote(page, { at: { x: 600, y: 300 }, text: "Green dragon" });
   await putNote(page, { at: { x: 900, y: 300 }, text: "Dragons in the hoard" });
 
-  // Escape gives focus back to where it was.
   const button = page.getByRole("button", { exact: true, name: "Search" });
   await button.focus();
   await page.keyboard.press("ControlOrMeta+f");
@@ -157,7 +141,6 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   await expect(sheet(page, "Search")).toBeHidden();
   await expect(button).toBeFocused();
 
-  // From the canvas too, and with a mouse the field takes focus at once.
   await page.getByTestId("canvas").click({ position: { x: 600, y: 600 } });
   await page.keyboard.press("ControlOrMeta+f");
   await expect(field(page)).toBeFocused();
@@ -177,7 +160,6 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   const chosen = (await last.textContent())!;
   await shot(page, "desktop");
 
-  // Escape clears what was typed and stays; pressed again, it closes.
   await page.keyboard.press("Escape");
   await expect(field(page)).toHaveValue("");
   await expect(field(page)).toBeFocused();
@@ -189,7 +171,6 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
   await page.keyboard.press("ArrowUp");
   await expect(last).toHaveAttribute("aria-selected", "true");
 
-  // Pressed again while open, Ctrl+F goes back to the field.
   await page.getByRole("dialog", { name: "Search" }).getByRole("button", { name: "Close" }).focus();
   await page.keyboard.press("ControlOrMeta+f");
   await expect(field(page)).toBeFocused();
@@ -295,7 +276,6 @@ test("on a phone, in Polish, the results stand above the keyboard and leave tldr
     .toBeLessThanOrEqual(height - KEYBOARD_PX);
   expect(below((await list.boundingBox())!)).toBeLessThanOrEqual(height - KEYBOARD_PX);
   await expect(field(bea, "Szukaj na tablicy")).toBeInViewport();
-  // What the screen would show above a keyboard: the board, the sheet on it.
   await bea.evaluate((px) => {
     const keys = document.createElement("div");
     keys.id = "e2e-keyboard";
@@ -310,7 +290,6 @@ test("on a phone, in Polish, the results stand above the keyboard and leave tldr
   await withKeyboard(bea, 0);
   await expect(bea.getByRole("img", { name: /^Znaleziono: Smok/u })).toBeInViewport();
 
-  // tldraw's mark is what a tap on it reaches.
   const mark = bea.locator("[data-testid^='tl-watermark']");
   await expect(mark).toBeVisible();
   const reached = await mark.evaluate((element) => {

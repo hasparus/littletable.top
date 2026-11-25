@@ -1,33 +1,36 @@
-// What a deployment configures, read once per request from the Worker's
-// environment. A configuration that mixes the two modes, or misses what its
-// mode needs, serves nothing (see `readConfig`).
-
 export type ConfigEnv = {
-  // "hosted" (a host application signs passes) or "standalone" (the
-  // tabletop signs its own).
+  /**
+   * "hosted" (a host application signs passes) or "standalone" (the
+   * tabletop signs its own).
+   */
   TABLETOP_MODE?: string;
-  // Hosted: the issuer's public key (SPKI PEM, "\n" escapes allowed), its
-  // `iss`, and the audiences of passes, deletion tokens and link reset tokens.
+  /**
+   * Hosted: the issuer's public key (SPKI PEM, "\n" escapes allowed), its
+   * `iss`, and the audiences of passes, deletion tokens and link reset tokens.
+   */
   DELETION_AUDIENCE?: string;
   ISSUER?: string;
   ISSUER_PUBLIC_KEY?: string;
   LINK_RESET_AUDIENCE?: string;
   PASS_AUDIENCE?: string;
-  // Hosted: the host's origin, which the client asks for passes, and where a
-  // person typing the tabletop's bare name goes.
+  /**
+   * Hosted: the host's origin, which the client asks for passes, and where a
+   * person typing the tabletop's bare name goes.
+   */
   HOME_URL?: string;
   HOST_ORIGIN?: string;
-  // Standalone: the deployment's name, where a guest is sent back to.
+  /** Standalone: the deployment's name, where a guest is sent back to. */
   DISPLAY_NAME?: string;
-  // Standalone: the private key (PKCS#8 PEM) the Worker signs passes with.
+  /** Standalone: the private key (PKCS#8 PEM) the Worker signs passes with. */
   SIGNING_KEY?: string;
-  // Standalone: the WorkOS application people sign in through, its API
-  // key (a secret), and the API's address (tests point it at a fake).
+  /** Standalone: the WorkOS application's client ID, secret API key and API origin. */
   WORKOS_API_BASE?: string;
   WORKOS_API_KEY?: string;
   WORKOS_CLIENT_ID?: string;
-  // The host the tabletop answers on, and the hosts that 308 to it, comma
-  // separated. Without a primary host nothing redirects.
+  /**
+   * The host the tabletop answers on, and the hosts that 308 to it, comma
+   * separated. Without a primary host nothing redirects.
+   */
   ALIAS_HOSTS?: string;
   PRIMARY_HOST?: string;
 };
@@ -174,6 +177,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
   };
 }
 
+/** Rejects deployments that mix hosted and standalone settings or omit required settings. */
 export function readConfig(env: ConfigEnv): Config {
   if (env.TABLETOP_MODE === "hosted") return hosted(env);
   if (env.TABLETOP_MODE === "standalone") return standalone(env);

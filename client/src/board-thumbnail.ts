@@ -38,7 +38,6 @@ async function renderThumbnail(editor: Editor, shapes: Set<TLShapeId>): Promise<
   }
   const content = Box.Common(boxes);
   const aspect = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
-  // Leave a small margin around the drawing and pad to the list's aspect.
   const height = Math.max(1, content.h, content.w / aspect) * 1.1;
   const width = height * aspect;
   const bounds = new Box(content.midX - width / 2, content.midY - height / 2, width, height);
@@ -69,7 +68,7 @@ export function keepThumbnail(
   let nextCapture = 0;
   let retryDelay = FIRST_RETRY_MS;
 
-  // Wait for edits to settle. Camera changes and presence are session records.
+  // WARNING: Camera changes and presence are session records. They must not trigger a thumbnail write.
   const schedule = () => {
     clearTimeout(timer);
     if (!available || disposed || !dirty || pending !== null) return;

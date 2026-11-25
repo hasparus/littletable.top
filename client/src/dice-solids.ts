@@ -1,9 +1,5 @@
-// The dice as plain data: each a convex polyhedron with rounded edges (its
-// shrunk "core" swept by a ball of radius r), its faces, and which value each
-// face (a d4: each corner) shows. Coordinates are closed forms in square
-// roots, so every engine builds the same numbers (see dice-math.ts). The
-// d100 is a ball of a hundred small faces: it rolls as a sphere and may show
-// any face on top.
+// A die's rounded surface is its core swept by a ball of radius r.
+// Coordinates use closed forms in square roots for deterministic simulation.
 
 import { add, cross, dot, length, normalize, scale, sub, type Vec } from "./dice-math";
 
@@ -74,8 +70,7 @@ const ROUNDING: Record<Polyhedron, number> = {
 };
 // The d100: the radius of the sphere its faces touch, and its rounding.
 const BALL = { faces: 100, r: 0.035, size: 1.2 };
-// NOTE: cos and sin of the golden angle, π(3 - √5), as literals: Math.cos
-// and Math.sin may differ between engines.
+// WARNING: Use literal cos and sin of the golden angle π(3 − √5). Math.cos and Math.sin can vary across engines.
 const GOLDEN: [number, number] = [-0.7373688780783197, 0.6754902942615238];
 
 const SIGNS = [1, -1];

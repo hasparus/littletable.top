@@ -35,7 +35,7 @@ export function isThumbnail(body: ArrayBuffer, type: ThumbnailType): boolean {
     return false;
   }
   try {
-    // Reject truncated or corrupt image data before replacing the stored thumbnail.
+    // WARNING: A valid image header can still contain truncated or corrupt pixel data.
     const image = PhotonImage.new_from_byteslice(bytes);
     const matches =
       image.get_width() === dimensions.width && image.get_height() === dimensions.height;
@@ -46,8 +46,10 @@ export function isThumbnail(body: ArrayBuffer, type: ThumbnailType): boolean {
   }
 }
 
-// Serialized by the board's Durable Object. Keep the rate limit across
-// hibernation and the latest content hash to avoid rewriting identical art.
+/**
+ * Writes under the board Durable Object's serialization and persists the
+ * rate limit and content hash across hibernation.
+ */
 export async function writeThumbnail(
   sql: SqlStorage,
   bucket: R2Bucket,

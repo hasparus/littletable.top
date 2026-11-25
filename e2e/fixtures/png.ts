@@ -1,6 +1,5 @@
 import { crc32, deflateSync } from "node:zlib";
 
-// One PNG chunk: its length, type, data and CRC.
 const chunk = (type: string, data: Buffer) => {
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);

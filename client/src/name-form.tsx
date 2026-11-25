@@ -4,7 +4,6 @@ import type { Copy } from "./copy";
 
 const MAX_NAME_LENGTH = 40;
 
-// A guest's one step before the board: the name the others will see.
 export function NameForm({
   copy,
   error,

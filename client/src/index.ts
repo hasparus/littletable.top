@@ -14,9 +14,7 @@ const settings = __TABLETOP__;
 const LANGUAGE_KEY = "board.language";
 const isLanguage = (value: string | null): value is Language => value === "en" || value === "pl";
 
-// The language the host had when it sent the person here (?lang=), then the
-// browser's, then the deployment's own. The query leaves the address so a
-// shared link does not carry it; the tab keeps it for a reload.
+// WARNING: Strip the language query so shared links do not carry the sender's preference.
 function pickLanguage(): Language {
   const url = new URL(location.href);
   const asked = url.searchParams.get("lang");
@@ -56,7 +54,6 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) {
 }
 
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
-// Standalone mode also has the public board at / and the account at /boards.
 async function mount(): Promise<void> {
   if (settings.hosted === null && location.pathname === "/boards") {
     const { mountFront } = await import("./front");

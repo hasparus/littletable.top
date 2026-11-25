@@ -1,4 +1,3 @@
-/* The tabletop's Tailwind entry: its tokens, font and buttons (theme/). */
 @import "tailwindcss" source(none);
 @import "./theme/theme.css";
 @import "./theme/buttons.css";

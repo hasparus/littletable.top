@@ -21,8 +21,7 @@ export function stampPresence(message: unknown, stamp: Stamp): void {
     fields.userName = stamp.name;
     fields.meta = { avatar: stamp.avatar };
   } else {
-    // NOTE: a patch can only follow the put above, which already holds
-    // the right values; any change to them is dropped.
+    // WARNING: Accepting identity fields in a presence patch would let a client impersonate another person.
     delete fields.userId;
     delete fields.userName;
     delete fields.meta;

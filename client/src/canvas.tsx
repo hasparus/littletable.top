@@ -32,7 +32,6 @@ import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
 
-// The dice load after the canvas is usable (see warmUpDice).
 const DiceStage = lazy(async () => {
   const { DiceStage: Stage } = await import("./dice-stage");
   return { default: Stage };
@@ -66,8 +65,7 @@ function keepBoardZoom(shell: HTMLDivElement | null) {
   };
 }
 
-// Fetches the dice code while the page is idle, so the first roll does not
-// wait for it. Safari has no requestIdleCallback.
+// WARNING: Keep the timer fallback for Safari versions without requestIdleCallback.
 function warmUpDice(): () => void {
   if ("requestIdleCallback" in globalThis) {
     const handle = requestIdleCallback(loadDice, { timeout: 5000 });
@@ -124,12 +122,14 @@ export function BoardCanvas({
   }, [files, usable]);
   // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
   // a while the person is told why nothing shows.
-  const [stalled, setStalled] = useState(false);
   const connecting = active && store.status === "loading";
+  const [connection, setConnection] = useState({ connecting, stalled: false });
+  if (connection.connecting !== connecting) {
+    setConnection({ connecting, stalled: false });
+  }
   useEffect(() => {
-    setStalled(false);
     if (!connecting) return;
-    const timer = setTimeout(() => setStalled(true), STALLED_AFTER_MS);
+    const timer = setTimeout(() => setConnection({ connecting, stalled: true }), STALLED_AFTER_MS);
     return () => clearTimeout(timer);
   }, [connecting]);
 
@@ -162,11 +162,12 @@ export function BoardCanvas({
   const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
   const [rollDraft, setRollDraft] = useState<BoardUi["rollDraft"]>({ expression: "", pool: [] });
-  const highlight = useMemo(makeHighlight, []);
+  const highlight = useMemo(() => makeHighlight(), []);
   const [search, setSearch] = useState<BoardSearch | null>(null);
   useEffect(() => {
     if (editor === null) return;
     const made = new BoardSearch(editor);
+    // oxlint-disable-next-line react/set-state-in-effect -- Publish the editor-bound index after its subscriptions are installed.
     setSearch(made);
     return () => made.dispose();
   }, [editor]);
@@ -175,6 +176,7 @@ export function BoardCanvas({
     if (editor === null || search === null || !usable) return;
     const made = new ImageText({ editor, engines: textEngines(), files, keeper, search });
     made.start();
+    // oxlint-disable-next-line react/set-state-in-effect -- Publish the OCR resource only after it starts listening to the active editor.
     setImageText(made);
     return () => made.dispose();
   }, [editor, files, keeper, search, usable]);
@@ -237,7 +239,6 @@ export function BoardCanvas({
   // NOTE: a full board waits and asks again (useBoardStore); the way out
   // stays in reach meanwhile.
   if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
-  // NOTE: a reset link or a deleted board ends the board (keeper.end).
   if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
   // NOTE: tldraw logs the reason of any sync error itself.
   if (store.status === "error") {
@@ -250,7 +251,7 @@ export function BoardCanvas({
   }
   const offline =
     (store.status === "synced-remote" && store.connectionStatus === "offline") ||
-    (connecting && stalled);
+    (connecting && connection.stalled);
 
   return (
     <BoardUiContext.Provider value={ui}>

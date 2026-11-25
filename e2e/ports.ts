@@ -8,13 +8,9 @@ if (!Number.isInteger(offset) || offset < 0 || offset % 10 !== 0 || offset > 50_
 }
 
 export const PORTS = {
-  // e2e/fake-host.ts, the reference host of hosted mode.
   host: 8000 + offset,
-  // The Worker in hosted mode.
   hosted: 8788 + offset,
-  // The Worker in standalone mode.
   standalone: 8790 + offset,
-  // e2e/fake-workos.ts, standalone mode's sign-in provider.
   workos: 8001 + offset,
 };
 
@@ -25,7 +21,6 @@ export const HOSTED = local(PORTS.hosted);
 export const STANDALONE = local(PORTS.standalone);
 export const WORKOS = local(PORTS.workos);
 
-// A board's address on the Worker at `origin`, its share code captured.
 export const boardAt = (origin: string) =>
   new RegExp(String.raw`^${origin.replaceAll(".", String.raw`\.`)}/b/(\w+)$`, "u");
 

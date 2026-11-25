@@ -1,7 +1,3 @@
-// From a roll to what every screen plays: which bodies are thrown, the frames
-// of the shared throw, and for each die the turn of its numbering that puts
-// the server's value on top. No rendering here.
-
 import type { DiceLaunch } from "../../src/dice-notation";
 
 import {
@@ -110,8 +106,7 @@ export function finalRotation(thrown: Throw, index: number): Quat {
   return [frames[last]!, frames[last + 1]!, frames[last + 2]!, frames[last + 3]!];
 }
 
-// Throws `dice` with `seed`. The simulation may pause at `deadline`s; call
-// `advance` until it reports done, then `planned`.
+// Call `advance` until it reports done, then read `planned`.
 export function throwDice(
   dice: Die[],
   seed: number,

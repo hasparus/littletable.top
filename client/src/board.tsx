@@ -40,7 +40,6 @@ type Mount = {
   copy: Copy;
   door: Door;
   feedback: boolean;
-  // Where a person goes before the host has said whose board this is.
   fallbackExit: Exit;
   first: Promise<Answer>;
   landing?: PublicLanding;
@@ -128,8 +127,6 @@ function ReadyBoard({
   );
 }
 
-// Where a person goes from the board: their boards for a member, the place
-// the board belongs to for a guest.
 function exitOf(copy: Copy, { boardsUrl, home }: Bootstrap): Exit {
   return boardsUrl === null
     ? { href: home.url, label: fill(copy.backTo, { home: home.name }) }
@@ -147,8 +144,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
             ? { href: "/auth/sign-in?return=/boards", label: landing.copy.signIn }
             : exitOf(copy, answer.bootstrap);
         document.title = answer.bootstrap.title;
-        // NOTE: an ending only ever moves forward; a late renewal answer
-        // must not bring a reset board back.
+        // WARNING: A late renewal response must not reopen an ended board.
         const keeper = new PassKeeper(door, answer.bootstrap, (ending) =>
           setStage((current) =>
             current.kind === "ended" ? current : { ending, exit, kind: "ended" },

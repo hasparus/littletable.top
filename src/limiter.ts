@@ -16,8 +16,7 @@ export class Limiter extends DurableObject {
 }
 
 export async function addressKey(request: Request): Promise<string> {
-  // NOTE: Cloudflare sets CF-Connecting-IP to the client's address; the
-  // other forwarding headers can be written by anyone.
+  // WARNING: Clients can spoof ordinary forwarding headers to evade per-address limits.
   const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(address));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

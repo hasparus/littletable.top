@@ -6,9 +6,6 @@ import { closeness, type Closeness, excerpt, type ExcerptPart, fold, oneLine } f
 
 export type Point = { x: number; y: number };
 
-// Where a document's text comes from: a shape's own text (a note, a label,
-// a frame's name, an image's alt text), a place's name, or a line read off
-// an image.
 export type SearchKind = "native" | "ocr" | "place";
 
 export type SearchDoc = {
@@ -63,9 +60,6 @@ export const MAX_HITS = 50;
 
 type Entry = { own: string[]; page: TLPageId; read: string[] };
 
-// The board's text: per shape, its own text and its place name (kept in
-// step with the board by BoardSearch), and the lines read off it if it is
-// an image, which arrive later and on their own.
 export class BoardIndex {
   readonly #docs = new Map<string, SearchDoc>();
   readonly #shapes = new Map<TLShapeId, Entry>();
@@ -105,10 +99,8 @@ export class BoardIndex {
     return kept;
   }
 
-  // Replaces a shape's own text and place name, and says which page the
-  // shape is on now (the lines read off it follow). Text the shape says
-  // twice (a frame named like its place, an alt text that repeats a title)
-  // is indexed once, the first document given keeping it.
+  // OCR lines follow a shape to its new page. Duplicate non-OCR text
+  // keeps only the first document.
   setShape(shape: TLShapeId, page: TLPageId, docs: readonly SearchDoc[]): void {
     const entry = this.#shapes.get(shape);
     if (entry !== undefined) {
@@ -154,7 +146,7 @@ export class BoardIndex {
     });
   }
 
-  // The best matches, best first: text that holds the query as typed, then
+  // Results favor text that holds the query as typed, then
   // folded, then only through prefixes and typos; within each, the index's
   // own relevance with places boosted. A shape's text and its place name
   // are one result, not two, and so are lines read off the same place of

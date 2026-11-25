@@ -5,17 +5,10 @@ import { build } from "vite";
 import { hashThrow, simulate } from "../../client/src/dice-physics";
 import { bodiesOf } from "../../client/src/dice-throw";
 
-// Every client of a board turns the server's seed into the same throw, so
-// players see the same dice land in the same places. This runs the client's
-// own simulation, bundled as it ships, in each browser engine and compares
-// every throw's frame hash with Node's (V8). The artifact is the list of
-// throws that differ, printed when it fails.
-
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const THROWS = 200;
 
-// NOTE: the typed array turns Math.imul's signed result into the unsigned
-// seed the server draws.
+// WARNING: Keep these seeds unsigned. Math.imul returns signed 32-bit values.
 const seeds = Uint32Array.from({ length: THROWS }, (_, i) => Math.imul(i + 1, 2_654_435_761));
 
 // Mixed pools of 1 to 20 dice, d100s among them; every fifth is a crowd of

@@ -20,8 +20,10 @@ import type { BoardDocument, ImportReply } from "./tldr-worker";
 // tldraw's own file format, a .tldr: the whole document as JSON, with each
 // image embedded as a data: URL so the file opens anywhere tldraw does.
 
-// Embedded images grow by a third as base64; a board's whole quota of
-// images (src/limits.ts) fits with room to spare.
+/**
+ * Embedded images grow by a third as base64; a board's whole quota of
+ * images (src/limits.ts) fits with room to spare.
+ */
 export const MAX_TLDR_BYTES = 400 * 1024 * 1024;
 
 const TLDR_TYPE = "application/vnd.tldraw+json";
@@ -63,10 +65,12 @@ export class ImportRefused extends Error {
 export const isTldrFile = (file: File) =>
   file.name.toLowerCase().endsWith(TLDRAW_FILE_EXTENSION) || file.type === TLDR_TYPE;
 
-// The board as one .tldr. tldraw fetches each image the document points at
-// (through the asset store's resolve, which keeps the files cookie fresh)
-// and embeds it; one it could not fetch would stay a bare address, which
-// opens nowhere else, so the export fails instead.
+/**
+ * The board as one .tldr. tldraw fetches each image the document points at
+ * (through the asset store's resolve, which keeps the files cookie fresh)
+ * and embeds it; one it could not fetch would stay a bare address, which
+ * opens nowhere else, so the export fails instead.
+ */
 export async function exportTldr(editor: Editor): Promise<Blob> {
   const json = await serializeTldrawJson(editor);
   const { records } = JSON.parse(json) as { records: TLRecord[] };
@@ -218,7 +222,6 @@ function planIds(editor: Editor, plan: Plan, replacing: TLPage | null): Plan {
   };
 }
 
-// A board nobody has drawn on yet: one page and no shapes.
 const isUntouched = (editor: Editor) =>
   editor.getPages().length === 1 &&
   !editor.store.allRecords().some((record) => record.typeName === "shape");
@@ -231,8 +234,10 @@ function replacementPage(editor: Editor, pages: TLPage[], keepFirstPage: boolean
   return replacing;
 }
 
-// Adds pages after the board's own, or in place of an untouched board's empty
-// page. Embedded images are uploaded before the document points at them.
+/**
+ * Adds pages after the board's own, or in place of an untouched board's empty
+ * page. Embedded images are uploaded before the document points at them.
+ */
 export async function importTldr(
   editor: Editor,
   file: File,
@@ -255,7 +260,7 @@ export async function importTldr(
   replacementPage(editor, pages, keepFirstPage);
   const uploaded = await uploadEmbedded(embedded, upload, report, signal);
   signal.throwIfAborted();
-  // Someone may have drawn or added pages while the images were uploading.
+  // WARNING: The board may have changed during uploads. Recheck before replacing its empty page.
   const replacing = replacementPage(editor, pages, keepFirstPage);
   report({ kind: "adding" });
 

@@ -9,7 +9,6 @@ const LOG_LENGTH = 50;
 export type RollRefusal = "failed" | "too-fast";
 
 export type Rolls = {
-  // The roll everyone is looking at right now, until it settles.
   arrived: Roll | null;
   log: Roll[];
   receive: (message: unknown) => void;

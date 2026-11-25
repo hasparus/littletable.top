@@ -18,8 +18,10 @@ const personId = (userId: string) => userId.replace(/^user:/u, "");
 const avatarOf = (meta: Record<string, unknown>) =>
   typeof meta.avatar === "string" && /^[0-9a-f]{64}$/u.test(meta.avatar) ? meta.avatar : null;
 
-// One entry per person, though one person may have the board open twice,
-// with the page they are on.
+/**
+ * One entry per person, though one person may have the board open twice,
+ * with the page they are on.
+ */
 export function usePresent(editor: Editor | null): Present[] {
   return useValue(
     "people at the board",
@@ -47,8 +49,7 @@ const isGuest = (id: string) => id.startsWith("g:");
 
 function Who({ page, who }: { page: string | undefined; who: Person }) {
   const { copy, files, person } = useBoardUi();
-  // NOTE: a picture asked for before the board's files cookie is set would
-  // fail and stay an initial; it waits for the cookie instead.
+  // WARNING: Requesting an avatar before the files cookie is set leaves the fallback initial in place.
   const readable = useValue("files readable", () => files.readable.get(), [files]);
   const src = readable && who.avatar !== null ? `${files.path}/avatars/${who.avatar}` : null;
   return (
@@ -74,8 +75,6 @@ function Who({ page, who }: { page: string | undefined; who: Person }) {
   );
 }
 
-// Tapping someone follows them with tldraw's own follow: to their page, and
-// along as they look around, until this person moves the board themself.
 export function PeopleSheet() {
   const { color, copy, editor, files, locale, open, person } = useBoardUi();
   const ownAvatar = useValue("own avatar", () => files.avatar.get(), [files]);

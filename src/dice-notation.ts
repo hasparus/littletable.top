@@ -3,7 +3,7 @@ import { DIE_SIDES, MAX_DICE } from "./limits";
 export const MAX_EXPRESSION_LENGTH = 256;
 export const MAX_MODIFIER = 1000;
 
-// Release point and velocity, each expressed relative to the tray.
+/** Release point and velocity, each expressed relative to the tray. */
 export type DiceLaunch = { vx: number; vz: number; x: number; z: number };
 
 export type Roll = {
@@ -11,10 +11,10 @@ export type Roll = {
   dice: { sides: number; value: number }[];
   expression?: string;
   id: number;
-  // Used in the live animation. History only stores the roll's result.
+  /** The live throw's release state. It is omitted from history. */
   launch?: DiceLaunch;
   name: string;
-  // Shapes the shared throw. Rolls logged before seeds have a null seed.
+  /** The shared animation seed. Existing rolls without a saved seed use null. */
   seed: number | null;
   sub: string;
 };

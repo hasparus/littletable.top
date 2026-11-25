@@ -30,22 +30,16 @@ export type DiceThrow = {
   roll: (dice: Die[], options: ThrowOptions) => Promise<void>;
 };
 
-// The dice wear the deployer's brand colour; "ivory" is the other look.
 const LOOK: "brand" | "ivory" = "brand";
 const IVORY: Look = { body: [0.945, 0.91, 0.847], ink: [0.165, 0.129, 0.114] };
 const LIGHT_INK: Rgb = [1, 0.973, 0.949];
 const FALLBACK_BODY: Rgb = [0.184, 0.435, 0.875];
-// How far a ball's faces are lit as a sphere, and the frames it takes to dim
-// dice dropped by the notation.
 const BALL_SMOOTH = 0.5;
 const SETTLE_FADE_FRAMES = 15;
 // The simulation's share of a frame on a slow device, before it yields.
 const SLICE_MS = 6;
-// NOTE: for looking at a tier on a device that would pick the other one:
-// localStorage.setItem("tabletop.dice-tier", "low" | "full").
 const TIER_KEY = "tabletop.dice-tier";
 
-// "#rgb" or "#rrggbb", as the build writes the brand colours.
 function parseHex(text: string): Rgb | null {
   const hex = /^#([\da-f]{3}|[\da-f]{6})$/iu.exec(text.trim())?.[1];
   if (hex === undefined) return null;
@@ -58,7 +52,6 @@ function lookOf(): Look {
   if (LOOK === "ivory") return IVORY;
   const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand-primary");
   const body = parseHex(brand) ?? FALLBACK_BODY;
-  // A pale brand takes the dark ink, as a pale die does.
   const brightness = 0.2126 * body[0] + 0.7152 * body[1] + 0.0722 * body[2];
   return { body, ink: brightness > 0.6 ? IVORY.ink : LIGHT_INK };
 }
@@ -68,7 +61,7 @@ function forcedTier(): Tier | null {
     const forced = localStorage.getItem(TIER_KEY);
     return forced === "low" || forced === "full" ? forced : null;
   } catch {
-    // Storage can be denied outright; the device then picks its own tier.
+    // WARNING: Reading localStorage can throw when the browser blocks storage.
     return null;
   }
 }
@@ -109,8 +102,6 @@ function dimFrom({ thrown }: Planned, kept: readonly boolean[]): (number | null)
   });
 }
 
-// The dice between two recorded frames. The mesh and its engraved numbers
-// move together for the entire throw.
 function posesAt(
   { bodies, numbering, thrown }: Planned,
   dimming: (number | null)[],
@@ -150,16 +141,14 @@ export async function createDiceThrow(
   host: HTMLElement,
   onError: (error: unknown) => void,
 ): Promise<DiceThrow> {
-  // NOTE: the numerals are drawn on a canvas, which uses whatever font is
-  // ready at that moment; this waits for Outfit's file.
+  // WARNING: Wait for Outfit before drawing the atlas. Canvas would otherwise keep the fallback glyphs.
   await document.fonts.load(NUMERAL_FONT, "0123456789");
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   canvas.className = "pointer-events-none absolute inset-0 size-full";
   let shown: Pose[] = [];
   let controls: ReturnType<typeof addDiceControls> | null = null;
-  // NOTE: the board's own theme (tldraw's, a class on its container) decides
-  // how strong the shadows are, not the device's.
+  // Shadow contrast follows the board theme even when it differs from the device theme.
   function redraw() {
     renderer.draw(shown, document.querySelector(".tl-theme__dark") !== null);
     controls?.measure();

@@ -37,7 +37,7 @@ const reply = (message: ImportReply) => scope.postMessage(message);
 // board where we override arrow behaviour and leave its schema in place.
 const schema = createTLSchema();
 
-// The parser can report a generic migration error for a newer shape.
+// WARNING: The parser can report a generic migration error for a newer shape.
 function usesNewerSchema(json: string): boolean {
   let file: unknown;
   try {

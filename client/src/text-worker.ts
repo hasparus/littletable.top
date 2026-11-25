@@ -1,9 +1,6 @@
 /// <reference lib="webworker" />
-// The text worker: reads one image at a time with the engines it is asked
-// for, off the main thread (docs/internals.md, "Text in images"). The image is
-// decoded once, drawn once at the engines' cap, and let go after; each
-// engine loads the first time it is needed and stays for the next image
-// until the board lets the worker go.
+// Both engines share the same decoded, resized image. Each loads on first use
+// and stays loaded until the worker exits.
 //
 // NOTE: tesseract.js runs Tesseract in a worker of its own, which it
 // starts from this one (from its file on this origin, never a blob: URL).
@@ -193,9 +190,7 @@ async function upright(blob: Blob): Promise<ImageBitmap> {
   try {
     return await createImageBitmap(blob, { imageOrientation: "from-image" });
   } catch (error) {
-    // NOTE: a browser from before "from-image" refuses the value. Its
-    // default may leave a JPEG sideways; the Worker then refuses the
-    // reading's size, and the image stays unread rather than misplaced.
+    // WARNING: A JPEG decoded without EXIF orientation can be sideways and fail the server's size validation.
     if (!(error instanceof TypeError)) throw error;
     return createImageBitmap(blob);
   }

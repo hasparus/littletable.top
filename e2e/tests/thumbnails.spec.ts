@@ -126,8 +126,7 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
       return send(url, init);
     };
   });
-  // WebKit does not keep Secure sign-in cookies over the test server's HTTP
-  // connection. Use the API fixture's real session for the owner's requests.
+  // WARNING: WebKit drops Secure sign-in cookies on the HTTP test server. Use the API fixture session for owner requests.
   const start = await request.get(`${STANDALONE}/auth/sign-in?return=/boards`, { maxRedirects: 0 });
   expect(start.status()).toBe(302);
   const authorize = new URL(start.headers().location!);
@@ -136,8 +135,7 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
   expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
   await page.route(`${STANDALONE}/api/**`, async (route) => {
     const outgoing = route.request();
-    // WebKit's intercepted request does not expose the Blob body. Forward the
-    // actual encoded bytes that the browser passed to fetch.
+    // WARNING: WebKit does not expose the intercepted Blob body. Forward the encoded bytes passed to fetch.
     const data =
       outgoing.method() === "PUT" && outgoing.url().endsWith("/thumbnail")
         ? Buffer.from(
@@ -242,8 +240,6 @@ test("a pending thumbnail refresh survives a layer switch and retries a failed u
   const toggle = page.getByRole("button", { name: "Secret layer" });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  // Stay in the secret layer past the normal settle delay. No thumbnail
-  // request should be sent while the shared layer is hidden.
   const inactiveUpload = await page
     .waitForRequest(
       (request) => request.method() === "PUT" && request.url().endsWith("/thumbnail"),

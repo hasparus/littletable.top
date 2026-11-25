@@ -31,7 +31,7 @@
     "deploy:prod": "alchemy deploy --stage prod",
     "plan:staging": "alchemy plan --stage staging",
     "deploy:staging": "alchemy deploy --stage staging",
-    "lint": "oxlint -c oxlint.config.ts --max-warnings 0 client src alchemy e2e",
+    "lint": "bun scripts/lint.ts",
     "doctor": "react-doctor --yes --no-telemetry --no-supply-chain",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

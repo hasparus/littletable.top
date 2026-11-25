@@ -37,7 +37,6 @@ export function layoutOf(shape: Solid): Layout {
       up,
     };
   });
-  // One cell more than faces: the last is the blank one.
   return { cells, columns: Math.ceil(Math.sqrt(shape.faces.length + 1)), shrink };
 }
 

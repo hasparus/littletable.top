@@ -24,7 +24,6 @@ const WIDE_BOARD_WIDTH = 1024;
 // of a shorter one). The roll log and the announcement always give it.
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
-// How long the result reads at full contrast before it steps back.
 const RESTING_AFTER_MS = 4000;
 
 export type DiceStageProps = {
@@ -38,7 +37,6 @@ const prefersStill = () => globalThis.matchMedia("(prefers-reduced-motion: reduc
 
 type Overflow = "both" | "end" | "none" | "start";
 
-// Which ends of the dice row hide dice, so only those fade.
 function overflowOf(row: HTMLElement): Overflow {
   const hidden = row.scrollWidth - row.clientWidth;
   if (hidden < 1) return "none";
@@ -116,7 +114,6 @@ const samePlace = (a: Place | null, b: Place) =>
   a.width === b.width &&
   a.below === b.below;
 
-// From just above the screen's top edge.
 const dropFrom = (place: Place): Keyframe[] => [
   { opacity: 0, transform: `translateY(${-Math.ceil(place.top + 24)}px)` },
   { opacity: 1, transform: "none" },
@@ -165,17 +162,16 @@ function ResultToast({
   const lastPlace = useRef<Place | null>(null);
   const [overflow, setOverflow] = useState<Overflow>("none");
   const [place, setPlace] = useState<Place | null>(null);
-  const [resting, setResting] = useState(false);
+  const [restedRoll, setRestedRoll] = useState<Roll | null>(null);
   const placed = place !== null;
+  const resting = restedRoll === roll;
   const modifier = result.notation?.modifier ?? null;
 
   useEffect(() => {
-    // A newer roll takes the toast over from one on its way out.
     exiting.current?.cancel();
     exiting.current = null;
-    setResting(false);
     if (!shown || lastPlace.current === null) return;
-    const timer = setTimeout(() => setResting(true), RESTING_AFTER_MS);
+    const timer = setTimeout(() => setRestedRoll(roll), RESTING_AFTER_MS);
     if (!prefersStill()) {
       toast.current?.animate(dropFrom(lastPlace.current), {
         duration: 180,
@@ -298,7 +294,7 @@ export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
   const [rowBottom, setRowBottom] = useState<number | null>(null);
   const [refusal, setRefusal] = useState<{ id: number; reason: RollRefusal } | null>(null);
   const [, setFailures] = useState(0);
-  const still = useMemo(prefersStill, []);
+  const still = useMemo(() => prefersStill(), []);
   const result = useMemo(() => rollResult(roll), [roll]);
   const unavailable = isDice3dDown();
   const showToast = still || unavailable || settledId === roll.id;
@@ -315,8 +311,6 @@ export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
       }),
     );
     thrown.current
-      // NOTE: a roll logged before seeds existed never arrives live; its id
-      // stands in so that every screen would still throw alike.
       .then(async (dice) => {
         if (!current) return;
         await dice.roll(roll.dice, {
@@ -346,7 +340,6 @@ export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
 
   useEffect(
     () => () => {
-      // A scene that never came to be has nothing to dispose of.
       void thrown.current?.then(
         (dice) => dice.dispose(),
         () => null,

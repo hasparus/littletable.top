@@ -26,8 +26,10 @@ export function placesOn(editor: Editor): Place[] {
   );
 }
 
-// What a new place is called before anyone types: a frame's own name, else
-// nothing, so the field shows its placeholder.
+/**
+ * What a new place is called before anyone types: a frame's own name, else
+ * nothing, so the field shows its placeholder.
+ */
 export function suggestedName(shape: TLShape): string {
   const props = shape.props as { name?: unknown };
   return shape.type === "frame" && typeof props.name === "string" ? props.name : "";
@@ -37,8 +39,7 @@ function setMeta(editor: Editor, id: TLShapeId, name: string | null): void {
   const shape = editor.getShape(id);
   if (shape === undefined) return;
   const { [PLACE_KEY]: _previous, ...meta } = shape.meta;
-  // NOTE: maps and sheets are usually locked so nobody drags them by
-  // accident; naming one is not moving it.
+  // WARNING: Allow naming locked shapes without unlocking them. Maps often serve as a fixed background.
   editor.run(
     () => {
       editor.updateShape({
@@ -56,7 +57,6 @@ export const nameAsPlace = (editor: Editor, id: TLShapeId, name: string) =>
 
 export const removePlace = (editor: Editor, id: TLShapeId) => setMeta(editor, id, null);
 
-// Shows `bounds` (page coordinates) on `page`, switching to it first.
 export function goToBounds(editor: Editor, page: TLPageId, bounds: BoxLike): void {
   const away = page !== editor.getCurrentPageId();
   if (editor.getInstanceState().followingUserId !== null) editor.stopFollowingUser();
@@ -65,12 +65,10 @@ export function goToBounds(editor: Editor, page: TLPageId, bounds: BoxLike): voi
     editor.setCurrentPage(page);
   }
   editor.zoomToBounds(bounds, {
-    // NOTE: the other page's camera starts wherever it was left; gliding
-    // from there would only show unrelated parts of that page.
+    // WARNING: On a page switch, an animated zoom would start at that page's old camera position.
     animation: away ? undefined : { duration: editor.options.animationMediumMs },
     inset: 32,
-    // NOTE: caps the zoom, so a small note lands at its real size rather
-    // than blown up to fill the screen.
+
     targetZoom: 1,
   });
 }
@@ -82,8 +80,10 @@ export function goTo(editor: Editor, id: TLShapeId): void {
   goToBounds(editor, page, bounds);
 }
 
-// The one place each person keeps first in their own list. Private to this
-// browser; storage may be off (private mode), and then the star lasts the visit.
+/**
+ * The one place each person keeps first in their own list. Private to this
+ * browser; storage may be off (private mode), and then the star lasts the visit.
+ */
 export function useMyPlace(board: string): [TLShapeId | null, (id: TLShapeId | null) => void] {
   const key = `board:${board}:my-place`;
   const [mine, setMine] = useState<TLShapeId | null>(() => {
@@ -111,7 +111,6 @@ export function useMyPlace(board: string): [TLShapeId | null, (id: TLShapeId | n
 const byPage = (a: Place, b: Place) =>
   a.pageIndex < b.pageIndex ? -1 : a.pageIndex > b.pageIndex ? 1 : 0;
 
-// Their own place first, then page by page in the board's order, by name.
 export function ordered(places: Place[], mine: TLShapeId | null, locale: string): Place[] {
   return places.toSorted(
     (a, b) =>

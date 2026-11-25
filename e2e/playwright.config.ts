@@ -3,22 +3,14 @@ import { fileURLToPath } from "node:url";
 
 import { HOST, HOSTED, PORTS, STANDALONE, WORKOS } from "./ports";
 
-// Each mode runs against the real Worker in workerd (wrangler dev) serving a
-// client built for that mode: hosted with e2e/fake-host.ts, standalone with
-// e2e/fake-workos.ts, on the ports of e2e/ports.ts.
-
 const root = fileURLToPath(new URL("..", import.meta.url));
 const isCI = process.env.CI !== undefined;
 
-// NOTE: sandboxes that mandate an egress proxy export HTTPS_PROXY, which
-// browsers do not pick up on their own; the tabletop itself makes no
-// external request, so localhost bypasses it.
+// WARNING: Playwright does not inherit the shell’s HTTPS proxy. Bypass it for the local test servers.
 const proxyServer = process.env.HTTPS_PROXY ?? process.env.https_proxy;
 
 const env = { ...process.env, WRANGLER_SEND_METRICS: "false" } as Record<string, string>;
 
-// A fresh store every run: board ids restart with the fake host, and the
-// standalone database starts empty.
 const tabletop = (mode: string, port: number, extra: string, setUp: string[] = []) =>
   [
     `rm -rf .wrangler/e2e-${mode} dist-e2e/${mode}`,
@@ -30,8 +22,6 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
 export default defineConfig({
   expect: { timeout: 10_000 },
   forbidOnly: isCI,
-  // NOTE: CI shards the suite by test, so one spec's tests can land on
-  // different runners, each with its own servers.
   fullyParallel: isCI,
   outputDir: "test-results",
   projects: [
@@ -49,8 +39,7 @@ export default defineConfig({
   testDir: "./tests",
   timeout: 120_000,
   use: {
-    // NOTE: most hosts cannot give Chromium its sandbox (containers, and
-    // runners that deny unprivileged user namespaces).
+    // WARNING: Chromium’s sandbox requires user namespaces that some CI containers disable.
     launchOptions: { chromiumSandbox: false },
     trace: "retain-on-failure",
     ...(proxyServer === undefined

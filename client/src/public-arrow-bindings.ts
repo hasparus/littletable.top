@@ -10,8 +10,7 @@ function rememberArrow(editor: Editor, id: TLShapeId): void {
   const info = getArrowInfo(editor, arrow);
   if (info === undefined) return;
 
-  // Store the editor's resolved endpoints while their targets still exist.
-  // They are in the arrow's own coordinates and survive reparenting.
+  // WARNING: Capture resolved endpoints before their targets disappear. Arrow-local coordinates survive reparenting.
   const meta = saveArrowEndpoints(arrow, {
     end: bindings.some(({ props }) => props.terminal === "end") ? info.end.point : undefined,
     start: bindings.some(({ props }) => props.terminal === "start") ? info.start.point : undefined,

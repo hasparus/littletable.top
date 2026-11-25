@@ -4,7 +4,7 @@ import type { LandingCopy } from "./front-copy";
 
 export type PublicLanding = { copy: LandingCopy };
 
-// The note is rendered in canvas coordinates, outside the shared document.
+/** The note is rendered in canvas coordinates, outside the shared document. */
 export function PublicBoardIntro({ copy }: PublicLanding) {
   const editor = useEditor();
   const position = useValue(

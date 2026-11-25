@@ -226,7 +226,7 @@ function OwnedRow({
   );
 }
 
-// Match Tailwind's sm breakpoint so DOM order follows the visible layout.
+// WARNING: Keep this aligned with Tailwind's sm breakpoint so DOM order follows the visible layout.
 const phoneViewport = matchMedia("(width < 640px)");
 const isPhone = () => phoneViewport.matches;
 function subscribeToPhone(listener: () => void) {

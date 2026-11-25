@@ -21,12 +21,9 @@ const REFUSALS: Partial<Record<string, Refusal>> = {
 export const refusalOf = (error: Error): Refusal | null =>
   error instanceof TLRemoteSyncError ? (REFUSALS[error.reason] ?? null) : null;
 
-// NOTE: a full board refuses for good as far as tldraw is concerned; the
-// board asks again this often, so a person gets in once someone leaves.
+// WARNING: tldraw treats a full room as terminal. Retry it here so a slot opening can admit the person.
 const FULL_RETRY_MS = 15_000;
 
-// The board's tldraw store, synced through the Worker. A reset link or a
-// deleted board ends the board for this person; a full one waits.
 export function useBoardStore({
   active,
   color,
@@ -46,8 +43,7 @@ export function useBoardStore({
   const [attempt, setAttempt] = useState(0);
 
   const { receive } = rolls;
-  // NOTE: useSync reconnects whenever this object changes, so it is built
-  // once per board and attempt; a new object on each render loops React.
+  // WARNING: useSync reconnects when this object changes, so recreating it on every render causes a loop.
   const syncOptions = useMemo(() => {
     const users: TLUserStore = {
       currentUser: atom(

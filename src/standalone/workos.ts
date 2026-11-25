@@ -28,9 +28,7 @@ function displayName(user: WorkOsUser): string {
   return full === "" ? user.email.split("@")[0]! : full;
 }
 
-// The access token's `sid` names the AuthKit session, which sign-out ends.
-// NOTE: the token came straight from WorkOS over TLS in answer to our
-// secret, so it is read, not verified against WorkOS's keys.
+// WARNING: Only decode AuthKit tokens received directly from the authenticated WorkOS API call.
 function sessionOf(accessToken: unknown): string | null {
   if (typeof accessToken !== "string") return null;
   try {

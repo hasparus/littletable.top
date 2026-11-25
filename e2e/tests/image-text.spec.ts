@@ -25,19 +25,6 @@ import {
 } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
 
-// Text in images, end to end, against the hosted Worker and the real
-// engines: Ada uploads a Polish character sheet and, on another page, a
-// map whose labels run at angles; Bea, a guest who uploaded nothing, finds
-// a label printed at −30° and the character's name, with and without
-// diacritics and with a typo; choosing the label goes to its page and
-// flashes the words, tilted as they are printed, over where the ground
-// truth says they are; Cy, who joins once both are read, finds them
-// without reading anything; deleting the map takes its text out of the
-// results. No request leaves the tabletop and its host, and the page's
-// policy is never broken. The artifacts are measurements.json (time to
-// searchable, the worst frame gap on the uploader's board while both
-// engines read, what the engines downloaded) and the screenshots.
-
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };
 const PHONE_2X = { ...PHONE, deviceScaleFactor: 2 };
 
@@ -61,7 +48,6 @@ const reading = (page: Page) =>
     .getByRole("status")
     .filter({ hasText: /^Reading the text in/u });
 
-// Every address a context asks for, and how many bytes came back.
 function watch(context: BrowserContext) {
   const seen: { bytes: number; url: string }[] = [];
   context.on("requestfinished", async (request) => {
@@ -113,7 +99,6 @@ async function addPage(page: Page, name: string): Promise<void> {
   await page.keyboard.press("Escape");
 }
 
-// The longest wait between two frames from now on, on this page.
 const trackFrames = (page: Page) =>
   page.evaluate(() => {
     const state = { last: performance.now(), worst: 0 };
@@ -168,12 +153,10 @@ test("text one person's images carry is found by others, there and tilted", asyn
   await uploadImage(ada.page, SHEET);
   await addPage(ada.page, "Mapa");
   await uploadImage(ada.page, MAP);
-  // Ada is told why her map is not found yet, and only while it is so.
   await openSheet(ada.page, "Search");
   await expect(reading(ada.page)).toBeVisible();
   await shot(ada.page, "pending-desktop");
 
-  // Bea finds the label printed at −30°, without diacritics, with a typo.
   const search = await openSheet(bea.page, "Search");
   for (const query of ["Śledziowa", "sledziowa", "Sledzowa"]) {
     await field(bea.page).fill(query);
@@ -194,12 +177,9 @@ test("text one person's images carry is found by others, there and tilted", asyn
   }
   await shot(bea.page, "results-phone");
 
-  // Once both are read, Ada's sheet says nothing more about it.
   await expect(reading(ada.page)).toHaveCount(0, { timeout: READ_MS });
   const frames = await worstFrame(ada.page);
 
-  // Choosing the label goes to its page and flashes its words where the
-  // map shows them, tilted with the print.
   await field(bea.page).fill("Zatoka Śledziowa");
   await options(bea.page).filter({ hasText: "Zatoka Śledziowa" }).first().tap();
   await expect(search).toBeHidden();
@@ -217,7 +197,6 @@ test("text one person's images carry is found by others, there and tilted", asyn
       Math.max(0, Math.min(box.y1, label.y1) - Math.max(box.y0, label.y0))) /
     ((label.x1 - label.x0) * (label.y1 - label.y0));
   expect(covered).toBeGreaterThan(0.5);
-  // The outline's longest side runs along the print.
   const sides = points.map((from, at) => {
     const to = points[(at + 1) % points.length]!;
     return {
@@ -230,7 +209,6 @@ test("text one person's images carry is found by others, there and tilted", asyn
   expect(Math.abs(tilt - 30) < 10 || Math.abs(tilt - 150) < 10, `tilted ${along}°`).toBe(true);
   await shot(bea.page, "flash-rotated-phone");
 
-  // Cy joins once everything is read: found at once, nothing read again.
   const cy = await guest(browser, boardUrl, "Cy", DESKTOP);
   await openSheet(cy.page, "Search");
   await field(cy.page).fill("leczycki");
@@ -241,7 +219,6 @@ test("text one person's images carry is found by others, there and tilted", asyn
   await shot(cy.page, "results-desktop");
   expect(cy.network.engineFiles()).toEqual([]);
 
-  // Deleting the map takes its text out of everyone's results.
   await bea.page
     .getByTestId("canvas")
     .locator(`img.tl-image[src$="${MAP_HASH}"]`)
@@ -285,7 +262,6 @@ test("when the uploader leaves mid-read, another browser reads the image once th
   await openSheet(bea.page, "Search");
 
   await uploadImage(ada.page, MAP);
-  // Bea is told the map is being read; Ada's browser holds it.
   await expect(reading(bea.page)).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => ada.network.engineFiles().length, { timeout: 30_000 }).toBeGreaterThan(0);
   let claims = 0;
@@ -295,9 +271,6 @@ test("when the uploader leaves mid-read, another browser reads the image once th
   const left = Date.now();
   await ada.page.context().close();
 
-  // While the lease lapses, Bea's drawing, a pause after each note, does
-  // not send her browser asking for the image again: it waits for a
-  // notice, or for the lease.
   await closeSheet(bea.page, "Search");
   for (const [at, text] of [
     [200, "Port"],
@@ -305,7 +278,7 @@ test("when the uploader leaves mid-read, another browser reads the image once th
     [800, "Wieża"],
   ] as const) {
     await putNote(bea.page, { at: { x: at, y: 500 }, text });
-    // NOTE: past the 4 s a browser waits after its person's last input.
+    // WARNING: Pause past the 4 s input cooldown so a missing lease guard would trigger a claim.
     await bea.page.waitForTimeout(5000);
   }
   await bea.page.waitForTimeout(Math.max(0, left + 25_000 - Date.now()));
@@ -316,7 +289,6 @@ test("when the uploader leaves mid-read, another browser reads the image once th
   await expect(options(bea.page).filter({ hasText: "Śledziowa" }).first()).toBeVisible({
     timeout: 150_000,
   });
-  // Bea's own browser read it: it fetched the engines, after the lease ran out.
   expect(bea.network.engineFiles().length).toBeGreaterThan(0);
   expect(Date.now() - left).toBeGreaterThan(25_000);
   await expectNoCspViolations(bea.page);
@@ -335,7 +307,6 @@ type Editor = {
   updateShape: (partial: object) => void;
 };
 
-// The map's image shape as `page` sees it.
 const mapShape = (page: Page) =>
   page.evaluate((hash) => {
     const editor = (globalThis as unknown as { __editor: Editor }).__editor;
@@ -414,7 +385,7 @@ const flashPointsNow = (page: Page) =>
 
 type Point = { x: number; y: number };
 
-// The flash once the camera has stopped gliding to it.
+// WARNING: Wait for the camera to settle before comparing screen coordinates.
 async function flashPoints(page: Page): Promise<Point[]> {
   let last = "";
   await expect
@@ -458,9 +429,6 @@ function longestSideAngle(points: Point[]): number {
 const folded = (degrees: number) => ((degrees % 180) + 180) % 180;
 const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 180 - Math.abs(a - b));
 
-// Bea chooses the result for "Śledziowa": the flash lies over the word as
-// the image shows it now (the ground truth's box through what the browser
-// draws), turned with the print and the image.
 async function expectFlashOnLabel(bea: Page, hash = MAP_HASH): Promise<void> {
   await openSheet(bea, "Search");
   await field(bea).fill("Śledziowa");
@@ -503,7 +471,6 @@ test("a label is found where an image shows it after it is turned, resized, crop
   await closeSheet(bea.page, "Search");
   for (const each of [ada, bea]) await reachEditor(each.page);
 
-  // Turned by 0.5 rad, at 60%, cropped to the bay's corner of the map.
   await cropMap(ada.page, { crop: [0.35, 0.6, 0.8, 1], rotation: 0.5, scale: 0.6 });
   await expect.poll(() => mapShape(bea.page).then((shape) => shape.rotation)).toBe(0.5);
   await expectFlashOnLabel(bea.page);
@@ -518,8 +485,6 @@ test("a label is found where an image shows it after it is turned, resized, crop
   await expectFlashOnLabel(bea.page);
   await shot(bea.page, "flash-flipped-desktop");
 
-  // Cropped to the top corner, the bay is out of sight: the result leads
-  // to the whole image and says why the words are not shown.
   await cropMap(ada.page, { crop: [0, 0, 0.3, 0.3], rotation: 0.5, scale: 0.6 });
   await expect
     .poll(() => mapShape(bea.page).then((shape) => JSON.stringify(shape.props.crop)))

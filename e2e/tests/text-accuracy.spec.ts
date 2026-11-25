@@ -50,8 +50,7 @@ test(
     await page.goto(`${HOST}/sign-in?name=Ola`);
     await page.getByRole("button", { name: "New board" }).click();
     await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-    // The canvas can still be displaying a local blob when the uploads finish.
-    // Use the actual room endpoint that accepted an image.
+    // WARNING: The canvas may still show a local blob after upload. Read back from the room endpoint that accepted the image.
     const [upload] = await Promise.all([
       page.waitForResponse(
         (response) =>

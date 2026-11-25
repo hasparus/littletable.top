@@ -40,9 +40,7 @@ export type Env = ConfigEnv &
     Files: R2Bucket;
   };
 
-// NOTE: the pass travels in the request itself, never in a cookie. The
-// client is served from this origin, so the rooms API needs no CORS:
-// another origin's page can neither read an answer nor send a pass it has.
+// The rooms API needs no CORS because its client and bearer-authenticated requests are same-origin.
 const REFUSAL_STATUS: Record<Refusal, number> = { full: 429, "link-reset": 403, "too-fast": 429 };
 
 function answer(result: Refusal | object): Response {
@@ -111,8 +109,6 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 }
 
 const ROOMS = /^\/rooms\//u;
-// A board's files: its images and their text readings, the cookie, and
-// people's pictures (src/files.ts tells them apart).
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
 const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?)$/u;
 

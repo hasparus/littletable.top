@@ -100,7 +100,6 @@ async function importBoardFile(
         report,
         signal,
         upload: async (image, uploadSignal, { onProgress, onThrottle }) => {
-          // Keep the exact bytes when they fit the board's per-image limit.
           const fitted = image.size > MAX_IMAGE_BYTES ? await fitForUpload(image) : image;
           const uploaded = await files.upload(fitted, uploadSignal, {
             onProgress: (loaded) => {
@@ -150,8 +149,7 @@ export async function downloadTldr(editor: Editor, { copy, toasts }: FileFlow): 
 function pickTldr(importFile: (file: File) => Promise<void>): void {
   const input = document.createElement("input");
   input.type = "file";
-  // NOTE: no accept filter: iOS greys out files of a type it does not
-  // know, and it knows no .tldr. Anything else is refused once read.
+  // WARNING: On iOS, an accept filter disables .tldr files because the system does not recognize the extension.
   input.addEventListener(
     "change",
     () => {
@@ -163,16 +161,13 @@ function pickTldr(importFile: (file: File) => Promise<void>): void {
   input.click();
 }
 
-// The picker, drops and pastes share the active editor's file handling.
-// It imports .tldr files, fits oversized photos and hands media to tldraw.
-// Pasted images are stored on this board. Each refused upload says why.
+/** The picker, drops and pastes share the active editor's file handling. */
 export function handleFiles(
   editor: Editor,
   flow: FileFlow & { msg: (id: string) => string },
 ): () => void {
   const { copy, files, msg, toasts } = flow;
-  // A layer switch keeps the previous editor mounted so it can finish sync.
-  // File work belongs to this activation, including any picker still open.
+  // WARNING: Layer switches leave the previous editor mounted for sync. File work must stop at deactivation.
   const lifetime = new AbortController();
   const active = () => !lifetime.signal.aborted && !editor.isDisposed;
   const importFile = (file: File) => importBoardFile(editor, file, flow, lifetime.signal);

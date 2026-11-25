@@ -3,10 +3,12 @@ import { MediaHelpers } from "tldraw";
 // The Worker stores files up to 10 MiB (src/limits.ts MAX_FILE_BYTES).
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
-// The longest side an uploaded photo keeps. A page scanned at 300 dpi
-// (A4 is 2480 × 3508, US Letter 2550 × 3300) stays as it is, small print
-// and all; a phone's 12 MP photo (4032 × 3024) also fits, and a 48 MP one
-// (8064 × 6048) comes down to 4096 × 3072.
+/**
+ * The longest side an uploaded photo keeps. A page scanned at 300 dpi
+ * (A4 is 2480 × 3508, US Letter 2550 × 3300) stays as it is, small print
+ * and all; a phone's 12 MP photo (4032 × 3024) also fits, and a 48 MP one
+ * (8064 × 6048) comes down to 4096 × 3072.
+ */
 export const MAX_IMAGE_SIDE = 4096;
 
 // High enough that pencil marks and small print on a photographed sheet
@@ -71,14 +73,15 @@ async function redraw(
       [JPEG_QUALITY, ...LOWER_QUALITIES].map((quality) => encode("image/jpeg", quality)),
     );
   }
-  // NOTE: a browser that cannot write WebP hands back a PNG instead; both
-  // keep transparency.
+  // WARNING: A browser that cannot encode WebP returns a PNG instead. Both formats keep transparency.
   return [await encode("image/webp", JPEG_QUALITY)];
 }
 
-// The file as the board will store it: a photo larger than the pixel
-// budget, or heavier than the Worker takes, is redrawn smaller. The
-// orientation a phone wrote into the photo is applied on the way.
+/**
+ * The file as the board will store it: a photo larger than the pixel
+ * budget, or heavier than the Worker takes, is redrawn smaller. The
+ * orientation a phone wrote into the photo is applied on the way.
+ */
 export async function fitForUpload(
   file: File,
   { maxSide = MAX_IMAGE_SIDE }: { maxSide?: number } = {},

@@ -289,7 +289,6 @@ describe("a standalone account's picture", () => {
     expect(avatar).toBe(`/rooms/${board.id}/files/avatars/${String(decodeJwt(ownerPass).avatar)}`);
     expect(await access(guestPass)).toEqual({ avatar: null });
 
-    // The guest, on the board, sees the owner's picture.
     const seen = await roomCall(avatar!, guestPass);
     expect(seen.status).toBe(200);
     expect(seen.headers.get("Content-Type")).toBe("image/png");

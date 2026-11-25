@@ -15,3 +15,14 @@ bun pm pack
 ```
 
 Copy the resulting tarball here and update the dependency and lockfile.
+
+## Warning baseline
+
+`bun run lint` fails on every error and on warning counts that exceed
+`oxlint-warning-baseline.json` for their file and rule. This lets the repo adopt
+the new rules while reducing existing warnings. Lower or remove the matching
+counts when addressing a warning. To see every finding, run:
+
+```sh
+bun run oxlint -c oxlint.config.ts client src alchemy e2e
+```

@@ -17,7 +17,6 @@ import { BoardIndex, type Hit, type Point, type SearchDoc } from "./search-index
 import { fold, richTextWords } from "./search-text";
 import { linesToIndex } from "./text-filter";
 
-// How long the index waits after the board changes before it catches up.
 const SETTLE_MS = 250;
 
 // What a shape says, as tldraw's own shape utils read it: rich text as
@@ -72,7 +71,6 @@ export function imageHash(editor: Editor, asset: TLAssetId): string | null {
   return HASH_IN_SRC.exec(record.props.src)?.[1] ?? null;
 }
 
-// One document per line of every reading, for one image shape.
 function readDocs(shape: TLShapeId, page: TLPageId, readings: readonly TextResult[]): SearchDoc[] {
   return linesToIndex(readings).map((line, at) => ({
     id: `${shape}#ocr:${at}`,
@@ -94,8 +92,6 @@ const tokens = (text: string) =>
 // crop hides what was found (then the polygon is the whole image).
 export type Found = { hidden: boolean; polygon: Point[] };
 
-// Hands `run` the idle time the browser has to spare, as a function that
-// says how many milliseconds are left. Safari has no requestIdleCallback.
 function whenIdle(run: (left: () => number) => void): () => void {
   if ("requestIdleCallback" in globalThis) {
     const handle = requestIdleCallback((deadline) => run(() => deadline.timeRemaining()), {
@@ -114,11 +110,8 @@ function whenIdle(run: (left: () => number) => void): () => void {
 // page still gets there.
 const MIN_SLICE = 25;
 
-// The board's search: an index of every page's text, kept in step with
-// the store. It is this person's alone; nothing about it is written to the
-// document. Every shape starts out as changed, and the index catches up in
-// the browser's idle time, slice by slice, so a search finds it ready and
-// typing on the board never waits for it.
+// The search index stays in this browser and is never written to the document.
+// While search is closed, index work runs in idle slices so typing can continue.
 export class BoardSearch {
   // Moves on whenever the index has caught up, so an open results list
   // asks again.
@@ -161,9 +154,7 @@ export class BoardSearch {
     });
   }
 
-  // NOTE: runs on every change to the document, a keystroke in someone's
-  // note among them, so it only notes ids; the work waits for the board to
-  // settle.
+  // WARNING: Runs on every document change, including keystrokes. Record IDs and defer indexing.
   #note(changes: RecordsDiff<TLRecord>): void {
     for (const record of Object.values(changes.added)) {
       if (record.typeName === "shape") this.#changed.add(record.id);
@@ -234,7 +225,6 @@ export class BoardSearch {
       .flatMap((child) => [child, ...this.#descendants(child)]);
   }
 
-  // Brings the index up to the board, or as far as `left` allows.
   #catchUp(left: () => number = () => Infinity): void {
     const index = this.#index;
     const work = this.#changed.size + this.#moved.size + this.#gonePages.size;

@@ -1,16 +1,9 @@
-// People's pictures, copied into the boards' R2 bucket and served from the
-// tabletop's own origin: the board's policy allows images from itself only,
-// other players' browsers never contact the identity provider or the host,
-// and a picture that changes or disappears upstream breaks nothing here.
-// See docs/internals.md, "Avatars".
-
 import { readCapped, sha256Hex, sniff } from "./file-store";
 import { AVATAR_TIMEOUT_MS, MAX_AVATAR_BYTES, MAX_AVATAR_REDIRECTS } from "./limits";
 
 export const AVATAR = /^[0-9a-f]{64}$/u;
 
-// NOTE: content-addressed and shared by every board and account that shows
-// the same picture, so deleting a board leaves them.
+// WARNING: Deleting one board must leave avatars intact because other boards and accounts share them.
 // TODO: deleting an account (not built yet) must delete its avatar's object
 // once no other account's row and no board's `people` row names its hash.
 export const avatarKey = (hash: string) => `avatars/${hash}`;
@@ -27,7 +20,7 @@ export type AvatarFailure =
 
 export type AvatarCopy = { failure: AvatarFailure } | { hash: string };
 
-// Where a picture may be fetched from, checked again on every redirect.
+// WARNING: Reapply the avatar policy on every redirect so an allowed origin cannot bypass it.
 export type AvatarRule = (url: URL) => boolean;
 
 // Host names that never name a public picture: loopback, link-local and
@@ -41,11 +34,8 @@ function isPrivateHost(hostname: string): boolean {
   return /^\d+(?:\.\d+){0,3}$/u.test(host) || /^0x[0-9a-f]+$/u.test(host) || host.startsWith("[");
 }
 
-// Standalone mode: the sign-in provider's picture, on any public https host
-// (Google's, GitHub's, WorkOS's own). NOTE: the provider's API origin is
-// trusted as configured, which is what lets the tests' fake provider serve
-// pictures over plain http on localhost; in production it is
-// https://api.workos.com, public anyway.
+// The configured sign-in API origin is trusted as-is. Pictures from other
+// origins must use HTTPS and a public host name.
 export const providerRule =
   (apiBase: string): AvatarRule =>
   (url) =>
@@ -91,9 +81,10 @@ async function fetchPicture(
   }
 }
 
-// Copies one picture into the bucket and answers its hash, or why it was
-// not taken. Never throws: a picture that cannot be had leaves the person
-// with their initial, and must not stop them signing in or opening a board.
+/**
+ * Copies an avatar for same-origin delivery without exposing players' browsers
+ * to the identity provider. Copy failures leave sign-in and board entry usable.
+ */
 export async function copyAvatar({
   bucket,
   fetcher = fetch,

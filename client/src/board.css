@@ -23,7 +23,6 @@
   --tl-color-focus: var(--brand-primary-strong-dark);
 }
 
-/* The editor and the board's own controls share the app's neutral surfaces. */
 .tl-theme__light,
 .tl-theme__dark {
   --tl-color-background: var(--color-background);

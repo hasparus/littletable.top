@@ -34,8 +34,7 @@ function watchPattern(editor: Editor) {
 
 const patterns = new WeakCache<Editor, ReturnType<typeof watchPattern>>();
 
-// DefaultCanvas tracks getCanvasSvgDefs reactively and deduplicates by key.
-// All three stock providers have to defer the shared pattern definition.
+// WARNING: All three stock providers share this SVG definition. Leaving even one eager mounts the pattern tiles.
 export class BoardDrawShapeUtil extends DrawShapeUtil {
   override getCanvasSvgDefs() {
     return patterns.get(this.editor, watchPattern).get() ? super.getCanvasSvgDefs() : [];

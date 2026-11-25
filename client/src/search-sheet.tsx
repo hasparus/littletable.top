@@ -228,10 +228,8 @@ function Results({
 
 const finePointer = () => globalThis.matchMedia("(pointer: fine)").matches;
 
-// The board's search, and its places. With nothing typed it lists the
-// places, the board's own way around; typing turns the list into what
-// matches across every page, places among it. Choosing a result goes
-// there and flashes it, on this screen only.
+// With nothing typed, the sheet lists places in board order. Typing searches
+// across pages. Choosing a result jumps to it and flashes it locally.
 export function SearchSheet() {
   const {
     board,
@@ -266,14 +264,12 @@ export function SearchSheet() {
   const pages = usePageNames(editor);
   const list = ordered(places, mine, locale);
 
-  // NOTE: a touch screen raises its keyboard for a focused field, which
-  // would cover the places for someone who only came to tap one.
+  // WARNING: Autofocusing on a touch screen opens the keyboard over the places list.
   const focusField = typing || finePointer();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   useEffect(() => search?.watch(), [search]);
   const typed = oneLine(query);
-  // NOTE: reading the version asks again whenever the index catches up.
   const hits = useValue(
     "search hits",
     () => {
@@ -322,7 +318,6 @@ export function SearchSheet() {
           setActive(0);
         }}
         onKeyDown={(event) => {
-          // Escape clears what was typed first; the sheet closes on the next.
           if (event.key === "Escape" && query !== "") {
             event.preventDefault();
             setQuery("");

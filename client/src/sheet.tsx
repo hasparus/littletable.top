@@ -36,11 +36,13 @@ function useAboveKeyboard(): CSSProperties | undefined {
   return style;
 }
 
-// One panel at a time, floating just above the toolbar it came from. The
-// bar stays in view, so on a phone the three controls switch between their
-// sheets like tabs; on a wider screen tldraw's menus keep the corners.
-// A sheet with a `field` shows it where the title would be, and keeps the
-// title as its name.
+/**
+ * One panel at a time, floating just above the toolbar it came from. The
+ * bar stays in view, so on a phone the three controls switch between their
+ * sheets like tabs; on a wider screen tldraw's menus keep the corners.
+ * A sheet with a `field` shows it where the title would be, and keeps the
+ * title as its name.
+ */
 export function Sheet({
   children,
   field,
@@ -58,7 +60,6 @@ export function Sheet({
   const aboveKeyboard = useAboveKeyboard();
   const hasField = field !== undefined;
 
-  // Focus moves in, and goes back to whatever opened the sheet.
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const first = sheet.current?.querySelector<HTMLElement>("[data-autofocus]");

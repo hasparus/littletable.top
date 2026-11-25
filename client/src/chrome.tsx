@@ -44,8 +44,6 @@ import { usePresent } from "./people";
 import { placeName, removePlace } from "./places";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
-// The tools a table reaches for, in the order the toolbar shows them until
-// it runs out of room and folds the rest into its overflow menu.
 function BoardTools() {
   return (
     <>
@@ -193,7 +191,6 @@ function PlaceMenuItems() {
   );
 }
 
-// tldraw's menu, with the way out of the board on top.
 export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
   const { exit, person } = useBoardUi();
   const feedback = useFeedback();
@@ -220,7 +217,7 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
             onSelect={() =>
               feedback.open(
                 { role: person.id.startsWith("g:") ? "guest" : "member", screen: "board" },
-                // The selected item goes away when tldraw closes its menu.
+                // WARNING: Return focus to the trigger because tldraw unmounts the selected item when the menu closes.
                 editor
                   .getContainer()
                   .querySelector<HTMLElement>('[data-testid="main-menu.button"]'),
@@ -242,7 +239,6 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
   );
 }
 
-// What stays of tldraw's own interface, and why the rest goes:
 // - The page menu stays beside the main menu in the top corner, on a phone
 //   too: the bottom bar is the table's, and pages are switched far less
 //   often than tools.
@@ -250,9 +246,6 @@ function BoardContextMenu(props: TLUiContextMenuProps) {
 //   rename or recolour themselves, but the name comes from the pass.
 // - TopPanel: its offline badge is replaced by the board's own, in the
 //   board's language.
-// - On a phone, duplicate and the arrange menu leave the bar (see
-//   BoardQuickActions).
-// In front of the canvas: the flash of a chosen search result.
 export const components: TLComponents = {
   ActionsMenu: BoardActionsMenu,
   ContextMenu: BoardContextMenu,

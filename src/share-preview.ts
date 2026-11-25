@@ -73,8 +73,7 @@ export async function composeBoardPreview(
     if (!template.ok || template.body === null || thumbnail === null || color === null) return null;
     const background = color === "default" ? SHARE_ART_BACKGROUND : PALETTE[color].light;
 
-    // Only the valid-link route can reach this cache. Color can change while
-    // the drawing bytes remain identical, so each is part of the key.
+    // WARNING: Validate the link before using this cache and key it by color even when the drawing bytes match.
     const artTag = template.headers.get("ETag");
     let cacheKey: string | null = null;
     let cache: Cache | null = null;

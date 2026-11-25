@@ -2,8 +2,6 @@ import { useEffect, useRef } from "react";
 
 export type NoticeAction = { href: string; label: string } | { label: string; run: () => void };
 
-// The whole screen for a board that cannot be shown: loading, gone, a reset
-// link, or a failure. One sentence and at most one way forward.
 export function Notice({
   action,
   busy = false,

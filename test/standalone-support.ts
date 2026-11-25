@@ -55,7 +55,6 @@ export class Browser {
     return response;
   }
 
-  // A same-origin JSON POST, as the client sends it.
   post(path: string, body: object = {}, headers: HeadersInit = {}) {
     return this.fetch(path, {
       body: JSON.stringify(body),
@@ -111,7 +110,6 @@ export class Browser {
   }
 }
 
-// Opens the board's socket with a pass, as the client does.
 export async function openSocket(board: string, pass: string, workerEnv: Env = standaloneEnv) {
   const response = await handle(
     new Request(`${ORIGIN}/rooms/${board}/connect?sessionId=${crypto.randomUUID()}&pass=${pass}`, {

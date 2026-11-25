@@ -1,16 +1,8 @@
-// A WebGL2 renderer for dice only: one lit shader (key light, ambient, a
-// procedural studio to reflect, a clearcoat highlight, numerals that look
-// engraved) and floor shadows made of geometry alone. A die is convex, so
-// its shadow is the convex outline of its corners as the light throws them
-// on the floor, grown by its rounding. That outline is drawn as a mesh whose
-// vertices carry how far through the penumbra they are: the penumbra is as
-// wide as the corner that casts it is high, and the shadow as dark as that
-// corner is low: crisp and darkest where the die touches the floor, soft and
-// paler at its far end. One light, one shadow: nothing else shades the floor.
-// The output is transparent and premultiplied, so the board shows through.
+// A die's shadow is its corners' projected convex hull, grown by its rounding.
+// A higher corner casts a wider, paler penumbra. Output is transparent with
+// premultiplied alpha so the board shows through.
 //
-// NOTE: nothing here feeds back into the throw, so trigonometry and pow are
-// fine in the shaders; the frames come from dice-physics.ts alone.
+// Shader math does not affect the deterministic simulation in dice-physics.ts.
 
 import type { DieMesh } from "./dice-mesh";
 
@@ -257,7 +249,6 @@ function compile(gl: WebGL2RenderingContext, vertex: string, fragment: string): 
 }
 
 const EYE_HEIGHT = (TRAY_DEPTH / 2 + MARGIN) / TAN_HALF_FOV;
-// Where the tray is seen from.
 export const EYE: Vec = [0, EYE_HEIGHT, EYE_HEIGHT * CAMERA_TILT];
 
 // A camera above the tray, tilted a little toward the viewer, as one
@@ -409,7 +400,7 @@ export function createRenderer(
   };
 
   const onLost = (event: Event) => {
-    // NOTE: without this the browser never restores the context.
+    // WARNING: The browser only restores the lost WebGL context if this event is canceled.
     event.preventDefault();
     lost = true;
   };

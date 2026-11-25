@@ -7,11 +7,8 @@ import { cellPoint, type Layout, layoutOf } from "./dice-mesh";
 import { DIGIT_INK, DIGIT_TOP } from "./dice-numeral-centres";
 import { type DieKind, solid, type Solid } from "./dice-solids";
 
-// NOTE: the caller loads this font before drawing (dice-scene.ts); a canvas
-// does not wait for a font and would draw the fallback for good.
 export const NUMERAL_FONT = '700 64px "Outfit"';
 
-// A face's cell in the atlas, in pixels; the ball has a hundred small faces.
 const CELL_PX = 192;
 const BALL_CELL_PX = 96;
 
@@ -32,7 +29,6 @@ const LINE = { counts: 0.5, gap: 0.11, thick: 0.11, wide: 0.9 };
 // box to its ink's centre of mass. All the way looks right for a 1 and a
 // touch too far for an open 3.
 const BY_MASS = 0.75;
-// What each digit reads as upside down, where it reads as a digit at all.
 const TURNED: Record<string, string> = { 0: "0", 1: "1", 6: "9", 8: "8", 9: "6" };
 
 // The numerals of `texts` that need the line: those that, upside down, read
@@ -135,7 +131,6 @@ function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) 
   };
 }
 
-// Writes `text` with the centre of its ink on `at`.
 function write(
   { cellPx, context, layout, lined }: Pen,
   { at, face, size, text, up }: { at: Vec; face: number; size: number; text: string; up: Vec },

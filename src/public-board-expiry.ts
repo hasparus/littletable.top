@@ -73,8 +73,7 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
       }
     }
 
-    // A newer drawing can outlive its group or frame. Keep its position
-    // in the closest surviving parent, composing any removed transforms.
+    // WARNING: Reparenting without composing the removed transforms would move surviving shapes.
     const visited = new Set<TLShapeId>();
     let parent = shapes.get(next.parentId);
     while (parent !== undefined && expired.has(parent.id) && !visited.has(parent.id)) {
