@@ -12,6 +12,7 @@ import {
 } from "../../src/board-thumbnail";
 
 const SETTLE_MS = 3000;
+const FIRST_RETRY_MS = 5000;
 
 async function renderThumbnail(editor: Editor): Promise<Blob | null> {
   const content = editor.getCurrentPageBounds();
@@ -48,29 +49,38 @@ export function keepThumbnail(
   editor: Editor,
   board: string,
   grant: NonNullable<Bootstrap["thumbnail"]>,
-): () => void {
-  const controller = new AbortController();
+) {
+  let available = false;
+  let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let writing = false;
+  let pending: AbortController | null = null;
   let dirty = grant.needed && editor.getCurrentPageShapeIds().size > 0;
   let nextCapture = 0;
+  let retryDelay = FIRST_RETRY_MS;
 
-  // Wait for edits to settle. Edits during an upload get another turn after
-  // the board-wide throttle. Camera changes and presence are session records.
+  // Wait for edits to settle. Camera changes and presence are session records.
   const schedule = () => {
     clearTimeout(timer);
-    if (!dirty || writing || controller.signal.aborted) return;
+    if (!available || disposed || !dirty || pending !== null) return;
     timer = setTimeout(() => void capture(), Math.max(SETTLE_MS, nextCapture - Date.now()));
   };
 
+  function retry(retryAfter?: string | null) {
+    const seconds = Number(retryAfter);
+    dirty = true;
+    nextCapture =
+      Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : retryDelay);
+    retryDelay = Math.min(2 * retryDelay, THUMBNAIL_INTERVAL_MS);
+  }
+
   async function capture() {
-    writing = true;
+    const attempt = new AbortController();
+    pending = attempt;
     dirty = false;
-    nextCapture = Date.now() + THUMBNAIL_INTERVAL_MS;
     try {
       const image = await renderThumbnail(editor);
       if (
-        controller.signal.aborted ||
+        attempt.signal.aborted ||
         image === null ||
         image.type !== THUMBNAIL_TYPE ||
         image.size > THUMBNAIL_MAX_BYTES
@@ -84,19 +94,20 @@ export function keepThumbnail(
           "X-CSRF-Token": grant.csrf,
         },
         method: "PUT",
-        signal: controller.signal,
-      });
-      if (response.status === 429) {
-        const retryIn = Number(response.headers.get("Retry-After"));
-        if (Number.isFinite(retryIn) && retryIn > 0) {
-          dirty = true;
-          nextCapture = Date.now() + retryIn * 1000;
-        }
+        signal: attempt.signal,
+      }).catch(() => null);
+      if (response?.ok === true) {
+        nextCapture = Date.now() + THUMBNAIL_INTERVAL_MS;
+        retryDelay = FIRST_RETRY_MS;
+      } else if (!attempt.signal.aborted) {
+        if (response === null || response.status >= 500) retry();
+        else if (response.status === 429) retry(response.headers.get("Retry-After"));
+        else retryDelay = FIRST_RETRY_MS;
       }
     } catch {
       // An optional preview must not interrupt the editor or its sync.
     } finally {
-      writing = false;
+      pending = null;
       schedule();
     }
   }
@@ -108,10 +119,21 @@ export function keepThumbnail(
     },
     { scope: "document", source: "all" },
   );
-  schedule();
-  return () => {
-    unlisten();
-    controller.abort();
-    clearTimeout(timer);
+  return {
+    dispose() {
+      disposed = true;
+      unlisten();
+      pending?.abort();
+      clearTimeout(timer);
+    },
+    setAvailable(value: boolean) {
+      if (available === value) return;
+      available = value;
+      if (!available && pending !== null) {
+        dirty = true;
+        pending.abort();
+      }
+      schedule();
+    },
   };
 }

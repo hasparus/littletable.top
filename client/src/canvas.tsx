@@ -1,6 +1,6 @@
 import type { Editor } from "tldraw";
 
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import "./board.css";
 
@@ -134,18 +134,20 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  // Pending edits and cooldown belong to the lifetime of the shared editor.
+  const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
   useEffect(() => {
     const grant = keeper.bootstrap.thumbnail;
-    if (
-      !online ||
-      editor === null ||
-      grant === undefined ||
-      keeper.secret ||
-      landing !== undefined
-    ) {
-      return;
-    }
-    return keepThumbnail(editor, board, grant);
+    if (editor === null || grant === undefined || keeper.secret || landing !== undefined) return;
+    const capture = keepThumbnail(editor, board, grant);
+    thumbnail.current = capture;
+    return () => {
+      capture.dispose();
+      thumbnail.current = null;
+    };
+  }, [board, editor, keeper, landing]);
+  useEffect(() => {
+    thumbnail.current?.setAvailable(online);
   }, [board, editor, keeper, landing, online]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [readChat, setReadChat] = useState(0);
