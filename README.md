@@ -24,8 +24,8 @@ No bloat and no forms to fill.
 
 ## Licence
 
-This repository's code has no licence yet. Deployments need their own
-[tldraw licence key](https://tldraw.dev/sdk-features/license-key).
+Original code in `client/` is [MPL 2.0](client/LICENSE). Backend code is all rights reserved.
+Deployments need a [tldraw licence key](https://tldraw.dev/sdk-features/license-key).
 See the licences for [Outfit](client/src/theme/fonts/OFL.txt),
 [Google Sans Flex](client/src/theme/fonts/Google-Sans-Flex-OFL.txt) and the
 [text recognition engines](docs/internals.md#self-hosted-files).
