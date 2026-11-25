@@ -6,6 +6,7 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { stagingAccounts } from "./alchemy.staging-db.ts";
 import { Tabletop } from "./alchemy/index.js";
 
 // A separate stack name keeps PR teardown scoped to preview state. Preview
@@ -29,6 +30,7 @@ export default Alchemy.Stack(
 
     const signing = yield* Alchemy.KeyPair("SigningKey", { algorithm: "rsa" });
     const { url } = yield* Tabletop("Tabletop", {
+      database: yield* stagingAccounts(),
       displayName: "Little Table",
       forceDestroyFiles: true,
       mode: "standalone",

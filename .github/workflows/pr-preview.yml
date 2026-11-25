@@ -180,9 +180,8 @@ jobs:
           cd ../source
           ./node_modules/.bin/wrangler deploy src/index.ts --dry-run \
             --outdir "$PREVIEW_BUNDLE_DIR/worker" --assets "$PREVIEW_BUNDLE_DIR/client"
-          cp -R migrations "$PREVIEW_BUNDLE_DIR/"
           jq '{compatibility_date}' wrangler.json > "$PREVIEW_BUNDLE_DIR/wrangler.json"
-          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" client worker migrations wrangler.json
+          tar -czf "$RUNNER_TEMP/preview.tar.gz" -C "$PREVIEW_BUNDLE_DIR" client worker wrangler.json
 
       - name: Upload preview bundle
         uses: actions/upload-artifact@v7

@@ -62,3 +62,17 @@ from specs that capture their UI states.
   for its host contract.
 - [migrations/](../migrations/) holds the standalone database schema.
 - [test/](../test/) and [e2e/](../e2e/) contain the Worker and browser tests.
+
+## Preview database
+
+The [Staging database workflow](../.github/workflows/staging-db.yml) provisions
+`littletable-staging-accounts` and applies migrations from `main`. The
+staging deployment and all PR preview Workers bind that database. Production
+has its own database. PR preview bundles carry the Worker and client assets, so
+schema changes in a PR are tested in CI and reach the shared database after
+merge.
+
+For the first rollout, let the staging database workflow finish before
+redeploying open PR previews. Each redeploy switches the Worker's binding
+and retires its old per-PR database. Files and whiteboard Durable Objects stay
+scoped to their individual Workers.

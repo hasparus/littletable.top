@@ -61,6 +61,8 @@ export type HostedProps = Shared & {
 };
 
 export type StandaloneProps = Shared & {
+  /** Bind an existing D1 resource. Its owning stack provisions and migrates it. */
+  database?: Cloudflare.D1.Database;
   feedback?: {
     projectToken: Redacted.Redacted<string> | string;
     questionId: string;

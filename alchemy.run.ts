@@ -4,6 +4,7 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
+import { stagingAccounts } from "./alchemy.staging-db.ts";
 import { Tabletop } from "./alchemy/index.js";
 
 // Little Table: this repository's own standalone copy, on a domain of its
@@ -31,6 +32,7 @@ export default Alchemy.Stack(
           }
         : undefined;
     const tabletop = yield* Tabletop("Tabletop", {
+      database: stage === "staging" ? yield* stagingAccounts() : undefined,
       displayName: "Little Table",
       domain: primary === undefined || domain === "" ? undefined : { primary },
       feedback,
