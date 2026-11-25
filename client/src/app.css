@@ -65,3 +65,8 @@ body:has([data-landing-preview]) {
   margin-top: 16px;
   color: var(--color-foreground-muted);
 }
+
+[data-feedback-dialog]::backdrop {
+  background: rgb(0 0 0 / 12%);
+  backdrop-filter: blur(2px);
+}

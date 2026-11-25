@@ -36,6 +36,7 @@ import {
 } from "tldraw";
 
 import { BoardFileMenuItems } from "./board-files";
+import { useFeedback } from "./feedback";
 import { FoundHighlight } from "./highlight";
 import { Icon, type IconName } from "./icons";
 import { usePresent } from "./people";
@@ -193,7 +194,9 @@ function PlaceMenuItems() {
 
 // tldraw's menu, with the way out of the board on top.
 export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
-  const { exit } = useBoardUi();
+  const { exit, person } = useBoardUi();
+  const feedback = useFeedback();
+  const editor = useEditor();
   return (
     <DefaultMainMenu>
       {!hideExit && (
@@ -207,6 +210,23 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
       )}
       <BoardFileMenuItems />
       <DefaultMainMenuContent />
+      {feedback !== null && (
+        <TldrawUiMenuGroup id="board-feedback">
+          <TldrawUiMenuItem
+            id="send-feedback"
+            label={feedback.label}
+            onSelect={() =>
+              feedback.open(
+                { role: person.id.startsWith("g:") ? "guest" : "member", screen: "board" },
+                // The selected item goes away when tldraw closes its menu.
+                editor
+                  .getContainer()
+                  .querySelector<HTMLElement>('[data-testid="main-menu.button"]'),
+              )
+            }
+          />
+        </TldrawUiMenuGroup>
+      )}
     </DefaultMainMenu>
   );
 }

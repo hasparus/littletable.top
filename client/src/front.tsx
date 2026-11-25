@@ -7,6 +7,7 @@ import type { Action, Editing, Lists, Owned } from "./front-board-list";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 import { fill } from "./copy";
+import { FeedbackProvider, useFeedback } from "./feedback";
 import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
@@ -68,6 +69,7 @@ function SignedIn({
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const post = useApi(me.csrf);
+  const feedback = useFeedback();
 
   const load = useCallback(async () => {
     const response = await fetch("/api/boards");
@@ -151,14 +153,25 @@ function SignedIn({
       <main className="mx-auto max-w-6xl px-4 pt-5 pb-16 sm:px-6 sm:pt-6 lg:px-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.yourBoards}</h1>
-          <button
-            className="btn btn-primary min-h-11 font-semibold"
-            onClick={() => void create()}
-            type="button"
-          >
-            {copy.newBoard}
-            <Icon className="size-4 stroke-current stroke-1" name="Plus" />
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {feedback !== null && (
+              <button
+                className="btn btn-secondary min-h-11"
+                onClick={() => feedback.open({ role: "member", screen: "boards" })}
+                type="button"
+              >
+                {feedback.label}
+              </button>
+            )}
+            <button
+              className="btn btn-primary min-h-11 font-semibold"
+              onClick={() => void create()}
+              type="button"
+            >
+              {copy.newBoard}
+              <Icon className="size-4 stroke-current stroke-1" name="Plus" />
+            </button>
+          </div>
         </div>
         {error !== null && (
           <p className="mt-3 text-danger-text" role="alert">
@@ -216,5 +229,9 @@ export function mountFront(
   props: { copy: FrontCopy; locale: Language; name: string },
 ) {
   element.classList.add("overflow-y-auto", "bg-background");
-  createRoot(element).render(<Front {...props} />);
+  createRoot(element).render(
+    <FeedbackProvider enabled language={props.locale}>
+      <Front {...props} />
+    </FeedbackProvider>,
+  );
 }
