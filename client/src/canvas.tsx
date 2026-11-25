@@ -8,7 +8,6 @@ import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { PublicLanding } from "./public-landing";
-import type { SharedView } from "./secret-backdrop";
 
 import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
@@ -75,7 +74,9 @@ function warmUpDice(): () => void {
 
 export function BoardCanvas({
   active,
-  backdrop,
+  backdrop = false,
+  overlay = false,
+  waiting = false,
   copy,
   exit,
   keeper,
@@ -83,10 +84,11 @@ export function BoardCanvas({
   language,
   licenseKey,
   onEditor,
-  onLayerFull,
 }: {
   active: boolean;
-  backdrop?: SharedView;
+  backdrop?: boolean;
+  overlay?: boolean;
+  waiting?: boolean;
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
@@ -94,7 +96,6 @@ export function BoardCanvas({
   language: string;
   licenseKey: string;
   onEditor?: (editor: Editor | null) => void;
-  onLayerFull?: () => void;
 }) {
   const { person } = keeper.bootstrap;
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
@@ -249,19 +250,20 @@ export function BoardCanvas({
       <div
         className="fixed inset-0 overflow-hidden"
         data-board-shell
-        hidden={!active}
+        hidden={!active && !backdrop}
+        style={keeper.secret && editor === null ? { visibility: "hidden" } : undefined}
         ref={keepBoardZoom}
       >
         <BoardEditors
           active={active}
-          backdrop={backdrop}
+          overlay={overlay}
+          showUi={active || waiting}
           landing={landing}
           licenseKey={licenseKey}
           onEditor={(mounted) => {
             setEditor(mounted);
             onEditor?.(mounted);
           }}
-          onLayerFull={onLayerFull}
           secret={keeper.secret}
           store={store}
         />

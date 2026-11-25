@@ -1,11 +1,12 @@
 import type { Editor } from "tldraw";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { Language } from "../settings";
 import type { PublicLanding } from "./public-landing";
 
+import { BoardShare } from "./board-share";
 import {
   type Answer,
   type Bootstrap,
@@ -21,7 +22,7 @@ import { Icon } from "./icons";
 import { LandingPlaceholder } from "./landing-placeholder";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
-import { captureSharedView, type SharedView } from "./secret-backdrop";
+import { alignLayers, carryTool, openOverlay } from "./secret-backdrop";
 
 type Stage =
   | { ending: Ending; exit: Exit; kind: "ended" }
@@ -32,9 +33,7 @@ type Stage =
 
 export type Exit = { href: string; label: string };
 
-type Layer =
-  | { kind: "full" | "manage" | "shared" | "unavailable" }
-  | { kind: "overlay"; view: SharedView };
+type Layer = "shared" | "overlay" | "manage" | "full" | "unavailable";
 
 type Mount = {
   copy: Copy;
@@ -60,65 +59,92 @@ function ReadyBoard({
 }) {
   const [shared, setShared] = useState<Editor | null>(null);
   const [secret, setSecret] = useState<PassKeeper>();
-  const [layer, setLayer] = useState<Layer>({ kind: "shared" });
-  const view = layer.kind === "overlay" ? layer.view : undefined;
-  const editingSecret = view !== undefined || layer.kind === "manage";
-  const canEnterSecret = layer.kind !== "unavailable" && keeper.bootstrap.secretPass !== undefined;
+  const [privateEditor, setPrivateEditor] = useState<Editor | null>(null);
+  const [layer, setLayer] = useState<Layer>("shared");
+  const editingSecret = layer === "overlay" || layer === "manage";
+  const canEnterSecret = layer !== "unavailable" && keeper.bootstrap.secretPass !== undefined;
   const closeSecret = useCallback(() => {
     setSecret(undefined);
-    setLayer({ kind: "unavailable" });
+    setLayer("unavailable");
   }, []);
-  const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
-  useEffect(() => () => view?.store.dispose(), [view]);
-  // WARNING: Keep the hidden editor mounted so its connection can finish sending pending edits.
+  useLayoutEffect(() => {
+    if (layer === "overlay" && shared && privateEditor) return alignLayers(shared, privateEditor);
+  }, [layer, privateEditor, shared]);
+
+  function enterOverlay(editor: Editor) {
+    if (shared) setLayer(openOverlay(shared, editor) ? "overlay" : "full");
+  }
+
   return (
     <div data-board-layout>
       <BoardCanvas
         active={!editingSecret}
+        backdrop={layer === "overlay"}
+        waiting={editingSecret && privateEditor === null}
         copy={copy}
         exit={exit}
         keeper={keeper}
         landing={landing}
         language={language}
         licenseKey={licenseKey}
-        onEditor={canEnterSecret ? setShared : undefined}
+        onEditor={landing === undefined ? setShared : undefined}
       />
       {secret !== undefined && (
         <BoardCanvas
           active={editingSecret}
-          backdrop={view}
+          overlay={layer === "overlay"}
           copy={copy}
           exit={exit}
           keeper={secret}
           language={language}
           licenseKey={licenseKey}
-          onLayerFull={refuseSecretPage}
+          onEditor={(editor) => {
+            if (editor && layer === "overlay") enterOverlay(editor);
+            setPrivateEditor(editor);
+          }}
         />
       )}
-      {canEnterSecret && (
-        <button
-          aria-label={copy.secretLayer}
-          aria-pressed={editingSecret}
-          data-secret-layer-toggle
-          disabled={!editingSecret && shared === null}
-          onClick={() => {
-            if (editingSecret) {
-              setLayer({ kind: "shared" });
-            } else if (shared !== null) {
-              setLayer({ kind: "overlay", view: captureSharedView(shared) });
-              if (secret === undefined) setSecret(keeper.forSecret(closeSecret));
-            }
-          }}
-          title={copy.secretLayer}
-          type="button"
-        >
-          <Icon name="Incognito" />
-        </button>
+      {landing === undefined && (
+        <div data-board-sharing>
+          <BoardShare copy={copy} editor={shared} keeper={keeper} />
+          {canEnterSecret && (
+            <button
+              aria-busy={editingSecret && privateEditor === null}
+              aria-label={copy.secretLayer}
+              aria-pressed={editingSecret && privateEditor !== null}
+              data-secret-layer-toggle
+              disabled={shared === null}
+              onClick={() => {
+                if (!shared) return;
+                if (editingSecret) {
+                  if (privateEditor) carryTool(privateEditor, shared);
+                  setLayer("shared");
+                } else if (privateEditor) {
+                  enterOverlay(privateEditor);
+                } else {
+                  if (!secret) setSecret(keeper.forSecret(closeSecret));
+                  setLayer("overlay");
+                }
+              }}
+              title={copy.secretLayer}
+              type="button"
+            >
+              <Icon name="Incognito" />
+            </button>
+          )}
+        </div>
       )}
-      {layer.kind === "full" && (
+      {layer === "full" && (
         <div className="fixed top-16 left-1/2 z-60 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl bg-bg-secondary px-4 py-2 text-sm shadow-toast">
           <p role="status">{copy.secretLayerFull}</p>
-          <button className="underline" onClick={() => setLayer({ kind: "manage" })} type="button">
+          <button
+            className="underline"
+            onClick={() => {
+              if (shared && privateEditor) carryTool(shared, privateEditor);
+              setLayer("manage");
+            }}
+            type="button"
+          >
             {copy.manageSecretPages}
           </button>
         </div>

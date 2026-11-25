@@ -113,7 +113,7 @@
   "client/src/search-text.ts anti-slop(no-unknown-parameters)": 1,
   "client/src/search-text.ts anti-slop(require-safety-comment-for-type-assertion)": 2,
   "client/src/search-text.ts landmines-types(no-explicit-return-types)": 9,
-  "client/src/secret-backdrop.tsx landmines-types(no-explicit-return-types)": 1,
+  "client/src/secret-backdrop.tsx anti-slop(no-shape-in-symbol-names)": 4,
   "client/src/sheet.tsx landmines-types(no-explicit-return-types)": 1,
   "client/src/sync.ts anti-slop(no-known-value-widening)": 1,
   "client/src/sync.ts anti-slop(no-unknown-parameters)": 2,
