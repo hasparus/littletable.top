@@ -98,7 +98,7 @@ test("standalone: the account's picture is on the front page and on its boards",
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Katherine Johnson");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Signed in as Katherine Johnson")).toBeVisible();
+  await expect(page.getByLabel("Signed in as Katherine Johnson", { exact: true })).toBeVisible();
 
   const mine = page.getByRole("banner");
   await expect
