@@ -66,13 +66,20 @@ from specs that capture their UI states.
 ## Preview database
 
 The [Staging database workflow](../.github/workflows/staging-db.yml) provisions
-`littletable-staging-accounts` and applies migrations from `main`. The
-staging deployment and all PR preview Workers bind that database. Production
-has its own database. PR preview bundles carry the Worker and client assets, so
-schema changes in a PR are tested in CI and reach the shared database after
-merge.
+`littletable-preview-accounts` and applies migrations from `main`. PR previews
+share this non-production database. The staging app and production each keep
+their existing databases and are outside this preview database. Preview
+bundles carry the Worker and client assets. CI tests PR migrations, and the
+shared preview schema changes after merge.
 
-For the first rollout, let the staging database workflow finish before
-redeploying open PR previews. Each redeploy switches the Worker's binding
-and retires its old per-PR database. Files and whiteboard Durable Objects stay
-scoped to their individual Workers.
+The preview stack scopes board records to each PR Worker, matching where its
+whiteboard Durable Objects and files live. The shared database is a sandbox
+for preview code from approved repository writers.
+
+For rollout, let the staging database workflow finish before redeploying open
+PR previews. A preview with saved boards stops before changing its binding.
+Copy its board metadata into the shared database under the same `pr-N`
+partition, retaining account IDs, board IDs, share codes, link versions and
+visit records. Verify board access before retiring the legacy database.
+Empty previews switch directly, with the old database retained for recovery
+until an operator confirms the cutover and deletes it.

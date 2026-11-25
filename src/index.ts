@@ -34,7 +34,7 @@ export { Limiter } from "./limiter";
 /** The standalone deployment alone binds D1 and the address limiter. */
 export type Env = ConfigEnv &
   FeedbackEnv &
-  Partial<Pick<StandaloneEnv, "DB" | "Limiter">> & {
+  Partial<Pick<StandaloneEnv, "BOARD_DATA_SCOPE" | "DB" | "Limiter">> & {
     ASSETS: Fetcher;
     BoardRoom: DurableObjectNamespace<BoardRoom>;
     Files: R2Bucket;
@@ -254,7 +254,13 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (pathname === "/api/feedback") return feedbackRoute(request, env, env.Limiter);
     const own = new Standalone(
-      { BoardRoom: env.BoardRoom, DB: env.DB, Files: env.Files, Limiter: env.Limiter },
+      {
+        BOARD_DATA_SCOPE: env.BOARD_DATA_SCOPE,
+        BoardRoom: env.BoardRoom,
+        DB: env.DB,
+        Files: env.Files,
+        Limiter: env.Limiter,
+      },
       config,
       verifiers.keys!,
     );

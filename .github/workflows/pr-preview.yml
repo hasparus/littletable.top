@@ -261,6 +261,8 @@ jobs:
             echo '::error::Missing verified preview commit.'
             exit 1
           fi
+          PREVIEW_LEGACY_DATABASE_NAME=$(node .github/scripts/preview-legacy-database.mjs)
+          export PREVIEW_LEGACY_DATABASE_NAME
           export PREVIEW_BUNDLE_DIR="$PWD/.alchemy/preview-bundle"
           log="$RUNNER_TEMP/alchemy-preview.log"
           ./node_modules/.bin/alchemy deploy --config alchemy.preview.ts --stage "$STAGE" --yes 2>&1 | tee "$log"

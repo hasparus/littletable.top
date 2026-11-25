@@ -2,11 +2,12 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as GitHub from "@alchemy.run/github";
 import * as Alchemy from "alchemy";
 import * as Output from "alchemy/Output";
+import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { stagingAccounts } from "./alchemy.staging-db.ts";
+import { previewAccounts } from "./alchemy.preview-db.ts";
 import { Tabletop } from "./alchemy/index.js";
 
 // A separate stack name keeps PR teardown scoped to preview state. Preview
@@ -28,9 +29,19 @@ export default Alchemy.Stack(
       return yield* Effect.die(new Error("Deploy this stack with the PR Preview workflow."));
     }
 
+    const legacyDatabase = yield* Config.String("PREVIEW_LEGACY_DATABASE_NAME").pipe(
+      Config.withDefault(""),
+    );
+    if (legacyDatabase !== "") {
+      yield* Cloudflare.D1.Database("TabletopAccounts", { name: legacyDatabase }).pipe(
+        RemovalPolicy.retain(),
+      );
+    }
+
     const signing = yield* Alchemy.KeyPair("SigningKey", { algorithm: "rsa" });
     const { url } = yield* Tabletop("Tabletop", {
-      database: yield* stagingAccounts(),
+      boardDataScope: stage,
+      database: yield* previewAccounts(),
       displayName: "Little Table",
       forceDestroyFiles: true,
       mode: "standalone",

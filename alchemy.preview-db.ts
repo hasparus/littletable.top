@@ -3,11 +3,11 @@ import * as Alchemy from "alchemy";
 import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import * as Effect from "effect/Effect";
 
-const stack = "LittleTableStagingDatabase";
+const stack = "LittleTablePreviewDatabase";
 const stage = "staging";
 const id = "Accounts";
 
-export const stagingAccounts = () => Cloudflare.D1.Database.ref(id, { stack, stage });
+export const previewAccounts = () => Cloudflare.D1.Database.ref(id, { stack, stage });
 
 export default Alchemy.Stack(
   stack,
@@ -18,7 +18,7 @@ export default Alchemy.Stack(
     }
 
     const database = yield* Cloudflare.D1.Database(id, {
-      name: "littletable-staging-accounts",
+      name: "littletable-preview-accounts",
       migrations: "./migrations",
     }).pipe(RemovalPolicy.retain());
 

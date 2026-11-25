@@ -105,6 +105,7 @@ function configure(props) {
     client,
     env: {
       ...hosts,
+      BOARD_DATA_SCOPE: props.boardDataScope ?? "",
       DISPLAY_NAME: client.name,
       ...(feedback === undefined
         ? {}
