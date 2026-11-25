@@ -110,6 +110,7 @@ test("a drawing becomes a thumbnail in the created and joined board collections"
 test("a thumbnail shows a remote drawing on another page and clears when it is erased", async ({
   browser,
   page,
+  request,
 }) => {
   // A canvas that can't encode WebP returns PNG, as on Safari.
   await page.addInitScript(() => {
@@ -118,7 +119,19 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
       toBlob.call(this, callback, type === "image/webp" ? "image/png" : type, quality);
     };
   });
-  await signIn(page, "Page Thumbnail Tester");
+  // WebKit does not keep Secure sign-in cookies over the test server's HTTP
+  // connection. Use the API fixture's real session for the owner's requests.
+  const start = await request.get(`${STANDALONE}/auth/sign-in?return=/boards`, { maxRedirects: 0 });
+  expect(start.status()).toBe(302);
+  const authorize = new URL(start.headers().location!);
+  authorize.searchParams.set("fake_user", "Page Thumbnail Tester");
+  const signedIn = await request.get(authorize.toString());
+  expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
+  await page.route(`${STANDALONE}/api/**`, async (route) => {
+    const response = await request.fetch(route.request());
+    await route.fulfill({ response });
+  });
+  await page.goto(`${STANDALONE}/boards`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(boardAt(STANDALONE));
   const dice = page.getByRole("button", { exact: true, name: "Dice" });
