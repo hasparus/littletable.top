@@ -9,6 +9,13 @@ type BoardRole = "shaman" | "write";
 export type BoardRoleChange = { role: BoardRole };
 type Joined = { avatar: string | null; id: string; name: string; role: BoardRole };
 
+async function loadPeople(path: string, signal: AbortSignal) {
+  const response = await fetch(path, { signal });
+  if (!response.ok) throw new Error("Could not load board members");
+  const result: { people: Joined[] } = await response.json();
+  return result.people;
+}
+
 export function BoardPeople({
   boardId,
   copy,
@@ -25,36 +32,39 @@ export function BoardPeople({
   const [saving, setSaving] = useState(false);
   const peoplePath = `/api/boards/${boardId}/people`;
 
+  // oxlint-disable-next-line landmines-style/no-comments -- React Doctor directive.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect -- Opening the panel loads fresh members; closing it aborts the fetch and guards both callbacks.
   useEffect(() => {
     const controller = new AbortController();
-    void (async () => {
-      try {
-        const response = await fetch(peoplePath, { signal: controller.signal });
-        if (!response.ok) throw new Error("Could not load board members");
-        const result: { people: Joined[] } = await response.json();
-        setPeople(result.people);
-      } catch {
+    void loadPeople(peoplePath, controller.signal)
+      .then((members) => {
+        if (!controller.signal.aborted) setPeople(members);
+      })
+      .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
-      }
-    })();
+      });
     return () => controller.abort();
   }, [peoplePath]);
 
-  const setRole = async (person: Joined, manager: boolean) => {
+  const setRole = (person: Joined, manager: boolean) => {
     const role = manager ? "shaman" : "write";
     setFailed(false);
     setSaving(true);
-    try {
-      const response = await post(`${peoplePath}/${person.id}/role`, { role });
-      if (!response.ok) throw new Error("Could not change board role");
-      setPeople(
-        (list) => list?.map((each) => (each.id === person.id ? { ...each, role } : each)) ?? null,
-      );
-    } catch {
-      setFailed(true);
-    } finally {
-      setSaving(false);
-    }
+    void post(`${peoplePath}/${person.id}/role`, { role })
+      .then(
+        (response) => {
+          if (!response.ok) {
+            setFailed(true);
+            return;
+          }
+          setPeople(
+            (list) =>
+              list?.map((each) => (each.id === person.id ? { ...each, role } : each)) ?? null,
+          );
+        },
+        () => setFailed(true),
+      )
+      .finally(() => setSaving(false));
   };
 
   const heading = `people-${boardId}`;
@@ -87,7 +97,7 @@ export function BoardPeople({
                   checked={person.role === "shaman"}
                   className="size-5 accent-primary"
                   disabled={saving}
-                  onChange={(event) => void setRole(person, event.target.checked)}
+                  onChange={(event) => setRole(person, event.target.checked)}
                   type="checkbox"
                 />
                 {copy.manager}

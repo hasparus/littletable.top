@@ -67,15 +67,14 @@ export type ShapeMatch = {
 // here as it does there. The sheet's index (typos, prefixes) is not used.
 export function searchShapes(doc: Doc, query: string, pageId: string | null): ShapeMatch[] {
   const words = fold(oneLine(query)).split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+  const matchesQuery = (text: string) => words.every((word) => text.includes(word));
   const found: { closeness: number; match: ShapeMatch }[] = [];
   for (const page of doc.pages()) {
     if (pageId !== null && page.id !== pageId) continue;
     for (const shape of doc.shapesOnPage(page.id)) {
       const text = textOf(shape);
-      const folded = fold(text);
-      if (text === "" || words.length === 0 || !words.every((word) => folded.includes(word))) {
-        continue;
-      }
+      if (text === "" || !matchesQuery(fold(text))) continue;
       const box = pageBounds(doc, shape);
       found.push({
         closeness: closeness(query, text),

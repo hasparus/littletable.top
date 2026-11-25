@@ -638,8 +638,9 @@ export class StandInEditor {
     if (bound.length === 0) return;
     let parentId: TLParentId = this.pageId;
     if (bound.length === 2) {
-      const chains = bound.map((shape) => this.ancestors(shape));
-      parentId = chains[0]!.find((ancestor) => chains[1]!.includes(ancestor)) ?? this.pageId;
+      const targetAncestors = new Set(this.ancestors(bound[1]!));
+      parentId =
+        this.ancestors(bound[0]!).find((ancestor) => targetAncestors.has(ancestor)) ?? this.pageId;
     } else if (bound[0]!.parentId === arrow.parentId) {
       parentId = arrow.parentId;
     }

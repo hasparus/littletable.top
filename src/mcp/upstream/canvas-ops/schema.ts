@@ -219,11 +219,9 @@ export type CanvasOp = z.infer<typeof CanvasOpSchema>
  */
 const MAX_OPS_PER_BATCH = 1000
 
-export const OpsBatchSchema = z
-	.object({
-		ops: z.array(CanvasOpSchema).max(MAX_OPS_PER_BATCH),
-	})
-	.strict()
+export const OpsBatchSchema = z.strictObject({
+	ops: z.array(CanvasOpSchema).max(MAX_OPS_PER_BATCH),
+})
 export type OpsBatch = z.infer<typeof OpsBatchSchema>
 
 /** Who asked for a batch; stamped on every shape the batch creates or changes. */
