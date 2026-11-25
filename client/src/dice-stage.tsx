@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { Roll } from "./bootstrap";
 import type { Copy } from "./copy";
@@ -22,6 +23,7 @@ const RESTING_AFTER_MS = 4000;
 
 export type DiceStageProps = {
   copy: Copy;
+  editorLayer: HTMLElement;
   onRoll: Rolls["roll"];
   onSettled: () => void;
   roll: Roll;
@@ -269,7 +271,7 @@ function ResultToast({
 }
 
 /** Plays the received roll and calls onSettled when its result toast is dismissed. */
-export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
+export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);
   const [settledId, setSettledId] = useState<number | null>(null);
@@ -333,13 +335,16 @@ export function DiceStage({ copy, onRoll, onSettled, roll }: DiceStageProps) {
 
   return (
     <>
-      {!still && !unavailable && (
-        <div
-          className="pointer-events-none fixed inset-x-0 top-14 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10"
-          ref={host}
-          style={rowBottom === null ? undefined : { top: rowBottom + GAP }}
-        />
-      )}
+      {!still &&
+        !unavailable &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed inset-x-0 top-14 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10"
+            ref={host}
+            style={rowBottom === null ? undefined : { top: rowBottom + GAP }}
+          />,
+          editorLayer,
+        )}
       <ResultToast
         copy={copy}
         onClose={onSettled}

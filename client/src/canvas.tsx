@@ -131,6 +131,7 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [editorLayer, setEditorLayer] = useState<HTMLDivElement | null>(null);
   const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
   useEffect(() => {
     const grant = keeper.bootstrap.thumbnail;
@@ -257,6 +258,7 @@ export function BoardCanvas({
       >
         <BoardEditors
           active={active}
+          editorLayerRef={setEditorLayer}
           overlay={overlay}
           showUi={active || waiting}
           landing={landing}
@@ -299,10 +301,11 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
-        {active && rolls.arrived !== null && (
+        {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage
               copy={copy}
+              editorLayer={editorLayer}
               onRoll={rolls.roll}
               onSettled={rolls.settle}
               roll={rolls.arrived}
