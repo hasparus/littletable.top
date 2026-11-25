@@ -30,12 +30,25 @@ export default Alchemy.Stack(
             questionId: yield* Config.String("POSTHOG_FEEDBACK_QUESTION_ID"),
           }
         : undefined;
+    const mcpIssuer = yield* Config.String("MCP_AUTHKIT_ORIGIN").pipe(Config.withDefault(""));
+    const mcpDomain = yield* Config.String("MCP_DOMAIN").pipe(Config.withDefault(""));
+    if ((mcpIssuer === "") !== (mcpDomain === "")) {
+      throw new Error("Set MCP_AUTHKIT_ORIGIN and MCP_DOMAIN together");
+    }
     const tabletop = yield* Tabletop("Tabletop", {
       displayName: "Little Table",
       domain: primary === undefined || domain === "" ? undefined : { primary },
       feedback,
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
+      mcp:
+        mcpIssuer === ""
+          ? undefined
+          : {
+              authorizationServer: mcpIssuer,
+              domain: mcpDomain,
+              workerName: { prod: "littletable-mcp", staging: "littletable-mcp-staging" }[stage],
+            },
       publicBoardOwnerId: yield* Config.String("PUBLIC_BOARD_OWNER_ID").pipe(
         Config.withDefault(""),
       ),

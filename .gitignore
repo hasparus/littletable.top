@@ -5,3 +5,4 @@ node_modules/
 e2e/test-results/
 e2e/report/
 dist-e2e/
+wrangler.e2e.json

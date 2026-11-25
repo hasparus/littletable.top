@@ -1,0 +1,107 @@
+{
+  "map": {
+    "bindingsEqual": true,
+    "bindingsSeen": [8, 8],
+    "differences": [],
+    "max": {
+      "x": 0.005375000000000796,
+      "y": 0,
+      "rotation": 0,
+      "w": 0.0072499999999990905,
+      "h": 0,
+      "growY": 0,
+      "scale": 0,
+      "elbowMidPoint": 0,
+      "bend": 0,
+      "start.x": 0,
+      "start.y": 0,
+      "end.x": 0,
+      "end.y": 0,
+      "labelPosition": 0,
+      "fontSizeAdjustment": 0
+    },
+    "orderEqual": true,
+    "shapes": 14,
+    "errors": {
+      "browser": [],
+      "standIn": []
+    }
+  },
+  "crowded": {
+    "bindingsEqual": true,
+    "bindingsSeen": [0, 0],
+    "differences": [],
+    "max": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "w": 0,
+      "h": 0,
+      "growY": 0,
+      "scale": 0,
+      "fontSizeAdjustment": 0
+    },
+    "orderEqual": true,
+    "shapes": 25,
+    "errors": {
+      "browser": [],
+      "standIn": []
+    }
+  },
+  "frames": {
+    "bindingsEqual": true,
+    "bindingsSeen": [4, 4],
+    "differences": [],
+    "max": {
+      "x": 0.004187500000000455,
+      "y": 0,
+      "rotation": 0,
+      "w": 0,
+      "h": 0,
+      "growY": 0,
+      "scale": 0,
+      "elbowMidPoint": 0,
+      "bend": 0,
+      "start.x": 0,
+      "start.y": 0,
+      "end.x": 0,
+      "end.y": 0,
+      "labelPosition": 0
+    },
+    "orderEqual": true,
+    "shapes": 11,
+    "errors": {
+      "browser": [],
+      "standIn": []
+    }
+  },
+  "rotated": {
+    "bindingsEqual": true,
+    "bindingsSeen": [2, 2],
+    "differences": [],
+    "max": {
+      "x": 0.004437499999994543,
+      "y": 0,
+      "rotation": 0,
+      "scale": 0,
+      "scaleX": 0,
+      "scaleY": 0,
+      "elbowMidPoint": 0,
+      "bend": 0,
+      "start.x": 0,
+      "start.y": 0,
+      "end.x": 0,
+      "end.y": 0,
+      "labelPosition": 0,
+      "w": 0,
+      "h": 0,
+      "growY": 0
+    },
+    "orderEqual": true,
+    "shapes": 8,
+    "errors": {
+      "browser": [],
+      "standIn": []
+    }
+  }
+}

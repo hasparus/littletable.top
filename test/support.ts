@@ -41,8 +41,8 @@ export async function pass({
     name,
     owner,
     sub,
-    role,
     ...(avatar === undefined ? {} : { avatar }),
+    ...(role === undefined ? {} : { role }),
   })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setAudience(audience)
