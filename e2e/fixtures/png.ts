@@ -1,6 +1,5 @@
 import { crc32, deflateSync } from "node:zlib";
 
-// One PNG chunk: its length, type, data and CRC.
 const chunk = (type: string, data: Buffer) => {
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);
@@ -10,8 +9,7 @@ const chunk = (type: string, data: Buffer) => {
   return Buffer.concat([length, body, crc]);
 };
 
-// A small PNG drawn in code: stripes and a diagonal, so a wrong crop or a
-// re-encode shows.
+/** Encodes a striped PNG with a diagonal marker to expose crop and encoding errors. */
 export function png(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
   const rows = Buffer.alloc((width * 3 + 1) * height);
   for (let y = 0; y < height; y++) {

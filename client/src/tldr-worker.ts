@@ -33,11 +33,10 @@ export type ImportReply =
 const scope = globalThis as unknown as DedicatedWorkerGlobalScope;
 const reply = (message: ImportReply) => scope.postMessage(message);
 
-// The board uses tldraw's default record schema, including on the public
-// board where we override arrow behaviour and leave its schema in place.
+// WARNING: The public editor customizes shape behaviour but retains tldraw's default record schema.
 const schema = createTLSchema();
 
-// The parser can report a generic migration error for a newer shape.
+// WARNING: The parser can report a generic migration error for a newer shape.
 function usesNewerSchema(json: string): boolean {
   let file: unknown;
   try {
@@ -115,8 +114,6 @@ function parse(json: string): void {
       document.assets.push(record);
     }
   }
-  // Blobs can be shared with the main thread without copying the base64
-  // strings from the file or decoding its images on the canvas thread.
   reply({ document, kind: "loaded" });
 }
 

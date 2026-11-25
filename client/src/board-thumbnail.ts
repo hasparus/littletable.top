@@ -15,7 +15,7 @@ const SETTLE_MS = 3000;
 const FIRST_RETRY_MS = 5000;
 
 function thumbnailPage(editor: Editor) {
-  // Use the first populated shared page so every editor captures the same content.
+  // WARNING: Choose the first populated shared page so a preview does not depend on which page an editor is viewing.
   for (const page of editor.getPages()) {
     const shapes = editor.getPageShapeIds(page);
     if (shapes.size > 0) return { id: page.id, shapes };
@@ -30,7 +30,7 @@ async function renderThumbnail(editor: Editor, shapes: Set<TLShapeId>): Promise<
     return bounds === undefined ? [] : [bounds];
   });
   if (boxes.length === 0) {
-    // Store a transparent canvas after the last drawing was erased.
+    // WARNING: Publish a transparent canvas when the last drawing is erased so the old preview does not persist.
     const canvas = document.createElement("canvas");
     canvas.width = THUMBNAIL_WIDTH;
     canvas.height = THUMBNAIL_HEIGHT;
@@ -38,7 +38,6 @@ async function renderThumbnail(editor: Editor, shapes: Set<TLShapeId>): Promise<
   }
   const content = Box.Common(boxes);
   const aspect = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
-  // Leave a small margin around the drawing and pad to the list's aspect.
   const height = Math.max(1, content.h, content.w / aspect) * 1.1;
   const width = height * aspect;
   const bounds = new Box(content.midX - width / 2, content.midY - height / 2, width, height);
@@ -69,7 +68,7 @@ export function keepThumbnail(
   let nextCapture = 0;
   let retryDelay = FIRST_RETRY_MS;
 
-  // Wait for edits to settle. Camera changes and presence are session records.
+  // WARNING: Camera changes and presence are session records. They must not trigger a thumbnail write.
   const schedule = () => {
     clearTimeout(timer);
     if (!available || disposed || !dirty || pending !== null) return;
@@ -118,7 +117,7 @@ export function keepThumbnail(
         else retryDelay = FIRST_RETRY_MS;
       }
     } catch {
-      // An optional preview must not interrupt the editor or its sync.
+      // WARNING: Preview failures must stay separate from editor sync.
     } finally {
       pending = null;
       schedule();

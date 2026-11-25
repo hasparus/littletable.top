@@ -1,8 +1,3 @@
-// Standalone mode's own routes: sign-in through the provider, the account's
-// session, its boards, and the pass endpoint, which answers exactly as a
-// host's does (docs/hosting.md, "The host contract") so the client cannot tell the
-// two apart. Passes are signed with the Worker's own key.
-
 import { animals, colors, uniqueNamesGenerator } from "unique-names-generator";
 
 import type { StandaloneConfig } from "../config";
@@ -37,8 +32,7 @@ export type StandaloneEnv = {
   Limiter: DurableObjectNamespace<Limiter>;
 };
 
-// NOTE: __Host- cookies are Secure, host-only and on path /, so neither a
-// sibling subdomain nor a plain-HTTP page can set or read them.
+// WARNING: Keep the __Host- prefix so sibling subdomains and insecure pages cannot set the session cookie.
 const SESSION_COOKIE = "__Host-tabletop-session";
 const SIGN_IN_COOKIE = "__Host-tabletop-sign-in";
 const GUEST_COOKIE = "__Host-tabletop-guest";
@@ -55,7 +49,7 @@ const PUBLIC_GUEST_ANIMALS = animals.filter((word) => word.length < MAX_NAME_LEN
 
 const ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-// Rejection sampling keeps every character equally likely.
+// WARNING: Taking a random byte modulo the alphabet size would bias share codes.
 function randomCode(length: number): string {
   let code = "";
   const byte = new Uint8Array(1);
@@ -114,9 +108,7 @@ const json = (status: number, body: object, headers: HeadersInit = {}) =>
 
 const refuse = (status: number, error: string) => json(status, { error });
 
-// A same-origin page's request, never a form or a page elsewhere: the
-// browser names the origin on every POST, and a JSON body needs a
-// preflight no other origin passes.
+// WARNING: Require same-origin JSON so cross-origin forms cannot submit an authenticated action.
 function sameOrigin(request: Request, contentType = "application/json"): boolean {
   return (
     request.headers.get("Origin") === new URL(request.url).origin &&
@@ -124,8 +116,7 @@ function sameOrigin(request: Request, contentType = "application/json"): boolean
   );
 }
 
-// A return address on this origin only, so sign-in cannot be made to
-// redirect elsewhere.
+// WARNING: Accept only a local path so sign-in cannot redirect to another origin.
 function returnPath(value: string | null): string {
   return value !== null && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")
     ? value
@@ -145,7 +136,6 @@ export class Standalone {
     this.store = new Store(env.DB);
   }
 
-  // The routes this mode adds, or null for any other path.
   route(request: Request): Promise<Response> | null {
     const { pathname } = new URL(request.url);
     const { method } = request;
@@ -191,8 +181,6 @@ export class Standalone {
     return session === null ? null : { hash, session };
   }
 
-  // A signed-in person's state-changing request: same origin, and the
-  // session's CSRF token echoed in a header.
   private async member(request: Request, contentType?: string) {
     if (!sameOrigin(request, contentType))
       return { refusal: refuse(403, "forbidden-origin") } as const;
@@ -284,9 +272,7 @@ export class Standalone {
     return new Response(null, { headers, status: 302 });
   }
 
-  // The account's picture after this sign-in: the copy it has while the
-  // provider's address stays the same, else a fresh copy, else none. A
-  // failed copy is tried again at the next sign-in.
+  // WARNING: Retry failed avatar copies at the next sign-in even if the provider URL has not changed.
   private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
     if (identity.avatarUrl === null) return null;
     const kept = await this.store.avatarOf(identity.subject);
@@ -300,7 +286,6 @@ export class Standalone {
     return "hash" in copy ? copy.hash : null;
   }
 
-  // The signed-in person's own picture, for the front page; nobody else's.
   private async avatar(request: Request, hash: string): Promise<Response> {
     const found = await this.session(request);
     if (found === null || found.session.account.avatar !== hash) {
@@ -411,7 +396,7 @@ export class Standalone {
     }
     const id = randomCode(12);
     if (body?.language === "pl") {
-      // Seed the drawing before the share code can be used to enter the room.
+      // WARNING: A room opened before seeding gets the default page name instead of the localized one.
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
       await room.initializeDrawing("Strona 1");
     }
@@ -426,8 +411,7 @@ export class Standalone {
     return json(201, { id: board.id, shareCode: board.shareCode, title: board.title });
   }
 
-  // Owner-only: a board that is not this account's answers as if it did
-  // not exist, and nothing changes.
+  // WARNING: A different account’s board must return the same response as a nonexistent board.
   private async act(request: Request, id: string, action: string): Promise<Response> {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
@@ -463,7 +447,7 @@ export class Standalone {
     return new Response(null, { status: 204 });
   }
 
-  // The host contract's pass endpoint, answered by the Worker itself.
+  // WARNING: Keep this response compatible with the hosted pass endpoint so the client can use either mode.
   private async bootstrap(request: Request, code: string | null): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
     if (!(await this.allowed(request, "pass", MAX_PASSES_PER_MINUTE))) {

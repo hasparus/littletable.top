@@ -1,4 +1,3 @@
-/* The .btn family: a raised button whose face follows the brand colour. */
 @layer components {
   .btn {
     --bg: var(--color-primary);
@@ -69,8 +68,7 @@
 
   @supports (color: rgb(from white r g b)) {
     .btn-primary {
-      /* Ludamus's #fb6953 to #ef4f2d gradient for our default orange.
-         Offsets keep the face tied to the deployer's primary color. */
+      /* Offsets keep the gradient tied to the deployer's primary color. */
       --face-top: rgb(from var(--color-primary) calc(r + 3) calc(g + 15) calc(b + 23));
       --bg: rgb(from var(--color-primary) calc(r - 9) calc(g - 11) calc(b - 15));
     }

@@ -6,9 +6,11 @@ import type { Point } from "./search-index";
 import { fill } from "./copy";
 import { useBoardUi } from "./ui";
 
-// A polygon in page coordinates to show for a moment: a shape's outline,
-// or the words of an image that matched; `note` says what the polygon
-// cannot show (words the image's crop hides).
+/**
+ * A polygon in page coordinates to show for a moment: a shape's outline,
+ * or the words of an image that matched; `note` says what the polygon
+ * cannot show (words the image's crop hides).
+ */
 export type Flash = {
   label: string;
   note: string | null;
@@ -28,7 +30,6 @@ export function flash(highlight: Atom<Flash | null>, found: Omit<Flash, "serial"
   highlight.set({ ...found, serial });
 }
 
-// Two beats, then a hold and a fade.
 const PULSE: Keyframe[] = [
   { opacity: 0 },
   { offset: 0.08, opacity: 1 },
@@ -38,9 +39,11 @@ const PULSE: Keyframe[] = [
   { opacity: 0 },
 ];
 
-// Draws the flash over the canvas, where this person's camera puts it, for
-// as long as they are on its page. It lives in this browser only: nothing
-// of it reaches the document or anyone else's screen.
+/**
+ * Draws the flash over the canvas, where this person's camera puts it, for
+ * as long as they are on its page. It lives in this browser only: nothing
+ * of it reaches the document or anyone else's screen.
+ */
 export function FoundHighlight() {
   const editor = useEditor();
   const { copy, highlight } = useBoardUi();
@@ -55,7 +58,6 @@ export function FoundHighlight() {
         label: current.label,
         note: current.note,
         points: points.map(({ x, y }) => `${x},${y}`).join(" "),
-        // Where a note sits: above the polygon's top, at its middle.
         serial: current.serial,
         top: {
           x:

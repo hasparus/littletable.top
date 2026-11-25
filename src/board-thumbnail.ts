@@ -1,4 +1,3 @@
-// The same limits apply to the browser export and the storage endpoint.
 export const THUMBNAIL_WIDTH = 320;
 export const THUMBNAIL_HEIGHT = 180;
 export const THUMBNAIL_MAX_BYTES = 50_000;
@@ -12,7 +11,7 @@ export function isThumbnailType(type: string | null): type is ThumbnailType {
   return type === "image/webp" || type === "image/png";
 }
 
-// Allow the full RGBA canvas plus PNG filtering and container overhead.
+/** Allows the full RGBA canvas plus PNG filtering and container overhead. */
 export const thumbnailByteLimit = (type: ThumbnailType) =>
   type === "image/png" ? 240_000 : THUMBNAIL_MAX_BYTES;
 

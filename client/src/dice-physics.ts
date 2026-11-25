@@ -1,16 +1,3 @@
-// The shared throw: a rigid-body step for dice only, deterministic by
-// construction (fixed step, fixed order, exact arithmetic; see dice-math.ts),
-// so every client turns the same seed into the same frames.
-//
-// Dice are rounded hulls. The floor takes each core vertex as an exact
-// contact, with friction. Walls and other dice meet a die as a frictionless
-// sphere: they bounce it away and it slides off them, so no die comes to rest
-// leaning on a wall or on another die. The d100 is a sphere to the floor
-// too: it touches at one point, rolls, and is slowed by a rolling resistance
-// that does not weaken with speed, so it stops instead of creeping. Twenty
-// full-size balls are all the tray's floor holds, in rows; thrown, some would
-// end on top of others. A crowd of balls is therefore thrown smaller.
-
 import type { DiceLaunch } from "../../src/dice-notation";
 
 import {
@@ -32,15 +19,14 @@ import {
 } from "./dice-math";
 import { type DieKind, solid, type Solid } from "./dice-solids";
 
-// The virtual tray every screen shows whole, in die units: x across, z down
-// the screen, y up.
+/** Tray width in die units. X goes across the screen, z goes down, and y goes up. */
 export const TRAY_WIDTH = 10;
 export const TRAY_DEPTH = 14;
 export const FLICK_REACH_X = TRAY_WIDTH / 2 - 1.3;
 export const FLICK_REACH_Z = TRAY_DEPTH / 2 - 1.3;
 export const FLICK_SPEED = 16;
 export const FPS = 60;
-// Seven numbers per die per frame: x y z, then the rotation qx qy qz qw.
+/** Numbers per frame per die in order x, y, z, qx, qy, qz, qw. */
 export const FRAME_STRIDE = 7;
 
 const SUBSTEPS = 4;
@@ -51,32 +37,23 @@ const FLOOR_FRICTION = 0.45;
 const PRESSED_FRICTION = 0.06;
 const RESTITUTION = 0.32;
 const DICE_RESTITUTION = 0.4;
-// Slower impacts do not bounce, so nothing jitters at rest.
 const BOUNCE_MIN = 1.2;
 const SLOP = 0.005;
 const BAUMGARTE = 0.25;
-// Per substep. NOTE: literals, because Math.pow differs between engines.
+// WARNING: Use literal damping factors per substep. Math.pow can vary across engines.
 const LINEAR_DAMPING = 0.9992;
 const ANGULAR_DAMPING = 0.9985;
 const ROLLING_DAMPING = 0.998;
-// What the floor takes off a rolling ball's spin, in radians per second each
-// second; a ball has no face to come to rest on.
 const BALL_DRAG = 14;
 const SLEEP_SPEED2 = 0.04;
 const SLEEP_SPIN2 = 0.04;
 const SLEEP_SECONDS = 0.2;
 const MAX_SECONDS = 3.2;
-// Balls in a crowd take longer to find their places: frames added to the cap
-// per ball beyond the first `CALM_BALLS`, 4.2 s in all for twenty.
 const CROWD_FRAMES = 4;
 const CALM_BALLS = 5;
-// The floor the dice may fill before the balls among them shrink, as the sum
-// of their spheres' squared radii: 45% of the tray. Fuller, and a ball
-// comes to rest on top of others, where nothing can make room for it.
 const CROWD = 20;
 const SMALLEST_BALL = 1;
 const SNAP_FRAMES = 12;
-// Within about 2° of flat counts as lying on a face.
 const FLAT = 0.9994;
 
 type Body = {
@@ -115,24 +92,21 @@ const WALLS: { normal: Vec; offset: number }[] = [
 const UP: Vec = [0, 1, 0];
 
 export type Throw = {
-  // Per die, FRAME_STRIDE numbers per frame at FPS.
+  /** Per die, FRAME_STRIDE numbers per frame at FPS. */
   frames: Float64Array[];
-  // Seconds until every die slept; the cap's when it ended the throw.
+  /** Time in seconds until every die slept, or the cap if the throw timed out. */
   settledAt: number;
-  // Per die, its size as a share of its solid's: 1 but for balls in a crowd.
+  /** Per-die scale relative to its solid, reduced for crowded d100 rolls. */
   sizes: number[];
-  // Dice eased onto a face at the end because they had not settled flat.
+  /** Number of dice eased onto a face because they did not settle flat. */
   snapped: number;
 };
 
-// What walls and other dice take a die for.
 function sphereOf(shape: Solid): number {
   if (shape.ball) return shape.inradius;
   return shape.kind === "d4" ? shape.radius * 0.72 : shape.radius * 0.93;
 }
 
-// The size of every ball of a throw, as a share of the solid's: what keeps
-// the dice within `CROWD`, and never under `SMALLEST_BALL` across.
 export function ballSize(kinds: DieKind[]): number {
   let balls = 0;
   let others = 0;
@@ -146,7 +120,6 @@ export function ballSize(kinds: DieKind[]): number {
   return Math.min(1, radius / solid("d100").inradius);
 }
 
-// Thrown from the lower right, where the roll button sits, up and to the left.
 function spawn(kinds: DieKind[], seed: number): Body[] {
   const random = generator(seed);
   const ball = ballSize(kinds);
@@ -164,7 +137,6 @@ function spawn(kinds: DieKind[], seed: number): Body[] {
     const sideways = 0.35 + random() * 0.35;
     const velocity: Vec = [-speed * sideways, -1 - random() * 2, -speed];
     const angular: Vec = [(random() - 0.5) * 36, (random() - 0.5) * 36, (random() - 0.5) * 36];
-    // Platonic solids have isotropic inertia; I = 0.4 m R² over a mean radius.
     const mean = ((shape.inradius + shape.radius) / 2) * size;
     return {
       angular,
@@ -182,8 +154,6 @@ function spawn(kinds: DieKind[], seed: number): Body[] {
   });
 }
 
-// The face most nearly down, and the pose that lays it exactly flat. A ball
-// lies as it is.
 function flatPose(body: Body): { dot: number; position: Vec; rotation: Quat } {
   if (body.ball) {
     return {
@@ -274,7 +244,6 @@ function pairsOf(bodies: Body[]): Pair[] {
       const normal = scale(between, 1 / distance);
       const speed = dot(sub(second.velocity, first.velocity), normal);
       const depth = reach - distance;
-      // A die at rest beside another stays asleep unless it is really hit.
       if ((first.asleep || second.asleep) && speed > -0.1 && depth < 4 * SLOP) continue;
       for (const body of [first, second])
         if (body.asleep) {
@@ -303,7 +272,6 @@ function solveContact(contact: Contact, body: Body, pressed: boolean) {
   contact.impulse = total;
   body.velocity = add(body.velocity, scale(contact.normal, change));
   body.angular = add(body.angular, scale(armCross, body.invInertia * change));
-  // Coulomb friction on the floor only, capped by the normal impulse so far.
   if (!contact.floor) return;
   const point = add(body.velocity, cross(body.angular, contact.arm));
   const slide = sub(point, scale(contact.normal, dot(point, contact.normal)));
@@ -343,8 +311,7 @@ function step(bodies: Body[]) {
     floorContacts(body, index, contacts);
   }
   const pairs = pairsOf(bodies);
-  // A die pressed against a wall or another die slides on the floor instead
-  // of being propped up at an angle, as a ladder is by floor friction.
+  // WARNING: Disable floor friction for pressed dice so they cannot balance against a wall or another die.
   const pressed = new Set<number>();
   for (const contact of contacts) if (!contact.floor) pressed.add(contact.body);
   for (const pair of pairs) pressed.add(pair.a).add(pair.b);
@@ -378,7 +345,6 @@ function step(bodies: Body[]) {
       body.angular =
         spin > BALL_DRAG * DT ? scale(body.angular, 1 - (BALL_DRAG * DT) / spin) : [0, 0, 0];
     }
-    // Only a die lying on a face may sleep; one balanced on an edge must tip.
     const calm =
       dot(body.velocity, body.velocity) < SLEEP_SPEED2 &&
       dot(body.angular, body.angular) < SLEEP_SPIN2 &&
@@ -394,13 +360,12 @@ function step(bodies: Body[]) {
 }
 
 export type Simulation = {
-  // Runs until `deadline` (performance.now() ms) or the end; true when done.
+  /** Runs until the performance.now() deadline, returning true when complete. */
   advance: (deadline: number) => boolean;
   result: () => Throw;
 };
 
-// The throw as a resumable computation, so a slow device can spread it over
-// several frames. Where it pauses never changes the frames it makes.
+/** Pausing at different deadlines produces the same recorded frames. */
 export function simulation(kinds: DieKind[], seed: number, launch?: DiceLaunch): Simulation {
   const bodies = spawn(kinds, seed);
   const die = bodies[0];
@@ -421,7 +386,6 @@ export function simulation(kinds: DieKind[], seed: number, launch?: DiceLaunch):
   let snapped = 0;
 
   const finish = () => {
-    // Every die ends flat on a face; stragglers ease there over a few frames.
     const targets = bodies.map((body) => flatPose(body));
     snapped = targets.filter((target) => target.dot < FLAT).length;
     const from = bodies.map((body) => ({ position: body.position, rotation: body.rotation }));
@@ -464,7 +428,6 @@ export function simulate(kinds: DieKind[], seed: number): Throw {
   return run.result();
 }
 
-// FNV-1a over the raw bits of every recorded number: equal hashes, equal throws.
 export function hashThrow(thrown: Throw): string {
   const hash = Uint32Array.of(2_166_136_261);
   for (const frames of thrown.frames) {

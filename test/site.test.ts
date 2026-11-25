@@ -72,7 +72,6 @@ describe("the board shell", () => {
       hsts: "max-age=31536000; includeSubDomains",
       permissions:
         "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()",
-      // The address holds the share code, which opens the board.
       referrer: "no-referrer",
       sniff: "nosniff",
     });
@@ -189,7 +188,6 @@ describe("standalone link previews", () => {
 });
 
 describe("the board's other names", () => {
-  // The module's own handler, called with an env that names its hosts.
   const withRoot = (rootDomain: string, url: string) =>
     handle(new Request(url, { redirect: "manual" }), {
       ...(env as unknown as Env),

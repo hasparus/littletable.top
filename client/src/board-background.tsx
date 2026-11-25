@@ -25,7 +25,7 @@ export function BoardBackground() {
   const editor = useEditor();
   const color = useValue("board background", () => boardColor(editor), [editor]);
   useEffect(() => {
-    // Image exports use the editor theme instead of the canvas component.
+    // WARNING: Updating the canvas component alone does not change the background on image exports.
     const theme = editor.getCurrentTheme();
     return react("export background", () => {
       const selected = boardColor(editor);

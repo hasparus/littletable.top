@@ -1,18 +1,9 @@
-// People's pictures, copied into the boards' R2 bucket and served from the
-// tabletop's own origin: the board's policy allows images from itself only,
-// other players' browsers never contact the identity provider or the host,
-// and a picture that changes or disappears upstream breaks nothing here.
-// See docs/internals.md, "Avatars".
-
 import { readCapped, sha256Hex, sniff } from "./file-store";
 import { AVATAR_TIMEOUT_MS, MAX_AVATAR_BYTES, MAX_AVATAR_REDIRECTS } from "./limits";
 
 export const AVATAR = /^[0-9a-f]{64}$/u;
 
-// NOTE: content-addressed and shared by every board and account that shows
-// the same picture, so deleting a board leaves them.
-// TODO: deleting an account (not built yet) must delete its avatar's object
-// once no other account's row and no board's `people` row names its hash.
+// WARNING: Deleting one board must leave avatars intact because other boards and accounts share them.
 export const avatarKey = (hash: string) => `avatars/${hash}`;
 
 export type AvatarFailure =
@@ -27,12 +18,10 @@ export type AvatarFailure =
 
 export type AvatarCopy = { failure: AvatarFailure } | { hash: string };
 
-// Where a picture may be fetched from, checked again on every redirect.
+// WARNING: Reapply the avatar policy on every redirect so an allowed origin cannot bypass it.
 export type AvatarRule = (url: URL) => boolean;
 
-// Host names that never name a public picture: loopback, link-local and
-// private networks, and the names that resolve to them. Any address
-// literal is refused too: a provider names its pictures by host name.
+// WARNING: Reject address literals and private network names before issuing avatar requests.
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/u, "");
   if (host === "localhost" || /\.(?:localhost|local|internal|home\.arpa)$/u.test(host)) {
@@ -41,19 +30,14 @@ function isPrivateHost(hostname: string): boolean {
   return /^\d+(?:\.\d+){0,3}$/u.test(host) || /^0x[0-9a-f]+$/u.test(host) || host.startsWith("[");
 }
 
-// Standalone mode: the sign-in provider's picture, on any public https host
-// (Google's, GitHub's, WorkOS's own). NOTE: the provider's API origin is
-// trusted as configured, which is what lets the tests' fake provider serve
-// pictures over plain http on localhost; in production it is
-// https://api.workos.com, public anyway.
+/** Trusts the configured sign-in API origin. Other origins must use HTTPS and a public host name. */
 export const providerRule =
   (apiBase: string): AvatarRule =>
   (url) =>
     url.origin === new URL(apiBase).origin ||
     (url.protocol === "https:" && !isPrivateHost(url.hostname));
 
-// Hosted mode: the host's own origin and nothing else, so a URL in a pass
-// can never make the Worker fetch another site.
+/** Restricts hosted avatar copies to the host origin, including every redirect. */
 export const hostRule =
   (hostOrigin: string): AvatarRule =>
   (url) =>
@@ -91,9 +75,10 @@ async function fetchPicture(
   }
 }
 
-// Copies one picture into the bucket and answers its hash, or why it was
-// not taken. Never throws: a picture that cannot be had leaves the person
-// with their initial, and must not stop them signing in or opening a board.
+/**
+ * Copies an avatar for same-origin delivery without exposing players' browsers
+ * to the identity provider. Copy failures leave sign-in and board entry usable.
+ */
 export async function copyAvatar({
   bucket,
   fetcher = fetch,
@@ -121,8 +106,7 @@ export async function copyAvatar({
     return { failure: signal.aborted ? "timeout" : "unreachable" };
   }
   if (typeof body === "string") return { failure: body };
-  // NOTE: an SVG is a document, not a picture of someone; nothing a
-  // provider sends as a face needs to be one.
+  // WARNING: Reject SVG avatars because they can contain active document content.
   const type = sniff(new Uint8Array(body));
   if (type === null) return { failure: "not-image" };
   if (type === "image/svg+xml") return { failure: "svg" };

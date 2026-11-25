@@ -9,11 +9,10 @@ function initialOf(name: string): string {
   return first === undefined ? "?" : first.segment.toLocaleUpperCase();
 }
 
-// A person's picture in a ring of their colour, or, without one or while it
-// fails to load, the first letter of their name on a light wash of that
-// colour. The box never changes size, so nothing moves when the picture
-// arrives. Wherever it shows, the name is written beside it, so the avatar
-// is decoration and a screen reader hears the name once.
+/**
+ * Keep the same size when the picture arrives to avoid layout shifts.
+ * The name is rendered beside the avatar, so screen readers only need that label.
+ */
 export function Avatar({
   color,
   name,

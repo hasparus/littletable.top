@@ -21,11 +21,6 @@ import {
   sheet,
 } from "./helpers";
 
-// Standalone mode: the tabletop is its own host. The owner signs
-// in through e2e/fake-workos.ts (the hosted AuthKit page's stand-in),
-// makes a board on the front page, and a guest joins by its link with only
-// a name. Nothing leaves the machine.
-
 const ON_BOARD = boardAt(STANDALONE);
 
 function listBoard(prefix: string, index: number) {
@@ -336,7 +331,7 @@ test("a board created in Polish opens with Strona 1 for its first guest in Engli
   await page.getByLabel("Name").fill("Ada");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Stop the creator's navigation from loading the canvas so the guest opens the room first.
+  // WARNING: Intercept the creator’s first navigation so the guest initializes the room.
   await page.route(`${STANDALONE}/b/*`, (route) => route.fulfill({ body: "" }), { times: 1 });
   await page.getByRole("button", { name: "Nowa tablica" }).click();
   await expect(page).toHaveURL(ON_BOARD);
@@ -386,7 +381,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   await expectOwnPolicy(page, `'self' ${socketOf(STANDALONE)};`);
 
-  // The guest, on a phone, has no account and needs none.
   const guest = await phone(browser, boardUrl);
   await joinAs(guest, "Bea");
 
@@ -394,8 +388,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(onBoard(guest, "Hello table")).toBeVisible();
   await rollTwoD6(guest, page, "Bea");
 
-  // The owner makes a place of a note off the guest's small screen; the
-  // guest jumps to it.
   await putNote(page, { at: { x: 1100, y: 250 }, text: "The map" });
   const places = await openSheet(page, "Search");
   await places.getByRole("button", { name: "Add to places" }).click();
@@ -410,8 +402,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(sheet(guest, "Search")).toBeHidden();
   await expect(farNote).toBeInViewport();
 
-  // From the front page the owner renames the board and resets its link;
-  // the guest, who has only the old link, is put out.
   const front = await page.context().newPage();
   await collectCspViolations(front);
   await front.goto(`${STANDALONE}/boards`);
@@ -428,7 +418,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
     guest.getByText("The board's link was reset. Ask its creator for the new one."),
   ).toBeVisible();
   const link = front.getByRole("link", { name: "Mörk Borg night" });
-  // NOTE: the list shows the new link once the reset's answer is in.
   await expect(link).not.toHaveAttribute("href", new URL(boardUrl).pathname);
   const newLink = await link.getAttribute("href");
 

@@ -113,7 +113,6 @@ describe("the secret layer", () => {
     const open = await openSocket(secret, secretPass);
     expect(open.response.status).toBe(101);
 
-    // A different session of the same owner keeps its own access.
     await owner.signIn("Game master");
     const second = (await (await owner.bootstrap(board.shareCode)).json()) as Bootstrap;
     const current = await openSocket(secret, second.secretPass!);

@@ -1,16 +1,5 @@
-// PP-OCRv6 on plain ONNX Runtime, typed arrays only (no OpenCV, no eval):
-//
-//   detector (DB) → probability map → connected components → the smallest
-//   ROTATED rectangle around each → grown by the unclip ratio → sampled
-//   upright along that rectangle (a label at 45° is read level) → tall
-//   crops read turned a quarter → recogniser (CTC) → read upside down too
-//   when unsure → each word's quad from the time steps its letters fired.
-//
-// The engine runs in the text worker (ocr-worker.ts); everything here but
-// createPipeline is pure, so the geometry is tested on its own.
-
 export type Point = [number, number];
-// Corners clockwise from the top left of the text as it reads.
+/** Corners clockwise from the top left of the text as it reads. */
 export type Quad = [Point, Point, Point, Point];
 
 export type Pixels = { data: Uint8ClampedArray; height: number; width: number };
@@ -18,21 +7,21 @@ export type Pixels = { data: Uint8ClampedArray; height: number; width: number };
 export type PaddleWord = { conf: number; line: number; quad: Quad; text: string };
 
 export type PipelineOptions = {
-  // A region is kept when its mean probability is above this.
+  /** A region is kept when its mean probability is above this. */
   boxThresh: number;
-  // The detector's input, long side, in pixels (a multiple of 32).
+  /** The detector's input, long side, in pixels (a multiple of 32). */
   detMaxSide: number;
-  // A pixel belongs to text above this probability.
+  /** A pixel belongs to text above this probability. */
   detThresh: number;
-  // A line read with less confidence is read upside down too.
+  /** A line read with less confidence is read upside down too. */
   flipBelow: number;
-  // Lines read with less mean confidence are dropped.
+  /** Lines read with less mean confidence are dropped. */
   minConf: number;
-  // A region narrower than this, in detector pixels, is dropped.
+  /** A region narrower than this, in detector pixels, is dropped. */
   minSide: number;
   recHeight: number;
   recMaxWidth: number;
-  // How far a region grows back out (DB shrinks text regions in training).
+  /** How far a region grows back out (DB shrinks text regions in training). */
   unclip: number;
 };
 
@@ -53,13 +42,14 @@ const add = (a: Point, b: Point): Point => [a[0] + b[0], a[1] + b[1]];
 const neg = (a: Point): Point => [-a[0], -a[1]];
 const dist = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-// Where to read a crop: its origin, `u` along the text as it reads, `v`
-// down its letters.
+/**
+ * Where to read a crop: its origin, `u` along the text as it reads, `v`
+ * down its letters.
+ */
 export type Frame = { o: Point; u: Point; v: Point };
 
 type Rgb = [number, number, number];
 
-// One pixel, bilinear, clamped to the image.
 function bilinear(img: Pixels, fx: number, fy: number, out: Rgb): void {
   const { data, height, width } = img;
   const x = Math.min(width - 1, Math.max(0, fx));
@@ -87,9 +77,11 @@ function bilinear(img: Pixels, fx: number, fy: number, out: Rgb): void {
   }
 }
 
-// The image at W × H as a normalised CHW tensor in BGR order, which
-// PP-OCR was trained on: box-averaged when shrinking by 2× or more,
-// bilinear otherwise.
+/**
+ * The image at W × H as a normalised CHW tensor in BGR order, which
+ * PP-OCR was trained on: box-averaged when shrinking by 2× or more,
+ * bilinear otherwise.
+ */
 export function resizeToChw(img: Pixels, size: { H: number; W: number }): Float32Array {
   const { H, W } = size;
   const mean = [0.485, 0.456, 0.406];
@@ -128,8 +120,10 @@ export function resizeToChw(img: Pixels, size: { H: number; W: number }): Float3
   return out;
 }
 
-// The rotated rectangle `frame` sampled upright into a W × H recogniser
-// input ((x / 255 − 0.5) / 0.5, BGR), supersampled when it shrinks.
+/**
+ * The rotated rectangle `frame` sampled upright into a W × H recogniser
+ * input ((x / 255 − 0.5) / 0.5, BGR), supersampled when it shrinks.
+ */
 export function sampleFrame(
   img: Pixels,
   frame: Frame,
@@ -198,8 +192,10 @@ export type Rect = {
   w: number;
 };
 
-// The smallest rectangle around a convex polygon: one of its sides lies
-// along an edge of the polygon.
+/**
+ * The smallest rectangle around a convex polygon: one of its sides lies
+ * along an edge of the polygon.
+ */
 export function minAreaRect(hull: readonly Point[]): Rect | null {
   if (hull.length < 3) return null;
   let best: Rect | null = null;
@@ -230,7 +226,6 @@ export function minAreaRect(hull: readonly Point[]): Rect | null {
   return best;
 }
 
-// The rectangle's corners, grown by `grow` on every side.
 export function rectCorners(rect: Rect, grow: number): Quad {
   const corner = (u: number, v: number): Point => [
     u * rect.ux - v * rect.uy,
@@ -244,8 +239,10 @@ export function rectCorners(rect: Rect, grow: number): Quad {
   ];
 }
 
-// PaddleOCR's order: the two leftmost corners start the text, the higher
-// of them first.
+/**
+ * PaddleOCR's order: the two leftmost corners start the text, the higher
+ * of them first.
+ */
 export function orderQuad(quad: readonly Point[]): Quad {
   const byX = quad.toSorted((a, b) => a[0] - b[0]);
   const [tl, bl] = byX[0]![1] <= byX[1]![1] ? [byX[0]!, byX[1]!] : [byX[1]!, byX[0]!];
@@ -253,8 +250,10 @@ export function orderQuad(quad: readonly Point[]): Quad {
   return [tl, tr, br, bl];
 }
 
-// DB's post-processing: a threshold, 8-connected regions, the smallest
-// rotated rectangle around each, grown back out by the unclip ratio.
+/**
+ * DB's post-processing: a threshold, 8-connected regions, the smallest
+ * rotated rectangle around each, grown back out by the unclip ratio.
+ */
 export function boxesFromMap(
   prob: Float32Array,
   size: { H: number; W: number },
@@ -271,7 +270,6 @@ export function boxesFromMap(
     let count = 0;
     stack[top++] = start;
     seen[start] = 1;
-    // Each row's leftmost and rightmost pixel: enough for the hull.
     const rowMin = new Map<number, number>();
     const rowMax = new Map<number, number>();
     while (top > 0) {
@@ -312,7 +310,7 @@ const centre = (quad: Quad): Point => [
   (quad[0][1] + quad[2][1]) / 2,
 ];
 
-// Top to bottom, then left to right within about a line's height.
+/** Top to bottom, then left to right within about a line's height. */
 export function sortReading<T extends { quad: Quad }>(boxes: readonly T[]): T[] {
   return boxes.toSorted((a, b) => {
     const p = centre(a.quad);
@@ -324,16 +322,18 @@ export function sortReading<T extends { quad: Quad }>(boxes: readonly T[]): T[] 
 export type Decoded = {
   conf: number;
   text: string;
-  // Each word, and where along the crop (0 to 1) its letters fired.
+  /** Each word, and where along the crop (0 to 1) its letters fired. */
   words: { a: number; b: number; conf: number; text: string }[];
 };
 
 const mean = (list: { p: number }[]) =>
   list.reduce((total, item) => total + item.p, 0) / list.length;
 
-// Greedy CTC: the likeliest symbol at each time step, repeats and blanks
-// dropped; words split at spaces, each spanning the steps its letters
-// fired on, half a letter's step either side.
+/**
+ * Greedy CTC: the likeliest symbol at each time step, repeats and blanks
+ * dropped; words split at spaces, each spanning the steps its letters
+ * fired on, half a letter's step either side.
+ */
 export function ctcDecode(
   data: Float32Array,
   steps: number,
@@ -383,14 +383,15 @@ export function ctcDecode(
   };
 }
 
-// The point at (a, c) of a frame: a along the text, c down its letters.
 const at = (frame: Frame, a: number, c: number): Point => [
   frame.o[0] + frame.u[0] * a + frame.v[0] * c,
   frame.o[1] + frame.u[1] * a + frame.v[1] * c,
 ];
 
-// How a detected box reads: along its long side, and, for a box taller
-// than wide, turned a quarter (rotated labels on maps).
+/**
+ * How a detected box reads: along its long side, and, for a box taller
+ * than wide, turned a quarter (rotated labels on maps).
+ */
 export function frameOf(quad: Quad): { frame: Frame; tall: boolean } {
   const [tl, tr, br, bl] = quad;
   const tall = dist(tl, bl) / Math.max(1, dist(tl, tr)) >= 1.5;
@@ -400,14 +401,12 @@ export function frameOf(quad: Quad): { frame: Frame; tall: boolean } {
   return { frame, tall };
 }
 
-// The same frame upside down.
 export const flipped = (frame: Frame): Frame => ({
   o: add(add(frame.o, frame.u), frame.v),
   u: neg(frame.u),
   v: neg(frame.v),
 });
 
-// The parts of onnxruntime-web the pipeline uses.
 export type Tensor = { data: unknown; dims: readonly number[] };
 export type Session = {
   inputNames: readonly string[];
@@ -433,7 +432,7 @@ export async function createPipeline({
   options = DEFAULT_OPTIONS,
   runtime,
 }: {
-  // Index 0 is CTC's blank; a space follows the dictionary's own symbols.
+  /** Ordered dictionary symbols without the CTC blank or appended space. */
   dict: readonly string[];
   models: { detector: Uint8Array; recogniser: Uint8Array };
   options?: PipelineOptions;

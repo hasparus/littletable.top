@@ -11,7 +11,7 @@ export function captureSharedView(editor: Editor): SharedView {
   return {
     camera: editor.getCamera(),
     page: editor.getCurrentPage(),
-    // SAFETY: only document records, on a store with no sync connection.
+    // WARNING: The shared backdrop takes only document records and must use a store with no sync connection.
     store: createTLStore({
       assets: {
         resolve: editor.store.props.assets.resolve,

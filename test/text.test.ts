@@ -151,7 +151,6 @@ describe("storing what was read off an image", () => {
     expect((await put("checked", token, hash, TESSERACT, "{not json")).status).toBe(422);
     const huge = await put("checked", token, hash, TESSERACT, "x".repeat(600 * 1024));
     expect(huge.status).toBe(413);
-    // Nothing of these was kept: a good one is still the first.
     expect((await put("checked", token, hash, TESSERACT, result(hash, TESSERACT))).status).toBe(
       201,
     );
@@ -281,7 +280,6 @@ describe("handing out images to read", () => {
       expect(ledger.claim("u:2", request, 1000 + 2 * TEXT_LEASE_MS)).toMatchObject({ hash });
       expect(ledger.renew("u:1", (held as Claimed).lease, 1000 + 2 * TEXT_LEASE_MS)).toBe(false);
     });
-    // Over HTTP, a lease nobody holds cannot be renewed.
     expect((await post("lease", bea, "renew", { lease: "nobody" })).status).toBe(409);
   });
 

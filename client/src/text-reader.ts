@@ -1,20 +1,11 @@
 import type { EngineName, TextLine } from "../../src/text-result";
 import type { ReadReply, ReadRequest, Size } from "./text-worker";
 
-// The board's side of the text worker (text-worker.ts): started the first
-// time there is an image to read, one image at a time, each engine given
-// a time limit, and let go once it has had nothing to do for a minute.
-//
-// SAFETY: an engine that cannot start can hang instead of failing
-// (tesseract.js waits for ever when WebAssembly is refused), and a
-// reading in WebAssembly cannot be interrupted. Past its time limit the
-// whole worker is ended and the reading counts as failed.
+// WARNING: Tesseract can hang if WebAssembly is blocked, and a WASM reading cannot be interrupted. Terminate the worker on timeout.
 
 export type EngineReading = { engine: EngineName; lines: TextLine[]; ms: number; size: Size };
 export type EngineOutcome = EngineReading | { engine: EngineName; failed: string };
 
-// The first reading also fetches and starts the engine (several
-// megabytes), so it gets longer.
 const FIRST_LIMIT_MS = 120_000;
 const LIMIT_MS = 60_000;
 const IDLE_MS = 60_000;
@@ -36,7 +27,6 @@ export class TextReader {
     return this.#worker;
   }
 
-  // Ends the worker and what it was doing; the next reading starts afresh.
   stop(): void {
     this.#worker?.terminate();
     this.#worker = null;
@@ -48,7 +38,7 @@ export class TextReader {
     this.#idle = setTimeout(() => this.stop(), IDLE_MS);
   }
 
-  // Reads one image with each engine in turn, reporting each as it ends.
+  /** Reads one image with each engine in turn, reporting each as it ends. */
   read(
     bytes: ArrayBuffer,
     engines: EngineName[],

@@ -1,43 +1,21 @@
-// The numerals of one die kind, drawn once on a canvas: white, with black
-// ink, one cell per face (dice-mesh.ts lays the cells out). The renderer
-// colours body and ink itself, so one atlas serves every look.
-
 import { add, dot, length, normalize, scale, sub, type Vec } from "./dice-math";
 import { cellPoint, type Layout, layoutOf } from "./dice-mesh";
 import { DIGIT_INK, DIGIT_TOP } from "./dice-numeral-centres";
 import { type DieKind, solid, type Solid } from "./dice-solids";
 
-// NOTE: the caller loads this font before drawing (dice-scene.ts); a canvas
-// does not wait for a font and would draw the fallback for good.
 export const NUMERAL_FONT = '700 64px "Outfit"';
 
-// A face's cell in the atlas, in pixels; the ball has a hundred small faces.
 const CELL_PX = 192;
 const BALL_CELL_PX = 96;
 
-// A digit's height and a numeral's greatest width, as shares of the radius
-// of the circle inscribed in its face; every numeral of a die is the size of
-// the one these leave the least room. A d4's three numerals share a face.
 const DIGIT_HEIGHT = 0.92;
 const D4_DIGIT_HEIGHT = 0.86;
 const NUMERAL_WIDTH = 1.4;
-// How far from a d4 face's middle to its corner a numeral sits.
 const D4_REACH = 0.54;
-// The line under a numeral that reads as another one upside down, in digit
-// heights: its gap, its thickness, its width as a share of the numeral's,
-// and how much of it counts when the numeral is centred up and down: all of
-// it pushes the digit up, none of it leaves the mark hanging low.
 const LINE = { counts: 0.5, gap: 0.11, thick: 0.11, wide: 0.9 };
-// Across, a numeral sits this share of the way from the middle of its ink's
-// box to its ink's centre of mass. All the way looks right for a 1 and a
-// touch too far for an open 3.
 const BY_MASS = 0.75;
-// What each digit reads as upside down, where it reads as a digit at all.
 const TURNED: Record<string, string> = { 0: "0", 1: "1", 6: "9", 8: "8", 9: "6" };
 
-// The numerals of `texts` that need the line: those that, upside down, read
-// as a different numeral of the same die. A d6 or a d8 has a 6 and no 9, so
-// neither is lined.
 function linedOf(texts: string[]): Set<string> {
   return new Set(
     texts.filter((text) => {
@@ -50,17 +28,12 @@ function linedOf(texts: string[]): Set<string> {
   );
 }
 
-// How far `p` is from the line through `from` and `to`.
 function toLine(p: Vec, from: Vec, to: Vec): number {
   const edge = sub(to, from);
   const along = dot(sub(p, from), edge) / dot(edge, edge);
   return length(sub(add(from, scale(edge, along)), p));
 }
 
-// The middle and radius of the circle inscribed in a face of the rounded
-// die. A regular face has it at its centre; a kite has it on its axis where
-// an edge at the pole and an edge at the blunt end are equally far; a ball's
-// faces are uneven, and theirs is searched for from the face's middle.
 function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radius: number } {
   const face = shape.faces[index]!;
   const corner = (v: number) => add(shape.core[v]!, scale(face.normal, shape.r));
@@ -88,8 +61,6 @@ function inscribed(shape: Solid, index: number, layout: Layout): { at: Vec; radi
     .slice(1)
     .map(corner)
     .toSorted((a, b) => length(sub(a, pole)) - length(sub(b, pole))) as [Vec, Vec, Vec];
-  // The distance to the pole's edge grows along the axis as fast as the
-  // distance to the blunt end's edge shrinks from there.
   const fromPole = toLine(blunt, pole, side);
   const fromBlunt = toLine(pole, side, blunt);
   const share = fromBlunt / (fromPole + fromBlunt);
@@ -103,11 +74,6 @@ type Pen = {
   lined: Set<string>;
 };
 
-// Where the ink of `text` is at 100px, around the point the text is centred
-// on. Across, a numeral is placed by its ink's centre of mass (a 1 is heavy
-// on its right, so the middle of its box is not where it looks centred), from
-// the table of the font's digits, tempered by BY_MASS. Up and down, by the
-// height all digits share, so numerals on dice side by side keep one line.
 function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) {
   context.font = '700 100px "Outfit"';
   const box = context.measureText(text);
@@ -135,7 +101,6 @@ function inkOf(context: CanvasRenderingContext2D, text: string, lined: boolean) 
   };
 }
 
-// Writes `text` with the centre of its ink on `at`.
 function write(
   { cellPx, context, layout, lined }: Pen,
   { at, face, size, text, up }: { at: Vec; face: number; size: number; text: string; up: Vec },
@@ -162,8 +127,6 @@ function write(
   context.restore();
 }
 
-// The font size, in the units of `radius`, at which no numeral of `texts`
-// outgrows a face whose inscribed circle has that radius.
 function sizeFor(context: CanvasRenderingContext2D, texts: string[], radius: number, tall: number) {
   return Math.min(
     ...texts.map((text) => {
@@ -192,8 +155,6 @@ export function drawAtlas(kind: DieKind): HTMLCanvasElement {
   const texts = shape.features.map(({ text }) => text);
   const pen: Pen = { cellPx, context, layout, lined: linedOf(texts) };
   const circles = shape.faces.map((_, index) => inscribed(shape, index, layout));
-  // In die units; every numeral of a die is one size, but a ball's 100,
-  // which would make the other ninety-nine small.
   const sizeOf = (some: string[]) =>
     sizeFor(
       context,
@@ -209,8 +170,6 @@ export function drawAtlas(kind: DieKind): HTMLCanvasElement {
     const { text } = shape.features[index] ?? { text: "" };
     const size = ((text.length < 3 ? height : longHeight) / cell.span) * cellPx;
     if (kind === "d4") {
-      // Each corner's number on all three faces around it: the one on top is
-      // read off any side.
       for (const v of face.verts) {
         const out = sub(add(shape.core[v]!, scale(face.normal, shape.r)), cell.center);
         write(pen, {

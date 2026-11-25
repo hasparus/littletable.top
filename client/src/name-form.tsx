@@ -4,7 +4,6 @@ import type { Copy } from "./copy";
 
 const MAX_NAME_LENGTH = 40;
 
-// A guest's one step before the board: the name the others will see.
 export function NameForm({
   copy,
   error,
@@ -16,7 +15,6 @@ export function NameForm({
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  // The form is the whole page for a guest, so focus waits in its field.
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => field.current?.focus(), []);
   return (

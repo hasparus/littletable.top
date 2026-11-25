@@ -22,12 +22,9 @@ import { PublicBoardIntro } from "./public-landing";
 import { type SharedView, useSharedBackdrop } from "./secret-backdrop";
 import { useBoardUi } from "./ui";
 
-// NOTE: fonts, icons and tldraw's own translations ship in our build: the
-// Content-Security-Policy allows no host but ours.
+// WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
 const assetUrls = getAssetUrlsByImport();
 
-// The board's own sheets and bars take tldraw's theme: the device's until
-// the person picks one in tldraw's preferences.
 function ThemeKeeper() {
   const editor = useEditor();
   const dark = useValue("dark mode", () => editor.user.getIsDarkMode(), [editor]);
@@ -37,8 +34,7 @@ function ThemeKeeper() {
   return null;
 }
 
-// A pasted YouTube or Figma link would become a frame onto that site, which
-// the Content-Security-Policy refuses; it stays a plain link instead.
+// WARNING: The Content-Security-Policy blocks external frames, including tldraw embeds for YouTube and Figma links.
 const SHAPE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] })];
 
 const LANDING_SHAPE_UTILS = [
@@ -103,6 +99,7 @@ export function BoardEditors({
     [backdrop, landing],
   );
 
+  // WARNING: Keep the foreground editor isolated so tldraw's z-index 300 UI cannot cover the board's sheets.
   return (
     <>
       {backdrop !== undefined && (
@@ -132,7 +129,6 @@ export function BoardEditors({
           />
         </div>
       )}
-      {/* NOTE: isolate keeps tldraw's own layers (its UI sits at z-index 300) under the board's sheets. */}
       <div className="absolute inset-0 isolate" data-board-editor>
         <Tldraw
           {...MEDIA_PROPS}
@@ -145,8 +141,7 @@ export function BoardEditors({
           licenseKey={licenseKey === "" ? undefined : licenseKey}
           locale={language}
           onMount={(mounted) => {
-            // NOTE: tldraw's own menus (the page menu's among them) take
-            // their language from the person's preferences, not this prop.
+            // WARNING: tldraw's menus read the user preference rather than the locale prop.
             mounted.user.updateUserPreferences({ locale: language });
             if (landing !== undefined) rememberExistingArrows(mounted);
             onEditor(mounted);

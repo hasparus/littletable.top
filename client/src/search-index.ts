@@ -6,19 +6,14 @@ import { closeness, type Closeness, excerpt, type ExcerptPart, fold, oneLine } f
 
 export type Point = { x: number; y: number };
 
-// Where a document's text comes from: a shape's own text (a note, a label,
-// a frame's name, an image's alt text), a place's name, or a line read off
-// an image.
 export type SearchKind = "native" | "ocr" | "place";
 
 export type SearchDoc = {
-  // Unique on the board: the shape's id and what the text is of it.
+  /** Board-unique key combining the shape ID and the kind of text. */
   id: string;
   kind: SearchKind;
   page: TLPageId;
-  // Only for "ocr": the line's corners in the source image's pixels, which
-  // imageQuadToPage turns into page coordinates for the shape as it lies
-  // now, and each word's, so a hit can show just the words it matched.
+  /** For OCR only: line corners in decoded source-image pixels. */
   region?: readonly Point[];
   shape: TLShapeId;
   text: string;
@@ -30,7 +25,7 @@ export type Hit = {
   doc: SearchDoc;
   excerpt: ExcerptPart[];
   score: number;
-  // The document's words that matched, folded as the index keeps them.
+  /** Matched terms in the index’s folded form. */
   terms: string[];
 };
 
@@ -40,8 +35,6 @@ const boxOf = (region: readonly Point[]) => {
   return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 };
 
-// Two lines read off the same place of an image: one covers most of the
-// other (two engines' readings, a word and the line it is part of).
 function samePlace(a: readonly Point[], b: readonly Point[]): boolean {
   const p = boxOf(a);
   const q = boxOf(b);
@@ -51,21 +44,13 @@ function samePlace(a: readonly Point[], b: readonly Point[]): boolean {
   return smaller > 0 && (x * y) / smaller >= 0.5;
 }
 
-// Typos forgiven by word length: none up to three letters, where one edit
-// already reaches most other words, one in four or five, two from six. The
-// index counts swapped letters ("tavren") as two edits.
 const typos = (term: string) => (term.length <= 3 ? false : term.length <= 5 ? 1 : 2);
 
-// Places are how people move around the board, so a place that matches
-// stands ahead of text that matches as well.
 const PLACE_BOOST = 3;
 export const MAX_HITS = 50;
 
 type Entry = { own: string[]; page: TLPageId; read: string[] };
 
-// The board's text: per shape, its own text and its place name (kept in
-// step with the board by BoardSearch), and the lines read off it if it is
-// an image, which arrive later and on their own.
 export class BoardIndex {
   readonly #docs = new Map<string, SearchDoc>();
   readonly #shapes = new Map<TLShapeId, Entry>();
@@ -105,10 +90,7 @@ export class BoardIndex {
     return kept;
   }
 
-  // Replaces a shape's own text and place name, and says which page the
-  // shape is on now (the lines read off it follow). Text the shape says
-  // twice (a frame named like its place, an alt text that repeats a title)
-  // is indexed once, the first document given keeping it.
+  /** Moves existing OCR lines to the new page and retains the first copy of duplicate non-OCR text. */
   setShape(shape: TLShapeId, page: TLPageId, docs: readonly SearchDoc[]): void {
     const entry = this.#shapes.get(shape);
     if (entry !== undefined) {
@@ -119,9 +101,7 @@ export class BoardIndex {
     this.#shapes.set(shape, { own, page, read: entry?.read ?? [] });
   }
 
-  // Replaces every line read off an image shape, as one reading of it (a
-  // better one may come later and replace it). A shape the index does not
-  // hold, gone or not yet seen, takes none.
+  /** Replaces one image’s OCR reading in full. Ignores shapes that are not indexed. */
   setImageText(shape: TLShapeId, docs: readonly SearchDoc[]): void {
     const entry = this.#shapes.get(shape);
     if (entry === undefined) return;
@@ -141,25 +121,16 @@ export class BoardIndex {
   }
 
   #run(query: string, combineWith: "AND" | "OR"): SearchResult[] {
-    // NOTE: one letter forgives nothing and only starts words; anything
-    // more forgiving would match most of the board.
     const short = fold(query).replaceAll(/[^\p{L}\p{N}]/gu, "").length < 2;
     return this.#mini.search(query, {
       boostDocument: (id: string) => (this.#docs.get(id)?.kind === "place" ? PLACE_BOOST : 1),
       combineWith,
       fuzzy: short ? false : typos,
-      // NOTE: only the word being typed is a prefix; the words before it
-      // are finished.
       prefix: (_term, index, terms) => index === terms.length - 1,
     });
   }
 
-  // The best matches, best first: text that holds the query as typed, then
-  // folded, then only through prefixes and typos; within each, the index's
-  // own relevance with places boosted. A shape's text and its place name
-  // are one result, not two, and so are lines read off the same place of
-  // an image. Several words must all match, unless no document has them
-  // all.
+  /** Ranks literal, folded, then fuzzy matches. Combines matches from the same shape or image region. */
   search(raw: string): Hit[] {
     const query = oneLine(raw);
     if (fold(query).replaceAll(/[^\p{L}\p{N}]/gu, "").length === 0) return [];

@@ -5,19 +5,6 @@ import { describe, expect, it } from "vitest";
 import { BoardIndex, type SearchDoc } from "../client/src/search-index";
 import { closeness, excerpt, EXCERPT_LENGTH, fold, richTextWords } from "../client/src/search-text";
 
-// What can go wrong with finding text on the board, and what guards it here:
-// - Polish letters: "zolw" misses "Żółw", or "Żółw" misses "zolw": "folding"
-// - folding shifts positions, so the wrong letters are emphasised: "folding"
-// - a folded or fuzzy match outranks the exact spelling: "ranking"
-// - a typo, or a word half typed, finds nothing: "ranking"
-// - one letter floods the list with typo matches: "ranking"
-// - the same shape shows twice (its text and its place name): "ranking"
-// - the index keeps text that was edited, deleted, moved or whose page went:
-//   "keeping up"
-// - a long text shows from its start, hiding the match: "excerpts"
-// - words of a note run together across its lines, or styling hides them:
-//   "rich text"
-
 const PAGE_1 = "page:one" as TLPageId;
 const PAGE_2 = "page:two" as TLPageId;
 

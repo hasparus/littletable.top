@@ -33,7 +33,6 @@ function reading(engine: EngineKey, words: [string, number[]][]): TextResult {
   };
 }
 
-// What BoardSearch makes of an image's readings (search-board.ts).
 const docs = (readings: TextResult[]): SearchDoc[] =>
   linesToIndex(readings).map((line, at) => ({
     id: `${MAP}#ocr:${at}`,

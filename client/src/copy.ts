@@ -1,9 +1,5 @@
 import type { Language } from "../settings";
 
-// Every string the board shows, in English and Polish. In Polish the board is
-// "tablica", a page is "strona", a place is "miejsce", a die is "k6", and the
-// copy stays gender-neutral.
-// `%(name)s`-style placeholders are filled in by `fill`.
 const EN = {
   addDie: "Add %(die)s",
   addToPlaces: "Add to places",
@@ -177,12 +173,10 @@ const PL: Copy = {
   clearPool: "Wyczyść",
   close: "Zamknij",
   connectionLost: "Łączymy ponownie…",
-  // NOTE: the tray holds several dice, so it reads "Kości", not "Kość".
   dice: "Kości",
   diceExpression: "Notacja rzutu",
   die: "k%(sides)s",
   droppedDie: "%(die)s (odrzucona)",
-  // NOTE: tldraw's own Polish says "Obserwuj" for following someone.
   follow: "Obserwuj",
   guest: "Gość",
   imageFailed: "Nie udało się wysłać obrazu. Sprawdź połączenie i spróbuj ponownie.",

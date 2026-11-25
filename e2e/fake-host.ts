@@ -1,21 +1,4 @@
-// A tiny host application for the hosted-mode end-to-end test, and the
-// reference implementation of the host contract (docs/hosting.md, "The host
-// contract"). It keeps accounts and boards in memory, signs passes and
-// board command tokens with the committed dev key, and answers the tabletop's
-// pass requests. Test-only: nothing here is fit for production.
-//
-//   node e2e/fake-host.ts   (Node 22.18+ runs the TypeScript as it is)
-//
-// Pages, all plain HTML:
-//   GET  /sign-in?name=Ada      a session for a member called Ada, with a
-//                               picture (&picture=none: without one)
-//   GET  /avatars/<id>.png      a member's picture, which the tabletop copies
-//   GET  /boards/               the member's boards, with New / Reset / Delete
-//   POST /boards/new            creates a board, then 302 to the tabletop
-//   POST /boards/<id>/reset     gives the board a new link and link version
-//   POST /boards/<id>/delete    forgets the board and has the Worker wipe it
-// The contract itself:
-//   OPTIONS, POST /b/<code>/bootstrap/
+// WARNING: This in-memory sample host signs passes with the committed development key. Use it only locally.
 
 import { importPKCS8, SignJWT } from "jose";
 import { randomBytes } from "node:crypto";
@@ -52,8 +35,7 @@ function sessionOf(request: IncomingMessage, response: ServerResponse): Session 
   const fresh = token(18);
   const session: Session = {};
   sessions.set(fresh, session);
-  // NOTE: SameSite=Lax is enough: the tabletop on another port of the same
-  // host is the same site, so the browser sends the cookie with its fetch.
+  // WARNING: Keep the host and tabletop on the same site. A port change is fine, but a site change blocks this Lax cookie.
   response.setHeader("Set-Cookie", `host_session=${fresh}; Path=/; HttpOnly; SameSite=Lax`);
   return session;
 }
@@ -78,8 +60,6 @@ const cleanName = (name: string) => name.split(/\s+/u).filter(Boolean).join(" ")
 
 const now = () => Math.floor(Date.now() / 1000);
 
-// A member's picture rides in the pass as a URL on this host's origin,
-// signed like every other claim; the tabletop copies it from here.
 function signPass(
   board: Board,
   person: { avatar: string | null; id: string; name: string; owner: boolean },
@@ -116,8 +96,6 @@ function answerTabletop(response: ServerResponse) {
   response.setHeader("Vary", "Origin");
 }
 
-// The contract: POST /b/<code>/bootstrap/ from the tabletop's origin, with
-// the host's cookie and a JSON body that may carry a guest's name.
 async function bootstrap(request: IncomingMessage, response: ServerResponse, code: string) {
   if (request.headers.origin !== TABLETOP) {
     return json(response, 403, { error: "forbidden-origin" });

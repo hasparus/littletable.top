@@ -17,14 +17,8 @@ import { BoardIndex, type Hit, type Point, type SearchDoc } from "./search-index
 import { fold, richTextWords } from "./search-text";
 import { linesToIndex } from "./text-filter";
 
-// How long the index waits after the board changes before it catches up.
 const SETTLE_MS = 250;
 
-// What a shape says, as tldraw's own shape utils read it: rich text as
-// plain text (notes, text, geo and arrow labels), a frame's name, a link's
-// address, and the description it gives screen readers (an image's alt
-// text, a bookmark's title and description), each once. Rich text is read
-// straight from its JSON (richTextWords), which is what getText reads too.
 function textsOf(editor: Editor, shape: TLShape): string[] {
   const util = editor.getShapeUtil(shape);
   const { richText } = shape.props as { richText?: unknown };
@@ -64,15 +58,13 @@ const assetOf = (shape: TLShape): TLAssetId | null => {
 
 const HASH_IN_SRC = /\/files\/([0-9a-f]{64})$/u;
 
-// The SHA-256 of an image asset's bytes, which its address on the board
-// names (docs/internals.md, "Images"); null for an image from anywhere else.
+/** Returns the image bytes’ SHA-256 from its board file URL, or null for external images. */
 export function imageHash(editor: Editor, asset: TLAssetId): string | null {
   const record = editor.getAsset(asset);
   if (record?.type !== "image" || typeof record.props.src !== "string") return null;
   return HASH_IN_SRC.exec(record.props.src)?.[1] ?? null;
 }
 
-// One document per line of every reading, for one image shape.
 function readDocs(shape: TLShapeId, page: TLPageId, readings: readonly TextResult[]): SearchDoc[] {
   return linesToIndex(readings).map((line, at) => ({
     id: `${shape}#ocr:${at}`,
@@ -90,12 +82,9 @@ const tokens = (text: string) =>
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 
-// Where a result shows: its polygon on the page, and whether the image's
-// crop hides what was found (then the polygon is the whole image).
+/** Page-space polygon. If a crop hides the OCR match, the polygon is the whole image. */
 export type Found = { hidden: boolean; polygon: Point[] };
 
-// Hands `run` the idle time the browser has to spare, as a function that
-// says how many milliseconds are left. Safari has no requestIdleCallback.
 function whenIdle(run: (left: () => number) => void): () => void {
   if ("requestIdleCallback" in globalThis) {
     const handle = requestIdleCallback((deadline) => run(() => deadline.timeRemaining()), {
@@ -110,28 +99,19 @@ function whenIdle(run: (left: () => number) => void): () => void {
   return () => clearTimeout(handle);
 }
 
-// Shapes indexed in one idle slice however little time it has, so a busy
-// page still gets there.
 const MIN_SLICE = 25;
 
-// The board's search: an index of every page's text, kept in step with
-// the store. It is this person's alone; nothing about it is written to the
-// document. Every shape starts out as changed, and the index catches up in
-// the browser's idle time, slice by slice, so a search finds it ready and
-// typing on the board never waits for it.
+/** Maintains a browser-local search index for every page of the board. */
 export class BoardSearch {
-  // Moves on whenever the index has caught up, so an open results list
-  // asks again.
+  /** Advances whenever the index catches up, so an open result list can refresh. */
   readonly version = atom("board search version", 0);
   readonly #editor: Editor;
   readonly #index = new BoardIndex();
   readonly #changed = new Set<TLShapeId>();
-  // Shapes that changed parent: their children may be on another page now.
   readonly #moved = new Set<TLShapeId>();
   readonly #gonePages = new Set<TLPageId>();
   readonly #changedAssets = new Set<TLAssetId>();
   readonly #shapesOfAsset = new Map<TLAssetId, Set<TLShapeId>>();
-  // What was read off each image, by the SHA-256 of its bytes.
   readonly #readings = new Map<string, TextResult[]>();
   #watching = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
@@ -161,9 +141,7 @@ export class BoardSearch {
     });
   }
 
-  // NOTE: runs on every change to the document, a keystroke in someone's
-  // note among them, so it only notes ids; the work waits for the board to
-  // settle.
+  // WARNING: Runs on every document change, including keystrokes. Record IDs and defer indexing.
   #note(changes: RecordsDiff<TLRecord>): void {
     for (const record of Object.values(changes.added)) {
       if (record.typeName === "shape") this.#changed.add(record.id);
@@ -171,7 +149,6 @@ export class BoardSearch {
     }
     for (const [before, after] of Object.values(changes.updated)) {
       if (after.typeName === "shape" && before.typeName === "shape") {
-        // Moving, turning or reordering a shape changes nothing it says.
         if (before.parentId !== after.parentId) this.#moved.add(after.id);
         else if (before.props === after.props && before.meta === after.meta) continue;
         this.#changed.add(after.id);
@@ -184,8 +161,6 @@ export class BoardSearch {
     this.#schedule();
   }
 
-  // Once the board has settled: at once while the search is open, else in
-  // idle time.
   #schedule(): void {
     if (this.#timer !== null) return;
     this.#timer = setTimeout(() => {
@@ -213,8 +188,7 @@ export class BoardSearch {
     }
   }
 
-  // Replaces what was read off the image with these bytes, for every image
-  // shape that shows it now or later (pasted again, brought back by undo).
+  /** Replaces readings for every shape using these bytes, including shapes added later. */
   setImageReadings(hash: string, readings: readonly TextResult[]): void {
     this.#readings.set(hash, [...readings]);
     for (const [asset, shapes] of this.#shapesOfAsset) {
@@ -234,7 +208,6 @@ export class BoardSearch {
       .flatMap((child) => [child, ...this.#descendants(child)]);
   }
 
-  // Brings the index up to the board, or as far as `left` allows.
   #catchUp(left: () => number = () => Infinity): void {
     const index = this.#index;
     const work = this.#changed.size + this.#moved.size + this.#gonePages.size;
@@ -264,8 +237,7 @@ export class BoardSearch {
     this.version.update((version) => version + 1);
   }
 
-  // While the search is open the index follows the board as it changes;
-  // opening it finishes whatever the idle time has not.
+  /** Finishes indexing immediately and keeps the index current until the returned function is called. */
   watch(): () => void {
     this.#catchUp();
     this.#watching++;
@@ -278,10 +250,7 @@ export class BoardSearch {
     return this.#index.search(query);
   }
 
-  // Where a result is on its page now: the outline of its shape, turned as
-  // the shape is, or for a line read off an image, the words that matched
-  // where the image now shows them (the whole line if none can be told
-  // apart). Null once the shape is gone.
+  /** Returns the current outline of the matched shape or OCR words, or null if the shape is gone. */
   regionOf(hit: Pick<Hit, "doc" | "terms">): Found | null {
     const { doc } = hit;
     const shape = this.#editor.getShape(doc.shape);
@@ -296,8 +265,7 @@ export class BoardSearch {
       tokens(word.text).some((token) => hit.terms.includes(token)),
     );
     const regions = matched.length > 0 ? matched.map((word) => word.region) : [doc.region];
-    // NOTE: a reading's pixels are its image's as decoded, which is what
-    // the asset's own size says too, unless tldraw rounded it.
+    // WARNING: tldraw can round asset dimensions. Use the decoded size to project OCR coordinates.
     const read = this.#readings.get(imageHash(this.#editor, asset.id) ?? "")?.[0]?.image;
     const size =
       read === undefined
@@ -306,14 +274,11 @@ export class BoardSearch {
     const shown = regions.flatMap(
       (region) => imageQuadToPage(region, size, shape.props, transform) ?? [],
     );
-    // NOTE: a line the crop now hides still leads to its image, which says so.
     if (shown.length === 0) return { hidden: true, polygon: outline };
     return { hidden: false, polygon: regions.length === 1 ? shown : hull(shown) };
   }
 }
 
-// The convex hull of several words' corners: one outline around them,
-// tilted with them when they are.
 const cross = (o: Point, a: Point, b: Point) =>
   (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 

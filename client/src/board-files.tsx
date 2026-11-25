@@ -15,7 +15,6 @@ import { fill } from "./copy";
 import { downloadTldr, handleFiles } from "./file-flows";
 import { useBoardUi } from "./ui";
 
-// Wires the board's images and .tldr files into tldraw while the editor is active.
 export function BoardFileHandlers() {
   const { copy, files } = useBoardUi();
   const editor = useEditor();
@@ -113,8 +112,6 @@ function ImportStatus({
   );
 }
 
-// The main menu's way to take the whole board away as a .tldr file and to
-// bring one in.
 export function BoardFileMenuItems() {
   const editor = useEditor();
   const toasts = useToasts();

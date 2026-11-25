@@ -1,20 +1,4 @@
-// Writes the .tldr fixtures the end-to-end tests open, from tldraw's own
-// schema (the version this repository installs), so every record passes
-// the same validators the board runs:
-//
-//   node e2e/fixtures/make-fixtures.ts
-//
-// - table.tldr: three pages (the map first, so whoever is on the board
-//   lands on an image); a frame holding a box and a note; a group;
-//   two boxes joined by an arrow bound at both ends; rich text; a draw
-//   stroke; an image and a cropped image; places in meta; varied styles.
-// - table-older.tldr: the same board written in an older schema, by
-//   tldraw's own down-migrations, which the board must migrate up.
-// - table-newer.tldr: the same board claiming a schema newer than ours.
-// - *.png: the images, byte for byte, to compare with what comes back.
-//
-// NOTE: no file exported from tldraw.com is reachable from here; these
-// come from the same SDK version instead.
+// WARNING: Regenerate these fixtures with `node e2e/fixtures/make-fixtures.ts` when changing the installed tldraw schema.
 
 import {
   b64Vecs,
@@ -75,7 +59,6 @@ const records = [
   { id: "page:table", index: "a2", meta: {}, name: "The table", typeName: "page" },
   { id: "page:notes", index: "a3", meta: { kept: "page meta" }, name: "Notes", typeName: "page" },
 
-  // A frame holding a box and a note, and a place on the frame.
   {
     ...base,
     id: "shape:hall",
@@ -121,7 +104,6 @@ const records = [
     y: 80,
   },
 
-  // A group of two circles.
   {
     ...base,
     id: "shape:party",
@@ -153,7 +135,6 @@ const records = [
     y: 20,
   },
 
-  // Two boxes and an arrow bound to both.
   {
     ...base,
     id: "shape:camp",
@@ -230,7 +211,6 @@ const records = [
     typeName: "binding",
   },
 
-  // Rich text and a draw stroke.
   {
     ...base,
     id: "shape:rules",
@@ -285,7 +265,6 @@ const records = [
     y: 500,
   },
 
-  // A cropped map with a place on it, locked as maps on a table are.
   {
     id: "asset:map",
     meta: {},
@@ -324,7 +303,6 @@ const records = [
     y: 0,
   },
 
-  // A portrait, uncropped, beside a note.
   {
     id: "asset:portrait",
     meta: {},
@@ -394,8 +372,6 @@ writeFileSync(
   file({ records, schema: serialized, tldrawFileFormatVersion: 1 }),
 );
 
-// The same board one step back on every sequence that can step back: what
-// an older tldraw wrote, as far as tldraw's own migrations can say.
 const older = structuredClone(serialized);
 for (const [sequence, version] of Object.entries(older.sequences)) {
   if (version === 0) continue;

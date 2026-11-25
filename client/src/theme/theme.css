@@ -1,5 +1,4 @@
-/* The tabletop's tokens, its font and its light and dark palettes. Import it
-   after `@import "tailwindcss"`.
+/* Import this after `@import "tailwindcss"`.
 
    The brand is six custom properties a deployer may set (the build writes
    them from its `brand` option, see vite.config.ts); everything coloured

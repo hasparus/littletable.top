@@ -1,12 +1,4 @@
 /// <reference lib="webworker" />
-// The text worker: reads one image at a time with the engines it is asked
-// for, off the main thread (docs/internals.md, "Text in images"). The image is
-// decoded once, drawn once at the engines' cap, and let go after; each
-// engine loads the first time it is needed and stays for the next image
-// until the board lets the worker go.
-//
-// NOTE: tesseract.js runs Tesseract in a worker of its own, which it
-// starts from this one (from its file on this origin, never a blob: URL).
 
 import * as ort from "onnxruntime-web/wasm";
 import { createWorker, type Worker as Tesseract } from "tesseract.js";
@@ -44,7 +36,6 @@ function startTesseract(): Promise<Tesseract> {
       workerBlobURL: false,
       workerPath: absolute(files.tesseractWorker),
     });
-    // Sparse text: words anywhere, in any order, as on a map or a sheet.
     await reader.setParameters({ tessedit_pageseg_mode: "11" as never });
     return reader;
   })();
@@ -89,8 +80,6 @@ function startPaddle(): Promise<Pipeline> {
 
 const round = (value: number) => Math.round(value);
 
-// A box in the source image's pixels, clamped inside it; null once it has
-// no area left.
 function boxIn(size: Size, [x0, y0, x1, y1]: Box): Box | null {
   const box: Box = [
     Math.max(0, round(x0)),
@@ -186,16 +175,11 @@ async function readPaddle(
   return paddleLines(words, scale, size);
 }
 
-// The image as the board shows it: a photo's EXIF orientation applied, so
-// the words' boxes are where they show. The Worker checks the size the
-// same way (src/image-size.ts).
 async function upright(blob: Blob): Promise<ImageBitmap> {
   try {
     return await createImageBitmap(blob, { imageOrientation: "from-image" });
   } catch (error) {
-    // NOTE: a browser from before "from-image" refuses the value. Its
-    // default may leave a JPEG sideways; the Worker then refuses the
-    // reading's size, and the image stays unread rather than misplaced.
+    // WARNING: A JPEG decoded without EXIF orientation can be sideways and fail the server's size validation.
     if (!(error instanceof TypeError)) throw error;
     return createImageBitmap(blob);
   }
@@ -210,8 +194,7 @@ async function read({ bytes, engines, id }: ReadRequest): Promise<void> {
     Math.max(1, Math.round(size.height * scale)),
   );
   const context = picture.getContext("2d", { willReadFrequently: true })!;
-  // NOTE: text on a transparent image reads against white, as it shows on
-  // the board's light canvas.
+  // WARNING: Composite transparent pixels over white so text keeps the contrast of the light board.
   context.fillStyle = "#fff";
   context.fillRect(0, 0, picture.width, picture.height);
   context.drawImage(bitmap, 0, 0, picture.width, picture.height);

@@ -14,11 +14,6 @@ import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { boardShell } from "./front-skeleton";
 import { Icon, TableMark } from "./icons";
 
-// The standalone tabletop's account page: sign in, then the account's boards
-// (made here, or joined by someone else's link) with what an owner can do
-// to them. The Worker's API: docs/internals.md, "Standalone mode".
-
-// avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
 
 type BoardPage = Lists & { account: Account; csrf: string };
@@ -198,6 +193,7 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name
     }
   }, []);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- The initial load updates state when the fetch settles.
     void reload();
   }, [reload]);
   if (page === "failed") {

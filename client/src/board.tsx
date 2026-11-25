@@ -40,7 +40,6 @@ type Mount = {
   copy: Copy;
   door: Door;
   feedback: boolean;
-  // Where a person goes before the host has said whose board this is.
   fallbackExit: Exit;
   first: Promise<Answer>;
   landing?: PublicLanding;
@@ -71,6 +70,7 @@ function ReadyBoard({
   }, []);
   const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
   useEffect(() => () => view?.store.dispose(), [view]);
+  // WARNING: Keep the hidden editor mounted so its connection can finish sending pending edits.
   return (
     <div data-board-layout>
       <BoardCanvas
@@ -83,7 +83,6 @@ function ReadyBoard({
         licenseKey={licenseKey}
         onEditor={canEnterSecret ? setShared : undefined}
       />
-      {/* NOTE: the room's connection keeps sending pending edits when its editor is out of view. */}
       {secret !== undefined && (
         <BoardCanvas
           active={editingSecret}
@@ -128,8 +127,6 @@ function ReadyBoard({
   );
 }
 
-// Where a person goes from the board: their boards for a member, the place
-// the board belongs to for a guest.
 function exitOf(copy: Copy, { boardsUrl, home }: Bootstrap): Exit {
   return boardsUrl === null
     ? { href: home.url, label: fill(copy.backTo, { home: home.name }) }
@@ -147,8 +144,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
             ? { href: "/auth/sign-in?return=/boards", label: landing.copy.signIn }
             : exitOf(copy, answer.bootstrap);
         document.title = answer.bootstrap.title;
-        // NOTE: an ending only ever moves forward; a late renewal answer
-        // must not bring a reset board back.
+        // WARNING: A late renewal response must not reopen an ended board.
         const keeper = new PassKeeper(door, answer.bootstrap, (ending) =>
           setStage((current) =>
             current.kind === "ended" ? current : { ending, exit, kind: "ended" },
@@ -173,7 +169,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
   }, [first, settle]);
 
   switch (stage.kind) {
-    // NOTE: a reload cannot help either ending: the old link opens nothing.
+    // WARNING: Reloading a deleted board or a reset guest link cannot restore access.
     case "ended":
       return (
         <Notice

@@ -124,7 +124,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
     const viewport = log.current;
     if (!shown || viewport === null) return;
 
-    // The on-screen keyboard can shrink the log without adding a message.
+    // WARNING: Follow keyboard-driven log resizes even when no message arrives.
     const resize = new ResizeObserver(() => {
       if (follow.current) viewport.scrollTop = viewport.scrollHeight;
     });
@@ -157,6 +157,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         }}
         ref={log}
         role="log"
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The scrollable log needs keyboard focus for keyboard scrolling.
         tabIndex={0}
       >
         {chat.messages.map((message, index, messages) => {

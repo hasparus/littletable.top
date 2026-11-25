@@ -1,11 +1,3 @@
-// A stand-in for the three WorkOS AuthKit endpoints the tabletop calls, so
-// the whole sign-in runs offline: in Vitest as the Worker's outbound fetch
-// handler (vitest.config.ts) and in Playwright as a server (this file run
-// with node). Test-only. It checks what WorkOS would check: the client id
-// and secret, the redirect URI, the code's single use, and PKCE. Each
-// person has a picture at /avatars/<user id>.png on the fake's own origin,
-// as WorkOS names a picture its users' sign-in method gave it.
-
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 
@@ -14,8 +6,6 @@ import { png } from "./fixtures/png.ts";
 export const FAKE_CLIENT_ID = "client_fake";
 export const FAKE_API_KEY = "sk_test_fake";
 
-// fake_picture: "none" for a person without one, "broken" for one whose
-// address fails; anything else, a picture of their own.
 type Grant = { challenge: string; id: string; name: string; picture: string; redirectUri: string };
 
 const grants = new Map<string, Grant>();
@@ -25,7 +15,7 @@ const base64url = (bytes: Buffer) => bytes.toString("base64url");
 const userId = (name: string) =>
   `user_${createHash("sha256").update(name).digest("hex").slice(0, 20)}`;
 
-// The access token is only read for its `sid`, so it goes unsigned here.
+// WARNING: The fake sends an unsigned token. It is suitable only for tests that read its session ID.
 const accessToken = (sid: string) =>
   `${base64url(Buffer.from('{"alg":"none"}'))}.${base64url(Buffer.from(JSON.stringify({ sid })))}.`;
 
@@ -51,7 +41,6 @@ function grant(url: URL, name: string, id: string): Response {
   return Response.redirect(back.toString(), 302);
 }
 
-// A small picture, the same for the same person, different for another.
 export function pictureOf(id: string): Buffer {
   const [r = 0, g = 0, b = 0] = createHash("sha256").update(id).digest();
   return png(48, 48, [r, g, b]);
@@ -75,8 +64,6 @@ export async function fakeWorkOs(request: Request): Promise<Response> {
     if (url.searchParams.get("client_id") !== FAKE_CLIENT_ID) {
       return new Response("unknown client", { status: 400 });
     }
-    // A test can skip the page and name the person in the address, and tell
-    // apart two people of one name with fake_id.
     const name = url.searchParams.get("fake_user");
     if (name !== null) return grant(url, name, url.searchParams.get("fake_id") ?? name);
     const hidden = [...url.searchParams]

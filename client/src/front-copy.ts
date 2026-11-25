@@ -1,7 +1,5 @@
 import type { Language } from "../settings";
 
-// The standalone front page's strings: signing in and the account's boards.
-// The Polish keeps the board's own words (copy.ts) and stays gender-neutral.
 const EN = {
   actionFailed: "That did not work. Try again.",
   boardName: "Board name",
