@@ -50,7 +50,7 @@ const EN = {
   chatMessage: "Message",
   chatResize: "Resize chat",
   chatResizeHint:
-    "Drag or use the up and down arrows to adjust height. On a wide screen, use left and right to adjust width. Activate to expand or reset.",
+    "Use the up and down arrows to adjust height. On a wide screen, use left and right to adjust width. Activate to expand or reset.",
   chatSend: "Send",
   chatTooFast: "Wait a moment before sending another message.",
   clearPool: "Clear",
@@ -190,7 +190,7 @@ const PL: Copy = {
   chatMessage: "Wiadomość",
   chatResize: "Zmień rozmiar czatu",
   chatResizeHint:
-    "Przeciągnij uchwyt lub użyj strzałek w górę i w dół, aby zmienić wysokość. Na szerokim ekranie użyj strzałek w lewo i w prawo, aby zmienić szerokość. Aktywuj, aby powiększyć czat lub przywrócić jego rozmiar.",
+    "Użyj strzałek w górę i w dół, aby zmienić wysokość. Na szerokim ekranie użyj strzałek w lewo i w prawo, aby zmienić szerokość. Aktywuj, aby powiększyć czat lub przywrócić jego rozmiar.",
   chatSend: "Wyślij",
   chatTooFast: "Poczekaj chwilę przed wysłaniem kolejnej wiadomości.",
   clearPool: "Wyczyść",

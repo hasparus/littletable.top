@@ -68,12 +68,14 @@ export function Sheet({
   const aboveKeyboard = useAboveKeyboard();
   const hasField = field !== undefined;
   const isChat = panel === "chat";
-  const { height, width } = chatResize?.size ?? {};
-  const style = {
+  const { height, width, left, bottom } = chatResize?.size ?? {};
+  const style: CSSProperties & Partial<Record<`--chat-${string}`, string>> = {
     ...aboveKeyboard,
     "--chat-height": height === undefined ? undefined : `${height}px`,
+    "--chat-left": left === undefined ? undefined : `${left}px`,
+    "--chat-bottom": bottom === undefined ? undefined : `${bottom}px`,
     "--chat-width": width === undefined ? undefined : `${width}px`,
-  } as CSSProperties;
+  };
 
   useLayoutEffect(() => {
     const surface = sheet.current;
@@ -122,6 +124,7 @@ export function Sheet({
         style={style}
         tabIndex={-1}
       >
+        {chatResize && <ChatResize sheet={sheet} {...chatResize} />}
         <header
           className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"} ${isChat ? "shrink-0 border-b border-border" : ""}`}
         >
@@ -130,7 +133,6 @@ export function Sheet({
               {title}
             </h2>
           )}
-          {chatResize && <ChatResize sheet={sheet} {...chatResize} />}
           <button
             aria-label={copy.close}
             className="grid size-11 place-items-center rounded-full text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
