@@ -135,6 +135,7 @@ export async function seat(board: string, token: string) {
   );
   await until(() => received.some((message) => message.type === "connect"));
   return {
+    close: () => socket.close(1000),
     closure,
     isClosed: () => closed,
     received,
