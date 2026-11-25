@@ -215,6 +215,10 @@ export async function serveSite(
   if (request.method !== "GET" && request.method !== "HEAD") {
     return harden(new Response("Method not allowed", { status: 405 }), request, config);
   }
+  if (url.pathname === "/research/gizmos/") {
+    const index = new Request(new URL("index.html", url), request);
+    return harden(await assets.fetch(index), request, config);
+  }
   if (/^\/dev\/gizmos\/?$/.test(url.pathname)) return shell(request, assets, config);
   if (url.pathname === "/") {
     if (config.mode === "hosted") {
@@ -252,11 +256,7 @@ export async function serveSite(
         : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(shareCode);
     return withOpenGraph(page, url, config, board ?? undefined);
   }
-  const assetRequest =
-    url.pathname === "/research/gizmos/"
-      ? new Request(new URL("index.html", url), request)
-      : request;
-  const file = harden(await assets.fetch(assetRequest), request, config);
+  const file = harden(await assets.fetch(request), request, config);
   if (file.ok && HASHED.test(url.pathname)) {
     file.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   }

@@ -106,11 +106,6 @@ function tabletop(): Plugin {
       if (typeof value === "string") settings = JSON.parse(value) as ClientSettings;
     },
     configureServer(server) {
-      server.middlewares.use((request, _response, next) => {
-        if (request.url?.split("?")[0] === "/research/gizmos/")
-          request.url = request.url.replace("/research/gizmos/", "/research/gizmos/index.html");
-        next();
-      });
       server.middlewares.use("/manifest.webmanifest", (_request, response) => {
         response.setHeader("Content-Type", "application/manifest+json");
         response.end(manifest());
@@ -324,6 +319,11 @@ function practicePackages(): Plugin {
   return {
     name: "gizmo-practice-packages",
     configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url?.split("?")[0] === "/research/gizmos/")
+          request.url = request.url.replace("/research/gizmos/", "/research/gizmos/index.html");
+        next();
+      });
       server.middlewares.use("/gizmos/", (request, response, next) => {
         const path = "gizmos" + request.url?.split("?")[0];
         const { assets, catalog } = files();

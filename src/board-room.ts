@@ -14,7 +14,6 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
-import type { GizmoDecision } from "./gizmo-packages";
 import type { Pass } from "./pass";
 import type {
   BoardGrant,
@@ -29,9 +28,10 @@ import type { EngineKey } from "./text-result";
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
-import { changeDeck, type DeckCommand } from "./deck";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
+import type { GizmoDecision } from "./gizmo-packages";
+import { changeDeck, type DeckCommand } from "./deck";
 import { gizmoProblem, GizmoRequests } from "./gizmo-requests";
 import { GizmoStore, readInstalledGizmo } from "./gizmo-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
@@ -301,27 +301,6 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  deck(pass: Pass, command: DeckCommand) {
-    if (this.admit(pass) !== null) return "link-reset";
-    const { kv, sql } = this.ctx.storage;
-    return this.drawing.transaction((store) =>
-      changeDeck(
-        store,
-        {
-          get: (key) => kv.get(key),
-          set: (key, value) => {
-            kv.put(key, value);
-          },
-          delete: (key) => {
-            kv.delete(key);
-          },
-        },
-        (url) => readInstalledGizmo(sql, url),
-        command,
-      ),
-    ).result;
-  }
-
   roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
@@ -472,6 +451,27 @@ export class BoardRoom extends DurableObject<Env> {
     return (
       this.ctx.storage.sql.exec("SELECT 1 FROM people WHERE avatar = ?", hash).toArray().length > 0
     );
+  }
+
+  deck(pass: Pass, command: DeckCommand) {
+    if (this.admit(pass) !== null) return "link-reset";
+    const { kv, sql } = this.ctx.storage;
+    return this.drawing.transaction((store) =>
+      changeDeck(
+        store,
+        {
+          get: (key) => kv.get(key),
+          set: (key, value) => {
+            kv.put(key, value);
+          },
+          delete: (key) => {
+            kv.delete(key);
+          },
+        },
+        (url) => readInstalledGizmo(sql, url),
+        command,
+      ),
+    ).result;
   }
 
   protected fetchGizmoFile(url: string, init: RequestInit) {
