@@ -48,7 +48,8 @@
         ><a href="#starters">Official starters</a><a href="#office">tldraw office</a
         ><a href="#decision">Alternatives</a><a href="#security">Security concerns</a
         ><a href="#experiments">Workbench</a><a href="#field-notes">Field notes</a
-        ><a href="#precedents">Plugin models</a><a href="#agent-workshop">Agent workspaces</a>
+        ><a href="#packages">What mod authors ship</a><a href="#precedents">Plugin models</a
+        ><a href="#agent-workshop">Agent workspaces</a>
       </nav>
       <section class="chapter" id="starters">
         <header><h2>Two Gizmos worth bringing to game night</h2></header>
@@ -414,6 +415,151 @@
           </p>
         </div>
       </section>
+      <section class="chapter" id="packages">
+        <header><h2>What does a mod author actually ship?</h2></header>
+        <div class="prose">
+          <p class="lead">
+            Imagine a player forks a tarot deck and makes its cards sing when they touch. Where does
+            the player put that code, how does the GM know which edition they approved, and what
+            happens when another player picks up a card?
+          </p>
+          <h3>Owlbear Rodeo · install a web app by URL</h3>
+          <p>
+            The author hosts a site with a <code>manifest.json</code>. A user adds its URL to their
+            profile and enables the extension in a room. The store listing has its own text,
+            pictures and install link, so discovering an extension can be separate from loading its
+            site. <a href="https://extensions.owlbear.rodeo/guide">Installation guide</a> ·
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/blob/9cb103fd7874d808501251f9aee5c0349ff65c9e/docs/store.md"
+              >Actual listing source</a
+            >
+          </p>
+          <p>
+            Compare two first-party packages. Initiative Tracker declares
+            <code>action.popover</code> as <code>/</code>, its icon and the popover dimensions.
+            React code registers a context-menu action, observes scene items and updates namespaced
+            initiative metadata on the selected tokens. Dice also opens <code>/</code> and declares
+            <code>background_url</code> as <code>/background.html</code>. Its project depends on
+            React Three Fiber and Rapier. Both use manifest version 1. The difference between turns
+            and tumbling dice lives in the author's program.
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/blob/9cb103fd7874d808501251f9aee5c0349ff65c9e/public/manifest.json"
+              >Tracker manifest</a
+            >
+            ·
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/blob/9cb103fd7874d808501251f9aee5c0349ff65c9e/src/InitiativeTracker.tsx"
+              >Tracker code</a
+            >
+            ·
+            <a href="https://github.com/owlbear-rodeo/dice/blob/main/public/manifest.json"
+              >Dice manifest</a
+            >
+            ·
+            <a href="https://github.com/owlbear-rodeo/dice/blob/main/package.json"
+              >Dice dependencies</a
+            >
+          </p>
+          <p>
+            The popover embeds the author's page in an iframe. The Owlbear SDK supplies the scene
+            and interaction APIs. Its manifest <code>permissions</code> field addresses browser
+            features such as camera or clipboard, with a reason for each. Reading those fields alone
+            tells us little about what a script can do through the tabletop SDK. Consuming an
+            Owlbear manifest would also require implementing the SDK calls its code relies on to run
+            that extension unchanged.
+            <a href="https://docs.owlbear.rodeo/extensions/getting-started/"
+              >Architecture and SDK</a
+            >
+            ·
+            <a href="https://docs.owlbear.rodeo/extensions/reference/manifest/"
+              >Manifest reference</a
+            >
+          </p>
+          <h3>Foundry VTT · install a release and activate it in a world</h3>
+          <p>
+            A package's <code>module.json</code> identifies the module and can declare compatible
+            Foundry versions, dependencies, styles and executable <code>esmodules</code>. The
+            <code>manifest</code> URL identifies the update manifest and
+            <code>download</code> identifies the package archive. Once activated for a world, the
+            author's JavaScript can use Foundry hooks and APIs to change game behavior. This fits a
+            GM choosing a particular set of mods for a campaign. Identity and update handling are
+            useful even when an author builds a one-file mod.
+            <a href="https://foundryvtt.com/article/module-development/"
+              >Manifest and executable modules</a
+            >
+            · <a href="https://foundryvtt.com/article/modules/">World activation</a>
+          </p>
+          <h3>Figma widgets · put multiple copies of one tool on a canvas</h3>
+          <p>
+            The Multiplayer Counter sample points <code>main</code> at <code>dist/code.js</code>.
+            Its code registers a widget, handles clicks and stores votes in a synced map. A widget
+            manifest can also name an HTML UI for a separate iframe. Figma answers a different
+            question for us. Two copies of a deck need distinct shared state even though both load
+            the same code. Its widget rendering model would be a significant constraint if adopted
+            wholesale for a live TypeGPU prop.
+            <a
+              href="https://github.com/figma/widget-samples/blob/881d9524b8d3413539ebd839218667249f15370f/WidgetMultiplayerCounter/manifest.json"
+              >Sample manifest</a
+            >
+            ·
+            <a
+              href="https://github.com/figma/widget-samples/blob/881d9524b8d3413539ebd839218667249f15370f/WidgetMultiplayerCounter/widget-src/code.tsx"
+              >Counter code</a
+            >
+            ·
+            <a href="https://developers.figma.com/docs/widgets/widget-manifest/"
+              >Widget API and UI entries</a
+            >
+          </p>
+          <h3>Patchwork and tldraw office · put code in the work itself</h3>
+          <p>
+            Patchwork stores tools and content in Automerge documents. An author wrote a section
+            word counter while drafting an essay and shared it by link. A colleague could run it
+            over the existing draft. In tldraw office a portable drawing can carry a document script
+            that runs when the file opens. These are precedents for forking at the table. For Little
+            Table, a player sharing a fork would submit a request. The owner would choose the
+            executable revision for that board.
+            <a href="https://www.inkandswitch.com/essay/malleable-software/"
+              >Patchwork field account</a
+            >
+            ·
+            <a href="https://github.com/tldraw/tldraw-office#readme"
+              >tldraw office file and trust model</a
+            >
+          </p>
+          <h3>Two ways to package the same Little Table prop</h3>
+          <p>
+            <strong>An HTML entry in a pinned GitHub folder.</strong> A plain
+            <code>index.html</code> can load local ES modules, styles and art using browser
+            conventions. Authors who want portable discovery metadata can optionally supply a
+            <a href="https://www.w3.org/TR/appmanifest/">Web App Manifest</a> with a name, icons and
+            <code>start_url</code>. The registry can carry the thumbnail, name and source link. An
+            unlisted public fork can use the same directory convention via a direct GitHub link.
+            Little Table still needs to serve that revision as a working site, supply the board SDK
+            and give placed instances their own identities. A hosted page URL is convenient, but
+            pinning only its descriptor leaves any mutable scripts it loads outside the owner's
+            revision choice.
+          </p>
+          <p>
+            <strong>A versioned ready-to-run bundle.</strong> Follow Foundry's release model when
+            authors use TypeScript, TypeGPU transforms or npm dependencies. Install the artifact
+            associated with the approved source revision and preserve its digest. An author can
+            publish browser-ready files directly. An optional Workshop or build service could
+            produce them from source. That introduces build and provenance work, while eliminating
+            the need for authors to operate a web server. Either route can open an HTML page with an
+            author-owned renderer.
+          </p>
+          <p>
+            My first trial would use the same two-player scene for both packages. Can a player
+            change the singing-card interaction in their own repo, can the owner approve exactly
+            that fork, and can another participant hear it on the existing board without a Little
+            Table deploy? Then place a second deck, change just one instance, and check that both
+            players agree about which one changed. That exercises author freedom, approval and
+            multiplayer behavior together. The current playable prototype implements metadata,
+            artwork and a host-defined set of pieces. Executable packaging remains a design choice.
+          </p>
+        </div>
+      </section>
       <section class="chapter" id="precedents">
         <header>
           <p class="kicker">Comparative report</p>
@@ -435,7 +581,7 @@
                 diagnosing a broken world.
               </p>
               <p>
-                <strong>Borrow for Little Table</strong> Keep a library of definitions and an
+                <strong>Borrow for Little Table</strong> Keep a library of packages and an
                 independent install record on each table. Give the owner a way to open a board with
                 all Gizmos paused.
               </p>
@@ -462,9 +608,9 @@
                 code.
               </p>
               <p>
-                <strong>Borrow</strong> Start with one table-panel target and a small catalog. A
-                schema can establish that “pass” is a valid action. The table service must still
-                decide whether this particular player may invoke it.
+                <strong>Borrow</strong> A catalog can be an optional authoring aid for stock
+                controls. A schema can establish that “pass” is a valid action. The table service
+                must still decide whether this particular player may invoke it.
               </p>
               <p class="sources">
                 <a href="https://shopify.dev/docs/api/checkout-ui-extensions/latest"
