@@ -1,15 +1,11 @@
 # Little Table
 
-A shared whiteboard with dice for tabletop RPGs. Drop in a screenshot of your
-character sheet and mark it up as you play. Looking for a rule? You can search
-the text in your sheet or a page from the rulebook.
+A shared whiteboard with dice for tabletop RPGs. You can search the text in
+character sheets and rulebook screenshots.
 
 [Make a board for your group](https://littletable.top/boards) · [Say hi](https://littletable.top/)
 
 <img src="docs/screenshots/table.png" width="720" alt="A red d20 showing 7 in the courtyard of the Château de Pierrefonds floor plan on a Little Table board." />
-
-Send your players the board link. They can join with just a name and see the
-dice land when someone rolls. Keep your private notes on the **Secret layer**.
 
 ## Development
 
