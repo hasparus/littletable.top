@@ -29,6 +29,7 @@ import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useBoardStore } from "./sync";
+import { TarotAnnouncement, TarotSheet, useTarotDraw } from "./tarot";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
 
@@ -102,6 +103,8 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
+  const tarot = useTarotDraw(keeper);
+  const canDrawTarot = person.owner && !keeper.secret && landing === undefined;
   const chat = useChat(keeper, landing !== undefined);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
   const { refusal, store } = useBoardStore({
@@ -180,6 +183,7 @@ export function BoardCanvas({
   const ui = useMemo<BoardUi>(
     () => ({
       board,
+      canDrawTarot,
       close: (name) => {
         if (name === "chat") setReadChat(chat.latestIncoming);
         setPanel((current) => (current === name ? null : current));
@@ -210,6 +214,7 @@ export function BoardCanvas({
     }),
     [
       board,
+      canDrawTarot,
       chat.latestIncoming,
       color,
       copy,
@@ -301,6 +306,8 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
+        {active && panel === "tarot" && <TarotSheet online={online} tarot={tarot} />}
+        {active && canDrawTarot && <TarotAnnouncement name={tarot.revealed?.name ?? ""} />}
         {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage

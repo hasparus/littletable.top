@@ -27,6 +27,7 @@ import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
+import { tarotDraw } from "./tarot";
 
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
@@ -109,7 +110,7 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?)$/u;
+const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|tarot)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -138,6 +139,9 @@ async function rooms(
     (secret || (config.mode === "standalone" && board === PUBLIC_BOARD))
   ) {
     return new Response("Not found", { status: 404 });
+  }
+  if (action === "tarot" && (secret || board === PUBLIC_BOARD || request.method !== "POST")) {
+    return new Response(null, { status: 404 });
   }
   const passOf = async (token: string | null) => {
     const pass = await verifiedPass(token, verifiers.pass, board);
@@ -206,6 +210,18 @@ async function rooms(
     forwarded.headers.set(PASS_HEADER, JSON.stringify(pass));
     forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
     return room.fetch(forwarded);
+  }
+  if (action === "tarot") {
+    if (!pass.owner) return new Response(null, { status: 403 });
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: 1024,
+    });
+    if (body === "too-large") return new Response(null, { status: 413 });
+    const value: unknown = await new Response(body).json().catch(() => null);
+    if (!tarotDraw.isValid(value)) return new Response(null, { status: 400 });
+    const result = await room.drawTarot(pass, value);
+    return result === null ? new Response(null, { status: 409 }) : answer(result);
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));
   if (action === "roll" && request.method === "POST") {

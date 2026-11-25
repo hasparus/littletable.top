@@ -33,6 +33,7 @@ import {
 } from "./public-board-expiry";
 import { isSecretLayer } from "./secret-layer";
 import { hasActiveSession } from "./standalone/store";
+import { revealTarot, type TarotDraw } from "./tarot";
 import {
   type Claim,
   type ClaimRequest,
@@ -251,6 +252,11 @@ export class BoardRoom extends DurableObject<Env> {
       person: kind(pass.sub),
     });
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  drawTarot(pass: Pass, draw: TarotDraw) {
+    if (!pass.owner || this.admit(pass) !== null) return "link-reset";
+    return this.drawing.transaction((store) => revealTarot(store, this.ctx.storage, draw)).result;
   }
 
   roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
