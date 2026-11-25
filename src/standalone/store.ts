@@ -61,7 +61,10 @@ export async function hasActiveSession(db: D1Database | undefined, hash: string 
 }
 
 export class Store {
-  constructor(private readonly db: D1Database) {}
+  constructor(
+    private readonly db: D1Database,
+    private readonly deployment = "",
+  ) {}
 
   async avatarOf(id: string): Promise<{ avatar: string | null; avatarUrl: string | null }> {
     const row = await this.db
@@ -135,17 +138,19 @@ export class Store {
   async createBoard(input: Omit<Board, "hasThumbnail" | "linkVersion">): Promise<Board> {
     await this.db
       .prepare(
-        "INSERT INTO boards (id, owner_id, title, share_code, link_version, created_at) VALUES (?, ?, ?, ?, 0, ?)",
+        "INSERT INTO boards (id, owner_id, title, share_code, link_version, created_at, deployment) VALUES (?, ?, ?, ?, 0, ?, ?)",
       )
-      .bind(input.id, input.ownerId, input.title, input.shareCode, input.createdAt)
+      .bind(input.id, input.ownerId, input.title, input.shareCode, input.createdAt, this.deployment)
       .run();
     return { ...input, hasThumbnail: false, linkVersion: 0 };
   }
 
   async boardsCreatedSince(ownerId: string, since: number): Promise<number> {
     const row = await this.db
-      .prepare("SELECT count(*) AS n FROM boards WHERE owner_id = ? AND created_at > ?")
-      .bind(ownerId, since)
+      .prepare(
+        "SELECT count(*) AS n FROM boards WHERE owner_id = ? AND created_at > ? AND deployment = ?",
+      )
+      .bind(ownerId, since, this.deployment)
       .first<{ n: number }>();
     return row?.n ?? 0;
   }
@@ -156,29 +161,34 @@ export class Store {
 
   async byShareCode(shareCode: string): Promise<Board | null> {
     const row = await this.db
-      .prepare("SELECT * FROM boards WHERE share_code = ?")
-      .bind(shareCode)
+      .prepare("SELECT * FROM boards WHERE share_code = ? AND deployment = ?")
+      .bind(shareCode, this.deployment)
       .first<BoardRow>();
     return row === null ? null : board(row);
   }
 
   async exists(id: string) {
-    const row = await this.db.prepare("SELECT 1 FROM boards WHERE id = ?").bind(id).first();
+    const row = await this.db
+      .prepare("SELECT 1 FROM boards WHERE id = ? AND deployment = ?")
+      .bind(id, this.deployment)
+      .first();
     return row !== null;
   }
 
   async owned(id: string, ownerId: string): Promise<Board | null> {
     const row = await this.db
-      .prepare("SELECT * FROM boards WHERE id = ? AND owner_id = ?")
-      .bind(id, ownerId)
+      .prepare("SELECT * FROM boards WHERE id = ? AND owner_id = ? AND deployment = ?")
+      .bind(id, ownerId, this.deployment)
       .first<BoardRow>();
     return row === null ? null : board(row);
   }
 
   async rename(id: string, ownerId: string, title: string): Promise<Board | null> {
     const row = await this.db
-      .prepare("UPDATE boards SET title = ? WHERE id = ? AND owner_id = ? RETURNING *")
-      .bind(title, id, ownerId)
+      .prepare(
+        "UPDATE boards SET title = ? WHERE id = ? AND owner_id = ? AND deployment = ? RETURNING *",
+      )
+      .bind(title, id, ownerId, this.deployment)
       .first<BoardRow>();
     return row === null ? null : board(row);
   }
@@ -186,17 +196,17 @@ export class Store {
   async resetLink(id: string, ownerId: string, shareCode: string): Promise<Board | null> {
     const row = await this.db
       .prepare(
-        "UPDATE boards SET share_code = ?, link_version = link_version + 1 WHERE id = ? AND owner_id = ? RETURNING *",
+        "UPDATE boards SET share_code = ?, link_version = link_version + 1 WHERE id = ? AND owner_id = ? AND deployment = ? RETURNING *",
       )
-      .bind(shareCode, id, ownerId)
+      .bind(shareCode, id, ownerId, this.deployment)
       .first<BoardRow>();
     return row === null ? null : board(row);
   }
 
   async delete(id: string, ownerId: string): Promise<boolean> {
     const result = await this.db
-      .prepare("DELETE FROM boards WHERE id = ? AND owner_id = ?")
-      .bind(id, ownerId)
+      .prepare("DELETE FROM boards WHERE id = ? AND owner_id = ? AND deployment = ?")
+      .bind(id, ownerId, this.deployment)
       .run();
     return result.meta.changes > 0;
   }
@@ -204,10 +214,11 @@ export class Store {
   async visit(accountId: string, visited: Board, now: number): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO visits (account_id, board_id, share_code, visited_at) VALUES (?1, ?2, ?3, ?4)
+        `INSERT INTO visits (account_id, board_id, share_code, visited_at)
+         SELECT ?1, id, ?3, ?4 FROM boards WHERE id = ?2 AND deployment = ?5
          ON CONFLICT (account_id, board_id) DO UPDATE SET share_code = ?3, visited_at = ?4`,
       )
-      .bind(accountId, visited.id, visited.shareCode, now)
+      .bind(accountId, visited.id, visited.shareCode, now, this.deployment)
       .run();
   }
 
@@ -215,13 +226,13 @@ export class Store {
   async thumbnailAccess(id: string, accountId: string) {
     const row = await this.db
       .prepare(
-        `SELECT b.link_version, b.has_thumbnail FROM boards b WHERE b.id = ?1
+        `SELECT b.link_version, b.has_thumbnail FROM boards b WHERE b.id = ?1 AND b.deployment = ?3
          AND (b.owner_id = ?2 OR EXISTS (
            SELECT 1 FROM visits v WHERE v.board_id = b.id AND v.account_id = ?2
              AND v.share_code = b.share_code
          ))`,
       )
-      .bind(id, accountId)
+      .bind(id, accountId, this.deployment)
       .first<{ has_thumbnail: number; link_version: number }>();
     return row === null ? null : { hasThumbnail: row.has_thumbnail === 1, link: row.link_version };
   }
@@ -229,9 +240,9 @@ export class Store {
   async markThumbnail(id: string, link: number): Promise<void> {
     await this.db
       .prepare(
-        "UPDATE boards SET has_thumbnail = 1 WHERE id = ? AND link_version = ? AND has_thumbnail = 0",
+        "UPDATE boards SET has_thumbnail = 1 WHERE id = ? AND link_version = ? AND has_thumbnail = 0 AND deployment = ?",
       )
-      .bind(id, link)
+      .bind(id, link, this.deployment)
       .run();
   }
 
@@ -239,16 +250,16 @@ export class Store {
     const [owned, visited] = await this.db.batch([
       this.db
         .prepare(
-          "SELECT id, title, share_code, created_at, has_thumbnail FROM boards WHERE owner_id = ? ORDER BY created_at DESC",
+          "SELECT id, title, share_code, created_at, has_thumbnail FROM boards WHERE owner_id = ? AND deployment = ? ORDER BY created_at DESC",
         )
-        .bind(accountId),
+        .bind(accountId, this.deployment),
       this.db
         .prepare(
           `SELECT b.id, b.title, CASE WHEN v.share_code = b.share_code THEN b.share_code END AS share_code,
              v.visited_at, b.has_thumbnail FROM visits v JOIN boards b ON b.id = v.board_id
-           WHERE v.account_id = ? AND b.owner_id != v.account_id ORDER BY v.visited_at DESC LIMIT 100`,
+           WHERE v.account_id = ? AND b.deployment = ? AND b.owner_id != v.account_id ORDER BY v.visited_at DESC LIMIT 100`,
         )
-        .bind(accountId),
+        .bind(accountId, this.deployment),
     ]);
     return {
       owned: (owned!.results as Record<string, unknown>[]).map((row) => ({

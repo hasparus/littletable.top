@@ -291,6 +291,14 @@ export function BoardCanvas({
                 />
               )}
             </button>
+            <a
+              aria-label="Source code on GitHub"
+              data-public-board-github
+              href="https://github.com/hasparus/littletable.top"
+              title="Source code on GitHub"
+            >
+              <Icon name="GitHub" />
+            </a>
             <a data-public-board-account href={exit.href}>
               {exit.label}
             </a>
@@ -327,6 +335,7 @@ function searchFromKeyboard(open: BoardUi["open"]): () => void {
   const find = (event: KeyboardEvent) => {
     const mod = /Mac|iPhone|iPad/u.test(navigator.platform) ? event.metaKey : event.ctrlKey;
     if (!mod || event.altKey || event.shiftKey || event.key.toLowerCase() !== "f") return;
+    if (document.querySelector("dialog:modal")) return;
     event.preventDefault();
     event.stopPropagation();
     const field = document.getElementById(SEARCH_FIELD_ID);

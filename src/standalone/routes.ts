@@ -28,6 +28,7 @@ import { type Session, Store } from "./store";
 import { workOs } from "./workos";
 
 export type StandaloneEnv = {
+  BOARD_DATA_SCOPE?: string;
   BoardRoom: DurableObjectNamespace<BoardRoom>;
   DB: D1Database;
   Files: R2Bucket;
@@ -135,7 +136,7 @@ export class Standalone {
     private readonly keys: Keys,
   ) {
     this.provider = workOs(config.workOs);
-    this.store = new Store(env.DB);
+    this.store = new Store(env.DB, env.BOARD_DATA_SCOPE);
   }
 
   route(request: Request): Promise<Response> | null {
@@ -286,7 +287,12 @@ export class Standalone {
   private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
     if (identity.avatarUrl === null) return null;
     const kept = await this.store.avatarOf(identity.subject);
-    if (kept.avatarUrl === identity.avatarUrl && kept.avatar !== null) return kept.avatar;
+    if (
+      kept.avatarUrl === identity.avatarUrl &&
+      kept.avatar !== null &&
+      (await this.env.Files.head(avatarKey(kept.avatar))) !== null
+    )
+      return kept.avatar;
     const copy = await copyAvatar({
       bucket: this.env.Files,
       rule: providerRule(this.config.workOs.apiBase),
@@ -542,7 +548,7 @@ export class Standalone {
       headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
-      const owner = saved?.ownerId === account.id;
+      const owner = (saved?.ownerId ?? this.config.publicBoardOwnerId) === account.id;
       person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
     }
@@ -556,14 +562,14 @@ export class Standalone {
     };
     const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
-      person.owner && found !== null
+      person.owner && saved !== null && found !== null
         ? signPass(this.keys, {
             ...claims,
             board: secretLayerOf(board.id),
             sessionHash: found.hash,
           })
         : null,
-      person.owner
+      person.owner && saved !== null
         ? this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board.id)).publicationCode()
         : null,
     ]);

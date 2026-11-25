@@ -36,6 +36,9 @@ export default Alchemy.Stack(
       feedback,
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
+      publicBoardOwnerId: yield* Config.String("PUBLIC_BOARD_OWNER_ID").pipe(
+        Config.withDefault(""),
+      ),
       signingKey: yield* Config.Redacted("TABLETOP_SIGNING_KEY"),
       workerName: { prod: "littletable", staging: "littletable-staging" }[stage],
       workOs: {

@@ -1,11 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
   <style>
-    .seats { fill: #252220; }
+    .mark { fill: url(#orange); }
     @media (prefers-color-scheme: dark) {
-      .seats { fill: #fafafa; }
+      .mark { fill: white; }
     }
   </style>
   <defs>
+    <linearGradient id="orange" x1="0%" y1="100%" x2="100%" y2="0%" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff7044" />
+      <stop offset=".5" stop-color="#f85a3c" />
+      <stop offset="1" stop-color="#ed482d" />
+    </linearGradient>
+    <filter id="grain" x="0" y="0" width="120" height="120" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="12" />
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  .48 0 0 0 .71" result="grain-alpha" />
+      <feComposite in="SourceGraphic" in2="grain-alpha" operator="in" />
+    </filter>
     <path id="cutout" d="M43 17H77C77 36 43 36 43 17Z" />
     <path id="seat" d="M47.5 17H72.5C72.5 30 47.5 30 47.5 17Z" />
     <mask id="table" x="0" y="0" width="120" height="120" maskUnits="userSpaceOnUse">
@@ -19,8 +29,8 @@
       </g>
     </mask>
   </defs>
-  <rect width="120" height="120" fill="#f85a3c" mask="url(#table)" />
-  <g class="seats">
+  <g class="mark" filter="url(#grain)">
+    <rect width="120" height="120" mask="url(#table)" />
     <use href="#seat" />
     <use href="#seat" transform="rotate(90 60 60)" />
     <use href="#seat" transform="rotate(180 60 60)" />

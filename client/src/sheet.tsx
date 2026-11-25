@@ -101,7 +101,12 @@ export function Sheet({
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) open(null);
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("dialog:modal")
+      )
+        open(null);
     };
     document.addEventListener("keydown", close);
     return () => document.removeEventListener("keydown", close);

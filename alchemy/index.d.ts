@@ -61,6 +61,10 @@ export type HostedProps = Shared & {
 };
 
 export type StandaloneProps = Shared & {
+  /** Stable board metadata partition when the database is shared across preview Workers. */
+  boardDataScope?: string;
+  /** Bind an existing D1 resource. Its owning stack provisions and migrates it. */
+  database?: Cloudflare.D1.Database;
   feedback?: {
     projectToken: Redacted.Redacted<string> | string;
     questionId: string;
@@ -68,6 +72,8 @@ export type StandaloneProps = Shared & {
     surveyId: string;
   };
   mode: "standalone";
+  /** WorkOS user ID that owns the public landing board. */
+  publicBoardOwnerId?: string;
   /**
    * The private key (PKCS#8 PEM) the Worker signs its own passes with. The
    * committed dev key is refused.

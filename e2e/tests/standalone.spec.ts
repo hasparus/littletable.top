@@ -108,6 +108,40 @@ test("board sections collapse on phones only when both lists have three boards",
   await expect(created.or(joined)).toHaveCount(0);
 });
 
+test("landing header controls fit narrow phones before and after sign-in", async ({ browser }) => {
+  const landing = await phone(browser, `${STANDALONE}/`);
+  const github = landing.getByRole("link", { name: "Source code on GitHub" });
+  const pageMenu = landing.getByTestId("page-menu.button");
+  const menu = landing.locator(".tlui-menu-zone");
+  const chat = landing.getByRole("button", { name: "Chat" });
+
+  const expectHeader = async (account: "Sign in" | "My boards", state: string) => {
+    await expect(github).toHaveAttribute("href", "https://github.com/hasparus/littletable.top");
+    await expect(pageMenu).toHaveAccessibleName("Landing Page");
+    for (const width of [320, 360]) {
+      await landing.setViewportSize({ height: 800, width });
+      const menuBox = (await menu.boundingBox())!;
+      const chatBox = (await chat.boundingBox())!;
+      expect(chatBox.x).toBeGreaterThan(menuBox.x + menuBox.width);
+      await expect(github).toBeInViewport({ ratio: 1 });
+      await expect(landing.getByRole("link", { name: account })).toBeInViewport({ ratio: 1 });
+      await reviewShot(landing, `landing-github-${state}-${width}`);
+    }
+  };
+
+  try {
+    await expectHeader("Sign in", "guest");
+    await landing.getByRole("link", { name: "Sign in" }).click();
+    await landing.getByLabel("Name").fill("Landing header member");
+    await landing.getByRole("button", { name: "Continue" }).click();
+    await landing.waitForURL(`${STANDALONE}/boards`);
+    await landing.goto(`${STANDALONE}/`);
+    await expectHeader("My boards", "member");
+  } finally {
+    await landing.context().close();
+  }
+});
+
 test("the board menu and right-hand controls share guides on public and private boards", async ({
   browser,
   page,

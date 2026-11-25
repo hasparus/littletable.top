@@ -138,11 +138,11 @@ async function newestRoll(log: Locator): Promise<string> {
 }
 
 export async function openRollLog(dialog: Locator): Promise<Locator> {
-  const log = dialog.locator("details").filter({ hasText: "Roll log" });
-  if ((await log.getAttribute("open")) === null) {
-    await log.getByText("Roll log", { exact: true }).click();
+  const log = sheet(dialog.page(), "Roll log");
+  if (!(await log.isVisible())) {
+    await dialog.getByRole("button", { exact: true, name: "Roll log" }).click();
   }
-  await expect(log).toHaveAttribute("open", "");
+  await expect(log).toBeVisible();
   return log;
 }
 
@@ -160,6 +160,8 @@ export async function rollTwoD6(roller: Page, watcher: Page, name: string): Prom
   expect(total).toBeLessThanOrEqual(12);
   const watched = await openRollLog(await openSheet(watcher, "Dice"));
   await expect.poll(async () => newestRoll(watched)).toBe(rolled);
+  await closeSheet(roller, "Roll log");
+  await closeSheet(watcher, "Roll log");
   await closeSheet(roller, "Dice");
   await closeSheet(watcher, "Dice");
   return rolled;
