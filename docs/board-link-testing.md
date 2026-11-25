@@ -48,3 +48,35 @@ For more on controlling time and faults in a simulator, see
 [FoundationDB's simulation documentation](https://github.com/apple/foundationdb/blob/main/documentation/sphinx/source/testing.rst).
 For a larger command and state model, see
 [QuickCheck's state-machine example](https://hackage.haskell.org/package/quickcheck-state-machine#readme).
+
+## Multiplayer view and expiry regressions
+
+Two fixed schedules send real tldraw page edits and view summons, close one
+of two tabs for the same viewer, abort the room twice, and reconnect in
+opposite orders. At each handshake the client checks its page snapshot
+against the edits the writer committed. At each summon it checks the HTTP
+status and each live socket's entire ordered delivery history, including
+two intentional identical summons. A ping/pong fences delivery on each
+socket. These checks end at the wire, before the browser applies the camera.
+
+```sh
+bun run test test/board-view-lifecycle.test.ts
+bun run test test/board-view-lifecycle.test.ts -t 'schedule 1$'
+```
+
+The public-board expiry alarm changes the paint order of surviving strokes.
+Replay the regression with:
+
+```sh
+bun run test test/public-stacking.test.ts
+```
+
+The fixture stacks red beneath blue inside a 49-hour-old group and places a
+green stroke above the group. All three fresh strokes overlap. Before the alarm,
+their back-to-front order is red, blue, green. After one production alarm,
+SQLite contains the same strokes in green, blue, red paint order. The sweep
+assigns fresh indices above the highest page sibling as it iterates surviving
+children. The test derives paint order independently by walking parent groups
+and sorting siblings by their tldraw index. Fixture setup, initial order, alarm
+execution and survival checks run normally. Only the final equality is marked
+`it.fails`. Remove `.fails` to see the failing diff or to land a fix.
