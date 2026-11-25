@@ -1,15 +1,15 @@
 # Little Table
 
-A shared whiteboard with dice for tabletop RPGs. Drop a screenshot of your
-character sheet on the board. Find a spell by searching the text on the sheet,
-cross off a spell slot, and roll damage where everyone can see the dice.
+A shared whiteboard with dice for tabletop RPGs. Drop in a screenshot of your
+character sheet and mark it up as you play. Looking for a rule? You can search
+the text in your sheet or a page from the rulebook.
 
-[Roll a die on the public board](https://littletable.top/). You can play
-without signing in. Anyone can draw here, and drawings disappear after two days.
+[Roll a die on the public board](https://littletable.top/) and everyone sees
+it land. Anyone can draw without signing in. Drawings disappear after two days.
 
-[Make a board for your group](https://littletable.top/boards). Sign in, choose
-**New board**, and send the URL to your players. Anyone with the link can join
-with just a name. The **Secret layer** lets you write notes only you can see.
+To [make a board for your group](https://littletable.top/boards), sign in
+and choose **New board**. Send the link to your players. Anyone who has it can
+join with just a name. Keep your private notes on the **Secret layer**.
 
 ## Development
 
