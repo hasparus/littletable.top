@@ -86,7 +86,9 @@ describe("the owner's permissions page (standalone)", () => {
 
     expect((await ada.post(roleUrl(board.id, beaId), { role: "owner" })).status).toBe(400);
     expect((await ada.post(roleUrl(board.id, beaId), {})).status).toBe(400);
-    expect((await ada.post(roleUrl(board.id, "user_nobody"), { role: "manager" })).status).toBe(404);
+    expect((await ada.post(roleUrl(board.id, "user_nobody"), { role: "manager" })).status).toBe(
+      404,
+    );
     // A guest has no account: its id names nobody the owner could promote.
     const guestId = joined.person.id.replace(/^g:/u, "");
     expect((await ada.post(roleUrl(board.id, guestId), { role: "manager" })).status).toBe(404);

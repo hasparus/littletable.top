@@ -89,12 +89,12 @@ export const FRONT_COPY: Record<Language, FrontCopy> = { en: EN, pl: PL };
 
 export const LANDING_COPY = {
   publicBoard: EN.publicBoard,
-  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
+  publicExpiry: "Anyone can draw here. Drawings fade after a day\nand disappear after two.",
   publicStory: [
-    "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
-    "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
-    "We started playing with Miro, Excalidraw and tldraw. It was way better, but a few small features were missing. My ideal app didn't exist... yet.",
-    "Little Table is this app. Just a whiteboard with dice rolls, search over text in images and secret layers. A virtual tabletop without bloat.",
+    "I complained whenever my friends invited me to use\nRoll20 or another virtual tabletop. It was awkward\non phones, it had too many features, and filling out\nforms felt like paperwork.",
+    "Why bother, when we could use a whiteboard app,\nupload screenshots of PDFs, and draw on them just\nlike on a real table?",
+    "We started playing with Miro, Excalidraw and tldraw.\nIt was way better, but a few small features were\nmissing. My ideal app didn't exist... yet.",
+    "Little Table is this app. Just a whiteboard with dice\nrolls, search over text in images and secret layers.\nA virtual tabletop without bloat.",
   ],
   signIn: EN.signIn,
 };

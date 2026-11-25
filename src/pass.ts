@@ -80,7 +80,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     typeof avatar === "string" && avatar.length > 0 && avatar.length <= MAX_AVATAR_CLAIM
       ? avatar
       : null;
-  return {
+  const pass: Pass = {
     avatar: picture,
     board,
     link: link as number,
@@ -90,6 +90,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     ...(typeof sessionHash === "string" ? { sessionHash } : {}),
     sub,
   };
+  return pass;
 }
 
 async function verifyBoardCommand(token: string, verifier: Verifier) {

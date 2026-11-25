@@ -16,10 +16,12 @@ import { BoardFileHandlers } from "./board-files";
 import { BoardLoading } from "./board-loading";
 import { BoardMainMenu, components } from "./chrome";
 import { MEDIA_PROPS } from "./file-flows";
+import { fitPublicBoardIntro } from "./landing-preview";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
-import { PublicBoardIntro } from "./public-landing";
+import { PublicBoardIntro, PublicPageDeleteGuard } from "./public-landing";
+import { publicLandingPage } from "./public-landing-page";
 import { useBoardUi } from "./ui";
 
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
@@ -106,7 +108,13 @@ export function BoardEditors({
         onMount={(mounted) => {
           // WARNING: tldraw's menus read the user preference rather than the locale prop.
           mounted.user.updateUserPreferences({ locale: language });
-          if (landing !== undefined) rememberExistingArrows(mounted);
+          if (landing !== undefined) {
+            const page = publicLandingPage(mounted);
+            if (page !== undefined && mounted.getCurrentPageId() !== page)
+              mounted.setCurrentPage(page);
+            fitPublicBoardIntro(mounted);
+            rememberExistingArrows(mounted);
+          }
           onEditor(mounted);
           return () => onEditor(null);
         }}
@@ -114,6 +122,7 @@ export function BoardEditors({
         store={store}
       >
         {active && <BoardFileHandlers />}
+        {landing !== undefined && <PublicPageDeleteGuard />}
         {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
         <ThemeKeeper />
       </Tldraw>

@@ -24,6 +24,10 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+declare global {
+  var __editor: Editor;
+}
+
 test("board sections collapse on phones only when both lists have three boards", async ({
   page,
   request,
@@ -248,6 +252,21 @@ test("the landing introduction keeps its typography and position when the board 
     await expectHandwriting("[data-public-board-note] p");
     expect(await live.boundingBox()).toEqual(box);
     await expect(preview).toHaveCount(0);
+    const lastParagraph = await live.locator("p").last().textContent();
+    expect(lastParagraph?.split("\n").at(-1)).toBe("A virtual tabletop without bloat.");
+
+    const signatureStroke = page
+      .locator('[data-shape-id="shape:2fFF6jTHq2tZ-b2tBYic2"] svg path')
+      .first();
+    await expect(signatureStroke).toBeVisible();
+    const signature = await signatureStroke.boundingBox();
+    expect(signature!.y).toBeGreaterThan(box!.y + box!.height);
+    await reviewShot(page, "landing-signature-phone");
+
+    await page.setViewportSize({ height: 800, width: 920 });
+    await expect(page.locator("[data-board-toolbar]")).toHaveAttribute("data-board-toolbar", "");
+    expect(await live.boundingBox()).toEqual(box);
+    await reviewShot(page, "landing-signature-resized");
   } finally {
     release.resolve(null);
     font.resolve(null);
@@ -266,6 +285,77 @@ test("the prerendered landing intro uses dark mode before JavaScript runs", asyn
   } finally {
     await context.close();
   }
+});
+
+test("the public page menu preserves the landing page and its drawings", async ({
+  browser,
+  page,
+}) => {
+  await page.goto(`${STANDALONE}/?lang=en`);
+  const pageButton = page.getByTestId("page-menu.button");
+  await expect(pageButton).toHaveText("Landing Page");
+  const text = "A drawing to keep on the landing page";
+  await putNote(page, { at: { x: 540, y: 280 }, text });
+
+  const pageList = page.getByTestId("page-menu.list");
+  await pageButton.click();
+  await page.getByTestId("page-menu.create").click();
+  const name = pageList.getByRole("textbox");
+  await name.fill("Another page");
+  await name.press("Enter");
+
+  const landing = pageList.getByTestId("page-menu.item").filter({ hasText: "Landing Page" });
+  await landing.getByTestId("page-menu.item-submenu").click();
+  await page.getByRole("menuitem", { exact: true, name: "Delete" }).click();
+  await expect(page.getByText("The landing page can’t be deleted.", { exact: true })).toBeVisible();
+  await landing.getByRole("button", { name: "Go to page" }).click();
+  await expect(pageButton).toHaveText("Landing Page");
+  await expect(onBoard(page, text)).toBeVisible();
+
+  if (!(await pageList.isVisible())) await pageButton.click();
+  const other = pageList.getByTestId("page-menu.item").filter({ hasText: "Another page" });
+  await other.getByTestId("page-menu.item-submenu").click();
+  await page.getByRole("menuitem", { exact: true, name: "Move up" }).click();
+  await expect(pageList.getByTestId("page-menu.item").first()).toContainText("Another page");
+
+  const fresh = await browser.newPage();
+  try {
+    await fresh.goto(`${STANDALONE}/?lang=en`);
+    await expect(fresh.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await expect(fresh.locator("[data-public-board-note]")).toBeInViewport();
+    await expect(onBoard(fresh, text)).toBeVisible();
+  } finally {
+    await fresh.close();
+  }
+
+  await reachEditor(page);
+  const attemptedDeletion = await page.evaluate(() => {
+    const editor = globalThis.__editor;
+    const landing = editor.getCurrentPageId();
+    const drawings = editor.getSortedChildIdsForParent(landing);
+    editor.store.remove([...drawings, landing]);
+    return { landing: String(landing), wasRemoved: editor.getPage(landing) === undefined };
+  });
+  expect(attemptedDeletion.wasRemoved).toBe(true);
+  await page.waitForFunction((id) => {
+    return globalThis.__editor.getPages().some((candidate) => candidate.id === id);
+  }, attemptedDeletion.landing);
+  await page.reload();
+  await expect(pageButton).toHaveText("Landing Page");
+  await expect(onBoard(page, text)).toBeVisible();
+
+  if (!(await pageList.isVisible())) await pageButton.click();
+  await other.getByTestId("page-menu.item-submenu").click();
+  await page.getByRole("menuitem", { exact: true, name: "Delete" }).click();
+  if (!(await pageList.isVisible())) await pageButton.click();
+  await expect(other).toHaveCount(0);
+  await page.reload();
+  await expect(pageButton).toHaveText("Landing Page");
+  await expect(onBoard(page, text)).toBeVisible();
+
+  await onBoard(page, text).click();
+  await page.keyboard.press("Delete");
+  await expect(onBoard(page, text)).toHaveCount(0);
 });
 
 test("the home page is one editable public board for anonymous visitors", async ({

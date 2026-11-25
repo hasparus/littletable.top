@@ -261,6 +261,16 @@
   --board-style-panel-top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
 }
 
+#board-people {
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+#board-people > header h2 {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--text-base--line-height);
+}
+
 [data-public-board-controls] {
   inset: var(--board-top) var(--board-right) auto auto;
 }
@@ -336,12 +346,6 @@
   border-color: var(--color-primary-strong);
   background: var(--color-primary-light);
   color: var(--color-primary-strong);
-}
-
-[data-public-board-note] {
-  top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
-  left: var(--board-left);
-  width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
 }
 
 [data-board-background-swatches] {
