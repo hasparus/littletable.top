@@ -1,5 +1,6 @@
 # Little Table
 
+<!-- prettier-ignore -->
 A whiteboard for tabletop RPGs, built on tldraw. 
 No bloat and no forms to fill.
 
