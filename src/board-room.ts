@@ -42,6 +42,7 @@ import {
   preservesPublicShapeAge,
   PUBLIC_SWEEP_MS,
   publicFileReferences,
+  separatePublicSiblingIndices,
   stampPublicShape,
 } from "./public-board-expiry";
 import {
@@ -86,6 +87,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
+const PUBLIC_ORDER_NORMALIZED = "publicOrderNormalized";
 const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
 const CONNECT_TIMEOUT_MS = 10_000;
@@ -118,6 +120,7 @@ type RollCompletion =
   | { roll: Roll; message: ChatMessage | null };
 
 type DrawingRoom = { drawing: SQLiteSyncStorage<TLRecord>; room: TLSocketRoom<TLRecord, Person> };
+type PublicDrawing = Extract<TLRecord, { typeName: "shape" }>;
 
 function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -204,6 +207,11 @@ export class BoardRoom extends DurableObject<Env> {
           }
         : undefined;
     const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
+    const { kv } = this.ctx.storage;
+    if (this.publicExpiryEnabled && kv.get(PUBLIC_ORDER_NORMALIZED) !== true) {
+      drawing.transaction(separatePublicSiblingIndices);
+      kv.put(PUBLIC_ORDER_NORMALIZED, true);
+    }
     const room = new TLSocketRoom<TLRecord, Person>({
       // WARNING: tldraw's periodic idle polling keeps the object awake even with no sockets.
       clientTimeout: Infinity,
@@ -218,6 +226,26 @@ export class BoardRoom extends DurableObject<Env> {
           if (write.type === "create") return stampPublicShape(record, Date.now());
           return preservesPublicShapeAge(write.prev, record) ? record : null;
         },
+      },
+      onCommittedChanges: ({ diff }) => {
+        if (!this.publicExpiryEnabled) return;
+        const parents = new Set<PublicDrawing["parentId"]>();
+        const moved = new Set<PublicDrawing["id"]>();
+        for (const put of Object.values(diff.puts)) {
+          const [before, after] = Array.isArray(put) ? put : [undefined, put];
+          if (
+            after.typeName === "shape" &&
+            (before?.typeName !== "shape" ||
+              before.parentId !== after.parentId ||
+              before.index !== after.index)
+          ) {
+            parents.add(after.parentId);
+            moved.add(after.id);
+          }
+        }
+        if (parents.size > 0) {
+          drawing.transaction((store) => separatePublicSiblingIndices(store, parents, moved));
+        }
       },
       // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
@@ -799,6 +827,7 @@ export class BoardRoom extends DurableObject<Env> {
       // WARNING: Stamp existing shapes when enabling expiry so drawings without a timestamp can expire.
       const now = Date.now();
       this.drawing.transaction((store) => {
+        separatePublicSiblingIndices(store);
         // WARNING: Materialize these SQLite rows before updating the table they came from.
         const records = [...store.values()];
         for (const record of records) {
@@ -808,6 +837,7 @@ export class BoardRoom extends DurableObject<Env> {
         }
       });
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
+      this.ctx.storage.kv.put(PUBLIC_ORDER_NORMALIZED, true);
       this.publicExpiryEnabled = true;
     }
     if ((await this.ctx.storage.getAlarm()) === null) {

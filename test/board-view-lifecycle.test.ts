@@ -1,0 +1,124 @@
+import { expect, it } from "vitest";
+
+import { call, pass, restartRoom, seat, until } from "./support";
+
+type Seat = Awaited<ReturnType<typeof seat>>;
+type Delivery = { type: "summon"; page: string; x: number; y: number; zoom: number };
+
+it.each([0, 1])(
+  "converges on saved pages and live summon recipients, schedule %i",
+  async (order) => {
+    const board = `view-model-${order}`;
+    const owner = await pass({ board, owner: true });
+    const target = "g:viewer";
+    const viewer = await pass({ board, sub: target });
+    const pages = new Map<string, string>();
+    const sockets = new Map<Seat, { expected: Delivery[]; recipient: boolean }>();
+    const trace: string[] = [];
+
+    async function join(token: string) {
+      trace.push(token === viewer ? "join viewer" : "join owner");
+      const socket = await seat(board, token);
+      sockets.set(socket, { expected: [], recipient: token === viewer });
+      const snapshot = socket.received.find((event) => event.type === "connect") as unknown as {
+        diff: Record<string, [string, { name: string }]>;
+      };
+      expect(
+        Object.fromEntries(
+          Object.entries(snapshot.diff)
+            .filter(([id, [operation]]) => id.startsWith("page:model") && operation !== "remove")
+            .map(([id, [, page]]) => [id, page.name]),
+        ),
+      ).toEqual(Object.fromEntries(pages));
+      return socket;
+    }
+
+    async function summon(page: string, x: number) {
+      trace.push(`summon ${page} at ${x}`);
+      const view = { page, x, y: 0, zoom: 1 };
+      const response = await call(`/rooms/${board}/summon`, owner, {
+        body: JSON.stringify({ ...view, target }),
+        method: "POST",
+      });
+      const saved = pages.has(page);
+      const hasRecipient = Array.from(sockets.values()).some(({ recipient }) => recipient);
+      expect(response.status).toBe(saved && hasRecipient ? 204 : 409);
+      for (const [socket, { expected, recipient }] of sockets) {
+        if (saved && recipient) expected.push({ ...view, type: "summon" });
+        // A pong on this connection fences custom messages sent by the completed RPC.
+        const from = socket.received.length;
+        socket.send({ type: "ping" });
+        await until(() => socket.received.slice(from).some((m) => m.type === "pong"));
+        expect(socket.received.filter((m) => m.type === "custom").map((m) => m.data)).toEqual(
+          expected,
+        );
+      }
+    }
+
+    try {
+      let writer = await join(owner);
+      let clock = 0;
+      async function edit(id: string, name?: string) {
+        trace.push(`edit ${id} ${name ?? "remove"}`);
+        const record = { id, index: "a2", meta: {}, name, typeName: "page" };
+        writer.send({
+          clientClock: ++clock,
+          type: "push",
+          diff: {
+            [id]:
+              name === undefined
+                ? ["remove"]
+                : pages.has(id)
+                  ? ["patch", { name: ["put", name] }]
+                  : ["put", record],
+          },
+        });
+        await until(() =>
+          writer.received.some(
+            (m) =>
+              m.type === "data" &&
+              (m.data as { type: string; clientClock: number; action: string }[]).some(
+                (part) =>
+                  part.type === "push_result" &&
+                  part.clientClock === clock &&
+                  part.action === "commit",
+              ),
+          ),
+        );
+        if (name === undefined) pages.delete(id);
+        else pages.set(id, name);
+      }
+
+      const page = "page:model-a";
+      await edit(page, "First");
+      await summon(page, 0);
+      const tabs = [await join(viewer), await join(viewer)];
+      await summon(page, 1);
+      await summon(page, 1);
+      const leaving = tabs[order]!;
+      trace.push(`close viewer tab ${order}`);
+      leaving.close();
+      await leaving.closure;
+      sockets.delete(leaving);
+      await summon(page, 2);
+      await edit(page, "Renamed");
+      for (let restart = 0; restart < 2; restart++) {
+        trace.push("restart");
+        await restartRoom(board);
+        for (const socket of sockets.keys()) socket.close();
+        sockets.clear();
+        if (restart === order) await join(viewer);
+        writer = await join(owner);
+        clock = 0;
+        await summon(page, 3 + restart);
+        if (restart !== order) await join(viewer);
+        await summon(page, 5 + restart);
+        if (restart === 0) await edit(page);
+      }
+    } catch (cause) {
+      throw new Error(`schedule ${order}: ${trace.join(" -> ")}`, { cause });
+    } finally {
+      for (const socket of sockets.keys()) socket.close();
+    }
+  },
+);
