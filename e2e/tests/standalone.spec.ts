@@ -113,8 +113,14 @@ test("the board menu and right-hand controls share guides on public and private 
   page,
 }) => {
   const landing = await phone(browser, `${STANDALONE}/`);
+  await landing.setViewportSize({ height: 800, width: 360 });
   await landing.getByTestId("page-menu.button").waitFor();
   const landingMenu = (await landing.locator(".tlui-menu-zone").boundingBox())!;
+  const github = landing.getByRole("link", { name: "Source code on GitHub" });
+  await expect(github).toHaveAttribute("href", "https://github.com/hasparus/littletable.top");
+  const landingChat = (await landing.getByRole("button", { name: "Chat" }).boundingBox())!;
+  expect(landingChat.x).toBeGreaterThan(landingMenu.x + landingMenu.width);
+  await reviewShot(landing, "landing-github-link-phone");
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`${STANDALONE}/boards`);

@@ -278,7 +278,12 @@
   padding-inline: 14px;
 }
 
+[data-public-board-github] {
+  place-items: center;
+}
+
 [data-public-board-chat],
+[data-public-board-github],
 [data-secret-layer-toggle] {
   width: var(--board-top-control-size);
 }
