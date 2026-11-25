@@ -35,6 +35,28 @@ const reply = (message: ImportReply) => scope.postMessage(message);
 // board where we override arrow behaviour and leave its schema in place.
 const schema = createTLSchema();
 
+// The parser can report a generic migration error for a newer shape.
+function usesNewerSchema(json: string): boolean {
+  let file: unknown;
+  try {
+    file = JSON.parse(json);
+  } catch {
+    return false;
+  }
+  if (typeof file !== "object" || file === null || !("schema" in file)) return false;
+  const theirSchema = file.schema;
+  if (typeof theirSchema !== "object" || theirSchema === null || !("sequences" in theirSchema)) {
+    return false;
+  }
+  const theirs = theirSchema.sequences;
+  if (typeof theirs !== "object" || theirs === null) return false;
+  const ours = schema.serialize().sequences;
+  return Object.entries(theirs).some(
+    ([sequence, version]) =>
+      typeof version === "number" && Object.hasOwn(ours, sequence) && version > ours[sequence]!,
+  );
+}
+
 function parse(json: string): void {
   const parsed = parseTldrawJsonFile({ json, schema });
   if (!parsed.ok) {
@@ -47,20 +69,12 @@ function parse(json: string): void {
       case "invalidRecords":
         problem = "damaged";
         break;
-      case "migrationFailed": {
-        // The parser can report a generic migration error for a newer shape.
-        const ours = schema.serialize().sequences;
-        const theirs = (JSON.parse(json) as { schema: { sequences?: Record<string, number> } })
-          .schema.sequences;
-        const newer = Object.entries(theirs ?? {}).some(
-          ([sequence, version]) => sequence in ours && version > ours[sequence]!,
-        );
+      case "migrationFailed":
         problem =
-          error.reason === MigrationFailureReason.TargetVersionTooNew || newer
+          error.reason === MigrationFailureReason.TargetVersionTooNew || usesNewerSchema(json)
             ? "too-new"
             : "damaged";
         break;
-      }
       case "notATldrawFile":
         problem = "not-tldraw";
         break;
