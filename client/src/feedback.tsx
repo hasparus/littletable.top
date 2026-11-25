@@ -1,7 +1,6 @@
 import {
   createContext,
   type FormEvent,
-  type MouseEvent,
   type ReactNode,
   useContext,
   useEffect,
@@ -113,7 +112,6 @@ function FeedbackDialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const done = useRef<HTMLButtonElement>(null);
-  const pressedBackdrop = useRef(false);
   const previous = useRef<{ description: string; submissionId: string } | null>(null);
   const [status, setStatus] = useState<"error" | "limited" | "ready" | "sending" | "sent">("ready");
   const [description, setDescription] = useState("");
@@ -125,6 +123,28 @@ function FeedbackDialog({
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
+  useEffect(() => {
+    const element = dialog.current;
+    if (element === null || sending) return;
+    const events = new AbortController();
+    let pressedBackdrop = false;
+    element.addEventListener(
+      "pointerdown",
+      (event) => {
+        pressedBackdrop = hitBackdrop(element, event);
+      },
+      { signal: events.signal },
+    );
+    element.addEventListener(
+      "click",
+      (event) => {
+        if (pressedBackdrop && hitBackdrop(element, event)) element.close();
+        pressedBackdrop = false;
+      },
+      { signal: events.signal },
+    );
+    return () => events.abort();
+  }, [sending]);
   useEffect(() => {
     if (status === "sent") done.current?.focus();
   }, [status]);
@@ -161,14 +181,7 @@ function FeedbackDialog({
       onCancel={(event) => {
         if (sending) event.preventDefault();
       }}
-      onClick={(event) => {
-        if (!sending && pressedBackdrop.current && hitBackdrop(event)) event.currentTarget.close();
-        pressedBackdrop.current = false;
-      }}
       onClose={onClose}
-      onPointerDown={(event) => {
-        pressedBackdrop.current = hitBackdrop(event);
-      }}
       ref={dialog}
     >
       <h2 className="text-xl font-semibold" id={heading}>
@@ -237,9 +250,9 @@ function FeedbackDialog({
   );
 }
 
-function hitBackdrop(event: MouseEvent<HTMLDialogElement>): boolean {
-  if (event.target !== event.currentTarget) return false;
-  const { bottom, left, right, top } = event.currentTarget.getBoundingClientRect();
+function hitBackdrop(dialog: HTMLDialogElement, event: MouseEvent): boolean {
+  if (event.target !== dialog) return false;
+  const { bottom, left, right, top } = dialog.getBoundingClientRect();
   const { clientX, clientY } = event;
   return clientX < left || clientX >= right || clientY < top || clientY >= bottom;
 }
