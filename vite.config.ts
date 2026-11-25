@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig, normalizePath, type Plugin } from "vite";
 
+import { boardShell } from "./client/src/front-skeleton";
 import {
   BRAND_PROPERTIES,
   type Brand,
@@ -123,7 +124,10 @@ function tabletop(): Plugin {
     resolveId(id) {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
-    transformIndexHtml(html, { bundle }) {
+    transformIndexHtml(html, { bundle, originalUrl }) {
+      if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
+        html = html.replace("<!-- boards-shell -->", boardShell);
+      }
       if (settings.mode === "standalone" && bundle) {
         const board = Object.values(bundle).find(
           (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",

@@ -3,6 +3,7 @@
 
 import type { Config, Hosts, StandaloneConfig } from "./config";
 
+import { boardShell } from "../client/src/front-skeleton";
 import { Store } from "./standalone/store";
 
 // A request to an alias moves to the same path on the primary host, before
@@ -166,8 +167,17 @@ export async function serveSite(
     }
     return withOpenGraph(await shell(request, assets, config), url, config);
   }
-  if (url.pathname === "/boards" && config.mode === "standalone")
-    return shell(request, assets, config);
+  if (url.pathname === "/boards" && config.mode === "standalone") {
+    const page = await shell(request, assets, config);
+    if (!page.ok || page.body === null) return page;
+    return new HTMLRewriter()
+      .on("[data-board-root]", {
+        element: (root) => {
+          root.setInnerContent(boardShell, { html: true });
+        },
+      })
+      .transform(page);
+  }
   const shareCode = SHELL.exec(url.pathname)?.[1];
   if (shareCode !== undefined) {
     const page = await shell(request, assets, config);
