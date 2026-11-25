@@ -18,6 +18,7 @@ import {
   openSheet,
   PHONE,
   reviewShot,
+  sheet,
 } from "./helpers";
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
@@ -72,7 +73,7 @@ async function fillPool(page: Page, pool: number[]): Promise<Locator> {
 
 async function roll(page: Page, pool: number[]): Promise<void> {
   const dice = await fillPool(page, pool);
-  await dice.getByRole("button", { name: /^Roll/u }).click();
+  await dice.getByRole("button", { name: /^Roll \d*d\d/u }).click();
   await expect(dice).toBeHidden();
 }
 
@@ -124,9 +125,10 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   await page.reload();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   const dice = await openSheet(page, "Dice");
-  await expect(dice.locator("details")).not.toHaveAttribute("open", "");
+  await expect(sheet(page, "Roll log")).toBeHidden();
   const log = await openRollLog(dice);
   await expect(log.getByRole("listitem")).toHaveCount(1);
+  await closeSheet(page, "Roll log");
   await closeSheet(page, "Dice");
   await expect(tray(page)).toHaveCount(0);
   await expect(toast(page)).toHaveCount(0);
@@ -195,6 +197,7 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
   );
   const emptyLog = await openRollLog(dice);
   await expect(emptyLog.getByRole("listitem")).toHaveCount(0);
+  await closeSheet(page, "Roll log");
 
   await notation.fill("2d20kl1 − 2");
   await closeSheet(page, "Dice");
@@ -243,10 +246,59 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
     await expect(entry.getByText(`Total: ${total}`, { exact: false })).toBeAttached();
     expect(await dieLabels(entry)).toEqual(expected);
     if (screen === page) await reviewShot(screen, "dice-notation-result-phone");
+    await closeSheet(screen, "Roll log");
     await closeSheet(screen, "Dice");
   }
   expect(shots[0]!.equals(shots[1]!)).toBe(true);
   await guest.context().close();
+});
+
+test("roll history scrolls in a modal and Escape returns focus to the dice panel", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 520, width: 360 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/rooms/*/rolls", (route) =>
+    route.fulfill({
+      json: Array.from({ length: 24 }, (_, index) => ({
+        at: Date.UTC(2026, 10, 25, 14, 0, index),
+        dice: [{ sides: 6, value: (index % 6) + 1 }],
+        id: index + 1,
+        name: `Roller ${index + 1}`,
+        seed: null,
+        sub: `roller-${index + 1}`,
+      })),
+    }),
+  );
+  await startBoard(page);
+  const dice = await openSheet(page, "Dice");
+  const trigger = dice.getByRole("button", { exact: true, name: "Roll log" });
+  const log = await openRollLog(dice);
+  const close = log.getByRole("button", { name: "Close" });
+  const entries = log.getByRole("listitem");
+  await expect(close).toBeFocused();
+  await expect(entries.first()).toContainText("Roller 24");
+  await expect(entries.last()).toContainText("Roller 1");
+  await expect(entries.last()).not.toBeInViewport();
+  await close.press("End");
+  await expect(entries.last()).toBeInViewport();
+  await expect(close).toBeInViewport();
+  await reviewShot(page, "roll-log-scroll-phone");
+
+  await close.press("Tab");
+  await page.keyboard.press("Escape");
+  await expect(log).toBeHidden();
+  await expect(dice).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await openRollLog(dice);
+  await expect(entries.first()).toBeInViewport();
+  await reviewShot(page, "roll-log-phone");
+
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(log).toBeVisible();
+  await page.mouse.click(1, 1);
+  await expect(log).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 type Box = { height: number; width: number; x: number; y: number };
@@ -353,7 +405,7 @@ test("a new roll takes the tray over from the one before", async ({ browser, pag
   const ready = await fillPool(guest, [6]);
 
   await roll(page, [20, 20, 20]);
-  await ready.getByRole("button", { name: /^Roll/u }).click();
+  await ready.getByRole("button", { exact: true, name: "Roll d6" }).click();
 
   await expect(toast(page)).toContainText("Bea");
   await expect(diceCanvas(page)).toHaveCount(1);
