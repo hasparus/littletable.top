@@ -1,3 +1,4 @@
+import type { DiceMark } from "../../src/dice-evaluation";
 import type { Copy } from "./copy";
 
 import { dieLabel, fill } from "./copy";
@@ -8,6 +9,8 @@ type Size = "lg" | "md" | "sm" | "xs";
 export type DieShapeProps = {
   copy: Copy;
   dropped?: boolean;
+  fate?: boolean;
+  mark?: DiceMark;
   sides: number;
   size?: Size;
   tone?: Tone;
@@ -62,6 +65,14 @@ const TONES: Record<Tone, { shape: string; text: string; tick: string }> = {
   },
 };
 
+const MARK_LABEL: Record<DiceMark, keyof Copy> = {
+  critical: "dieCrit",
+  botch: "dieBotch",
+  failure: "dieFailure",
+  match: "dieMatch",
+  success: "dieSuccess",
+};
+
 const SHAPE_CLASS = "stroke-[2.5] [stroke-linejoin:round]";
 
 function Silhouette({ className, sides }: { className: string; sides: number }) {
@@ -78,16 +89,22 @@ function Silhouette({ className, sides }: { className: string; sides: number }) 
 export function DieShape({
   copy,
   dropped = false,
+  fate = false,
+  mark,
   sides,
   size = "md",
   tone = "solid",
   value,
 }: DieShapeProps) {
-  const shown = String(value ?? sides);
-  const colours = TONES[tone];
-  const label = `${dieLabel(copy, sides)}: ${shown}`;
+  const shown = fate ? String(value ?? 0).replace("-", "−") : String(value ?? sides);
+  const colours =
+    TONES[mark === "success" || mark === "critical" || mark === "match" ? "soft" : tone];
+  const name = fate ? dieLabel(copy, 0).replace("0", "F") : dieLabel(copy, sides);
+  const label =
+    name + ": " + shown + (mark === undefined ? "" : " (" + copy[MARK_LABEL[mark]] + ")");
+  const danger = mark === "failure" || mark === "botch";
 
-  const outline = OUTLINES[sides] ?? FALLBACK;
+  const outline = OUTLINES[fate ? 6 : sides] ?? FALLBACK;
   const { text } = outline;
   return (
     <svg
@@ -97,7 +114,10 @@ export function DieShape({
       role="img"
       viewBox="0 0 32 32"
     >
-      <Silhouette className={`${colours.shape} ${SHAPE_CLASS}`} sides={sides} />
+      <Silhouette
+        className={`${danger ? "fill-bg-tertiary stroke-danger-text" : colours.shape} ${SHAPE_CLASS}`}
+        sides={fate ? 6 : sides}
+      />
       {outline.ticks !== undefined && (
         <path
           className={`${colours.tick} fill-none stroke-[1.5]`}
@@ -108,7 +128,7 @@ export function DieShape({
       <text
         className={`${colours.text} font-bold tabular-nums`}
         dy="0.35em"
-        fontSize={shown.length > 2 ? text.size - 2.5 : text.size}
+        fontSize={shown.length > 2 ? Math.min(text.size - 2.5, 40 / shown.length) : text.size}
         textAnchor="middle"
         x="16"
         y={text.y}

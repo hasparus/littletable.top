@@ -1,6 +1,13 @@
 import type { Roll } from "./bootstrap";
 
-import { type Notation, rollResult } from "../../src/dice-notation";
+import { type ExpressionError, MAX_SIDES, MAX_DRAWS } from "../../src/dice-expression";
+import {
+  MAX_EXPRESSION_LENGTH,
+  MAX_MODIFIER,
+  type Notation,
+  rollResult,
+} from "../../src/dice-notation";
+import { MAX_DICE } from "../../src/limits";
 import { type Copy, dieLabel, fill } from "./copy";
 
 export const modifierLabel = (modifier: number) =>
@@ -24,17 +31,45 @@ export function poolLabel(copy: Copy, sides: number[]): string {
     .join(" + ");
 }
 
-export function rollSentence(copy: Copy, roll: Roll): string {
+export function notationMessage(copy: Copy, error: ExpressionError, example = "2d20kl1") {
+  switch (error) {
+    case "count":
+      return fill(copy.notationCount, { max: MAX_DICE });
+    case "length":
+      return fill(copy.notationLength, { max: MAX_EXPRESSION_LENGTH });
+    case "modifier":
+      return fill(copy.notationModifier, { max: MAX_MODIFIER });
+    case "rule":
+      return copy.notationRule;
+    case "sides":
+      return fill(copy.notationSides, { max: MAX_SIDES });
+    case "limit":
+      return fill(copy.notationDrawLimit, { max: MAX_DRAWS });
+    case "math":
+      return copy.notationMath;
+    case "syntax":
+      return fill(copy.notationSyntax, { example });
+  }
+}
+
+export function rollLabel(copy: Copy, roll: Roll, notation: Notation | null) {
+  if (notation !== null) return notationLabel(copy, notation);
+  return (
+    roll.expression ??
+    poolLabel(
+      copy,
+      roll.dice.map(({ sides }) => sides),
+    )
+  );
+}
+
+export function rollSentence(copy: Copy, roll: Roll) {
   const result = rollResult(roll);
   const values = roll.dice.map(({ value }) => value).join(", ");
-  const pool =
-    result.notation === null
-      ? poolLabel(
-          copy,
-          roll.dice.map(({ sides }) => sides),
-        )
-      : notationLabel(copy, result.notation);
-  const sentences = [`${fill(copy.rolledBy, { name: roll.name })} ${pool}: ${values}`];
+  const label = rollLabel(copy, roll, result.notation);
+  const sentences = [
+    fill(copy.rolledBy, { name: roll.name }) + (values ? " " + label + ": " + values : " " + label),
+  ];
   if (result.notation !== null) {
     const kept = roll.dice.filter((_, index) => result.kept[index]).map(({ value }) => value);
     sentences.push(

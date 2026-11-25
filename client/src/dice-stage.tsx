@@ -7,6 +7,7 @@ import type { DiceThrow } from "./dice-scene";
 import type { RollRefusal, Rolls } from "./rolls";
 
 import { type RollResult, rollResult } from "../../src/dice-notation";
+import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { dieLabel, fill } from "./copy";
 import { modifierLabel } from "./dice-labels";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
@@ -246,7 +247,9 @@ function ResultToast({
             <DieShape
               copy={copy}
               dropped={!result.kept[index]}
+              fate={die.fate}
               key={index}
+              mark={die.mark}
               sides={die.sides}
               size="xs"
               tone="soft"
@@ -254,7 +257,10 @@ function ResultToast({
             />
           ))}
         </span>
-        {(roll.dice.length > 1 || modifier !== null || result.kept.includes(false)) && (
+        {(roll.dice.length !== 1 ||
+          modifier !== null ||
+          result.kept.includes(false) ||
+          result.total !== roll.dice[0]?.value) && (
           <span
             className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums"
             ref={sum}
@@ -280,11 +286,18 @@ export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceSt
   const [, setFailures] = useState(0);
   const still = useMemo(() => prefersStill(), []);
   const result = useMemo(() => rollResult(roll), [roll]);
-  const unavailable = isDice3dDown();
+  const playable: readonly number[] = DIE_SIDES;
+  const unavailable =
+    isDice3dDown() ||
+    roll.dice.length > MAX_DICE ||
+    roll.dice.length === 0 ||
+    roll.dice.some(
+      ({ fate, sides, value }) => fate || !playable.includes(sides) || value < 1 || value > sides,
+    );
   const showToast = still || unavailable || settledId === roll.id;
 
   useEffect(() => {
-    if (still || isDice3dDown() || host.current === null) return;
+    if (still || unavailable || host.current === null) return;
     const element = host.current;
     let current = true;
     const giveUpTimer = setTimeout(() => setSettledId(roll.id), GIVE_UP_MS);
@@ -320,7 +333,7 @@ export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceSt
       current = false;
       clearTimeout(giveUpTimer);
     };
-  }, [copy, onRoll, result, roll, still]);
+  }, [copy, onRoll, result, roll, still, unavailable]);
 
   useEffect(
     () => () => {

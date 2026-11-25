@@ -13,7 +13,8 @@ import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
 import type { ThumbnailType } from "./board-thumbnail";
-import type { DiceLaunch, Roll } from "./dice-notation";
+import type { ExpressionError } from "./dice-expression";
+import type { Roll, RollRequest } from "./dice-notation";
 import type { Pass } from "./pass";
 import type {
   BoardGrant,
@@ -29,6 +30,8 @@ import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
+import { evaluateExpression } from "./dice-evaluation";
+import { InvalidRoll, parseExpression } from "./dice-expression";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
@@ -127,7 +130,7 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS board (id INTEGER PRIMARY KEY CHECK (id = 1), link INTEGER NOT NULL)",
     );
     sql.exec(
-      "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT)",
+      "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT, outcome TEXT, chat INTEGER)",
     );
     addRollColumns(sql);
     sql.exec(
@@ -293,40 +296,57 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
+  roll(pass: Pass, request: RollRequest): Refusal | Roll | { error: ExpressionError } {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
+    const expression = "expression" in request ? request.expression : undefined;
+    const formula = expression === undefined ? null : parseExpression(expression);
+    if (formula !== null && "error" in formula) return formula;
     const at = Date.now();
     if (at - (this.lastRollAt.get(pass.sub) ?? 0) < MIN_ROLL_INTERVAL_MS) return "too-fast";
     this.lastRollAt.set(pass.sub, at);
-    const dice = pool.map((sides) => ({ sides, value: rollDie(sides) }));
+    let dice: Roll["dice"];
+    let outcome: Roll["outcome"];
+    try {
+      if ("dice" in request) dice = request.dice.map((sides) => ({ sides, value: rollDie(sides) }));
+      else ({ dice, outcome } = evaluateExpression(formula!, rollDie));
+    } catch (error) {
+      if (error instanceof InvalidRoll) return { error: error.reason };
+      throw error;
+    }
+    const chat = "chat" in request && request.chat === true;
     const seed = drawSeed();
     const [row] = this.ctx.storage.sql
       .exec(
-        "INSERT INTO rolls (at, sub, name, dice, seed, expression) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO rolls (at, sub, name, dice, seed, expression, outcome, chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         at,
         pass.sub,
         pass.name,
         JSON.stringify(dice),
         seed,
-        expression ?? null,
+        expression?.trim() ?? null,
+        outcome === undefined ? null : JSON.stringify(outcome),
+        chat ? 1 : null,
       )
       .toArray();
+    const launch = "launch" in request ? request.launch : undefined;
     const roll: Roll = {
       at,
       dice,
-      ...(expression === undefined ? {} : { expression }),
-      id: row!.id as number,
-      ...(launch === undefined ? {} : { launch }),
+      id: Number(row!.id),
       name: pass.name,
       seed,
       sub: pass.sub,
     };
+    if (chat) roll.chat = true;
+    if (expression !== undefined) roll.expression = expression.trim();
+    if (launch !== undefined) roll.launch = launch;
+    if (outcome !== undefined) roll.outcome = outcome;
     this.ctx.storage.sql.exec("DELETE FROM rolls WHERE id <= ?", roll.id - ROLL_LOG_LENGTH);
     for (const session of this.room.getSessions()) {
       this.room.sendCustomMessage(session.sessionId, { roll, type: "roll" });
     }
-    log("board.rolled", { board: pass.board, dice: pool.length, person: kind(pass.sub) });
+    log("board.rolled", { board: pass.board, dice: dice.length, person: kind(pass.sub) });
     return roll;
   }
 
@@ -350,17 +370,24 @@ export class BoardRoom extends DurableObject<Env> {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
     return this.ctx.storage.sql
-      .exec("SELECT id, at, sub, name, dice, seed, expression FROM rolls ORDER BY id")
+      .exec(
+        "SELECT id, at, sub, name, dice, seed, expression, outcome, chat FROM rolls ORDER BY id",
+      )
       .toArray()
-      .map((row) => ({
-        at: row.at as number,
-        dice: JSON.parse(row.dice as string),
-        ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
-        id: row.id as number,
-        name: row.name as string,
-        seed: row.seed as number | null,
-        sub: row.sub as string,
-      }));
+      .map((row) => {
+        const roll: Roll = {
+          at: Number(row.at),
+          dice: JSON.parse(String(row.dice)),
+          id: Number(row.id),
+          name: String(row.name),
+          seed: row.seed === null ? null : Number(row.seed),
+          sub: String(row.sub),
+        };
+        if (row.chat === 1) roll.chat = true;
+        if (row.expression !== null) roll.expression = String(row.expression);
+        if (row.outcome !== null) roll.outcome = JSON.parse(String(row.outcome));
+        return roll;
+      });
   }
 
   private chatStorage(): SqlStorage {

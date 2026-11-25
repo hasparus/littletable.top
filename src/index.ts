@@ -1,3 +1,5 @@
+import type { RollRequest } from "./dice-notation";
+
 import {
   AVATAR_HEADER,
   type AvatarSource,
@@ -9,7 +11,6 @@ import {
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parseLaunch, parsePool } from "./dice";
-import { notationPool, parseNotation } from "./dice-notation";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
@@ -236,11 +237,12 @@ async function rooms(
     const body = await request.json().catch(() => null);
     if (typeof body === "object" && body !== null && "expression" in body) {
       if (typeof body.expression !== "string") return new Response("Bad request", { status: 400 });
-      const notation = parseNotation(body.expression);
-      if (typeof notation === "string") {
-        return Response.json({ error: notation }, { status: 400 });
-      }
-      return answer(await room.roll(pass, notationPool(notation), body.expression.trim()));
+      const roll: Extract<RollRequest, { expression: string }> = { expression: body.expression };
+      if ("chat" in body && body.chat === true) roll.chat = true;
+      const result = await room.roll(pass, roll);
+      if (typeof result !== "string" && "error" in result)
+        return Response.json(result, { status: 400 });
+      return answer(result);
     }
     const pool = parsePool(body);
     if (pool === null) return new Response("Bad request", { status: 400 });
@@ -249,7 +251,7 @@ async function rooms(
     if (launch === null || (launch !== undefined && pool.length !== 1)) {
       return new Response("Bad request", { status: 400 });
     }
-    return answer(await room.roll(pass, pool, undefined, launch));
+    return answer(await room.roll(pass, { dice: pool, launch }));
   }
   return new Response("Not found", { status: 404 });
 }

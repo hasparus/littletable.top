@@ -2,10 +2,18 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { PassKeeper } from "./bootstrap";
 import type { ChatSize } from "./chat-resize";
+import type { RollRefusal } from "./rolls";
 
-import { CHAT_HISTORY_LENGTH, type ChatMessage, MAX_CHAT_LENGTH } from "../../src/chat";
+import {
+  CHAT_HISTORY_LENGTH,
+  type ChatMessage,
+  MAX_CHAT_LENGTH,
+  rollCommand,
+} from "../../src/chat";
+import { rollResult } from "../../src/dice-notation";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
+import { notationMessage } from "./dice-labels";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
@@ -96,7 +104,10 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
 
 const MESSAGE_GROUP_GAP = 5 * 60 * 1000;
 
-function sameRun(previous: ChatMessage | undefined, next: ChatMessage | undefined) {
+function sameRun(
+  previous: Omit<ChatMessage, "text"> | undefined,
+  next: Omit<ChatMessage, "text"> | undefined,
+) {
   return (
     previous !== undefined &&
     next !== undefined &&
@@ -107,10 +118,10 @@ function sameRun(previous: ChatMessage | undefined, next: ChatMessage | undefine
 }
 
 export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; shown: boolean }) {
-  const { copy, locale, person } = useBoardUi();
+  const { copy, locale, person, rolls } = useBoardUi();
   const [text, setText] = useState("");
   const [size, setSize] = useState<ChatSize>({});
-  const [submission, setSubmission] = useState<"idle" | "sending" | Refusal>("idle");
+  const [submission, setSubmission] = useState<"idle" | "sending" | RollRefusal>("idle");
   const busy = submission === "sending";
   const input = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
@@ -119,10 +130,36 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   const resizeAnchor = useRef<{ element: Element; offset: number } | null>(null);
   const time = useMemo(() => new Intl.DateTimeFormat(locale, { timeStyle: "short" }), [locale]);
 
+  const entries = useMemo(
+    () =>
+      [
+        ...chat.messages.map((message) => ({
+          ...message,
+          diceTotal: null,
+          key: "message:" + message.id,
+        })),
+        ...rolls.log.flatMap((roll) =>
+          roll.chat === true && roll.expression !== undefined
+            ? [
+                {
+                  ...roll,
+                  diceTotal: rollResult(roll).total,
+                  key: "roll:" + roll.id,
+                  text: roll.expression,
+                },
+              ]
+            : [],
+        ),
+      ]
+        .sort((a, b) => a.at - b.at || a.id - b.id)
+        .slice(-CHAT_HISTORY_LENGTH),
+    [chat.messages, rolls.log],
+  );
+
   useLayoutEffect(() => {
     if (!shown) follow.current = true;
     if (follow.current && log.current !== null) log.current.scrollTop = log.current.scrollHeight;
-  }, [chat.messages, shown]);
+  }, [entries, shown]);
 
   useLayoutEffect(() => {
     const viewport = log.current;
@@ -168,7 +205,9 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   const send = async (message: string) => {
     input.current?.focus();
     setSubmission("sending");
-    const result = await chat.send(message);
+    const expression = rollCommand(message);
+    const result =
+      expression === null ? await chat.send(message) : await rolls.roll({ chat: true, expression });
     setSubmission(result ?? "idle");
     if (result === null) {
       setText((current) => (current.trim() === message ? "" : current));
@@ -178,6 +217,14 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   };
 
   if (!shown) return null;
+  const error =
+    submission === "idle" || submission === "sending"
+      ? null
+      : submission === "failed"
+        ? copy.chatFailed
+        : submission === "too-fast"
+          ? copy.chatTooFast
+          : notationMessage(copy, submission);
 
   return (
     <Sheet chatResize={{ change: resize, size }} panel="chat" title={copy.chat}>
@@ -199,18 +246,18 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The scrollable log needs keyboard focus for keyboard scrolling.
         tabIndex={0}
       >
-        {chat.messages.map((message, index, messages) => {
-          const { at, id, name, sub, text } = message;
+        {entries.map((message, index) => {
+          const { at, diceTotal, key, name, sub, text } = message;
           const own = sub === person.id;
-          const first = !sameRun(messages[index - 1], message);
-          const last = !sameRun(message, messages[index + 1]);
+          const first = !sameRun(entries[index - 1], message);
+          const last = !sameRun(message, entries[index + 1]);
           const author = own ? `${name} (${copy.you})` : name;
           const timestamp = time.format(at);
 
           return (
             <article
               className={`flex items-end gap-2 ${own ? "justify-end" : ""} ${first ? "not-first:mt-3" : "mt-0.5"}`}
-              key={id}
+              key={key}
             >
               {!own &&
                 (last ? (
@@ -240,14 +287,23 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
                   title={timestamp}
                 >
                   <span className="block" dir="auto">
-                    {text}
+                    {diceTotal === null ? (
+                      text
+                    ) : (
+                      <>
+                        <code className="text-[0.875em]">{text}</code>
+                        <span aria-hidden="true"> = </span>
+                        <span className="sr-only"> {copy.total} </span>
+                        <strong className="tabular-nums">{diceTotal}</strong>
+                      </>
+                    )}
                   </span>
                 </p>
               </div>
             </article>
           );
         })}
-        {chat.messages.length === 0 && chat.load !== "failed" && (
+        {entries.length === 0 && chat.load !== "failed" && (
           <p className="text-sm text-foreground-muted">
             {chat.load === "loading" ? copy.chatLoading : copy.chatEmpty}
           </p>
@@ -261,9 +317,9 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
           </button>
         </div>
       )}
-      {(submission === "failed" || submission === "too-fast") && (
+      {error !== null && (
         <p className="shrink-0 px-4 pb-2 text-sm text-danger-text" role="status">
-          {submission === "too-fast" ? copy.chatTooFast : copy.chatFailed}
+          {error}
         </p>
       )}
       <form
@@ -278,6 +334,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         <div className="flex h-11 rounded-(--chat-composer-radius) border border-border bg-bg-tertiary has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-border-focus">
           <input
             aria-label={copy.chatMessage}
+            autoCapitalize="none"
             autoComplete="off"
             className="min-w-0 flex-1 px-3 text-base outline-none placeholder:text-foreground-muted"
             dir="auto"

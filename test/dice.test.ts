@@ -53,6 +53,37 @@ describe("rolling", () => {
     expect(await log.json()).toEqual([rolled]);
   });
 
+  it("broadcasts a chat roll and stores its evaluated total", async () => {
+    const board = "chat-expression";
+    const token = await pass({ board });
+    const other = await seat(board, await pass({ board, sub: "g:1" }));
+    const response = await call("/rooms/" + board + "/roll", token, {
+      body: JSON.stringify({ chat: true, expression: "2d1count1+" }),
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    const rolled: Roll = await response.json();
+    expect(rolled).toMatchObject({ chat: true, outcome: { kept: [true, true], total: 2 } });
+    await until(() => other.received.some((message) => message.type === "custom"));
+    expect(other.received.find((message) => message.type === "custom")?.data).toEqual({
+      roll: rolled,
+      type: "roll",
+    });
+    expect(await (await call("/rooms/" + board + "/rolls", token)).json()).toEqual([rolled]);
+  });
+
+  it("rejects an unbounded explosion without logging a result", async () => {
+    const board = "endless-dice";
+    const token = await pass({ board });
+    const response = await call("/rooms/" + board + "/roll", token, {
+      body: JSON.stringify({ chat: true, expression: "d1!" }),
+      method: "POST",
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "limit" });
+    expect(await (await call("/rooms/" + board + "/rolls", token)).json()).toEqual([]);
+  });
+
   it("shares a flick's bounded launch and records the result as a normal roll", async () => {
     const board = "flick";
     const token = await pass({ board });
