@@ -284,20 +284,6 @@
   top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
   left: var(--board-left);
   width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
-  padding-inline: 2px;
-  color: var(--color-foreground);
-  font-family: var(--tl-font-draw);
-  font-size: 15px;
-  line-height: 1.35;
-}
-
-[data-public-board-note] p + p {
-  margin-top: 12px;
-}
-
-[data-public-board-note] footer {
-  margin-top: 16px;
-  color: var(--color-foreground-muted);
 }
 
 [data-board-background-swatches] {
