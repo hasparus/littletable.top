@@ -4,8 +4,8 @@ A shared whiteboard with dice for tabletop RPGs. Drop in a screenshot of your
 character sheet and mark it up as you play. Looking for a rule? You can search
 the text in your sheet or a page from the rulebook.
 
-[Roll a die on the public board](https://littletable.top/) and everyone sees
-it land. Anyone can draw without signing in. Drawings disappear after two days.
+[Say hi](https://littletable.top/) on the public board. Anyone can chat or draw
+without signing in. Drawings disappear after two days.
 
 <img src="docs/screenshots/table.png" width="720" alt="A red d20 showing 7 in the courtyard of the Château de Pierrefonds floor plan on a Little Table board." />
 
