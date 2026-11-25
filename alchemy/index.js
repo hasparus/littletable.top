@@ -118,6 +118,7 @@ function configure(props) {
       TABLETOP_MODE: "standalone",
       WORKOS_API_KEY: secret(props.workOs.apiKey),
       WORKOS_CLIENT_ID: props.workOs.clientId,
+      PUBLIC_BOARD_OWNER_ID: props.publicBoardOwnerId ?? "",
     },
   };
 }
