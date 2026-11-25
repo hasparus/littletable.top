@@ -43,7 +43,8 @@
       </div>
       <nav class="contents" aria-label="In this report">
         <a href="#field-notes">Field notes</a><a href="#precedents">Plugin models</a
-        ><a href="#experiments">Experiments</a><a href="#decision">Implementation proposal</a>
+        ><a href="#agent-workshop">Agent workspaces</a><a href="#experiments">Experiments</a
+        ><a href="#decision">Implementation proposal</a>
       </nav>
       <section class="chapter" id="field-notes">
         <header>
@@ -229,6 +230,86 @@
               </p>
             </article>
           </div>
+        </div>
+      </section>
+      <section class="chapter" id="agent-workshop">
+        <header>
+          <p class="kicker">Authoring environments</p>
+          <h2>Ask the table to change</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            A GM should be able to point at a working Gizmo and describe how tonight’s table plays.
+            The agent needs a copy it can edit, a table it can rehearse on, and a way to hand the
+            result back to the owner.
+          </p>
+          <h3>Cloudflare OS makes the application itself editable</h3>
+          <p>
+            Cloudflare OS treats a Gadget as a shareable application backed by a Durable Object. Its
+            coding agent builds and tests Gadgets. Sharing a Blueprint lets someone take a copy of
+            the code and change it independently. Gatekeepers mediate access to specific external
+            resources and can simulate side effects for review. This offers two distinct Little
+            Table interactions: invite a player to tonight’s tracker, or give another GM a recipe
+            they can fork with a fresh roster and empty clock.
+            <a href="https://github.com/cloudflare/cloudflare-os">Cloudflare OS architecture</a>
+          </p>
+          <h3>Where a coding agent works</h3>
+          <p>
+            E2B exposes a Linux VM lifecycle for agents, including pause, resume and termination.
+            That is useful for running a compiler, package tools or browser tests across several
+            authoring sessions. Cloudflare OS can also connect an existing GitHub repository. A
+            repository-backed workflow gives maintainers a diff and review history. A GM at the
+            table needs a working preview and a readable account of what changed. Both can refer to
+            the same immutable revision.
+            <a href="https://e2b.dev/sandbox">E2B sandbox lifecycle</a> ·
+            <a href="https://blog.cloudflare.com/managed-cloudflare-os/"
+              >Repository-backed work in Cloudflare OS</a
+            >
+          </p>
+          <h3>A workshop for one Gizmo</h3>
+          <ol>
+            <li>
+              <strong>Fork.</strong> Copy the installed definition and rule into a private draft.
+              Give the agent the catalog, its version and synthetic player data. Keep the live room
+              token and GM notes outside the workspace.
+            </li>
+            <li>
+              <strong>Rehearse.</strong> Let the agent edit files, run acceptance tests and render
+              the draft in a disposable table. Run one trace as the owner and one as a player. A
+              rejected edit should leave the game in progress.
+            </li>
+            <li>
+              <strong>Adopt.</strong> Show the behavioral diff, requested permissions and any state
+              migration. The owner can apply that exact revision, discard it or keep it as a
+              separate Gizmo. Changing a running instance should require a matching base revision.
+            </li>
+          </ol>
+          <p>
+            <strong>Build choice.</strong> The manifest editor and a disposable preview are
+            sufficient for catalog-backed tools. Add a resumable coding VM when authors need
+            third-party build tools or multi-file projects. A table can continue playing an
+            installed revision after the authoring VM shuts down. Guest actions still go through the
+            room’s authorization checks.
+          </p>
+          <h3>Authoring trial: a two-player session</h3>
+          <p>
+            We gave a coding agent the working tracker and this brief: “Prep this tracker for a duet
+            with Ash and Rowan. Only I can mark moments. Two marks should fill the pressure track.”
+            The deliverable is a two-seat manifest with owner-only controls and a rule adding three
+            segments per mark. A saved
+            <a
+              href="https://github.com/hasparus/littletable.top/blob/research/table-gizmos/scripts/gizmos-research/duet.json"
+              >duet recipe</a
+            >
+            makes the candidate revision inspectable.
+          </p>
+          <p id="duet-observation">
+            In Chromium, an attempted player mark left both the queue and pressure unchanged. The
+            owner marked Ash and pressure rose to 3 of 6. Marking Rowan filled the clock and
+            restored the original queue order. Only the recipe changed. We ran this trial in the
+            project coding environment with sample data. It tests the authoring workflow; it does
+            not benchmark Cloudflare OS or E2B.
+          </p>
         </div>
       </section>
       <section class="workshop" id="experiments">
