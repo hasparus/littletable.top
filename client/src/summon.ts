@@ -1,9 +1,15 @@
 import type { Editor } from "tldraw";
 
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { SummonView } from "../../src/summon";
 import type { PassKeeper } from "./bootstrap";
+
+type IncomingSummons = {
+  editor: Editor | null;
+  queued?: SummonView;
+  cancel?: () => void;
+};
 
 function goToSummon(editor: Editor, view: SummonView) {
   const { page, x, y, zoom } = view;
@@ -55,22 +61,40 @@ async function sendSummon(editor: Editor, keeper: PassKeeper) {
 }
 
 export function useSummon(editor: Editor | null, active: boolean, keeper: PassKeeper) {
-  const target = useRef<Editor | null>(null);
-  const pending = useRef<(() => void) | undefined>(undefined);
+  const incoming = useRef<IncomingSummons | null>(null);
 
   useLayoutEffect(() => {
-    target.current = active && !keeper.secret ? editor : null;
+    if (!active || keeper.secret) return;
+    incoming.current = { editor: null };
     return () => {
-      pending.current?.();
-      pending.current = undefined;
-      target.current = null;
+      incoming.current = null;
+    };
+  }, [active, keeper]);
+
+  useEffect(() => {
+    const target = incoming.current;
+    if (target === null || editor === null) return;
+    target.editor = editor;
+    if (target.queued !== undefined) {
+      target.cancel = applySummon(editor, target.queued);
+      target.queued = undefined;
+    }
+    return () => {
+      target.cancel?.();
+      target.cancel = undefined;
+      target.editor = null;
     };
   }, [active, editor, keeper]);
 
   const receiveSummon = useCallback((view: SummonView) => {
-    if (target.current === null) return;
-    pending.current?.();
-    pending.current = applySummon(target.current, view);
+    const target = incoming.current;
+    if (target === null) return;
+    if (target.editor === null) {
+      target.queued = view;
+      return;
+    }
+    target.cancel?.();
+    target.cancel = applySummon(target.editor, view);
   }, []);
 
   const { owner } = keeper.bootstrap.person;

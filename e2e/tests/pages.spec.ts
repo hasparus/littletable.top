@@ -118,6 +118,64 @@ async function joinPhone(
   return page;
 }
 
+test("a connected guest receives the latest summon while the editor is still loading", async ({
+  browser,
+  page: owner,
+}) => {
+  await owner.goto(`${HOST}/sign-in?name=Ada`);
+  await owner.getByRole("button", { name: "New board" }).click();
+  await expect(pageButton(owner)).toHaveText("Page 1");
+  await putNote(owner, { at: { x: 320, y: 260 }, text: "A note on the starting page" });
+
+  await openPages(owner);
+  await owner.getByTestId("page-menu.create").click();
+  const name = owner.getByTestId("page-menu.list").getByRole("textbox");
+  await name.fill("First destination");
+  await name.press("Enter");
+  await owner.getByTestId("page-menu.create").click();
+  await name.fill("Latest destination");
+  await name.press("Enter");
+  await closePages(owner);
+  await goToPage(owner, "First destination");
+
+  const guest = await browser.newPage(DESKTOP);
+  const allowFonts = Promise.withResolvers<null>();
+  await guest.route("**/*.woff2", async (route) => {
+    await allowFonts.promise;
+    await route.continue();
+  });
+  try {
+    const connecting = guest.waitForEvent("websocket", (socket) =>
+      new URL(socket.url()).pathname.endsWith("/connect"),
+    );
+    await guest.goto(owner.url(), { waitUntil: "commit" });
+    await guest.getByLabel("Your name").fill("Bea");
+    await guest.getByRole("button", { name: "Join the board" }).click();
+    const socket = await connecting;
+    const receiveSummon = () =>
+      socket.waitForEvent("framereceived", ({ payload }) => payload.includes('"type":"summon"'));
+
+    const people = await openSheet(owner, "People");
+    await expect(people.getByRole("button", { name: /^Bea/u })).toBeVisible();
+    await expect(pageButton(guest)).toHaveCount(0);
+    const summon = people.getByRole("button", { name: "Summon everyone" });
+    await Promise.all([receiveSummon(), summon.click()]);
+    await expect(people.getByRole("status")).toHaveText("Summon sent.");
+    await closeSheet(owner, "People");
+    await goToPage(owner, "Latest destination");
+    await openSheet(owner, "People");
+    await Promise.all([receiveSummon(), summon.click()]);
+    await expect(people.getByRole("status")).toHaveText("Summon sent.");
+    await expect(pageButton(guest)).toHaveCount(0);
+
+    allowFonts.resolve(null);
+    await expect(pageButton(guest)).toHaveText("Latest destination");
+  } finally {
+    allowFonts.resolve(null);
+    await guest.close();
+  }
+});
+
 test("pages are made, renamed, reordered and deleted together, and places and people span them", async ({
   browser,
 }) => {
