@@ -13,7 +13,6 @@ const configured = {
   POSTHOG_FEEDBACK_QUESTION_ID: question,
 };
 const payload = {
-  category: "bug",
   description: "  The dice disappear.  ",
   role: "guest",
   screen: "board",
@@ -53,7 +52,6 @@ it("sends only the submitted text and coarse context to the configured PostHog s
         $survey_id: survey,
         $survey_submission_id: submissionId,
         [`$survey_response_${question}`]: "The dice disappear.",
-        category: "bug",
         role: "guest",
         screen: "board",
       },

@@ -55,11 +55,11 @@ and leave the response cap unset. In the corresponding GitHub Environment
   the survey's API response under `questions[0].id`.
 
 After deploying, send a sample report and verify it appears under the survey's
-responses. The `survey sent` event also carries `category` (`bug` or
-`improvement`), `screen` (`board` or `boards`), and `role` (`guest` or
-`member`) for filtering. The Worker sends the form directly to PostHog and
-uses an anonymous ID per submission. Browser URLs, board contents, account
-IDs, autocapture, and session replay are outside this integration.
+responses. The `survey sent` event also carries `screen` (`board` or `boards`)
+and `role` (`guest` or `member`) for filtering. The Worker sends the form
+directly to PostHog and uses an anonymous ID per submission. Browser URLs,
+board contents, account IDs, autocapture, and session replay are outside
+this integration.
 
 Feedback is available when the standalone Worker has all four settings.
 Hosted instances and PR preview deployments leave it off.

@@ -1,6 +1,7 @@
 import {
   createContext,
   type FormEvent,
+  type MouseEvent,
   type ReactNode,
   useContext,
   useEffect,
@@ -13,14 +14,11 @@ import type { Language } from "../settings";
 
 const COPY = {
   en: {
-    bug: "Report a bug",
     cancel: "Cancel",
     description: "Description",
     done: "Done",
     error: "Couldn’t send your feedback. Please try again.",
-    hint: "Tell us what happened or what you’d like to change. Leave out private details.",
-    improvement: "Suggest an improvement",
-    kind: "What is your feedback about?",
+    hint: "Describe a bug or suggest an improvement. Leave out private details.",
     limited: "Too many reports in a short time. Please try again in a minute.",
     send: "Send",
     sending: "Sending…",
@@ -28,14 +26,11 @@ const COPY = {
     title: "Send feedback",
   },
   pl: {
-    bug: "Zgłoś błąd",
     cancel: "Anuluj",
     description: "Opis",
     done: "Gotowe",
     error: "Nie udało się wysłać opinii. Spróbuj ponownie.",
-    hint: "Opisz, co się stało lub co chcesz zmienić. Pomiń dane prywatne.",
-    improvement: "Zaproponuj ulepszenie",
-    kind: "Czego dotyczy Twoja opinia?",
+    hint: "Opisz błąd lub zaproponuj ulepszenie. Pomiń dane prywatne.",
     limited: "Zbyt wiele zgłoszeń w krótkim czasie. Spróbuj ponownie za minutę.",
     send: "Wyślij",
     sending: "Wysyłanie…",
@@ -118,9 +113,8 @@ function FeedbackDialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const done = useRef<HTMLButtonElement>(null);
-  const previous = useRef<{ category: string; description: string; submissionId: string } | null>(
-    null,
-  );
+  const pressedBackdrop = useRef(false);
+  const previous = useRef<{ description: string; submissionId: string } | null>(null);
   const [status, setStatus] = useState<"error" | "limited" | "ready" | "sending" | "sent">("ready");
   const [description, setDescription] = useState("");
   const heading = useId();
@@ -139,12 +133,11 @@ function FeedbackDialog({
     event.preventDefault();
     const trimmed = description.trim();
     if (sending || trimmed === "") return;
-    const category = String(new FormData(event.currentTarget).get("category"));
     const last = previous.current;
     const submission =
-      last?.category === category && last.description === trimmed
+      last?.description === trimmed
         ? last
-        : { category, description: trimmed, submissionId: crypto.randomUUID() };
+        : { description: trimmed, submissionId: crypto.randomUUID() };
     previous.current = submission;
     setStatus("sending");
     try {
@@ -168,7 +161,14 @@ function FeedbackDialog({
       onCancel={(event) => {
         if (sending) event.preventDefault();
       }}
+      onClick={(event) => {
+        if (!sending && pressedBackdrop.current && hitBackdrop(event)) event.currentTarget.close();
+        pressedBackdrop.current = false;
+      }}
       onClose={onClose}
+      onPointerDown={(event) => {
+        pressedBackdrop.current = hitBackdrop(event);
+      }}
       ref={dialog}
     >
       <h2 className="text-xl font-semibold" id={heading}>
@@ -192,42 +192,23 @@ function FeedbackDialog({
         </>
       ) : (
         <form className="mt-4" onSubmit={(event) => void submit(event)}>
-          <fieldset disabled={sending}>
-            <legend className="mb-2 text-sm font-medium">{copy.kind}</legend>
-            <div className="flex flex-wrap gap-2">
-              {(["bug", "improvement"] as const).map((category) => (
-                <label
-                  className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-border px-3 text-sm has-checked:border-border-focus has-checked:bg-bg-secondary"
-                  key={category}
-                >
-                  <input
-                    className="size-4 accent-primary"
-                    defaultChecked={category === "bug"}
-                    name="category"
-                    type="radio"
-                    value={category}
-                  />
-                  {copy[category]}
-                </label>
-              ))}
-            </div>
-            <label className="mt-4 block text-sm font-medium" htmlFor={field}>
-              {copy.description}
-            </label>
-            <p className="mt-1 mb-2 text-sm text-foreground-secondary" id={hint}>
-              {copy.hint}
-            </p>
-            <textarea
-              aria-describedby={hint}
-              className="block w-full resize-y rounded-xl border border-border bg-bg-secondary px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-border-focus"
-              id={field}
-              maxLength={2000}
-              onChange={(event) => setDescription(event.target.value)}
-              required
-              rows={4}
-              value={description}
-            />
-          </fieldset>
+          <label className="block text-sm font-medium" htmlFor={field}>
+            {copy.description}
+          </label>
+          <p className="mt-1 mb-2 text-sm text-foreground-secondary" id={hint}>
+            {copy.hint}
+          </p>
+          <textarea
+            aria-describedby={hint}
+            className="block w-full resize-y rounded-xl border border-border bg-bg-secondary px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-border-focus"
+            disabled={sending}
+            id={field}
+            maxLength={2000}
+            onChange={(event) => setDescription(event.target.value)}
+            required
+            rows={4}
+            value={description}
+          />
           {(status === "error" || status === "limited") && (
             <p className="mt-3 text-sm text-danger-text" role="alert">
               {copy[status]}
@@ -254,4 +235,11 @@ function FeedbackDialog({
       )}
     </dialog>
   );
+}
+
+function hitBackdrop(event: MouseEvent<HTMLDialogElement>): boolean {
+  if (event.target !== event.currentTarget) return false;
+  const { bottom, left, right, top } = event.currentTarget.getBoundingClientRect();
+  const { clientX, clientY } = event;
+  return clientX < left || clientX >= right || clientY < top || clientY >= bottom;
 }

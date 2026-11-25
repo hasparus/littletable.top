@@ -28,6 +28,8 @@ test("a guest submits feedback from the phone board menu and can retry a failed 
   const dialog = page.getByRole("dialog", { name: "Send feedback" });
   const send = dialog.getByRole("button", { exact: true, name: "Send" });
   const description = dialog.getByLabel("Description");
+  await expect(dialog.getByRole("textbox")).toHaveCount(1);
+  await expect(dialog.getByRole("radio")).toHaveCount(0);
   await expect(send).toBeDisabled();
   await description.fill("The dice roll is hard to read on a small screen.");
   await reviewShot(page, "feedback-phone-dialog");
@@ -38,8 +40,19 @@ test("a guest submits feedback from the phone board menu and can retry a failed 
   await expect(dialog.getByRole("status")).toHaveText("Thanks for the feedback!");
   expect(submissions).toHaveLength(2);
   expect(submissions[0]).toEqual(submissions[1]);
-  expect(submissions[0]).toMatchObject({ category: "bug", role: "guest", screen: "board" });
+  expect(submissions[0]).toEqual({
+    description: "The dice roll is hard to read on a small screen.",
+    role: "guest",
+    screen: "board",
+    submissionId: expect.any(String),
+  });
   await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await item.click();
+  await expect(dialog).toBeVisible();
+  await page.touchscreen.tap(8, 100);
   await expect(dialog).toBeHidden();
   await expect(menu).toBeFocused();
   await expectNoCspViolations(page);
@@ -52,9 +65,15 @@ test("the desktop boards page offers the same form for improvements", async ({ p
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Ada");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Send feedback" }).click();
+  const open = page.getByRole("button", { name: "Send feedback" });
+  await open.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback" });
-  await dialog.getByRole("radio", { name: "Suggest an improvement" }).check();
+  await dialog.click({ position: { x: 8, y: 8 } });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(open).toBeFocused();
+  await open.click();
   await dialog.getByLabel("Description").fill("Let me pin the board we play on every week.");
   await reviewShot(page, "feedback-desktop-dialog");
   const sent = page.waitForRequest(
@@ -62,10 +81,11 @@ test("the desktop boards page offers the same form for improvements", async ({ p
   );
   await dialog.getByRole("button", { exact: true, name: "Send" }).click();
   const request = await sent;
-  expect(request.postDataJSON()).toMatchObject({
-    category: "improvement",
+  expect(request.postDataJSON()).toEqual({
+    description: "Let me pin the board we play on every week.",
     role: "member",
     screen: "boards",
+    submissionId: expect.any(String),
   });
   await expect(dialog.getByRole("status")).toHaveText("Thanks for the feedback!");
 });

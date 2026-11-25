@@ -11,7 +11,6 @@ export type FeedbackEnv = {
 };
 
 type Feedback = {
-  category: "bug" | "improvement";
   description: string;
   role: "guest" | "member";
   screen: "board" | "boards";
@@ -22,9 +21,8 @@ const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu;
 
 function parseFeedback(value: unknown): Feedback | null {
   if (typeof value !== "object" || value === null) return null;
-  const { category, description, role, screen, submissionId } = value as Partial<Feedback>;
+  const { description, role, screen, submissionId } = value as Partial<Feedback>;
   if (
-    (category !== "bug" && category !== "improvement") ||
     (role !== "guest" && role !== "member") ||
     (screen !== "board" && (screen !== "boards" || role !== "member")) ||
     typeof description !== "string" ||
@@ -34,7 +32,7 @@ function parseFeedback(value: unknown): Feedback | null {
     return null;
   const trimmed = description.trim();
   if (trimmed === "" || trimmed.length > MAX_FEEDBACK_LENGTH) return null;
-  return { category, description: trimmed, role, screen, submissionId };
+  return { description: trimmed, role, screen, submissionId };
 }
 
 export async function feedbackRoute(
@@ -85,7 +83,7 @@ export async function feedbackRoute(
     .take("feedback", 5, 60_000);
   if (!allowed) return reply(429);
 
-  const { category, description, role, screen, submissionId } = feedback;
+  const { description, role, screen, submissionId } = feedback;
   try {
     const response = await fetch(`https://${region}.i.posthog.com/i/v0/e/`, {
       body: JSON.stringify({
@@ -99,7 +97,6 @@ export async function feedbackRoute(
           $survey_id: survey,
           $survey_submission_id: submissionId,
           [`$survey_response_${question}`]: description,
-          category,
           role,
           screen,
         },
