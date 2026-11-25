@@ -232,6 +232,8 @@ test("the owner warms each top card and a loose back reveals the same face after
   browser,
   page,
 }) => {
+  // WARNING: Parallel browsers share loopback in Miniflare. Model two distinct addresses for rejoin coverage.
+  await page.context().setExtraHTTPHeaders({ "CF-Connecting-IP": "192.0.2.41" });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ height: 760, width: 360 });
   await page.goto(`${STANDALONE}/boards`);
@@ -241,7 +243,9 @@ test("the owner warms each top card and a loose back reveals the same face after
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
 
-  const guestContext = await browser.newContext();
+  const guestContext = await browser.newContext({
+    extraHTTPHeaders: { "CF-Connecting-IP": "192.0.2.42" },
+  });
   const guest = await guestContext.newPage();
   await guest.emulateMedia({ reducedMotion: "reduce" });
   try {
