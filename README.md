@@ -1,8 +1,16 @@
 # Little Table
 
-A shared whiteboard for tabletop RPGs, built on tldraw. You can flick a d20
-across the map to roll it again. The server picks the number. Your browser
-handles the bounce.
+A whiteboard for tabletop RPGs, built on tldraw. 
+No bloat and no forms to fill.
+
+- Roll a d20 across the map with your mouse or finger.
+- Write `/roll 3d6kh2` to roll 3 d6s and keep 2 highest.
+- Find a text on this map, your character sheet or any other image thanks to magic of OCR.
+- Chat with your friends.
+- Ping them when they inevitably get lost.
+- Summon them when they ignore your pings.
+- Set landmarks to jump to.
+- Give your AI of choice MCP access to clean up your mess and compress the 50MB concept art of a goblin you forgot about.
 
 [Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
 
