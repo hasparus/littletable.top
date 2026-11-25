@@ -15,6 +15,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { ThumbnailType } from "./board-thumbnail";
 import type { ExpressionError } from "./dice-expression";
 import type { Roll, RollRequest } from "./dice-notation";
+import type { GizmoDecision } from "./gizmo-packages";
 import type { Pass } from "./pass";
 import type {
   BoardGrant,
@@ -30,12 +31,11 @@ import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { type ChatMessage, rollCommand } from "./chat";
 import { appendChat, openChat, recentChat } from "./chat-store";
+import { changeDeck, type DeckCommand } from "./deck";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { evaluateExpression } from "./dice-evaluation";
 import { InvalidRoll, parseExpression } from "./dice-expression";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
-import type { GizmoDecision } from "./gizmo-packages";
-import { changeDeck, type DeckCommand } from "./deck";
 import { gizmoProblem, GizmoRequests } from "./gizmo-requests";
 import { GizmoStore, readInstalledGizmo } from "./gizmo-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
