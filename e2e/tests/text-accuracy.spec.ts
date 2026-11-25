@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 import type { TextResult } from "../../src/text-result";
 
-import { HOST, HOSTED } from "../ports";
+import { HOST } from "../ports";
 import { score, type Truth } from "../text-score";
 import { collectCspViolations, expectNoCspViolations } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
@@ -50,19 +50,24 @@ test(
     await page.goto(`${HOST}/sign-in?name=Ola`);
     await page.getByRole("button", { name: "New board" }).click();
     await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-    for (const image of Object.values(IMAGES)) await uploadImage(page, `text/${image}`);
-
-    // The board's id, from where its images load.
-    const src = await page
-      .getByTestId("canvas")
-      .locator("img.tl-image")
-      .first()
-      .evaluate((image) => new URL((image as HTMLImageElement).src).pathname);
-    const files = src.slice(0, src.lastIndexOf("/"));
+    // The canvas can still be displaying a local blob when the uploads finish.
+    // Use the actual room endpoint that accepted an image.
+    const [upload] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          /^\/rooms\/[^/]+\/files$/u.test(new URL(response.url()).pathname) &&
+          response.ok(),
+      ),
+      (async () => {
+        for (const image of Object.values(IMAGES)) await uploadImage(page, `text/${image}`);
+      })(),
+    ]);
+    const files = upload.url();
     await expect
       .poll(
         async () => {
-          const response = await page.request.get(`${HOSTED}${files}/text`);
+          const response = await page.request.get(`${files}/text`);
           const listing = (await response.json()) as { stored: unknown[] };
           return listing.stored.length;
         },
@@ -75,7 +80,7 @@ test(
       const hash = sha256(readFileSync(fixture(`text/${image}`)));
       const readings = await Promise.all(
         ["tesseract-6.0.1", "ppocr-v6tiny.1"].map(async (engine) => {
-          const response = await page.request.get(`${HOSTED}${files}/${hash}/text/${engine}`);
+          const response = await page.request.get(`${files}/${hash}/text/${engine}`);
           return (await response.json()) as TextResult;
         }),
       );
