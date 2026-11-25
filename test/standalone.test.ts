@@ -26,6 +26,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Env } from "../src/index";
 
+import { avatarKey } from "../src/avatars";
 import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
@@ -362,6 +363,42 @@ describe("the public board", () => {
   });
 });
 
+it("isolates board lists, links, and mutations between previews sharing D1", async () => {
+  const person = new Browser();
+  await person.signIn("Ada");
+  const first = { ...standaloneEnv, BOARD_DATA_SCOPE: "pr-71" };
+  const second = { ...standaloneEnv, BOARD_DATA_SCOPE: "pr-72" };
+  const post = (path: string, worker: Env, body = {}) =>
+    person.fetch(
+      path,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Content-Type": "application/json",
+          Origin: ORIGIN,
+          "X-CSRF-Token": person.csrf!,
+        },
+        method: "POST",
+      },
+      worker,
+    );
+  const made = await post("/api/boards", first, { title: "Preview map" });
+  expect(made.status).toBe(201);
+  const board: { id: string; shareCode: string } = await made.json();
+  const bootstrap = `/api/b/${board.shareCode}/bootstrap`;
+
+  expect((await post(bootstrap, second)).status).toBe(404);
+  expect((await post(`/api/boards/${board.id}/delete`, second)).status).toBe(404);
+  expect(await (await person.fetch("/api/boards", {}, second)).json()).toMatchObject({
+    owned: [],
+    visited: [],
+  });
+  expect((await post(bootstrap, first)).status).toBe(200);
+  expect(await (await person.fetch("/api/boards", {}, first)).json()).toMatchObject({
+    owned: [{ id: board.id }],
+  });
+});
+
 describe("signing in", () => {
   it("makes an account and a session from the provider's answer", async () => {
     const ada = new Browser();
@@ -378,6 +415,20 @@ describe("signing in", () => {
       csrf: expect.any(String),
     });
     expect([...ada.cookies.keys()]).toEqual(["__Host-tabletop-session"]);
+  });
+
+  it("copies an unchanged avatar again when the current bucket lacks it", async () => {
+    const person = new Browser();
+    await person.signIn("Ada");
+    const { account }: { account: { avatar: string } } = await (
+      await person.fetch("/api/me")
+    ).json();
+    const hash = account.avatar.split("/").at(-1)!;
+
+    await standaloneEnv.Files.delete(avatarKey(hash));
+    expect((await person.fetch(account.avatar)).status).toBe(404);
+    await person.signIn("Ada");
+    expect((await person.fetch(account.avatar)).status).toBe(200);
   });
 
   it("sets a session cookie scripts cannot read and other sites do not get", async () => {

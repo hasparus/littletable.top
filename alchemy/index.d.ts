@@ -61,6 +61,10 @@ export type HostedProps = Shared & {
 };
 
 export type StandaloneProps = Shared & {
+  /** Stable board metadata partition when the database is shared across preview Workers. */
+  boardDataScope?: string;
+  /** Bind an existing D1 resource. Its owning stack provisions and migrates it. */
+  database?: Cloudflare.D1.Database;
   feedback?: {
     projectToken: Redacted.Redacted<string> | string;
     questionId: string;

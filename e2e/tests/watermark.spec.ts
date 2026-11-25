@@ -151,7 +151,7 @@ for (const [name, device] of SCREENS) {
     await expectClearOf(page, dice, "the Dice sheet");
     await reviewShot(page, `watermark-${name}-sheet`);
     await dice.getByRole("button", { exact: true, name: "Add d20" }).click();
-    await dice.getByRole("button", { name: /^Roll/u }).click();
+    await dice.getByRole("button", { exact: true, name: "Roll d20" }).click();
     await expect(dice).toBeHidden();
 
     const toast = page.getByRole("button", { exact: true, name: "Close" });

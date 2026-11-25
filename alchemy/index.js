@@ -105,6 +105,7 @@ function configure(props) {
     client,
     env: {
       ...hosts,
+      BOARD_DATA_SCOPE: props.boardDataScope ?? "",
       DISPLAY_NAME: client.name,
       ...(feedback === undefined
         ? {}
@@ -149,9 +150,11 @@ export const Tabletop = (id, props) =>
     const standalone =
       props.mode === "standalone"
         ? {
-            DB: yield* Cloudflare.D1.Database(`${id}Accounts`, {
-              migrations: sourceFile("migrations"),
-            }),
+            DB:
+              props.database ??
+              (yield* Cloudflare.D1.Database(`${id}Accounts`, {
+                migrations: sourceFile("migrations"),
+              })),
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};

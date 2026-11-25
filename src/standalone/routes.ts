@@ -28,6 +28,7 @@ import { type Session, Store } from "./store";
 import { workOs } from "./workos";
 
 export type StandaloneEnv = {
+  BOARD_DATA_SCOPE?: string;
   BoardRoom: DurableObjectNamespace<BoardRoom>;
   DB: D1Database;
   Files: R2Bucket;
@@ -135,7 +136,7 @@ export class Standalone {
     private readonly keys: Keys,
   ) {
     this.provider = workOs(config.workOs);
-    this.store = new Store(env.DB);
+    this.store = new Store(env.DB, env.BOARD_DATA_SCOPE);
   }
 
   route(request: Request): Promise<Response> | null {
@@ -286,7 +287,12 @@ export class Standalone {
   private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
     if (identity.avatarUrl === null) return null;
     const kept = await this.store.avatarOf(identity.subject);
-    if (kept.avatarUrl === identity.avatarUrl && kept.avatar !== null) return kept.avatar;
+    if (
+      kept.avatarUrl === identity.avatarUrl &&
+      kept.avatar !== null &&
+      (await this.env.Files.head(avatarKey(kept.avatar))) !== null
+    )
+      return kept.avatar;
     const copy = await copyAvatar({
       bucket: this.env.Files,
       rule: providerRule(this.config.workOs.apiBase),
