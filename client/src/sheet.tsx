@@ -1,6 +1,15 @@
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Icon } from "./icons";
+import { enterSurface } from "./surface-entry";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
 // WARNING: Small visual viewport changes can be browser chrome rather than an on-screen keyboard.
@@ -57,6 +66,15 @@ export function Sheet({
   const hasField = field !== undefined;
   const isChat = panel === "chat";
 
+  useLayoutEffect(() => {
+    const surface = sheet.current;
+    if (!surface) return;
+    const trigger = surface
+      .closest("[data-board-shell]")
+      ?.querySelector(`[aria-controls="${PANEL_ID[panel]}"]`);
+    enterSurface(surface, trigger ?? null);
+  }, [panel]);
+
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const first = sheet.current?.querySelector<HTMLElement>("[data-autofocus]");
@@ -81,6 +99,7 @@ export function Sheet({
       <div
         aria-hidden="true"
         className="fixed inset-x-0 top-0 bottom-[max(var(--board-sheet-bottom),calc(max(4px,env(safe-area-inset-bottom))+52px))] z-40 bg-ink/20 sm:hidden"
+        data-sheet-scrim
         onClick={() => open(null)}
       />
       <section
