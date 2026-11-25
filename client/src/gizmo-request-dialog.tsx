@@ -48,9 +48,8 @@ export function GizmoRequestDialog({
       await onDecision(action);
     } catch {
       setFailed(true);
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   }
 
   return (
