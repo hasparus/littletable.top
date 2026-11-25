@@ -108,6 +108,7 @@ export class BoardFiles {
     "board import",
     null,
   );
+  chooseImportFile: (() => void) | null = null;
   // The person's own picture on this board, once the Worker has said.
   readonly avatar = atom<string | null>("own avatar", null);
   // Whether the board's files (images, people's pictures) can be read now.
@@ -122,7 +123,6 @@ export class BoardFiles {
   private pendingAccess: Promise<void> | null = null;
   private readonly loaded = new Map<number, number>();
   private nextUpload = 0;
-  private importing: AbortController | null = null;
 
   constructor(
     private readonly keeper: PassKeeper,
@@ -131,24 +131,17 @@ export class BoardFiles {
 
   async runImport(
     name: string,
-    task: (signal: AbortSignal, report: (progress: ImportProgress) => void) => Promise<void>,
+    task: (report: (progress: ImportProgress) => void) => Promise<void>,
   ): Promise<boolean> {
-    if (this.importing !== null) return false;
-    const controller = new AbortController();
-    this.importing = controller;
+    if (this.importProgress.get() !== null) return false;
     const report = (progress: ImportProgress) => this.importProgress.set({ name, progress });
     report({ kind: "reading", percent: 0 });
     try {
-      await task(controller.signal, report);
+      await task(report);
     } finally {
-      this.importing = null;
       this.importProgress.set(null);
     }
     return true;
-  }
-
-  cancelImport(): void {
-    this.importing?.abort();
   }
 
   get path(): string {

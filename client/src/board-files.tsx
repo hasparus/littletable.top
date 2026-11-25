@@ -3,6 +3,7 @@ import {
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
   useEditor,
+  useEvent,
   useToasts,
   useTranslation,
   useValue,
@@ -12,7 +13,7 @@ import type { Copy } from "./copy";
 import type { ImportProgress } from "./tldr";
 
 import { fill } from "./copy";
-import { downloadTldr, handleFiles, pickTldr } from "./file-flows";
+import { downloadTldr, handleFiles } from "./file-flows";
 import { useBoardUi } from "./ui";
 
 // Wires the board's images and .tldr files into tldraw while the editor is active.
@@ -20,12 +21,11 @@ export function BoardFileHandlers() {
   const { copy, files } = useBoardUi();
   const editor = useEditor();
   const toasts = useToasts();
-  const msg = useTranslation();
+  const msg = useEvent(useTranslation());
   useEffect(
     () => handleFiles(editor, { copy, files, msg, toasts }),
     [copy, editor, files, msg, toasts],
   );
-  useEffect(() => () => files.cancelImport(), [files]);
   return null;
 }
 
@@ -127,7 +127,7 @@ export function BoardFileMenuItems() {
         disabled={importing}
         id="board-file-import"
         label={copy.boardFileImport}
-        onSelect={() => pickTldr(editor, flow)}
+        onSelect={() => files.chooseImportFile?.()}
       />
     </TldrawUiMenuGroup>
   );

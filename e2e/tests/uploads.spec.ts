@@ -230,10 +230,13 @@ test("a large import shows progress, explains a failed upload and can be retried
   } finally {
     response.resolve(null);
   }
-  await expect(page.getByText("Could not import “large.tldr”")).toBeVisible();
-  await expect(
-    page.getByText("This board has no room for more images.", { exact: false }),
-  ).toBeVisible();
+  const failure = page
+    .locator(".tlui-toast__container")
+    .filter({ hasText: "Could not import “large.tldr”" });
+  await expect(failure).toBeVisible();
+  await expect(failure.locator(".tlui-toast__description")).toContainText(
+    "This board has no room for more images.",
+  );
   await expect(page.getByRole("progressbar")).toHaveCount(0);
   await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
 

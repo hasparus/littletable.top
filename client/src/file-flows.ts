@@ -89,9 +89,10 @@ async function importBoardFile(
   editor: Editor,
   file: File,
   { copy, files, toasts }: FileFlow,
+  signal: AbortSignal,
 ): Promise<void> {
-  if (editor.isDisposed) return;
-  const started = await files.runImport(file.name, async (signal, report) => {
+  if (signal.aborted || editor.isDisposed) return;
+  const started = await files.runImport(file.name, async (report) => {
     toasts.removeToast(IMPORT_RESULT);
     try {
       await importTldr(editor, file, {
@@ -110,7 +111,9 @@ async function importBoardFile(
           return uploaded.src;
         },
       });
-      toasts.addToast({ id: IMPORT_RESULT, severity: "success", title: copy.boardFileAdded });
+      if (!signal.aborted) {
+        toasts.addToast({ id: IMPORT_RESULT, severity: "success", title: copy.boardFileAdded });
+      }
     } catch (error) {
       if (signal.aborted || editor.isDisposed) return;
       const refused = error instanceof ImportRefused ? error : new ImportRefused("failed");
@@ -124,7 +127,7 @@ async function importBoardFile(
       });
     }
   });
-  if (!started) toasts.addToast({ severity: "info", title: copy.boardFileBusy });
+  if (!started && !signal.aborted) toasts.addToast({ severity: "info", title: copy.boardFileBusy });
 }
 
 const fileName = (title: string) =>
@@ -144,40 +147,47 @@ export async function downloadTldr(editor: Editor, { copy, toasts }: FileFlow): 
   }
 }
 
-export function pickTldr(editor: Editor, flow: FileFlow): void {
+function pickTldr(importFile: (file: File) => Promise<void>): void {
   const input = document.createElement("input");
   input.type = "file";
   // NOTE: no accept filter: iOS greys out files of a type it does not
   // know, and it knows no .tldr. Anything else is refused once read.
-  input.addEventListener("change", () => {
-    const [file] = input.files ?? [];
-    if (file !== undefined) void importBoardFile(editor, file, flow);
-  });
+  input.addEventListener(
+    "change",
+    () => {
+      const [file] = input.files ?? [];
+      if (file !== undefined) void importFile(file);
+    },
+    { once: true },
+  );
   input.click();
 }
 
-// Every way a file arrives (the picker, a drop, a paste) goes through one
-// handler, which imports .tldr files, redraws photos too large for the board,
-// and hands the rest to tldraw's own handling. Pasted images and
-// those another board holds are uploaded to this one. A refused upload says why,
-// once. Answers the cleanup.
+// The picker, drops and pastes share the active editor's file handling.
+// It imports .tldr files, fits oversized photos and hands media to tldraw.
+// Pasted images are stored on this board. Each refused upload says why.
 export function handleFiles(
   editor: Editor,
   flow: FileFlow & { msg: (id: string) => string },
 ): () => void {
   const { copy, files, msg, toasts } = flow;
+  // A layer switch keeps the previous editor mounted so it can finish sync.
+  // File work belongs to this activation, including any picker still open.
+  const lifetime = new AbortController();
+  const active = () => !lifetime.signal.aborted && !editor.isDisposed;
+  const importFile = (file: File) => importBoardFile(editor, file, flow, lifetime.signal);
+  files.chooseImportFile = () => pickTldr(importFile);
   let explained = 0;
   files.onRefused = (reason) => {
     explained++;
     toasts.addToast({ severity: "error", title: refusalText(copy, reason) });
   };
-  const uploadFailed = msg("assets.files.upload-failed");
   // NOTE: tldraw follows a failed upload with its own "Upload failed"; the
   // board has already said why.
   const quietToasts: TLUiToastsContextType = {
     ...toasts,
     addToast: (toast) => {
-      if (toast.title === uploadFailed && explained > 0) {
+      if (explained > 0 && toast.title === msg("assets.files.upload-failed")) {
         explained--;
         return "";
       }
@@ -189,7 +199,11 @@ export function handleFiles(
     toasts.addToast({ severity: "error", title: copy.imageFromOtherBoard }),
   );
   editor.registerExternalContentHandler("files", async (content) => {
-    for (const file of content.files.filter(isTldrFile)) await importBoardFile(editor, file, flow);
+    if (!active()) return;
+    for (const file of content.files.filter(isTldrFile)) {
+      await importFile(file);
+      if (!active()) return;
+    }
     const images = content.files.filter((file) => !isTldrFile(file));
     if (images.length === 0) return;
     const fitted = await Promise.all(
@@ -200,6 +214,7 @@ export function handleFiles(
         }),
       ),
     );
+    if (!active()) return;
     await defaultHandleExternalFileContent(
       editor,
       { ...content, files: fitted },
@@ -207,7 +222,10 @@ export function handleFiles(
     );
   });
   return () => {
+    lifetime.abort();
+    editor.registerExternalContentHandler("files", null);
     stopBringing();
+    files.chooseImportFile = null;
     files.onRefused = null;
   };
 }

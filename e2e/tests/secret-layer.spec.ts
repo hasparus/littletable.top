@@ -1,9 +1,11 @@
 import type { Editor } from "tldraw";
 
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 import { boardAt, STANDALONE } from "../ports";
 import { joinAs, onBoard, phone, putNote, reachEditor } from "./helpers";
+import { fixture } from "./tldr";
 
 test.use({ colorScheme: "dark" });
 
@@ -83,4 +85,53 @@ test("the owner can write over the shared board without sharing the note", async
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await owner.getByRole("button", { name: "Open private pages" }).click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
+});
+
+test("switching layers stops the rest of an in-progress file drop", async ({ page }) => {
+  await page.goto(`${STANDALONE}/boards`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Importer");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(boardAt(STANDALONE));
+  await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+
+  const release = Promise.withResolvers<null>();
+  await page.route("**/files", async (route) => {
+    await release.promise;
+    await route.continue();
+  });
+  await reachEditor(page);
+  const drop = page.evaluate(
+    ({ board, image }) => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      const png = Uint8Array.from(atob(image), (char) => char.codePointAt(0)!);
+      return editor.putExternalContent({
+        files: [
+          new File([board], "first.tldr"),
+          new File([board], "second.tldr"),
+          new File([png], "map.png", { type: "image/png" }),
+        ],
+        type: "files",
+      });
+    },
+    {
+      board: readFileSync(fixture("table.tldr"), "utf8"),
+      image: readFileSync(fixture("map.png"), "base64"),
+    },
+  );
+  try {
+    await expect(page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" })).toBeVisible();
+    const toggle = page.getByRole("button", { name: "Secret layer" });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    release.resolve(null);
+    await drop;
+  }
+  const shared = await page.evaluate(() => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    return { pages: editor.getPages().length, shapes: editor.getCurrentPageShapes().length };
+  });
+  expect(shared).toEqual({ pages: 1, shapes: 0 });
 });
