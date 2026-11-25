@@ -95,11 +95,11 @@ function ImportStatus({
         )}
       </div>
       <div
-        role="progressbar"
         aria-label={label}
         aria-valuenow={percent}
         className="mt-[3px] h-1.5 overflow-hidden rounded-full bg-border"
         data-board-import-track
+        role="progressbar"
       >
         <div
           className={`h-full rounded-full ${progress.kind === "uploading" && progress.waiting ? "bg-warning" : "bg-primary"}`}
