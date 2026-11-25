@@ -21,8 +21,12 @@ body {
 
 @font-face {
   font-family: "Landing handwriting";
-  font-display: optional;
+  font-display: block;
   src: url("@tldraw/assets/fonts/Shantell_Sans-Informal_Regular.woff2") format("woff2");
+}
+
+.loading-handwriting :is([data-landing-preview], [data-public-board-note]) {
+  visibility: hidden;
 }
 
 body:has([data-landing-preview]) {

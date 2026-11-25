@@ -139,7 +139,13 @@ function tabletop(): Plugin {
           for (const imported of chunk.imports) visit(imported);
         }
         visit(board.fileName);
+        const handwriting = Object.values(bundle).find(
+          (file) =>
+            file.type === "asset" && file.names.includes("Shantell_Sans-Informal_Regular.woff2"),
+        );
+        if (!handwriting) throw new Error("Missing landing handwriting font");
         const hints = [
+          `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${escapeHtml(handwriting.fileName)}">`,
           ...Array.from(
             modules,
             (file) => `<link rel="modulepreload" crossorigin href="/${escapeHtml(file)}">`,

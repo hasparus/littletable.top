@@ -85,7 +85,14 @@ async function mount(): Promise<void> {
   // The bootstrap request and tldraw's download run side by side: on a
   // phone the canvas then opens one round trip sooner.
   const first = knock(door);
-  if (landing) root.replaceChildren(landingPreview(landing.copy));
+  if (landing) {
+    // Reveal the intro with the same face throughout, even on a slow first visit.
+    const classes = document.documentElement.classList;
+    const reveal = () => classes.remove("loading-handwriting");
+    classes.add("loading-handwriting");
+    void document.fonts.load('15px "Landing handwriting"').then(reveal, reveal);
+    root.replaceChildren(landingPreview(landing.copy));
+  }
   const { mountBoard } = await import("./board");
   mountBoard(root, {
     copy,
