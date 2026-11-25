@@ -213,7 +213,22 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await expect(onBoard(bea, "Altar")).toBeInViewport();
 
   await goToPage(ada, "Town");
+  const gate = await openSheet(ada, "Search");
+  await gate.getByRole("button", { exact: true, name: "Gate Town" }).click();
+  await expect(onBoard(ada, "Gate")).toBeInViewport();
+  const ownerPeople = await openSheet(ada, "People");
+  const summon = ownerPeople.getByRole("button", { name: "Summon everyone" });
+  await expect(summon).toBeEnabled();
+  await summon.click();
+  await expect(ownerPeople.getByRole("status")).toHaveText("Summon sent.");
+  await expect(pageButton(bea)).toHaveText("Town");
+  await expect(onBoard(bea, "Gate")).toBeInViewport();
+  await shot(ada, "owner-summon");
+  await closeSheet(ada, "People");
+  await goToPage(bea, "Crypt");
+
   const people = await openSheet(bea, "People");
+  await expect(people.getByRole("button", { name: "Summon everyone" })).toHaveCount(0);
   await expect(people.getByRole("listitem")).toHaveCount(2, { timeout: 30_000 });
   const adaRow = people.getByRole("button", { name: /^Ada/u });
   await expect(adaRow).toContainText("Town");

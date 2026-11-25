@@ -15,6 +15,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
 import type { Pass } from "./pass";
+import type { SummonView } from "./summon";
 import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
@@ -288,6 +289,19 @@ export class BoardRoom extends DurableObject<Env> {
     }
     log("board.rolled", { board: pass.board, dice: pool.length, person: kind(pass.sub) });
     return roll;
+  }
+
+  summon(pass: Pass, view: SummonView) {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    const { room } = this;
+    if (room.getRecord(view.page)?.typeName !== "page") return "page-missing" as const;
+    for (const session of room.getSessions()) {
+      if (session.isConnected && session.meta.sub !== pass.sub) {
+        room.sendCustomMessage(session.sessionId, { ...view, type: "summon" });
+      }
+    }
+    return null;
   }
 
   rolls(pass: Pass): Refusal | Roll[] {

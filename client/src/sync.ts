@@ -7,6 +7,8 @@ import type { BoardFiles } from "./assets";
 import type { PassKeeper } from "./bootstrap";
 import type { Rolls } from "./rolls";
 
+import { type SummonView, summonMessage } from "../../src/summon";
+
 export type Refusal = "full" | "gone" | "link-reset";
 
 const REFUSALS: Partial<Record<string, Refusal>> = {
@@ -27,6 +29,7 @@ export function useBoardStore({
   files,
   keeper,
   receiveChat,
+  receiveSummon,
   rolls,
 }: {
   active: boolean;
@@ -34,6 +37,7 @@ export function useBoardStore({
   files: BoardFiles;
   keeper: PassKeeper;
   receiveChat: (message: unknown) => void;
+  receiveSummon: (view: SummonView) => void;
   rolls: Rolls;
 }) {
   const { person } = keeper.bootstrap;
@@ -54,12 +58,13 @@ export function useBoardStore({
       onCustomMessageReceived: (message: unknown) => {
         receive(message);
         receiveChat(message);
+        if (summonMessage.isValid(message)) receiveSummon(message);
         files.onTextNotice?.(message);
       },
       uri: async () => keeper.socketUri(),
       users,
     };
-  }, [attempt, color, files, keeper, person, receive, receiveChat]);
+  }, [attempt, color, files, keeper, person, receive, receiveChat, receiveSummon]);
   const store = useSync({
     ...syncOptions,
     getUserPresence: active ? getDefaultUserPresence : () => null,

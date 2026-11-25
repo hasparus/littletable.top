@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createUserId, type Editor, type TLPageId, useValue } from "tldraw";
 
 import { Avatar } from "./avatar";
@@ -73,6 +73,33 @@ function Who({ page, who }: { page: string | undefined; who: Person }) {
   );
 }
 
+function SummonButton({ hasOthers }: { hasOthers: boolean }) {
+  const { copy, summon } = useBoardUi();
+  const [status, setStatus] = useState<"idle" | "pending" | "sent" | "failed">("idle");
+  if (summon === undefined) return null;
+  const message = status === "sent" ? copy.summoned : status === "failed" ? copy.summonFailed : "";
+
+  return (
+    <div className="mb-2 border-b border-border pb-3">
+      <button
+        aria-busy={status === "pending"}
+        className="btn btn-secondary min-h-11 w-full"
+        disabled={!hasOthers || status === "pending"}
+        onClick={async () => {
+          setStatus("pending");
+          setStatus((await summon()) ? "sent" : "failed");
+        }}
+        type="button"
+      >
+        {copy.summon}
+      </button>
+      <p className="mt-2 text-sm text-foreground-secondary empty:mt-0" role="status">
+        {message}
+      </p>
+    </div>
+  );
+}
+
 export function PeopleSheet() {
   const { color, copy, editor, files, locale, open, person } = useBoardUi();
   const ownAvatar = useValue("own avatar", () => files.avatar.get(), [files]);
@@ -92,6 +119,7 @@ export function PeopleSheet() {
 
   return (
     <Sheet panel="people" title={copy.people}>
+      <SummonButton hasOthers={others.length > 0} />
       <ul className="divide-y divide-border">
         <li className="flex min-h-12 items-center gap-3">
           <Who

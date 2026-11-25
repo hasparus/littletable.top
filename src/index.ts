@@ -27,6 +27,7 @@ import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
+import { MAX_SUMMON_BYTES, type SummonView, summonView } from "./summon";
 
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
@@ -109,12 +110,33 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?)$/u;
+const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|summon)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
     ? { hostOrigin: config.hostOrigin, mode: "hosted" }
     : { mode: "standalone" };
+
+async function summon(request: Request, room: DurableObjectStub<BoardRoom>, pass: Pass) {
+  if (request.method !== "POST" || isSecretLayer(pass.board)) {
+    return new Response(null, { status: 404 });
+  }
+  if (!pass.owner) return new Response(null, { status: 403 });
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length")),
+    max: MAX_SUMMON_BYTES,
+  });
+  if (body === "too-large") return new Response(null, { status: 413 });
+  let view: SummonView;
+  try {
+    view = summonView.validate(JSON.parse(new TextDecoder().decode(body)));
+  } catch {
+    return new Response(null, { status: 400 });
+  }
+  const refusal = await room.summon(pass, view);
+  if (refusal === "page-missing") return new Response(null, { status: 409 });
+  return refusal === null ? new Response(null, { status: 204 }) : answer(refusal);
+}
 
 async function rooms(
   request: Request,
@@ -177,6 +199,7 @@ async function rooms(
   }
   const pass = await passOf(bearer(request) ?? url.searchParams.get("pass"));
   if (pass === null) return new Response("Forbidden", { status: 403 });
+  if (action === "summon") return summon(request, room, pass);
 
   if (action === "chat") {
     if (request.method === "GET") return answer(await room.chatHistory(pass));

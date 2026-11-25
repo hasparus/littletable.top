@@ -28,6 +28,7 @@ import { PeopleSheet } from "./people";
 import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
+import { useSummon } from "./summon";
 import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
@@ -103,6 +104,8 @@ export function BoardCanvas({
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
   const chat = useChat(keeper, landing !== undefined);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const { receiveSummon, summon } = useSummon(editor, active, keeper);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
   const { refusal, store } = useBoardStore({
     active,
@@ -110,6 +113,7 @@ export function BoardCanvas({
     files,
     keeper,
     receiveChat: chat.receive,
+    receiveSummon,
     rolls,
   });
   const usable = active && store.status === "synced-remote";
@@ -130,7 +134,6 @@ export function BoardCanvas({
     return () => clearTimeout(timer);
   }, [connecting]);
 
-  const [editor, setEditor] = useState<Editor | null>(null);
   const [editorLayer, setEditorLayer] = useState<HTMLDivElement | null>(null);
   const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
   useEffect(() => {
@@ -206,6 +209,7 @@ export function BoardCanvas({
       search,
       setNaming,
       setRollDraft,
+      summon,
       typing,
     }),
     [
@@ -225,6 +229,7 @@ export function BoardCanvas({
       rollDraft,
       rolls,
       search,
+      summon,
       typing,
     ],
   );
