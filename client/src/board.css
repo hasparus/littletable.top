@@ -296,6 +296,11 @@
       100dvw - var(--board-left) - var(--board-right) - 3 * var(--board-top-control-size) - 116px
     )
   );
+
+  @media (width < 370px) {
+    gap: 4px;
+    padding-inline: 6px;
+  }
 }
 
 [data-public-board-controls] > :is(a, button):hover,
