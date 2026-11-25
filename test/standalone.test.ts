@@ -39,6 +39,33 @@ type Answer = { board: string; pass: string; person: { id: string; name: string;
 const hostedEnv = env as unknown as Env;
 
 describe("the public board", () => {
+  it("assigns public-board ownership only to the configured WorkOS account", async () => {
+    const owner = new Browser();
+    const guest = new Browser();
+    const other = new Browser();
+    await owner.signIn("Same name");
+    await other.signIn("Same name");
+    const { account } = await (await owner.fetch("/api/me")).json<{ account: { id: string } }>();
+    const workerEnv = { ...standaloneEnv, PUBLIC_BOARD_OWNER_ID: account.id };
+    const bootstrap = (browser: Browser, environment: typeof standaloneEnv = workerEnv) =>
+      browser.fetch(
+        "/api/public-board/bootstrap",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: ORIGIN },
+          body: "{}",
+        },
+        environment,
+      );
+    const assigned = await (await bootstrap(owner)).json<Answer>();
+    expect(assigned.person).toMatchObject({ id: `a:${account.id}`, owner: true });
+    expect(assigned).not.toHaveProperty("secretPass");
+    for (const browser of [guest, other]) {
+      expect((await (await bootstrap(browser)).json<Answer>()).person.owner).toBe(false);
+    }
+    expect((await (await bootstrap(owner, standaloneEnv)).json<Answer>()).person.owner).toBe(false);
+  });
+
   it("keeps a guest's generated name and lets guests and members share chat", async () => {
     const guest = new Browser();
     const member = new Browser();

@@ -290,7 +290,7 @@ const [font, googleSansFlex, mapBoard, mark] = await Promise.all([
   readFile(new URL("../client/src/theme/fonts/outfit-latin.woff2", import.meta.url)),
   readFile(new URL("../client/src/theme/fonts/google-sans-flex-latin.woff2", import.meta.url)),
   readFile(new URL("open-graph-map.png", import.meta.url)),
-  readFile(new URL("../client/public/favicon.svg", import.meta.url)),
+  readFile(new URL("table-mark.svg", import.meta.url)),
 ]);
 const documentCss = `
   @font-face { font-family: Outfit; src: url(data:font/woff2;base64,${font.toString("base64")}) format("woff2"); font-weight: 100 900; }

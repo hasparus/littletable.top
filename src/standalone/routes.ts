@@ -548,7 +548,7 @@ export class Standalone {
       headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
-      const owner = saved?.ownerId === account.id;
+      const owner = (saved?.ownerId ?? this.config.publicBoardOwnerId) === account.id;
       person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
     }
@@ -562,14 +562,14 @@ export class Standalone {
     };
     const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
-      person.owner && found !== null
+      person.owner && saved !== null && found !== null
         ? signPass(this.keys, {
             ...claims,
             board: secretLayerOf(board.id),
             sessionHash: found.hash,
           })
         : null,
-      person.owner
+      person.owner && saved !== null
         ? this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board.id)).publicationCode()
         : null,
     ]);
