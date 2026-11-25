@@ -34,4 +34,6 @@ export function addRollColumns(sql: SqlStorage) {
   );
   if (!columns.has("seed")) sql.exec("ALTER TABLE rolls ADD COLUMN seed INTEGER");
   if (!columns.has("expression")) sql.exec("ALTER TABLE rolls ADD COLUMN expression TEXT");
+  if (!columns.has("outcome")) sql.exec("ALTER TABLE rolls ADD COLUMN outcome TEXT");
+  if (!columns.has("chat")) sql.exec("ALTER TABLE rolls ADD COLUMN chat INTEGER");
 }

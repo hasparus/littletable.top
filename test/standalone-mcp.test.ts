@@ -28,6 +28,26 @@ const workerEnv = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+it.each([issuer, `${issuer}/`])("advertises the canonical issuer for %s", async (configured) => {
+  const metadata = await handle(
+    new Request("https://mcp.test/.well-known/oauth-protected-resource/mcp"),
+    { ...workerEnv, MCP_AUTHORIZATION_SERVER: configured },
+  );
+  expect(metadata.status).toBe(200);
+  expect(await metadata.json()).toMatchObject({ resource, authorization_servers: [issuer] });
+});
+
+it.each([`${issuer}/oauth2`, `${issuer}//`, "http://authkit.test"])(
+  "rejects %s as an AuthKit issuer origin",
+  async (configured) => {
+    const metadata = await handle(
+      new Request("https://mcp.test/.well-known/oauth-protected-resource/mcp"),
+      { ...workerEnv, MCP_AUTHORIZATION_SERVER: configured },
+    );
+    expect(metadata.status).toBe(500);
+  },
+);
+
 it("only grants the signed-in owner's chosen client and enforces revocation at the room", async () => {
   const owner = new Browser();
   const other = new Browser();

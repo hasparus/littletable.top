@@ -2,6 +2,7 @@ import type { Rooms } from "./server";
 
 import { publicKeyFrom } from "../pass";
 import { verifyMcpToken } from "./grant";
+import { httpsOrigin } from "./origin";
 import { isMcpPath, type McpSettings, SCOPES, serveMcp } from "./route";
 import { standaloneMcp } from "./standalone";
 
@@ -47,9 +48,10 @@ export async function handle(request: Request, env: McpEnv): Promise<Response> {
   const url = new URL(request.url);
   if (!isMcpPath(url.pathname)) return new Response("Not found", { status: 404 });
   if (env.MCP_RESOURCE !== undefined || env.DB !== undefined) {
-    const { DB: db, MCP_AUTHORIZATION_SERVER: issuer, MCP_RESOURCE: resource } = env;
-    if (!db || !issuer || !resource)
+    const { DB: db, MCP_AUTHORIZATION_SERVER: configuredIssuer, MCP_RESOURCE: resource } = env;
+    if (!db || !configuredIssuer || !resource)
       return misconfigured("standalone requires DB, MCP_AUTHORIZATION_SERVER and MCP_RESOURCE");
+    const issuer = httpsOrigin(configuredIssuer);
     const deployment = env.BOARD_DATA_SCOPE ?? "";
     let manageUrl;
     try {
@@ -57,8 +59,7 @@ export async function handle(request: Request, env: McpEnv): Promise<Response> {
       if (
         resource !== `${endpoint.origin}/mcp` ||
         !resource.startsWith("https://") ||
-        new URL(issuer).origin !== issuer ||
-        !issuer.startsWith("https://")
+        issuer === null
       ) {
         return misconfigured("invalid standalone issuer origin or MCP resource URL");
       }

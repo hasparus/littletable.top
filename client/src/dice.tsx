@@ -3,14 +3,8 @@ import { useId, useRef, useState } from "react";
 import type { Roll } from "./bootstrap";
 import type { RollRefusal } from "./rolls";
 
-import {
-  MAX_EXPRESSION_LENGTH,
-  MAX_MODIFIER,
-  type NotationError,
-  parseNotation,
-  type RollRequest,
-  rollResult,
-} from "../../src/dice-notation";
+import { type ExpressionError, parseExpression } from "../../src/dice-expression";
+import { MAX_EXPRESSION_LENGTH, type RollRequest, rollResult } from "../../src/dice-notation";
 import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { type Copy, dieLabel, fill } from "./copy";
 import {
@@ -20,7 +14,7 @@ import {
   BOARD_DIALOG_TITLE,
   useDialogBackdrop,
 } from "./dialog";
-import { modifierLabel, notationLabel, poolLabel } from "./dice-labels";
+import { modifierLabel, notationLabel, notationMessage, poolLabel, rollLabel } from "./dice-labels";
 import { DieShape } from "./die-shape";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
@@ -39,12 +33,7 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
         <p className="flex min-w-0 max-w-full items-baseline gap-1.5 text-sm">
           <span className="truncate font-semibold">{roll.name}</span>
           <span className="min-w-0 wrap-break-word text-foreground-muted">
-            {notation === null
-              ? poolLabel(
-                  copy,
-                  roll.dice.map(({ sides }) => sides),
-                )
-              : notationLabel(copy, notation)}
+            {rollLabel(copy, roll, notation)}
           </span>
         </p>
         <p className="flex min-w-0 max-w-full flex-wrap gap-0.5">
@@ -52,7 +41,9 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
             <DieShape
               copy={copy}
               dropped={!kept[index]}
+              fate={die.fate}
               key={index}
+              mark={die.mark}
               sides={die.sides}
               size="xs"
               tone="quiet"
@@ -138,43 +129,28 @@ function RollLog() {
   );
 }
 
-function notationMessage(copy: Copy, error: NotationError, example: string): string {
-  switch (error) {
-    case "count":
-      return fill(copy.notationCount, { max: MAX_DICE });
-    case "length":
-      return fill(copy.notationLength, { max: MAX_EXPRESSION_LENGTH });
-    case "modifier":
-      return fill(copy.notationModifier, { max: MAX_MODIFIER });
-    case "rule":
-      return copy.notationRule;
-    case "sides":
-      return copy.notationSides;
-    case "syntax":
-      return fill(copy.notationSyntax, { example });
-  }
-}
-
 /** Keep the primary roll control focused while the dice are in motion. */
 export function DiceSheet() {
   const { close, copy, person, rollDraft, rolls, setRollDraft } = useBoardUi();
   const { expression, pool } = rollDraft;
   const expressionId = useId();
   const [busy, setBusy] = useState(false);
-  const [notationError, setNotationError] = useState<NotationError | null>(null);
+  const [notationError, setNotationError] = useState<ExpressionError | null>(null);
   const [refusal, setRefusal] = useState<RollRefusal | null>(null);
   const last = rolls.log.findLast(({ sub }) => sub === person.id);
   const hasExpression = expression.trim() !== "";
   const again = !hasExpression && pool.length === 0 && last !== undefined;
   const nextExpression = again ? last.expression : hasExpression ? expression : undefined;
   const nextPool = again ? last.dice.map(({ sides }) => sides) : pool;
-  const notation = nextExpression === undefined ? null : parseNotation(nextExpression);
+  const notation = nextExpression === undefined ? null : parseExpression(nextExpression);
   const label =
     notation === null
       ? poolLabel(copy, nextPool)
-      : typeof notation === "string"
+      : "error" in notation
         ? ""
-        : notationLabel(copy, notation);
+        : notation.legacy === null
+          ? (nextExpression ?? "")
+          : notationLabel(copy, notation.legacy);
   const example = `3${dieLabel(copy, 6)}kh2 + 3`;
 
   const roll = async (request: RollRequest) => {
@@ -182,7 +158,9 @@ export function DiceSheet() {
     setRefusal(null);
     const answer = await rolls.roll(request);
     setBusy(false);
-    setRefusal(answer);
+    if (answer !== null && answer !== "failed" && answer !== "too-fast") {
+      setNotationError(answer);
+    } else setRefusal(answer);
     if (answer === null) {
       setRollDraft((current) => (current === rollDraft ? { expression: "", pool: [] } : current));
       close("dice");
@@ -245,8 +223,8 @@ export function DiceSheet() {
         onSubmit={(event) => {
           event.preventDefault();
           if (busy) return;
-          if (typeof notation === "string") {
-            setNotationError(notation);
+          if (notation !== null && "error" in notation) {
+            setNotationError(notation.error);
             setRefusal(null);
           } else if (nextExpression !== undefined) {
             void roll({ expression: nextExpression });
@@ -255,9 +233,19 @@ export function DiceSheet() {
           }
         }}
       >
-        <label className="block text-sm font-medium" htmlFor={expressionId}>
-          {copy.diceExpression}
-        </label>
+        <div className="flex items-baseline justify-between gap-2">
+          <label className="text-sm font-medium" htmlFor={expressionId}>
+            {copy.diceExpression}
+          </label>
+          <a
+            className="text-sm text-primary-strong underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
+            href="/docs#dice"
+            target="_blank"
+            rel="noopener"
+          >
+            {copy.diceReference}
+          </a>
+        </div>
         <input
           aria-describedby={notationError === null ? undefined : `${expressionId}-error`}
           aria-invalid={notationError !== null}
@@ -266,6 +254,7 @@ export function DiceSheet() {
           className="mt-1 block h-11 w-full rounded-lg border border-border bg-bg-secondary px-3 text-base focus:border-primary focus:outline-none"
           enterKeyHint="go"
           id={expressionId}
+          maxLength={MAX_EXPRESSION_LENGTH}
           onChange={(event) => {
             const { value } = event.target;
             setRollDraft({ expression: value, pool: value.trim() === "" ? pool : [] });

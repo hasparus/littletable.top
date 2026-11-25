@@ -4,13 +4,15 @@ import type { PassKeeper } from "./bootstrap";
 import type { ChatSize } from "./chat-resize";
 
 import { CHAT_HISTORY_LENGTH, type ChatMessage, MAX_CHAT_LENGTH } from "../../src/chat";
+import { EXPRESSION_ERRORS, type ExpressionError } from "../../src/dice-expression";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
+import { notationMessage } from "./dice-labels";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
 
-type Refusal = "failed" | "too-fast";
+type Refusal = "failed" | "too-fast" | ExpressionError;
 
 const isChatMessage = (event: unknown): event is { message: ChatMessage; type: "chat" } =>
   typeof event === "object" &&
@@ -71,6 +73,10 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
       try {
         const response = await request({ body: text, method: "POST" });
         if (response.status === 429) return "too-fast";
+        if (response.status === 400) {
+          const body: { error?: unknown } | null = await response.json().catch(() => null);
+          return EXPRESSION_ERRORS.find((error) => error === body?.error) ?? "failed";
+        }
         if (!response.ok) return "failed";
         add([(await response.json()) as ChatMessage]);
         return null;
@@ -178,6 +184,14 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
   };
 
   if (!shown) return null;
+  const error =
+    submission === "idle" || submission === "sending"
+      ? null
+      : submission === "failed"
+        ? copy.chatFailed
+        : submission === "too-fast"
+          ? copy.chatTooFast
+          : notationMessage(copy, submission);
 
   return (
     <Sheet chatResize={{ change: resize, size }} panel="chat" title={copy.chat}>
@@ -200,7 +214,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         tabIndex={0}
       >
         {chat.messages.map((message, index, messages) => {
-          const { at, id, name, sub, text } = message;
+          const { at, diceTotal, id, name, sub, text } = message;
           const own = sub === person.id;
           const first = !sameRun(messages[index - 1], message);
           const last = !sameRun(message, messages[index + 1]);
@@ -240,7 +254,16 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
                   title={timestamp}
                 >
                   <span className="block" dir="auto">
-                    {text}
+                    {diceTotal === undefined ? (
+                      text
+                    ) : (
+                      <>
+                        <code className="text-[0.875em]">{text}</code>
+                        <span aria-hidden="true"> = </span>
+                        <span className="sr-only"> {copy.total} </span>
+                        <strong className="tabular-nums">{diceTotal}</strong>
+                      </>
+                    )}
                   </span>
                 </p>
               </div>
@@ -261,9 +284,9 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
           </button>
         </div>
       )}
-      {(submission === "failed" || submission === "too-fast") && (
+      {error !== null && (
         <p className="shrink-0 px-4 pb-2 text-sm text-danger-text" role="status">
-          {submission === "too-fast" ? copy.chatTooFast : copy.chatFailed}
+          {error}
         </p>
       )}
       <form
@@ -278,6 +301,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
         <div className="flex h-11 rounded-(--chat-composer-radius) border border-border bg-bg-tertiary has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-border-focus">
           <input
             aria-label={copy.chatMessage}
+            autoCapitalize="none"
             autoComplete="off"
             className="min-w-0 flex-1 px-3 text-base outline-none placeholder:text-foreground-muted"
             dir="auto"

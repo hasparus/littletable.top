@@ -256,7 +256,11 @@ export async function serveSite(
         : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(shareCode);
     return withOpenGraph(page, url, config, board ?? undefined);
   }
-  const file = harden(await assets.fetch(request), request, config);
+  const assetRequest =
+    url.pathname === "/docs" || url.pathname === "/docs/"
+      ? new Request(new URL("/docs/index.html", url), request)
+      : request;
+  const file = harden(await assets.fetch(assetRequest), request, config);
   if (file.ok && HASHED.test(url.pathname)) {
     file.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   }
