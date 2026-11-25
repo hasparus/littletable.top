@@ -176,6 +176,21 @@ function exitOf(copy: Copy, { boardsUrl, home }: Bootstrap): Exit {
     : { href: boardsUrl, label: copy.myBoards };
 }
 
+function bootstrapError(copy: Copy, kind: Answer["kind"]) {
+  switch (kind) {
+    case "daily-server-limit":
+      return copy.bootstrapDailyLimit;
+    case "failed":
+      return copy.bootstrapFailed;
+    case "throttled":
+      return copy.tooManyTries;
+    case "unavailable":
+      return copy.bootstrapUnavailable;
+    default:
+      return null;
+  }
+}
+
 function Board({ copy, door, fallbackExit, first, landing, language, licenseKey }: Mount) {
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
 
@@ -200,7 +215,7 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
       } else if (answer.kind === "gone" || answer.kind === "link-reset") {
         setStage({ ending: answer.kind, exit: fallbackExit, kind: "ended" });
       } else {
-        const text = answer.kind === "throttled" ? copy.tooManyTries : copy.bootstrapFailed;
+        const text = bootstrapError(copy, answer.kind) ?? copy.bootstrapFailed;
         setStage({ kind: "failed", text });
       }
     },
@@ -247,10 +262,9 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
           error={stage.error}
           onSubmit={async (name) => {
             const answer = await knock(door, name);
-            if (answer.kind === "failed") setStage({ ...stage, error: copy.bootstrapFailed });
-            else if (answer.kind === "throttled") {
-              setStage({ ...stage, error: copy.tooManyTries });
-            } else settle(answer);
+            const error = bootstrapError(copy, answer.kind);
+            if (error === null) settle(answer);
+            else setStage({ ...stage, error });
           }}
         />
       );
