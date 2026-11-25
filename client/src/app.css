@@ -68,23 +68,31 @@ body:has([data-landing-preview]) {
   background-color: var(--color-background);
 }
 
-[data-landing-preview] {
-  --gutter: 12px;
-  position: fixed;
-  z-index: 1;
-  pointer-events: none;
-  top: calc(max(var(--gutter), env(safe-area-inset-top)) + 52px);
-  left: max(var(--gutter), env(safe-area-inset-left));
-  right: max(var(--gutter), env(safe-area-inset-right));
-  max-width: 502px;
-}
-
 :is([data-landing-preview], [data-public-board-note]) {
+  --landing-left: 12;
+  --landing-top: 64;
+  --landing-width: 440;
+  width: calc(var(--landing-width) * 1px);
   font-family: "Landing handwriting", sans-serif;
   color: var(--color-foreground);
   padding-inline: 2px;
   font-size: 15px;
   line-height: 1.35;
+  white-space: pre;
+}
+
+[data-landing-preview] {
+  --gutter: 12px;
+  --landing-inline-start: max(var(--gutter), env(safe-area-inset-left));
+  --landing-inline-end: max(var(--gutter), env(safe-area-inset-right));
+  --landing-available-width: calc(100vw - var(--landing-inline-start) - var(--landing-inline-end));
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  top: calc(max(var(--gutter), env(safe-area-inset-top)) + 52px);
+  left: var(--landing-inline-start);
+  scale: min(1, calc(var(--landing-available-width) / (var(--landing-width) * 1px)));
+  transform-origin: top left;
 }
 
 @media (width < 640px) {
@@ -99,6 +107,22 @@ body:has([data-landing-preview]) {
 :is([data-landing-preview], [data-public-board-note]) footer {
   margin-top: 16px;
   color: var(--color-foreground-muted);
+}
+
+@supports not (scale: calc(1px / 1px)) {
+  [data-landing-preview] {
+    width: calc(var(--landing-width) * 1em / 15);
+    padding-inline: calc(2em / 15);
+    font-size: min(15px, calc(var(--landing-available-width) * 15 / var(--landing-width)));
+  }
+
+  [data-landing-preview] p + p {
+    margin-top: 0.8em;
+  }
+
+  [data-landing-preview] footer {
+    margin-top: calc(16em / 15);
+  }
 }
 
 [data-feedback-dialog]::backdrop {

@@ -1,4 +1,4 @@
-import type { TLRecord } from "@tldraw/tlschema";
+import type { TLPageId, TLRecord } from "@tldraw/tlschema";
 
 import {
   DEFAULT_INITIAL_SNAPSHOT,
@@ -32,6 +32,13 @@ import {
   publicFileReferences,
   stampPublicShape,
 } from "./public-board-expiry";
+import {
+  discardLandingPageDeletion,
+  isPublicSignature,
+  type LandingPageMessage,
+  placePublicSignature,
+  PUBLIC_SIGNATURE_GROUP,
+} from "./public-signature";
 import { isSecretLayer } from "./secret-layer";
 import { hasActiveSession } from "./standalone/store";
 import {
@@ -59,6 +66,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
+const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
 
 export const PASS_HEADER = "X-Board-Pass";
@@ -82,6 +90,7 @@ function kind(sub: string): "guest" | "member" {
 export class BoardRoom extends DurableObject<Env> {
   private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
+  private publicSignaturePage?: TLPageId;
   private retired = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
@@ -109,6 +118,7 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
     this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
+    this.publicSignaturePage = this.ctx.storage.kv.get<TLPageId>(PUBLIC_SIGNATURE_PAGE);
     this.retired = this.ctx.storage.kv.get(RETIRED) === true;
     this.drawingRoom = undefined;
     this.lastRollAt = new Map();
@@ -144,15 +154,23 @@ export class BoardRoom extends DurableObject<Env> {
     const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
         shape: (write) => {
-          if (write.type === "delete") return write.prev;
-          if (!this.publicExpiryEnabled) return write.next;
-          if (write.type === "create") return stampPublicShape(write.next, Date.now());
-          return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
+          const record = write.type === "delete" ? write.prev : write.next;
+          if (!this.publicExpiryEnabled) return record;
+          if (isPublicSignature(record.id) || record.parentId === PUBLIC_SIGNATURE_GROUP) {
+            return null;
+          }
+          if (write.type === "delete") return record;
+          if (write.type === "create") return stampPublicShape(record, Date.now());
+          return preservesPublicShapeAge(write.prev, record) ? record : null;
         },
       },
       // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
-        stampPresence((received as { message?: unknown }).message, received.meta);
+        const { message } = received as typeof received & { message?: LandingPageMessage };
+        stampPresence(message, received.meta);
+        if (this.publicSignaturePage !== undefined) {
+          discardLandingPageDeletion(message, this.publicSignaturePage);
+        }
       },
       storage: drawing,
     });
@@ -532,22 +550,30 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  private namePublicLandingPage(): void {
+  private preparePublicLandingPage(): void {
     const { kv } = this.ctx.storage;
-    if (kv.get(PUBLIC_LANDING_PAGE_NAMED) === true) return;
-    const found = this.drawing.transaction((store) => {
+    if (this.publicSignaturePage !== undefined) return;
+    const namePage = kv.get(PUBLIC_LANDING_PAGE_NAMED) !== true;
+    const page = this.drawing.transaction((store) => {
       const first = [...store.values()]
         .filter((record) => record.typeName === "page")
         .sort(sortByIndex)[0];
-      if (first === undefined) return false;
-      if (first.name !== "Landing Page") store.set(first.id, { ...first, name: "Landing Page" });
-      return true;
+      if (first === undefined) return;
+      if (namePage && first.name !== "Landing Page") {
+        store.set(first.id, { ...first, name: "Landing Page" });
+      }
+      placePublicSignature(store, first.id);
+      return first.id;
     }).result;
-    if (found) kv.put(PUBLIC_LANDING_PAGE_NAMED, true);
+    if (page !== undefined) {
+      kv.put(PUBLIC_LANDING_PAGE_NAMED, true);
+      kv.put(PUBLIC_SIGNATURE_PAGE, page);
+      this.publicSignaturePage = page;
+    }
   }
 
   async schedulePublicExpiry(): Promise<void> {
-    this.namePublicLandingPage();
+    this.preparePublicLandingPage();
     if (!this.publicExpiryEnabled) {
       // WARNING: Stamp existing shapes when enabling expiry so drawings without a timestamp can expire.
       const now = Date.now();
@@ -555,7 +581,9 @@ export class BoardRoom extends DurableObject<Env> {
         // WARNING: Materialize these SQLite rows before updating the table they came from.
         const records = [...store.values()];
         for (const record of records) {
-          if (isShape(record)) store.set(record.id, stampPublicShape(record, now));
+          if (isShape(record) && !isPublicSignature(record.id)) {
+            store.set(record.id, stampPublicShape(record, now));
+          }
         }
       });
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
