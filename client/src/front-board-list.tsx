@@ -6,6 +6,7 @@ import type { FrontCopy } from "./front-copy";
 import { fill } from "./copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 export type Owned = { createdAt: number; id: string; shareCode: string; title: string };
 type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
@@ -200,38 +201,46 @@ function subscribeToPhone(listener: () => void) {
 function BoardCollection({
   children,
   className = "",
+  collapsible,
   label,
-  phone,
   showHeading = true,
 }: {
   children: ReactNode;
   className?: string;
+  collapsible: boolean;
   label: string;
-  phone: boolean;
   showHeading?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const open = !collapsible || expanded;
   return (
-    <details
-      className={`group @container min-w-0 ${className}`}
-      onToggle={(event) => {
-        if (phone) setExpanded(event.currentTarget.open);
-      }}
-      open={!phone || expanded}
-    >
-      <summary
-        className={
-          phone
-            ? "flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-semibold focus-visible:outline-2 focus-visible:outline-border-focus [&::-webkit-details-marker]:hidden"
-            : "hidden"
-        }
-      >
-        {label}
-        <Icon className="size-4 group-open:rotate-180" name="ChevronDown" />
-      </summary>
-      {!phone && <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>}
-      {children}
-    </details>
+    <Collapsible asChild onOpenChange={setExpanded} open={open}>
+      <section className={`@container min-w-0 ${className}`}>
+        {collapsible ? (
+          <h2 className="font-semibold">
+            <CollapsibleTrigger className="group flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-border-focus">
+              {label}
+              <Icon
+                className="size-4 shrink-0 motion-safe:transition-transform group-data-[state=open]:rotate-180"
+                name="ChevronDown"
+              />
+            </CollapsibleTrigger>
+          </h2>
+        ) : (
+          <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>
+        )}
+        <CollapsibleContent
+          className={
+            collapsible
+              ? "motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down"
+              : undefined
+          }
+          inert={!open}
+        >
+          {children}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
 
@@ -253,8 +262,9 @@ export function BoardList({
   const format = DATE_FORMATS[locale];
   const phone = useSyncExternalStore(subscribeToPhone, isPhone);
   const hasVisited = lists.visited.length > 0;
+  const collapsible = phone && lists.owned.length > 2 && lists.visited.length > 2;
   const joined = hasVisited ? (
-    <BoardCollection key="joined" label={copy.visited} phone={phone}>
+    <BoardCollection collapsible={collapsible} key="joined" label={copy.visited}>
       <ul className="divide-y divide-border border-t border-border">
         {lists.visited.map((board) => (
           <li className={`${ROW} min-h-15 py-2`} key={board.id}>
@@ -285,10 +295,10 @@ export function BoardList({
           ? "self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
           : ""
       }
+      collapsible={collapsible}
       key="created"
       label={copy.created}
-      phone={phone}
-      showHeading={hasVisited}
+      showHeading={phone || hasVisited}
     >
       {lists.owned.length === 0 ? (
         <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>

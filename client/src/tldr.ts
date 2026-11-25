@@ -138,7 +138,14 @@ async function uploadEmbedded(
   let next = 0;
   const progress = () => {
     const percent = Math.min(done === count ? 100 : 99, Math.round((transferred / count) * 100));
-    report({ count, done, kind: "uploading", percent, waiting: waiting.size > 0 });
+    const active = Math.min(UPLOADS_AT_ONCE, count - done);
+    report({
+      count,
+      done,
+      kind: "uploading",
+      percent,
+      waiting: active > 0 && waiting.size === active,
+    });
   };
   progress();
   const lane = async () => {
