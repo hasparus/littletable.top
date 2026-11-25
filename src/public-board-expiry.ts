@@ -8,7 +8,7 @@ import { getIndexAbove } from "@tldraw/utils";
 import type { ArrowTerminal } from "./public-arrow-endpoints";
 
 import { savedArrowEndpoint } from "./public-arrow-endpoints";
-import { PUBLIC_DEMO_SHAPE } from "./public-board-demo-ids";
+import { PUBLIC_HANDOUT } from "./public-board-demo-ids";
 
 export const PUBLIC_SWEEP_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 4 * PUBLIC_SWEEP_MS;
@@ -35,12 +35,12 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
   const expired = new Set<TLShapeId>();
   const lastIndex = new Map<TLShape["parentId"], IndexKey>();
 
-  for (const shape of shapes.values()) {
-    const created = creationTime(shape);
-    if (shape.id !== PUBLIC_DEMO_SHAPE && created !== null && now - created >= 2 * DAY_MS)
-      expired.add(shape.id);
-    const last = lastIndex.get(shape.parentId);
-    if (last === undefined || last < shape.index) lastIndex.set(shape.parentId, shape.index);
+  for (const drawing of shapes.values()) {
+    const created = creationTime(drawing);
+    if (drawing.id !== PUBLIC_HANDOUT && created !== null && now - created >= 2 * DAY_MS)
+      expired.add(drawing.id);
+    const last = lastIndex.get(drawing.parentId);
+    if (last === undefined || last < drawing.index) lastIndex.set(drawing.parentId, drawing.index);
   }
 
   const detached = new Map<TLShapeId, ArrowTerminal[]>();
@@ -56,14 +56,14 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
     }
   }
 
-  for (const shape of shapes.values()) {
-    if (shape.id === PUBLIC_DEMO_SHAPE) continue;
-    if (expired.has(shape.id)) {
-      store.delete(shape.id);
+  for (const drawing of shapes.values()) {
+    if (drawing.id === PUBLIC_HANDOUT) continue;
+    if (expired.has(drawing.id)) {
+      store.delete(drawing.id);
       continue;
     }
-    const created = creationTime(shape);
-    let next = created === null ? stampPublicShape(shape, now) : shape;
+    const created = creationTime(drawing);
+    let next = created === null ? stampPublicShape(drawing, now) : drawing;
     if (created !== null && now - created >= DAY_MS && next.opacity > 0.5) {
       next = { ...next, opacity: 0.5 };
     }
@@ -92,12 +92,12 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
       };
       parent = shapes.get(next.parentId);
     }
-    if (next.parentId !== shape.parentId) {
+    if (next.parentId !== drawing.parentId) {
       const index = getIndexAbove(lastIndex.get(next.parentId));
       lastIndex.set(next.parentId, index);
       next = { ...next, index };
     }
-    if (next !== shape) store.set(next.id, next);
+    if (next !== drawing) store.set(next.id, next);
   }
 }
 

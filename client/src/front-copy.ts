@@ -75,6 +75,13 @@ const PL: FrontCopy = {
 
 export const FRONT_COPY: Record<Language, FrontCopy> = { en: EN, pl: PL };
 
+export const LANDING_DEMO_COPY = [
+  "In Search, choose North Gate under Places to jump to the note. Type MOONBELL to find the word in the image.",
+  "Open Dice and enter 1d20. On a 10 or higher, you slip past the sleeping guard.",
+  "Add a map or a screenshot of a character sheet. Search finds words in your images, too. Chat is open to everyone on this board.",
+  "Sign in to make a board for your group. Share the link and your players can join with just a name. Only you can see what you put on the secret layer.",
+];
+
 export const LANDING_COPY = {
   publicBoard: EN.publicBoard,
   publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",

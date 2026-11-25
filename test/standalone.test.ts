@@ -30,7 +30,7 @@ import { avatarKey } from "../src/avatars";
 import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
-import { PUBLIC_DEMO_ASSET, PUBLIC_DEMO_SHAPE } from "../src/public-board-demo-ids";
+import { PUBLIC_HANDOUT_ASSET, PUBLIC_HANDOUT } from "../src/public-board-demo-ids";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
@@ -172,15 +172,15 @@ describe("the public board", () => {
       room,
       (_room, state) =>
         drawing(state).transaction((store) => {
-          expect(store.get(PUBLIC_DEMO_SHAPE)).toMatchObject({
+          expect(store.get(PUBLIC_HANDOUT)).toMatchObject({
             isLocked: true,
             meta: { place: "North Gate" },
             parentId: page,
-            props: { assetId: PUBLIC_DEMO_ASSET },
+            props: { assetId: PUBLIC_HANDOUT_ASSET },
           });
-          const demo = store.get(PUBLIC_DEMO_SHAPE) as TLImageShape;
+          const demo = store.get(PUBLIC_HANDOUT) as TLImageShape;
           store.set(demo.id, stampPublicShape(demo, now - 2 * day - 1));
-          const asset = store.get(PUBLIC_DEMO_ASSET) as TLImageAsset;
+          const asset = store.get(PUBLIC_HANDOUT_ASSET) as TLImageAsset;
           return asset.props.src?.split("/").at(-1);
         }).result,
     );
@@ -346,7 +346,7 @@ describe("the public board", () => {
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
         expect(store.get(expired.id)).toBeUndefined();
-        expect(store.get(PUBLIC_DEMO_SHAPE)).toMatchObject({ opacity: 1 });
+        expect(store.get(PUBLIC_HANDOUT)).toMatchObject({ opacity: 1 });
         expect(store.get(faded.id)).toMatchObject({ meta: faded.meta, opacity: 0.5 });
         expect(store.get(faint.id)).toEqual(faint);
         expect(store.get(recent.id)).toMatchObject({

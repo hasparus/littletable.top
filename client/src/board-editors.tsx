@@ -19,6 +19,7 @@ import { MEDIA_PROPS } from "./file-flows";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
+import { publicDemoPage } from "./public-demo-page";
 import { PublicBoardIntro } from "./public-landing";
 import { useBoardUi } from "./ui";
 
@@ -106,7 +107,11 @@ export function BoardEditors({
         onMount={(mounted) => {
           // WARNING: tldraw's menus read the user preference rather than the locale prop.
           mounted.user.updateUserPreferences({ locale: language });
-          if (landing !== undefined) rememberExistingArrows(mounted);
+          if (landing !== undefined) {
+            const page = publicDemoPage(mounted);
+            if (page !== undefined) mounted.setCurrentPage(page);
+            rememberExistingArrows(mounted);
+          }
           onEditor(mounted);
           return () => onEditor(null);
         }}

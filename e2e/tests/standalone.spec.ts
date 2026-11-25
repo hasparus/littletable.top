@@ -1,8 +1,7 @@
-import type { Editor, IndexKey, TLArrowShape, TLPageId, TLShapeId } from "tldraw";
+import type { Editor, TLArrowShape, TLShapeId } from "tldraw";
 
 import { expect, test } from "@playwright/test";
-import { createShapeId, PageRecordType } from "@tldraw/tlschema";
-import { getIndexBelow } from "@tldraw/utils";
+import { createShapeId } from "@tldraw/tlschema";
 
 import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
@@ -308,8 +307,9 @@ test("the public handout is searchable with data saver and the prompt rolls a d2
   page,
 }) => {
   await page.addInitScript(() => {
-    const { connection } = navigator as Navigator & { connection: EventTarget };
-    Object.defineProperty(connection, "saveData", { value: true });
+    if (!("connection" in navigator) || !(navigator.connection instanceof EventTarget))
+      throw new TypeError("Network Information API unavailable");
+    Object.defineProperty(navigator.connection, "saveData", { value: true });
   });
   const engineRequests: string[] = [];
   page.on("request", (request) => {
@@ -325,20 +325,13 @@ test("the public handout is searchable with data saver and the prompt rolls a d2
     }
   });
   await page.goto(`${STANDALONE}/?lang=en`);
-  await expect(page.getByText(/choose North Gate under Places/u)).toBeInViewport();
+  await expect(page.locator("[data-public-board-note]")).toBeInViewport();
   const handout = page
     .getByTestId("canvas")
     .locator('img.tl-image[alt="Note from the north gate"]');
-  await expect(handout).toBeInViewport();
-  const featuresCue = page.getByRole("button", { name: "see the features" });
-  await expect(featuresCue).toBeInViewport();
-  await featuresCue.click();
-  await expect(page.locator("[data-public-board-note] :focus")).toContainText(
-    /choose North Gate under Places/u,
-  );
   await reachEditor(page);
   await page.evaluate(() => {
-    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    const editor = globalThis.__editor;
     editor.setCamera({ x: -2000, y: -2000, z: 1 }, { immediate: true });
   });
   await expect(handout).not.toBeInViewport();
@@ -351,6 +344,7 @@ test("the public handout is searchable with data saver and the prompt rolls a d2
   await places.getByRole("button", { exact: true, name: "North Gate" }).click();
   await expect(places).toBeHidden();
   await expect(handout).toBeInViewport();
+  await expect(page.getByText(/choose North Gate under Places/u)).toBeInViewport();
 
   const search = await openSheet(page, "Search");
   await search.getByRole("combobox", { name: "Search the board" }).fill("MOONBELL");
@@ -366,7 +360,7 @@ test("the public handout is searchable with data saver and the prompt rolls a d2
   const request = page.waitForRequest(
     (candidate) => candidate.method() === "POST" && candidate.url().endsWith("/roll"),
   );
-  await dice.getByRole("button", { name: /^Roll/u }).click();
+  await dice.getByRole("button", { exact: true, name: "Roll d20" }).click();
   const rolled = await request;
   expect(rolled.postDataJSON()).toMatchObject({ expression: "1d20" });
 });
@@ -376,42 +370,37 @@ test("new public visits open the handout page after reordering", async ({ browse
   await page.goto(url);
   await expect(page.getByTestId("page-menu.button")).toHaveText("Landing Page");
   await reachEditor(page);
-  const index = await page.evaluate(
-    () => (globalThis as unknown as { __editor: Editor }).__editor.getCurrentPage().index,
-  );
-  const id: string = PageRecordType.createId("public-landing-scratch");
-  const firstIndex: string = getIndexBelow(index);
   const observer = await browser.newPage();
   const visitor = await browser.newPage();
   try {
     await observer.goto(url);
     await expect(observer.getByTestId("page-menu.button")).toHaveText("Landing Page");
     await reachEditor(observer);
-    await page.evaluate(
-      ({ id, index, name }) => {
-        const editor = (globalThis as unknown as { __editor: Editor }).__editor;
-        editor.createPage({ id: id as TLPageId, name });
-        editor.updatePage({ id: id as TLPageId, index: index as IndexKey });
-      },
-      { id, index: firstIndex, name: "Scratch" },
-    );
-    // Wait for a different browser to see the new page order before opening a fresh session.
+    await page.evaluate(() => {
+      const editor = globalThis.__editor;
+      const landing = editor.getCurrentPage();
+      editor.createPage({ name: "Scratch" });
+      const scratch = editor.getPages().find((candidate) => candidate.name === "Scratch");
+      if (scratch === undefined) throw new Error("Scratch page was not created");
+      editor.run(() => {
+        editor.updatePage({ id: landing.id, index: scratch.index });
+        editor.updatePage({ id: scratch.id, index: landing.index });
+      });
+    });
     await expect
-      .poll(() =>
-        observer.evaluate(
-          () => (globalThis as unknown as { __editor: Editor }).__editor.getPages()[0]?.name,
-        ),
-      )
+      .poll(() => observer.evaluate(() => globalThis.__editor.getPages()[0]?.name))
       .toBe("Scratch");
 
     await visitor.goto(url);
     await expect(visitor.getByTestId("page-menu.button")).toHaveText("Landing Page");
-    await expect(visitor.getByText(/choose North Gate under Places/u)).toBeInViewport();
-    await expect(visitor.getByRole("button", { name: "see the features" })).toBeVisible();
+    await expect(visitor.locator("[data-public-board-note]")).toBeInViewport();
+    await expect(visitor.getByText(/choose North Gate under Places/u)).toBeAttached();
   } finally {
-    await page.evaluate((scratchId) => {
-      (globalThis as unknown as { __editor: Editor }).__editor.deletePage(scratchId as TLPageId);
-    }, id);
+    await page.evaluate(() => {
+      const editor = globalThis.__editor;
+      const scratch = editor.getPages().find((candidate) => candidate.name === "Scratch");
+      if (scratch !== undefined) editor.deletePage(scratch.id);
+    });
     await visitor.close();
     await observer.close();
   }

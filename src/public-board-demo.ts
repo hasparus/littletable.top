@@ -1,37 +1,39 @@
 import type { TLSyncStorage } from "@tldraw/sync-core";
-import type { TLImageAsset, TLImageShape, TLRecord } from "@tldraw/tlschema";
+import type { TLImageAsset, TLRecord } from "@tldraw/tlschema";
 
-import { isShape } from "@tldraw/tlschema";
 import { getIndexBelow, sortByIndex } from "@tldraw/utils";
 
 import type { FileLedger } from "./file-store";
 import type { Reading, TextLedger } from "./text-store";
 
-import { PUBLIC_DEMO_ASSET, PUBLIC_DEMO_SHAPE } from "./public-board-demo-ids";
+import { PUBLIC_HANDOUT_ASSET, PUBLIC_HANDOUT } from "./public-board-demo-ids";
 import handoutReading from "./public-board-demo-ocr.json";
 
 const PATH = "/landing-north-gate.png";
 
-// Captured from the app's Tesseract worker reading the bundled PNG. Use the
-// original pixel geometry and hash so the normal search can highlight the clue.
 const ENGINE = "tesseract-6.0.1";
 const { height: HEIGHT, sha256: HASH, width: WIDTH } = handoutReading.image;
 const SYSTEM = "system:public-demo";
+const HANDOUT_X = 552;
+const HANDOUT_Y = 56;
 
-// The handout uses the same file store and OCR pipeline as guest images.
-// Its fixed ids give existing rooms the same handout on their next visit.
+/** Seeds the bundled handout and its Tesseract result through the same ledgers as guest images. */
 export async function seedPublicDemo(
   drawing: TLSyncStorage<TLRecord>,
   assets: Fetcher,
   { files, texts }: { files: FileLedger; texts: TextLedger },
   board: string,
-): Promise<Reading | null> {
+) {
   const src = `/rooms/${board}/files/${HASH}`;
   const { asset, placed } = drawing.transaction((store) => {
-    const shape = store.get(PUBLIC_DEMO_SHAPE);
+    const handout = store.get(PUBLIC_HANDOUT);
     return {
-      asset: store.get(PUBLIC_DEMO_ASSET),
-      placed: shape?.typeName === "shape" && store.get(shape.parentId)?.typeName === "page",
+      asset: store.get(PUBLIC_HANDOUT_ASSET),
+      placed:
+        handout?.typeName === "shape" &&
+        handout.x === HANDOUT_X &&
+        handout.y === HANDOUT_Y &&
+        store.get(handout.parentId)?.typeName === "page",
     };
   }).result;
   const current = asset?.typeName === "asset" && asset.type === "image" && asset.props.src === src;
@@ -43,11 +45,12 @@ export async function seedPublicDemo(
     const png = await assets.fetch(new URL(PATH, "https://tabletop.invalid"));
     if (!png.ok) throw new Error(`Handout asset returned ${png.status}`);
     const stored = await files.store(board, SYSTEM, await png.arrayBuffer());
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- The ledger returns a refusal code as a string.
     if (typeof stored === "string") throw new TypeError(`Handout upload refused (${stored})`);
     if (stored.hash !== HASH)
       throw new Error("Handout image and OCR reading have different hashes");
     const record = {
-      id: PUBLIC_DEMO_ASSET,
+      id: PUBLIC_HANDOUT_ASSET,
       meta: {},
       props: {
         fileSize: stored.bytes,
@@ -71,6 +74,7 @@ export async function seedPublicDemo(
       new TextEncoder().encode(JSON.stringify(handoutReading)).buffer,
       { bytesNow: () => files.storedBytes() },
     );
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- The ledger returns a refusal code as a string.
     if (typeof stored === "string") throw new TypeError(`Handout reading refused (${stored})`);
     if ("problem" in stored) throw new Error(`Handout reading refused (${stored.problem})`);
     if (!stored.duplicate) reading = { engine: ENGINE, hash: HASH };
@@ -78,19 +82,20 @@ export async function seedPublicDemo(
 
   drawing.transaction((store) => {
     if (image !== asset) store.set(image.id, image);
-    const existing = store.get(PUBLIC_DEMO_SHAPE);
+    const existing = store.get(PUBLIC_HANDOUT);
     if (existing?.typeName === "shape" && store.get(existing.parentId)?.typeName === "page") {
+      store.set(existing.id, { ...existing, x: HANDOUT_X, y: HANDOUT_Y });
       return;
     }
     const records = [...store.values()];
     const page = records.filter((record) => record.typeName === "page").sort(sortByIndex)[0];
     if (page === undefined) return;
     const front = records
-      .filter(isShape)
-      .filter((shape) => shape.parentId === page.id)
+      .filter((record) => record.typeName === "shape")
+      .filter((drawing) => drawing.parentId === page.id)
       .sort(sortByIndex)[0];
-    const shape = {
-      id: PUBLIC_DEMO_SHAPE,
+    const handout = {
+      id: PUBLIC_HANDOUT,
       index: getIndexBelow(front?.index),
       isLocked: true,
       meta: { place: "North Gate" },
@@ -98,7 +103,7 @@ export async function seedPublicDemo(
       parentId: page.id,
       props: {
         altText: "Note from the north gate",
-        assetId: PUBLIC_DEMO_ASSET,
+        assetId: PUBLIC_HANDOUT_ASSET,
         crop: null,
         flipX: false,
         flipY: false,
@@ -110,10 +115,10 @@ export async function seedPublicDemo(
       rotation: 0,
       type: "image",
       typeName: "shape",
-      x: 6,
-      y: 56,
-    } satisfies TLImageShape;
-    store.set(shape.id, shape);
+      x: HANDOUT_X,
+      y: HANDOUT_Y,
+    } satisfies TLRecord;
+    store.set(handout.id, handout);
   });
   return reading;
 }

@@ -1,3 +1,5 @@
+import type { Editor } from "tldraw";
+
 import {
   type Browser,
   type BrowserContext,
@@ -45,6 +47,7 @@ type Violation = { blockedURI: string; sourceFile: string; violatedDirective: st
 
 declare global {
   var __cspViolations: Violation[];
+  var __editor: Editor;
   var __keyboard: (px: number) => void;
 }
 

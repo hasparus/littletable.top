@@ -51,7 +51,8 @@ body {
   src: url("@tldraw/assets/fonts/Shantell_Sans-Informal_Regular.woff2") format("woff2");
 }
 
-.loading-handwriting :is([data-landing-preview], [data-public-board-note]) {
+.loading-handwriting
+  :is([data-landing-preview], [data-public-board-note], [data-public-board-demo]) {
   visibility: hidden;
 }
 
@@ -79,7 +80,7 @@ body:has([data-landing-preview]) {
   max-width: 502px;
 }
 
-:is([data-landing-preview], [data-public-board-note]) {
+:is([data-landing-preview], [data-public-board-note], [data-public-board-demo]) {
   font-family: "Landing handwriting", sans-serif;
   color: var(--color-foreground);
   padding-inline: 2px;
@@ -93,7 +94,7 @@ body:has([data-landing-preview]) {
   }
 }
 
-:is([data-landing-preview], [data-public-board-note]) p + p {
+:is([data-landing-preview], [data-public-board-note], [data-public-board-demo]) p + p {
   margin-top: 12px;
 }
 :is([data-landing-preview], [data-public-board-note]) footer {

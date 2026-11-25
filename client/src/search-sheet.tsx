@@ -3,7 +3,7 @@ import { type Editor, type TLPageId, type TLShapeId, useValue } from "tldraw";
 
 import type { Hit, SearchKind } from "./search-index";
 
-import { PUBLIC_BOARD, PUBLIC_DEMO_SHAPE } from "../../src/public-board-demo-ids";
+import { PUBLIC_BOARD, PUBLIC_HANDOUT } from "../../src/public-board-demo-ids";
 import { type Copy, fill } from "./copy";
 import { flash } from "./highlight";
 import { Icon, type IconName } from "./icons";
@@ -141,7 +141,7 @@ function PlacesList({
               >
                 <Icon name={starred ? "Star" : "StarOutline"} />
               </button>
-              {(board !== PUBLIC_BOARD || place.id !== PUBLIC_DEMO_SHAPE) && (
+              {(board !== PUBLIC_BOARD || place.id !== PUBLIC_HANDOUT) && (
                 <button
                   aria-label={`${copy.removePlace}: ${place.name}`}
                   className={ROW_BUTTON}
