@@ -6,7 +6,7 @@ import { T } from "@tldraw/validate";
 
 import type { InstalledGizmo } from "./gizmo-packages";
 
-import { dealtDeckCard, type DeckReveal, deckStack } from "./deck-records";
+import { type DeckReveal, deckStack } from "./deck-records";
 import { rollDie } from "./roll-die";
 
 type ResolvePackage = (url: string) => InstalledGizmo | null;
@@ -21,6 +21,7 @@ export type DeckState = {
   install: string;
   remaining: number[];
   recent: { id: string; reveal: DeckReveal }[];
+  grids?: Partial<Record<TLPageId, FixedDeckGrid>>;
 };
 
 type Decks = {
@@ -40,6 +41,22 @@ const requestId = T.string.check((id) => {
 const language = T.literalEnum("en", "pl");
 const deckPoint = T.object({ x: T.number, y: T.number });
 
+const gridStep = T.number.check((step) => {
+  if (step <= 0 || step > 1_000_000) throw new Error("Invalid deck grid spacing");
+});
+const deckGrid = T.object({
+  x: T.number,
+  y: T.number,
+  columns: T.positiveInteger.check((columns) => {
+    if (columns < 1 || columns > 3) throw new Error("Invalid deck grid columns");
+  }),
+  stepX: gridStep,
+  stepY: gridStep,
+});
+
+export type DeckGrid = T.TypeOf<typeof deckGrid>;
+type FixedDeckGrid = DeckGrid & { height: number; width: number };
+
 const deckPlace = T.object({
   action: T.literal("place"),
   height: T.number.check((height) => {
@@ -55,6 +72,7 @@ const deckPlace = T.object({
 const deckDeal = T.object({
   action: T.literal("draw"),
   deck: imageId,
+  grid: deckGrid.optional(),
   id: requestId,
   language,
   origin: deckPoint,
@@ -92,6 +110,18 @@ function topIndex(drawing: Drawing, page: TLPageId) {
   return getIndexAbove(top);
 }
 
+function deckImageId(id: string) {
+  return imageId.validate(`shape:gizmo-deck-${id}`);
+}
+
+function dealtKey(deck: string, requestId: string) {
+  return `${deck.slice("shape:".length)}-${requestId}`;
+}
+
+export function dealtCardId(deck: string, requestId: string) {
+  return deckImageId(dealtKey(deck, requestId));
+}
+
 function addImage(
   drawing: Drawing,
   {
@@ -123,7 +153,7 @@ function addImage(
   });
   const w = (height * width) / sourceHeight;
   const image: BoardImage = {
-    id: imageId.validate(`shape:gizmo-deck-${id}`),
+    id: deckImageId(id),
     index: topIndex(drawing, page),
     isLocked: false,
     meta,
@@ -157,7 +187,7 @@ function placeDeck(
   command: DeckPlacement,
 ) {
   const { id, install, language, page, height, point } = command;
-  const deckId = imageId.validate(`shape:gizmo-deck-${id}`);
+  const deckId = deckImageId(id);
   const current = storage.get(deckKey(deckId));
   if (current !== undefined) return current.install === install ? { deck: deckId } : null;
   const found = resolve(install);
@@ -187,43 +217,97 @@ function placeDeck(
   return { deck: deckId };
 }
 
-function deckIsOnPage(drawing: Drawing, boardImage: BoardImage, page: TLPageId) {
-  let parent = drawing.get(boardImage.parentId);
+type BoardPiece = Extract<TLRecord, { typeName: "shape" }>;
+
+function pagePlacement(drawing: Drawing, piece: BoardPiece, page: TLPageId) {
+  let { x, y, rotation } = piece;
+  let parent = drawing.get(piece.parentId);
   const seen = new Set<TLRecord["id"]>();
   while (parent?.typeName === "shape" && !seen.has(parent.id)) {
     seen.add(parent.id);
+    const cos = Math.cos(parent.rotation);
+    const sin = Math.sin(parent.rotation);
+    [x, y] = [parent.x + x * cos - y * sin, parent.y + x * sin + y * cos];
+    rotation += parent.rotation;
     parent = drawing.get(parent.parentId);
   }
-  return parent?.id === page;
+  return parent?.id === page ? { x, y, rotation } : null;
 }
 
-function dealPoint(drawing: Drawing, command: DeckDeal, height: number) {
-  const { deck, page, point } = command;
-  if (command.precise) return point;
-  const used = [...drawing.values()].filter(
-    (record) =>
-      record.typeName === "shape" &&
-      record.type === "image" &&
-      record.parentId === page &&
-      dealtDeckCard.isValid(record.meta) &&
-      record.meta.deckId === deck,
-  );
-  const step = height * 0.11;
-  let { y } = point;
-  let slotsLeft = 4;
-  while (slotsLeft > 0) {
-    const occupied = used.some((record) => {
-      if (record.typeName !== "shape" || record.type !== "image") return false;
-      return (
-        Math.abs(record.x + record.props.w / 2 - point.x) < step / 2 &&
-        Math.abs(record.y + record.props.h / 2 - y) < step / 2
-      );
+function occupiedBounds(drawing: Drawing, page: TLPageId) {
+  const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
+  for (const record of drawing.values()) {
+    if (record.typeName !== "shape") continue;
+    const { props } = record;
+    if (!("w" in props) || !("h" in props)) continue;
+    const placement = pagePlacement(drawing, record, page);
+    if (placement === null) continue;
+    const { x, y, rotation } = placement;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const dx1 = props.w * cos;
+    const dx2 = -props.h * sin;
+    const dy1 = props.w * sin;
+    const dy2 = props.h * cos;
+    occupied.push({
+      left: x + Math.min(dx1, 0) + Math.min(dx2, 0),
+      right: x + Math.max(dx1, 0) + Math.max(dx2, 0),
+      top: y + Math.min(dy1, 0) + Math.min(dy2, 0),
+      bottom: y + Math.max(dy1, 0) + Math.max(dy2, 0),
     });
-    if (!occupied) break;
-    y += step;
-    slotsLeft--;
   }
-  return { x: point.x, y };
+  return occupied;
+}
+
+function establishGrid(command: DeckDeal, height: number, width: number) {
+  const gap = height * 0.07;
+  const suggestion = command.grid;
+  const stepX = Math.max(suggestion?.stepX ?? 0, width + gap);
+  const stepY = Math.max(suggestion?.stepY ?? 0, height + gap);
+  const capacity = suggestion
+    ? Math.floor((suggestion.columns * suggestion.stepX) / stepX + 1e-8)
+    : 1;
+  const columns = Math.max(1, capacity);
+  return {
+    x: (suggestion?.x ?? command.point.x) + Math.max(0, stepX - (suggestion?.stepX ?? stepX)) / 2,
+    y: suggestion?.y ?? command.point.y,
+    columns,
+    stepX,
+    stepY,
+    height,
+    width,
+  } satisfies FixedDeckGrid;
+}
+
+function firstFreeRow(occupied: ReturnType<typeof occupiedBounds>, grid: FixedDeckGrid, x: number) {
+  const horizontal = occupied.filter(
+    ({ left, right }) => left < x + grid.width / 2 && right > x - grid.width / 2,
+  );
+  const blocked = horizontal
+    .map(({ top, bottom }) => ({
+      first: Math.floor((top - grid.height / 2 - grid.y) / grid.stepY) + 1,
+      last: Math.ceil((bottom + grid.height / 2 - grid.y) / grid.stepY) - 1,
+    }))
+    .sort((left, right) => left.first - right.first);
+  let row = 0;
+  for (const { first, last } of blocked) {
+    if (first > row) break;
+    if (last >= row) row = last + 1;
+  }
+  return row;
+}
+
+function dealPoint(drawing: Drawing, page: TLPageId, grid: FixedDeckGrid) {
+  const occupied = occupiedBounds(drawing, page);
+  let column = 0;
+  let row = firstFreeRow(occupied, grid, grid.x);
+  for (let candidate = 1; candidate < grid.columns && row > 0; candidate++) {
+    const candidateRow = firstFreeRow(occupied, grid, grid.x + candidate * grid.stepX);
+    if (candidateRow >= row) continue;
+    row = candidateRow;
+    column = candidate;
+  }
+  return { x: grid.x + column * grid.stepX, y: grid.y + row * grid.stepY };
 }
 
 function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, command: DeckDeal) {
@@ -238,7 +322,7 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     stack.type !== "image" ||
     !deckStack.isValid(stack.meta) ||
     stack.meta.deckId !== stack.id ||
-    !deckIsOnPage(drawing, stack, page)
+    pagePlacement(drawing, stack, page) === null
   )
     return null;
 
@@ -250,12 +334,18 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
   const card = manifest.cards[remaining.pop()!];
   if (card === undefined) return null;
   const name = card.name[language];
-  const { h: height } = stack.props;
-  const destination = dealPoint(drawing, command, height);
+  const { h: stackHeight } = stack.props;
+  const widest =
+    (Math.max(...manifest.cards.map(({ width }) => width)) * stackHeight) / manifest.cardHeight;
+  const grid = command.precise
+    ? undefined
+    : (state.grids?.[page] ?? establishGrid(command, stackHeight, widest));
+  const height = grid?.height ?? stackHeight;
+  const destination = grid === undefined ? command.point : dealPoint(drawing, page, grid);
   addImage(drawing, {
     height,
     sourceHeight: manifest.cardHeight,
-    id: `${deck.slice("shape:".length)}-${id}`,
+    id: dealtKey(deck, id),
     meta: {
       deckId: deck,
       deckBack: manifest.back,
@@ -273,7 +363,8 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
   drawing.set(stack.id, { ...stack, meta: { ...stack.meta, deckRemaining: remaining.length } });
   const reveal = { card: card.id, name, width: card.width };
   const recent = [...state.recent, { id, reveal }].slice(-RECENT_DRAWS);
-  storage.set(deckKey(deck), { ...state, recent, remaining });
+  const grids = grid === undefined ? state.grids : { ...state.grids, [page]: grid };
+  storage.set(deckKey(deck), { ...state, grids, recent, remaining });
   return reveal;
 }
 

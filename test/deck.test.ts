@@ -5,7 +5,7 @@ import { getIndexAbove } from "@tldraw/utils";
 import { describe, expect, it } from "vitest";
 
 import tarot from "../gizmos/tarot/gizmo.json";
-import { changeDeck, deckCommand, type DeckState } from "../src/deck";
+import { changeDeck, dealtCardId, deckCommand, type DeckState } from "../src/deck";
 import { type InstalledGizmo, normalizeManifest } from "../src/gizmo-packages";
 import { call, pass } from "./support";
 
@@ -95,6 +95,60 @@ describe("installable physical decks", () => {
     expect(revealed(command({ ...draw(right), id }))).toBe(first);
     expect(records.get(left)).toMatchObject({ meta: { deckRemaining: 77 } });
     expect(records.get(right)).toMatchObject({ meta: { deckRemaining: 76 } });
+  });
+
+  it("fills a three-column grid in order and holds its spacing across taps and retries", () => {
+    const { command, records } = table();
+    const deck = placed(command(place));
+    const grid = { x: 415, y: 200, columns: 3, stepX: 105, stepY: 160 };
+    const placement = (id: string) => {
+      const card = records.get(dealtCardId(deck, id));
+      if (card?.typeName !== "shape" || card.type !== "image") throw new Error("Card is missing");
+      return { x: card.x + card.props.w / 2, y: card.y + card.props.h / 2 };
+    };
+    const first = crypto.randomUUID();
+    const expected = revealed(command({ ...draw(deck), id: first, grid }));
+    const resizedView = { x: 900, y: 700, columns: 1, stepX: 200, stepY: 200 };
+    expect(revealed(command({ ...draw(deck), id: first, grid: resizedView }))).toBe(expected);
+    const otherIds = Array.from({ length: 3 }, () => crypto.randomUUID());
+    for (const id of otherIds) revealed(command({ ...draw(deck), id, grid: resizedView }));
+
+    expect([first, ...otherIds].map(placement)).toEqual([
+      { x: 415, y: 200 },
+      { x: 520, y: 200 },
+      { x: 625, y: 200 },
+      { x: 415, y: 360 },
+    ]);
+  });
+
+  it("keeps manually dealt cards in place and fills only free slots in a narrow grid", () => {
+    const { command, records } = table();
+    const deck = placed(command(place));
+    const grid = { x: 415, y: 200, columns: 2, stepX: 105, stepY: 160 };
+    const manualId = crypto.randomUUID();
+    const manual = dealtCardId(deck, manualId);
+    revealed(
+      command({ ...draw(deck), id: manualId, point: { x: 419, y: 201 }, precise: true, grid }),
+    );
+    const before = records.get(manual);
+    if (before?.typeName !== "shape" || before.type !== "image") throw new Error("Card is missing");
+    expect(before.x + before.props.w / 2).toBe(419);
+    expect(before.y + before.props.h / 2).toBe(201);
+
+    const first = crypto.randomUUID();
+    const second = crypto.randomUUID();
+    revealed(command({ ...draw(deck), id: first, grid }));
+    revealed(command({ ...draw(deck), id: second, grid }));
+    expect(records.get(manual)).toBe(before);
+    const later = [first, second].map((id) => {
+      const card = records.get(dealtCardId(deck, id));
+      if (card?.typeName !== "shape" || card.type !== "image") throw new Error("Card is missing");
+      return { x: card.x + card.props.w / 2, y: card.y + card.props.h / 2 };
+    });
+    expect(later).toEqual([
+      { x: 520, y: 200 },
+      { x: 415, y: 360 },
+    ]);
   });
 
   it("places and draws a package pinned on the board with current owner access", async () => {

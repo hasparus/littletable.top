@@ -5,7 +5,7 @@ import { createContext, useRef, useState } from "react";
 import type { InstalledGizmo } from "../../src/gizmo-packages";
 import type { PassKeeper } from "./bootstrap";
 
-import { changeDeck, type DeckCommand, type DeckState } from "../../src/deck";
+import { changeDeck, dealtCardId, type DeckCommand, type DeckState } from "../../src/deck";
 import { deckPlaced, deckRevealed, type DeckReveal } from "../../src/deck-records";
 import { playGizmoCue } from "./gizmo-feedback";
 
@@ -16,8 +16,17 @@ type Transport = (
   installed?: InstalledGizmo,
 ) => Promise<DeckResponse>;
 
+type Deal = Extract<DeckCommand, { action: "draw" }>;
+export type DeckDrop = { at: number; card: Deal["deck"] };
+type DealOptions = {
+  grid?: Deal["grid"];
+  release?: { at: number; track: (drop: DeckDrop) => void };
+};
+
 function useDeckActions(send: Transport) {
   const pending = useRef(false);
+  const requests = useRef<Promise<boolean> | null>(null);
+  const lastDrop = useRef<DeckDrop | null>(null);
   const previousPlacement = useRef<{ id: string; key: string } | null>(null);
   const previousDraws = useRef(new Map<string, string>());
   const [drawing, setDrawing] = useState<string | null>(null);
@@ -52,42 +61,55 @@ function useDeckActions(send: Transport) {
     return true;
   }
 
-  async function draw(
+  function draw(
     editor: Editor,
-    deck: Extract<DeckCommand, { action: "draw" }>["deck"],
+    deck: Deal["deck"],
     point: VecModel,
     origin: VecModel,
-    precise: boolean,
+    options: DealOptions,
   ) {
-    if (pending.current || editor.getIsReadonly()) return;
-    const id = previousDraws.current.get(deck) ?? crypto.randomUUID();
-    previousDraws.current.set(deck, id);
-    pending.current = true;
-    setDrawing(deck);
-    setFailedDeck(null);
-    setRevealed(null);
-    const result = await send(editor, {
-      action: "draw",
-      deck,
-      id,
-      language: editor.user.getLocale() === "pl" ? "pl" : "en",
-      origin: { x: origin.x, y: origin.y },
-      page: editor.getCurrentPageId(),
-      point: { x: point.x, y: point.y },
-      precise,
-    }).catch(() => null);
-    pending.current = false;
-    setDrawing(null);
-    if (result === null || !("card" in result)) {
-      setFailedDeck(deck);
-      return;
-    }
-    previousDraws.current.delete(deck);
-    playGizmoCue("deal");
-    setRevealed(result);
+    const page = editor.getCurrentPageId();
+    const run = async () => {
+      if (pending.current || editor.getIsReadonly() || editor.getCurrentPageId() !== page)
+        return false;
+      const id = previousDraws.current.get(deck) ?? crypto.randomUUID();
+      previousDraws.current.set(deck, id);
+      if (options.release) {
+        const drop = { at: options.release.at, card: dealtCardId(deck, id) };
+        lastDrop.current = drop;
+        options.release.track(drop);
+      }
+      pending.current = true;
+      setDrawing(deck);
+      setFailedDeck(null);
+      setRevealed(null);
+      const result = await send(editor, {
+        action: "draw",
+        deck,
+        id,
+        language: editor.user.getLocale() === "pl" ? "pl" : "en",
+        origin: { x: origin.x, y: origin.y },
+        page,
+        point: { x: point.x, y: point.y },
+        precise: !!options.release,
+        ...(options.grid && { grid: options.grid }),
+      }).catch(() => null);
+      pending.current = false;
+      setDrawing(null);
+      if (result === null || !("card" in result)) {
+        setFailedDeck(deck);
+        return false;
+      }
+      previousDraws.current.delete(deck);
+      playGizmoCue("deal");
+      setRevealed(result);
+      return true;
+    };
+    requests.current = requests.current ? requests.current.then(run, run) : run();
+    return requests.current;
   }
 
-  return { draw, drawing, failedDeck, place, revealed };
+  return { draw, drawing, failedDeck, lastDrop, place, revealed };
 }
 
 export function useBoardDeck(keeper: PassKeeper) {

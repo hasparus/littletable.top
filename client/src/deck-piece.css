@@ -1,6 +1,32 @@
+/* The scan includes the scanner bed beyond the paper. Trim that bleed before
+   rounding each physical face. Percentages follow the piece through canvas zoom. */
+:where([data-deck-stack], [data-deck-card], [data-deck-ghost], [data-gizmo-fan]) {
+  --deck-paper-radius: 9.6% / 5.7%;
+}
+
+:is([data-deck-stack], [data-deck-front]) .tl-image,
+[data-deck-draw] img,
+img[data-deck-top],
+[data-deck-paper],
+[data-deck-turn],
+[data-deck-reveal],
+[data-gizmo-fan] img {
+  object-view-box: inset(1.7% 3%);
+}
+
+[data-deck-stack],
+[data-deck-stack] > .tl-html-container,
+[data-deck-card],
+[data-deck-front],
+[data-deck-top],
+[data-deck-turn],
+[data-deck-paper],
+[data-gizmo-fan] img {
+  border-radius: var(--deck-paper-radius);
+}
+
 [data-deck-stack] {
   position: relative;
-  border-radius: 2px;
   box-shadow:
     1px 2px #e8d8b3,
     2px 3px #766653,
@@ -25,7 +51,6 @@
   height: 100%;
   padding: 0;
   border: 0;
-  border-radius: 4% / 2.5%;
   overflow: hidden;
   box-shadow:
     0.6px 1.5px 0 #c2ac83,
@@ -62,7 +87,8 @@
   justify-content: center;
   gap: 7%;
   color: #443622;
-  border-radius: 0 0 3px 3px;
+  /* The exposed strip occupies the bottom 13% of the full card. */
+  border-radius: 0 0 9.6% 9.6% / 0 0 44% 44%;
   background: #efdfbe;
   font:
     600 10px/1 Georgia,
@@ -112,11 +138,16 @@
   position: fixed;
   z-index: 400;
   display: block;
-  max-width: none;
-  border-radius: 3px;
-  box-shadow: 0 4px 14px #36281b55;
+
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+[data-deck-paper] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-shadow: 0 4px 14px #36281b55;
 }
 
 [data-deck-reveal] {
@@ -144,25 +175,16 @@
   pointer-events: none;
 }
 
+[data-deck-front] {
+  overflow: hidden;
+}
+
 [data-deck-turn] {
   transform: rotateY(180deg);
 }
 
-[data-deck-card][data-deck-waiting] [data-deck-front] {
-  visibility: hidden;
-}
-[data-deck-card][data-deck-waiting] [data-deck-turn] {
-  transform: none;
-}
 [data-deck-card] {
-  border-radius: 3px;
   box-shadow:
     0.5px 1px 0 #a08f70,
     1px 2px 4px #35291835;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  [data-deck-card][data-deck-waiting] {
-    transform: translate(var(--deck-start-x), var(--deck-start-y));
-  }
 }

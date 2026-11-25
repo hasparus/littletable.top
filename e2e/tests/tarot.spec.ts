@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { STANDALONE } from "../ports";
 import { joinAs } from "./helpers";
@@ -76,11 +76,33 @@ test("an owner places physical Gizmos and deals an illustrated card that guests 
     await expect(guest.locator("[data-deck-stack]")).toBeVisible();
     await expect(guest.getByRole("button", { name: "Draw a card" })).toHaveCount(0);
 
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const gate = Promise.withResolvers<Route>();
+    await page.route("**/rooms/*/deck", (route) => gate.resolve(route), { times: 1 });
     const top = await stack.getByRole("button", { name: "Draw a card" }).boundingBox();
     await page.mouse.move(top!.x + top!.width / 2, top!.y + top!.height / 2);
     await page.mouse.down();
+    const paper = page.locator("[data-deck-paper]");
+    await expect
+      .poll(() =>
+        paper.evaluate((el) =>
+          Math.abs(new DOMMatrixReadOnly(getComputedStyle(el.parentElement!).transform).b),
+        ),
+      )
+      .toBeGreaterThan(0.02);
     await page.mouse.move(239, 310, { steps: 8 });
     await page.mouse.up();
+    const draw = await gate.promise;
+    try {
+      await expect
+        .poll(() =>
+          paper.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m11),
+        )
+        .toBeLessThan(0.7);
+      await expect(page.locator("[data-deck-card]")).toHaveCount(0);
+    } finally {
+      await draw.continue();
+    }
     const card = page.locator("[data-deck-card] img").first();
     await expect(card).toBeInViewport({ ratio: 0.9 });
     const name = await card.getAttribute("alt");
@@ -93,6 +115,20 @@ test("an owner places physical Gizmos and deals an illustrated card that guests 
     await guest.reload();
     await expect(guestCard).toBeVisible();
     await expect(guest.locator("[data-deck-stack]")).toBeVisible();
+
+    const queue = Promise.withResolvers<Route>();
+    await page.route("**/rooms/*/deck", (route) => queue.resolve(route), { times: 1 });
+    const tap = stack.locator("[data-deck-draw]");
+    await tap.click();
+    const firstTap = await queue.promise;
+    try {
+      await tap.dblclick();
+      await expect(stack.locator("[data-deck-base]")).toHaveText("77");
+    } finally {
+      await firstTap.continue();
+    }
+    await expect(stack.locator("[data-deck-base]")).toHaveText("74");
+    await expect(guest.locator("[data-deck-card]")).toHaveCount(4);
 
     await openGallery(page);
     await gallery.getByRole("button", { name: "Spotlight tracker" }).focus();
@@ -153,4 +189,33 @@ test("a card keeps its grip through a deal and can be slid back onto the stack",
         true,
       );
   }
+});
+
+test("rapid taps fill a three-column Tarot spread in reading order", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(STANDALONE + "/dev/gizmos");
+  const top = page.getByRole("button", { name: "Draw a card" });
+  const cards = page.locator("[data-deck-card]");
+  await top.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+    button.click();
+  });
+  await expect(cards).toHaveCount(3);
+  const centers = await cards.evaluateAll((nodes) =>
+    nodes
+      .map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      })
+      .sort((a, b) => a.x - b.x),
+  );
+  expect(Math.abs(centers[2]!.y - centers[0]!.y)).toBeLessThan(1);
+  expect(Math.abs(centers[2]!.x - 2 * centers[1]!.x + centers[0]!.x)).toBeLessThan(1);
+  expect(centers[1]!.x - centers[0]!.x).toBeGreaterThan(70);
+  for (const card of await cards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
+  await top.click();
+  await expect(cards).toHaveCount(4);
+  await expect(page.locator("[data-deck-base]")).toHaveText("74");
 });
