@@ -68,6 +68,30 @@ async function nameAsPlace(page: Page, name: string): Promise<void> {
 
 const options = (page: Page) => results(page).getByRole("option");
 
+test("Search is compact when empty and closes after choosing a place", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await newBoard(page);
+  const search = await openSheet(page, "Search");
+  await expect(search.getByText("No places yet.", { exact: false })).toBeVisible();
+  const empty = (await search.boundingBox())!;
+  expect(empty.height).toBeLessThan(128);
+  expect(empty.x + empty.width / 2).toBeCloseTo(page.viewportSize()!.width / 2);
+  await shot(page, "desktop-empty");
+  await closeSheet(page, "Search");
+
+  await putNote(page, { at: { x: 400, y: 210 }, text: "Basic Moves" });
+  await nameAsPlace(page, "Basic Moves");
+  await openSheet(page, "Search");
+  const place = search.getByRole("button", { exact: true, name: "Basic Moves" });
+  await expect(place.locator("svg")).toHaveCount(0);
+  await shot(page, "desktop-place");
+  await place.click();
+
+  await expect(search).toBeHidden();
+  await expect(onBoard(page, "Basic Moves")).toBeInViewport();
+  await expectNoCspViolations(page);
+});
+
 test("someone on another page finds what was typed, goes there and sees it flash", async ({
   browser,
   page: ada,
