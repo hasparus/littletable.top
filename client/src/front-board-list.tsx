@@ -33,7 +33,7 @@ const UTC_DATE_FORMATS = {
   en: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }),
   pl: new Intl.DateTimeFormat("pl", { dateStyle: "medium", timeZone: "UTC" }),
 };
-const subscribeToDateFormats = () => () => {};
+const subscribeToDateFormats = () => () => null;
 const browserDateFormats = () => DATE_FORMATS;
 const serverDateFormats = () => UTC_DATE_FORMATS;
 const ACTIONS = ["rename", "reset", "delete"] as const;

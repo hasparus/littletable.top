@@ -13,7 +13,7 @@ export function mountFront(
 ) {
   element.classList.add("overflow-y-auto", "bg-background");
   const state = document.getElementById("boards-state");
-  // SAFETY: The Worker writes this element's JSON from the same board page props used for SSR.
+  // WARNING: SAFETY: This must match the props that the Worker serializes for hydration.
   const initial = state
     ? (JSON.parse(state.textContent!) as Omit<ComponentProps<typeof BoardsApp>, "copy">)
     : undefined;
