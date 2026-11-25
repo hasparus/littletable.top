@@ -42,8 +42,8 @@ export type Editing = { id: string; kind: Action } | null;
 
 const ROW =
   "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
-const BOARD_LINK =
-  "col-start-2 row-start-1 self-end rounded-sm font-semibold wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus @3xl:self-center";
+const BOARD_TITLE = "col-start-2 row-start-1 min-w-0 self-end font-semibold @3xl:self-center";
+const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`;
 const BOARD_DATE =
   "col-start-2 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-3 @3xl:row-start-1 @3xl:self-center";
 
@@ -122,37 +122,83 @@ function OwnedRow({
     <li className="py-2">
       <div className={`${ROW} min-h-11`}>
         <BoardThumbnail board={board} />
-        <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-          {board.title}
-        </a>
+        {mode === "rename" ? (
+          <form
+            className={BOARD_TITLE}
+            id={`rename-${board.id}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onAction(board, "rename", title);
+            }}
+          >
+            <input
+              aria-label={copy.boardName}
+              autoFocus
+              className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
+              maxLength={80}
+              onChange={(event) => setTitle(event.target.value)}
+              onFocus={(event) => event.currentTarget.select()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setEditing(null);
+              }}
+              required
+              value={title}
+            />
+          </form>
+        ) : (
+          <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+            {board.title}
+          </a>
+        )}
         <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
         <div className="col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
-          <button
-            aria-label={shareLabel}
-            className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium hover:bg-bg-secondary focus-visible:outline-2 focus-visible:outline-border-focus"
-            onClick={() => void copyLink()}
-            title={shareLabel}
-            type="button"
-          >
-            <Icon className="size-4" name="Link" />
-            <span className="hidden @md:inline">{shareLabel}</span>
-          </button>
-          <FrontMenu label={manageLabel} trigger={<Icon className="size-4" name="More" />}>
-            {ACTIONS.map((kind) => (
+          {mode === "rename" ? (
+            <>
               <button
-                className={kind === "delete" ? `${MENU_BUTTON} text-danger-text` : MENU_BUTTON}
-                key={kind}
-                onClick={(event) => {
-                  event.currentTarget.closest("details")?.removeAttribute("open");
-                  setTitle(board.title);
-                  setEditing({ id: board.id, kind });
-                }}
+                className="min-h-11 px-2 text-sm font-semibold"
+                form={`rename-${board.id}`}
+                type="submit"
+              >
+                {copy.save}
+              </button>
+              <button
+                className="min-h-11 px-2 text-sm text-foreground-secondary"
+                onClick={() => setEditing(null)}
                 type="button"
               >
-                {kind === "reset" ? copy.resetLink : copy[kind]}
+                {copy.cancel}
               </button>
-            ))}
-          </FrontMenu>
+            </>
+          ) : (
+            <>
+              <button
+                aria-label={shareLabel}
+                className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium hover:bg-bg-secondary focus-visible:outline-2 focus-visible:outline-border-focus"
+                onClick={() => void copyLink()}
+                title={shareLabel}
+                type="button"
+              >
+                <Icon className="size-4" name="Link" />
+                <span className="hidden @md:inline">{shareLabel}</span>
+              </button>
+              <FrontMenu label={manageLabel} trigger={<Icon className="size-4" name="More" />}>
+                {ACTIONS.map((kind) => (
+                  <button
+                    className={kind === "delete" ? `${MENU_BUTTON} text-danger-text` : MENU_BUTTON}
+                    key={kind}
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      setTitle(board.title);
+                      setEditing({ id: board.id, kind });
+                    }}
+                    type="button"
+                  >
+                    {kind === "reset" ? copy.resetLink : copy[kind]}
+                  </button>
+                ))}
+              </FrontMenu>
+            </>
+          )}
         </div>
       </div>
       <span className="sr-only" role="status">
@@ -162,41 +208,6 @@ function OwnedRow({
         <p className="text-sm text-danger-text" role="alert">
           {copy.actionFailed}
         </p>
-      )}
-      {mode === "rename" && (
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onAction(board, "rename", title);
-          }}
-        >
-          <label
-            className="flex min-w-0 flex-1 flex-col gap-1 text-sm"
-            htmlFor={`title-${board.id}`}
-          >
-            {copy.boardName}
-            <input
-              autoFocus
-              className="h-11 rounded-lg border border-border bg-bg-secondary px-3 text-base focus:border-primary focus:outline-none"
-              id={`title-${board.id}`}
-              maxLength={80}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              value={title}
-            />
-          </label>
-          <button className="btn btn-primary min-h-11" type="submit">
-            {copy.save}
-          </button>
-          <button
-            className="btn btn-secondary min-h-11"
-            onClick={() => setEditing(null)}
-            type="button"
-          >
-            {copy.cancel}
-          </button>
-        </form>
       )}
       {(mode === "reset" || mode === "delete") && (
         <dialog

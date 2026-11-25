@@ -434,10 +434,16 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await collectCspViolations(front);
   await front.goto(`${STANDALONE}/boards`);
   const row = front.getByRole("listitem").filter({ hasText: "Board" });
+  const original = row.getByRole("link");
+  const position = (await original.boundingBox())!;
   await row.getByLabel(/^Manage /u).click();
   await row.getByRole("button", { name: "Rename" }).click();
-  await row.getByLabel("Board name").fill("Mörk Borg night");
-  await row.getByRole("button", { name: "Save" }).click();
+  const field = front.getByRole("textbox", { name: "Board name" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveCSS("border-top-style", "dashed");
+  expect((await field.boundingBox())!.x).toBeCloseTo(position.x);
+  await field.fill("Mörk Borg night");
+  await field.press("Enter");
   const renamed = front.getByRole("listitem").filter({ hasText: "Mörk Borg night" });
   await renamed.getByLabel("Manage Mörk Borg night", { exact: true }).click();
   await renamed.getByRole("button", { name: "Reset link" }).click();

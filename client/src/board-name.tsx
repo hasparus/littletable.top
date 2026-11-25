@@ -121,7 +121,9 @@ export function RenameBoardItem() {
     <TldrawUiMenuItem
       id="rename-board"
       label={copy.renameBoard}
-      onSelect={() => addDialog({ component: RenameDialog })}
+      onSelect={() => {
+        addDialog({ component: RenameDialog });
+      }}
     />
   );
 }
