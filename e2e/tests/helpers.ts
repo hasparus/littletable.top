@@ -1,7 +1,46 @@
-import { type Browser, devices, expect, type Locator, type Page } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  devices,
+  expect,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 export const PHONE = devices["Pixel 7"];
+
+export async function installKeyboard(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    let keyboard = 0;
+    const fake = new EventTarget();
+    Object.defineProperties(fake, {
+      height: { get: () => globalThis.innerHeight - keyboard },
+      offsetLeft: { value: 0 },
+      offsetTop: { value: 0 },
+      pageLeft: { value: 0 },
+      pageTop: { value: 0 },
+      scale: { value: 1 },
+      width: { get: () => globalThis.innerWidth },
+    });
+    Object.defineProperty(globalThis, "visualViewport", { configurable: true, get: () => fake });
+    Object.assign(globalThis, {
+      __keyboard: (px: number) => {
+        keyboard = px;
+        fake.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+}
+
+// Stands in for an on-screen keyboard: the visual viewport loses the
+// bottom `px` of the screen, as on iOS and Android, while the layout
+// viewport keeps its size.
+export async function withKeyboard(page: Page, px: number): Promise<void> {
+  await page.evaluate((height) => {
+    (globalThis as unknown as { __keyboard: (px: number) => void }).__keyboard(height);
+  }, px);
+}
 
 type Violation = { blockedURI: string; sourceFile: string; violatedDirective: string };
 

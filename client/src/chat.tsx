@@ -120,6 +120,18 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
     if (follow.current && log.current !== null) log.current.scrollTop = log.current.scrollHeight;
   }, [chat.messages, shown]);
 
+  useLayoutEffect(() => {
+    const viewport = log.current;
+    if (!shown || viewport === null) return;
+
+    // The on-screen keyboard can shrink the log without adding a message.
+    const resize = new ResizeObserver(() => {
+      if (follow.current) viewport.scrollTop = viewport.scrollHeight;
+    });
+    resize.observe(viewport);
+    return () => resize.disconnect();
+  }, [shown]);
+
   const send = async (message: string) => {
     input.current?.focus();
     setSubmission("sending");
