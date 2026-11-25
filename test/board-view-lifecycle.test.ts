@@ -6,6 +6,7 @@ import type { BoardRoom } from "../src/board-room";
 import { call, pass, seat, until } from "./support";
 
 type Seat = Awaited<ReturnType<typeof seat>>;
+type Delivery = { type: "summon"; page: string; x: number; y: number; zoom: number };
 
 it.each([0, 1])(
   "converges on saved pages and live summon recipients, schedule %i",
@@ -18,17 +19,13 @@ it.each([0, 1])(
       .BoardRoom;
     const room = namespace.get(namespace.idFromName(board));
     const pages = new Map<string, string>();
-    const sockets = new Set<Seat>();
-    const recipients = new Set<Seat>();
-    const deliveries = new Map<Seat, object[]>();
+    const sockets = new Map<Seat, { expected: Delivery[]; recipient: boolean }>();
     const trace: string[] = [];
 
     async function join(token: string) {
       trace.push(token === viewer ? "join viewer" : "join owner");
       const socket = await seat(board, token);
-      sockets.add(socket);
-      if (token === viewer) recipients.add(socket);
-      deliveries.set(socket, []);
+      sockets.set(socket, { expected: [], recipient: token === viewer });
       const snapshot = socket.received.find((event) => event.type === "connect") as unknown as {
         diff: Record<string, [string, { name: string }]>;
       };
@@ -49,18 +46,17 @@ it.each([0, 1])(
         body: JSON.stringify({ ...view, target }),
         method: "POST",
       });
-      const reachable = pages.has(page) && recipients.size > 0;
-      expect(response.status).toBe(reachable ? 204 : 409);
-      if (reachable) {
-        for (const socket of recipients) deliveries.get(socket)!.push({ ...view, type: "summon" });
-      }
-      for (const socket of sockets) {
+      const saved = pages.has(page);
+      const hasRecipient = Array.from(sockets.values()).some(({ recipient }) => recipient);
+      expect(response.status).toBe(saved && hasRecipient ? 204 : 409);
+      for (const [socket, { expected, recipient }] of sockets) {
+        if (saved && recipient) expected.push({ ...view, type: "summon" });
         // A pong on this connection fences custom messages sent by the completed RPC.
         const from = socket.received.length;
         socket.send({ type: "ping" });
         await until(() => socket.received.slice(from).some((m) => m.type === "pong"));
         expect(socket.received.filter((m) => m.type === "custom").map((m) => m.data)).toEqual(
-          deliveries.get(socket),
+          expected,
         );
       }
     }
@@ -109,7 +105,6 @@ it.each([0, 1])(
       trace.push(`close viewer tab ${order}`);
       leaving.close();
       await leaving.closure;
-      recipients.delete(leaving);
       sockets.delete(leaving);
       await summon(page, 2);
       await edit(page, "Renamed");
@@ -118,9 +113,8 @@ it.each([0, 1])(
         await expect(
           runInDurableObject(room, (_instance, state) => state.abort("view model restart")),
         ).rejects.toThrow("view model restart");
-        for (const socket of sockets) socket.close();
+        for (const socket of sockets.keys()) socket.close();
         sockets.clear();
-        recipients.clear();
         if (restart === order) await join(viewer);
         writer = await join(owner);
         clock = 0;
@@ -132,7 +126,7 @@ it.each([0, 1])(
     } catch (cause) {
       throw new Error(`schedule ${order}: ${trace.join(" -> ")}`, { cause });
     } finally {
-      for (const socket of sockets) socket.close();
+      for (const socket of sockets.keys()) socket.close();
     }
   },
 );

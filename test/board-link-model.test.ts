@@ -40,8 +40,7 @@ function* commandsFrom(seed: number): Generator<Command> {
 it.each(SEEDS)("replays the board link lifecycle with seed %i", async (seed) => {
   const board = `link-model-${seed}`;
   let latest = 0;
-  const versions = new Map<number, number>();
-  const sockets = new Map<number, Awaited<ReturnType<typeof seat>>>();
+  const sockets = new Map<Awaited<ReturnType<typeof seat>>, number>();
 
   try {
     for (const [index, command] of [...commandsFrom(seed)].entries()) {
@@ -58,18 +57,16 @@ it.each(SEEDS)("replays the board link lifecycle with seed %i", async (seed) => 
           if (link < latest) {
             await expectStalePass(board, token);
           } else {
-            sockets.set(index, await seat(board, token));
-            versions.set(index, link);
+            sockets.set(await seat(board, token), link);
           }
         }
 
         latest = Math.max(latest, link);
-        for (const [id, socket] of sockets) {
-          if (versions.get(id)! < latest) {
+        for (const [socket, version] of sockets) {
+          if (version < latest) {
             await until(socket.isClosed);
             expect(await socket.closure).toEqual(FORBIDDEN);
-            sockets.delete(id);
-            versions.delete(id);
+            sockets.delete(socket);
           } else {
             const before = socket.received.length;
             socket.send({ type: "ping" });
@@ -81,7 +78,7 @@ it.each(SEEDS)("replays the board link lifecycle with seed %i", async (seed) => 
       }
     }
   } finally {
-    for (const socket of sockets.values()) socket.close();
+    for (const socket of sockets.keys()) socket.close();
   }
 });
 
