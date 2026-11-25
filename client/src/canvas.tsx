@@ -13,12 +13,16 @@ import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { BoardGizmoGallery } from "./board-gizmo-gallery";
 import { BoardLoading } from "./board-loading";
 import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
+import { useBoardDeck } from "./deck";
+import { DeckAnnouncement } from "./deck-announcement";
 import { DiceSheet } from "./dice";
 import { rollSentence } from "./dice-labels";
+import { BoardInstallations } from "./gizmo-installed";
 import { makeHighlight } from "./highlight";
 import { Icon } from "./icons";
 import { ImageText } from "./image-text";
@@ -29,7 +33,6 @@ import { useRolls } from "./rolls";
 import { BoardSearch } from "./search-board";
 import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useBoardStore } from "./sync";
-import { TarotAnnouncement, TarotSheet, useTarotDraw } from "./tarot";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
 
@@ -103,8 +106,8 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
-  const tarot = useTarotDraw(keeper);
-  const canDrawTarot = person.owner && !keeper.secret && landing === undefined;
+  const deck = useBoardDeck(keeper);
+  const canPlaceGizmos = person.owner && !keeper.secret && landing === undefined;
   const chat = useChat(keeper, landing !== undefined);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
   const { refusal, store } = useBoardStore({
@@ -183,7 +186,7 @@ export function BoardCanvas({
   const ui = useMemo<BoardUi>(
     () => ({
       board,
-      canDrawTarot,
+      canPlaceGizmos,
       close: (name) => {
         if (name === "chat") setReadChat(chat.latestIncoming);
         setPanel((current) => (current === name ? null : current));
@@ -214,7 +217,7 @@ export function BoardCanvas({
     }),
     [
       board,
-      canDrawTarot,
+      canPlaceGizmos,
       chat.latestIncoming,
       color,
       copy,
@@ -261,20 +264,23 @@ export function BoardCanvas({
         style={keeper.secret && editor === null ? { visibility: "hidden" } : undefined}
         ref={keepBoardZoom}
       >
-        <BoardEditors
-          active={active}
-          editorLayerRef={setEditorLayer}
-          overlay={overlay}
-          showUi={active || waiting}
-          landing={landing}
-          licenseKey={licenseKey}
-          onEditor={(mounted) => {
-            setEditor(mounted);
-            onEditor?.(mounted);
-          }}
-          secret={keeper.secret}
-          store={store}
-        />
+        <BoardInstallations keeper={keeper}>
+          <BoardEditors
+            active={active}
+            deck={active && online && canPlaceGizmos ? deck : undefined}
+            editorLayerRef={setEditorLayer}
+            overlay={overlay}
+            showUi={active || waiting}
+            landing={landing}
+            licenseKey={licenseKey}
+            onEditor={(mounted) => {
+              setEditor(mounted);
+              onEditor?.(mounted);
+            }}
+            secret={keeper.secret}
+            store={store}
+          />
+        </BoardInstallations>
         {landing && editor === null && <LandingPlaceholder copy={landing.copy} />}
         {landing !== undefined && (
           <div className="absolute z-10 flex gap-1" data-public-board-controls>
@@ -306,8 +312,10 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
-        {active && panel === "tarot" && <TarotSheet online={online} tarot={tarot} />}
-        {active && canDrawTarot && <TarotAnnouncement name={tarot.revealed?.name ?? ""} />}
+        {active && canPlaceGizmos && editor && panel === "gizmos" && (
+          <BoardGizmoGallery editor={editor} online={online} deck={deck} keeper={keeper} />
+        )}
+        {active && canPlaceGizmos && <DeckAnnouncement name={deck.revealed?.name ?? ""} />}
         {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage

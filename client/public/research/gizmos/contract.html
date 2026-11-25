@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Gizmo authoring and release contract · Little Table</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="./report.css" />
+  </head>
+  <body>
+    <a class="skip" href="#contract">Skip to specification</a>
+    <header class="mast">
+      <a class="brand" href="./"
+        ><img src="/favicon.svg" alt="" width="28" height="28" />little table</a
+      ><a href="./">Gizmo research notebook</a>
+    </header>
+    <main id="contract">
+      <header class="workshop">
+        <h1>From draft to table</h1>
+        <p class="intro">
+          Mira gives the spotlight tracker a duet rule. She can build and publish it from her own
+          agent through MCP, or do the whole job inside a Little Table Workshop. The next GM can
+          install her edition without having an AI account.
+        </p>
+        <p>Proposed contract for discussion · 25 November 2026</p>
+      </header>
+      <nav class="contents" aria-label="Specification sections">
+        <a href="#authoring">Authoring paths</a><a href="#credentials">Who pays</a
+        ><a href="#release">Distribution</a><a href="#runtime">Execution</a
+        ><a href="#verification">What to test</a>
+      </nav>
+
+      <section class="chapter" id="install">
+        <header><h2>Try an installed mod</h2></header>
+        <div class="prose">
+          <p class="lead">
+            A playable v1 Gizmo fits in a GitHub folder. An owner installs a permalink to its
+            manifest. Each table keeps its own list of installed revisions.
+          </p>
+          <p>
+            Open <a href="/dev/gizmos">the practice table</a> to try all three. On a shared board,
+            copy a manifest link below and paste it into the Gizmo gallery. The drawer then offers
+            the piece for placement.
+          </p>
+          <ul>
+            <li>
+              <a
+                href="https://github.com/hasparus/littletable.top/blob/abf63d68171925807a23a22507c61651b4726534/gizmos/tarot/gizmo.json"
+                >Tarot deck manifest</a
+              >
+            </li>
+            <li>
+              <a
+                href="https://github.com/hasparus/littletable.top/blob/abf63d68171925807a23a22507c61651b4726534/gizmos/spotlight/gizmo.json"
+                >Spotlight tracker manifest</a
+              >
+            </li>
+            <li>
+              <a
+                href="https://github.com/hasparus/littletable.top/blob/abf63d68171925807a23a22507c61651b4726534/gizmos/explosion/gizmo.json"
+                >Explosion button manifest</a
+              >
+            </li>
+          </ul>
+          <p>
+            The shipped format is JSON and raster artwork. Authors can fork it without a toolchain.
+            Try changing the button’s effect to <code>none</code>, or replace the Tarot faces with
+            your own illustrated prompts.
+          </p>
+          <h3>When a rule needs code</h3>
+          <p>
+            For a rule like “on the third press, give the spotlight to whoever has waited longest,”
+            authors would need another primitive or a programmable runtime. One option is a
+            TypeScript entry file in the same folder. Little Table would transpile the pinned source
+            once and run it with a small capability API. An author could still publish straight from
+            GitHub without a local build. The design below also considers declarative rules and
+            sandboxed workers. The playable v1 executes the host primitives.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="authoring">
+        <header><h2>Choose where to build</h2></header>
+        <div class="prose">
+          <p class="lead">
+            One active authoring path per Little Table user. Both paths produce the same immutable
+            release and can suggest it to a table owner. Receiving, installing and playing a Gizmo
+            are available independently of that choice.
+          </p>
+          <h3>Publish from your own agent with MCP</h3>
+          <p>
+            Mira asks her agent to fork the official tracker, keep the spotlight controls with the
+            GM and advance the clock after two turns. She authorizes Little Table to let that client
+            work on her draft. The agent can rehearse a sample turn, show her the proposed release,
+            publish it to the audience she selects and return a link. This path needs no Workshop
+            account connection or provider token at Little Table.
+          </p>
+          <ul>
+            <li>
+              <code>fork_release(parentDigest)</code> creates a private draft tied to the
+              authenticated author. A repeated request with the same key returns the same draft.
+            </li>
+            <li>
+              <code>read_draft</code>, <code>edit_draft</code> and
+              <code>rehearse_draft</code> operate on an authorized draft ID. Edits supply the
+              expected revision. A stale edit returns a conflict and the current revision. Rehearsal
+              uses a fixture and returns a bounded result.
+            </li>
+            <li>
+              <code>prepare_release</code> validates the package and returns its digest, parent,
+              asset credits, permission diff and proposed audience.
+              <code>publish_release</code> needs scoped publish access and the author’s confirmation
+              bound to that digest and audience. Use a Little Table consent page when the client
+              cannot reliably collect that confirmation. Retrying returns the same release.
+            </li>
+            <li>
+              <code>propose_install</code> sends one known board a review link if the caller can
+              propose there. For an owner using an agent, approval in the board can complete the
+              install. For a player, it goes to the owner. A package description, tool annotation or
+              model-generated “approved” field carries no authority.
+            </li>
+          </ul>
+          <p>
+            The remote MCP service exposes protected-resource metadata. On each call it checks the
+            access token’s issuer, audience, expiry, authoring mode, granted scope and access to the
+            requested object. A token for a provider, another resource or another draft cannot
+            authorize the call. Publish consent is separate from connecting a client.
+            <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+              >MCP authorization</a
+            >
+            ·
+            <a
+              href="https://modelcontextprotocol.io/specification/2026-07-28/basic/security_best_practices"
+              >MCP security guidance</a
+            >
+          </p>
+          <h3>Build and publish inside the Workshop</h3>
+          <p>
+            Mira forks the tracker in her browser, edits it herself or asks a coding agent to revise
+            it, and tries the player and owner seats. The Workshop shows the same proposed release
+            and publishes it on her confirmation. Its backend uses the same validation and release
+            operations directly. There is no MCP client setup in this path.
+          </p>
+          <p>
+            Give each build job an expiring lease for one draft revision and a disposable workspace.
+            Mount the package, catalog and synthetic fixtures. Keep live board passes, cloud
+            credentials and provider tokens outside the build environment. Broker model calls from
+            the trusted host. Limit build time, output size and spend. Discard temporary files and
+            cancel outstanding work on disconnect. Treat imported descriptions, source and build
+            output as untrusted content, including when an agent reads them.
+          </p>
+          <h3>If an author switches paths</h3>
+          <p>
+            Offer “Switch authoring method” outside the build flow. Confirm the change, increment
+            the author’s mode generation, revoke prior write and publish grants, cancel builds and
+            invalidate outstanding release confirmations. Preserve the saved draft and published
+            editions. Check the generation again when a queued job writes back or publishes, so a
+            late completion cannot overwrite edits made through the new path. Fresh consent enables
+            the other path. No switch is needed to open someone else’s install link.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="credentials">
+        <header><h2>Who pays for the build?</h2></header>
+        <div class="prose">
+          <p class="lead">
+            MCP authors pay through the agent they already use. The Workshop has a separate product
+            choice about model access.
+          </p>
+          <p>
+            <strong>Author-funded Workshop.</strong> OpenAI documents identity sign-in and
+            separately authorized ChatGPT plan usage for eligible inference. The open-source/local
+            flow has its own client requirements. A remotely hosted or paid Workshop must establish
+            eligibility with OpenAI. Anthropic requires prior approval to offer Claude account login
+            or subscription limits in a third-party product. Little Table’s eligibility is
+            unverified for both hosted integrations.
+            <a href="https://developers.openai.com/siwc/quickstart">OpenAI sign-in and scopes</a> ·
+            <a href="https://developers.openai.com/siwc/token-sharing-open-source"
+              >Hosted availability</a
+            >
+            ·
+            <a href="https://platform.claude.com/docs/en/agent-sdk/overview"
+              >Anthropic Agent SDK authentication</a
+            >
+          </p>
+          <p>
+            <strong>Little Table-funded Workshop.</strong> Little Table could use its own provider
+            API account. Show who pays before the build, reserve a per-job budget, count retries
+            against it and stop on exhaustion. A denied grant or exhausted personal allowance
+            returns the draft for manual editing. Charging the product account requires a separate,
+            explicit choice.
+          </p>
+          <p>
+            For approved user-funded access, establish the Little Table session from verified
+            identity and link it to the correct local account. Store the separate inference grant
+            encrypted on the trusted host, keyed by author, provider and workspace. Check scope and
+            expiry before each model call. Revoke or delete the connection on disconnect, stop new
+            calls and drop pending work. Logs retain usage totals and opaque job IDs. Prompts,
+            access tokens and secret board data stay out of logs, packages and runtime bindings.
+            Installed editions use ordinary table actions after the author disconnects.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="release">
+        <header><h2>What travels with a fork?</h2></header>
+        <div class="prose">
+          <p class="lead">
+            A release contains a versioned manifest, host API range, entry point or recipe, state
+            schema, requested capabilities, locked dependencies, asset credits and hashes. The
+            registry records the authenticated publisher, parent release digest, license and
+            visibility. It assigns the official badge only to the Little Table publisher.
+          </p>
+          <p>
+            Compute a digest over the canonical manifest and its content-addressed code and assets.
+            Verify every blob before preview or execution. Refuse missing assets, unsupported APIs
+            and oversized packages. Serve assets from immutable storage. A fork copies the
+            redistributable definition with attribution and starts with fresh instance state.
+            Private draws, live seat names, room identifiers and agent conversations stay with their
+            original table or author.
+          </p>
+          <p>
+            <strong>Link sharing</strong> lets a friend try an unlisted edition. Anyone holding the
+            link can forward it. <strong>A curated shelf</strong> adds discovery and a review queue.
+            <strong>Open publishing</strong> needs reporting, moderation and an identifiable
+            publisher for every revision. A listing can show a static preview without running
+            package code. Delisting removes discovery. Quarantining a dangerous digest also blocks
+            installs and pauses affected instances at their next action, including installs reached
+            by link. Allow an owner to recover their state.
+          </p>
+          <p>
+            Installation belongs to the current table owner. Bind consent to the board, expected
+            installed revision, proposed digest, visibility and capability diff. Recheck ownership,
+            revocation and digest in the commit path. An update needs fresh review. Stage any state
+            migration against a snapshot and atomically commit the new edition and migrated state
+            together. On failure keep the current instance playable. A later rollback restores a
+            compatible snapshot and tells the GM which intervening actions would be lost.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="runtime">
+        <header><h2>What runs during play?</h2></header>
+        <div class="prose">
+          <p>
+            <strong>A host-rendered recipe</strong> can express the duet tracker through a versioned
+            catalog of controls and actions. Validate types, bounds and permitted action names
+            before installation. <strong>An isolated application</strong> can invent controls or
+            gestures. Give custom UI a separate origin, sandboxed frame and a narrow, instance-bound
+            message channel with validated payloads. The host keeps board controls, owner prompts
+            and private records in its own context. Constrain frame scripts, network requests and
+            navigation with host-controlled sandbox and content-security policies. An official Gizmo
+            built into Little Table is reviewed application code. A community fork always uses the
+            runtime its package declares and the host permits.
+          </p>
+          <p>
+            Use TypeGPU Kit in the official Tarot and Spotlight Tracker renderers as a presentation
+            dependency. Give each only the public state needed to draw, such as the revealed card or
+            the current pressure. Compile approved graphics at build time and pin them with the
+            release. The room decides the draw and turn order. The host keeps labeled controls and a
+            readable fallback when WebGPU is unavailable or its device is lost. The tracker
+            experiment uses Kit’s circle geometry for the six pressure markers.
+            <a href="./#experiments">Try the tracker</a> ·
+            <a href="https://reczkok.github.io/typegpu-kit/">TypeGPU Kit</a>
+          </p>
+          <p>
+            For a custom rule, invoke a fresh isolated worker outside the board room. Pass the
+            approved state projection and one typed action. Start with denied network egress and
+            zero ambient storage or service bindings. Pin the code digest. Bound CPU, elapsed time,
+            subrequests, input and output sizes, instance state and per-table invocation rate. On a
+            timeout, crash or invalid result, discard the proposal. Repeated failure pauses that
+            instance while the rest of the board keeps responding. Cloudflare documents CPU and
+            subrequest controls and a separate egress mechanism. The existing Node/Wasm fixture
+            measures behavior on this machine. A deployed isolation and concurrency test remains
+            necessary.
+            <a href="https://developers.cloudflare.com/dynamic-workers/usage/limits/"
+              >Worker limits</a
+            >
+            ·
+            <a href="https://developers.cloudflare.com/dynamic-workers/usage/egress-control/"
+              >Worker egress</a
+            >
+            · <a href="./#execution">Wasm trial</a>
+          </p>
+          <p>
+            For a tarot draw, the room authenticates the actor, checks the installed edition, action
+            grant and expected state revision, then chooses the card from its authoritative draw
+            pile. It records the state change and request receipt atomically before broadcasting the
+            revealed card. An identical retry gets the original result. Reusing a key with changed
+            input fails. Concurrent draws on the same revision yield one commit and one conflict.
+            Hidden cards and future draw order stay server-side. Public actions cannot read the
+            owner’s secret room. A client reconnects to the last committed public view.
+          </p>
+          <p>
+            Today the standalone pass issuer derives ownership from the saved board and issues a
+            separate session-bound pass for its secret layer. New install and action handlers would
+            need to enforce these rules server-side. For embedded deployments, the host must supply
+            an equivalent authoritative owner claim before installation is enabled.
+            <a
+              href="https://github.com/hasparus/littletable.top/blob/209a5494c8e805119c128a02ac2eccf0751ad404/src/standalone/routes.ts#L545"
+              >Standalone ownership and secret pass</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="verification">
+        <header><h2>What would prove it?</h2></header>
+        <div class="prose">
+          <p>
+            <strong>My preference for the first trial is MCP publishing</strong> if the people at
+            the table already use coding agents. One player can publish the duet fork and another GM
+            can install it without Little Table holding a model credential. If the intended author
+            only uses their phone during prep, I’d test the Workshop with the same brief instead.
+            Measure whether they can get a second table playing the fork unaided and explain who can
+            change it.
+          </p>
+          <p>
+            Run the local contract experiment with
+            <code>node scripts/gizmos-research/release-contract.mjs</code>. It models the two points
+            at which stale authority matters: publishing after an author changes paths and
+            installing after an owner’s review becomes stale. It uses synthetic records. It
+            exercises neither OAuth nor a deployed sandbox.
+          </p>
+          <ul>
+            <li>
+              <strong>Two independent authors.</strong> Give one MCP access and the other Workshop
+              access. Each can finish a release in their own path. A grant for one author cannot
+              read or modify the other’s draft. After switching paths, late jobs and old publish
+              confirmations fail.
+            </li>
+            <li>
+              <strong>One player and one owner.</strong> A player proposes; only the current owner
+              can install. Change the release or the installed base between review and apply. The
+              owner must see a new diff. Publishing a new edition leaves existing tables pinned.
+            </li>
+            <li>
+              <strong>Two clients and one room.</strong> Retry a draw after a simulated connection
+              loss. Verify one card, one state advance and the same result for the retry. A guest
+              observes only the revealed card. Exercise the GM’s separate room and a reconnect.
+            </li>
+            <li>
+              <strong>One broken release.</strong> Try an incompatible migration, a failed build, a
+              revoked inference grant and a quarantined edition. Verify no partial install, no
+              unapproved billing fallback and an owner recovery path. Run deployment-level isolation
+              and resource checks before admitting arbitrary code.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+    <footer>Little Table · Gizmo research <a href="./">Back to the notebook</a></footer>
+  </body>
+</html>

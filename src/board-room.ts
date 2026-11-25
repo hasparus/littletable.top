@@ -20,8 +20,10 @@ import type { EngineKey } from "./text-result";
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
+import { changeDeck, type DeckCommand } from "./deck";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
+import { GizmoStore, readInstalledGizmo } from "./gizmo-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import {
@@ -33,7 +35,6 @@ import {
 } from "./public-board-expiry";
 import { isSecretLayer } from "./secret-layer";
 import { hasActiveSession } from "./standalone/store";
-import { revealTarot, type TarotDraw } from "./tarot";
 import {
   type Claim,
   type ClaimRequest,
@@ -86,6 +87,7 @@ export class BoardRoom extends DurableObject<Env> {
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
+  private gizmos!: GizmoStore;
   private readonly textUploads = new Map<string, number>();
   private thumbnailPending = false;
   private readonly pendingUploads = new Set<Promise<unknown>>();
@@ -113,6 +115,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.drawingRoom = undefined;
     this.lastRollAt = new Map();
     // WARNING: The image ledger queries the texts table for its quota, so initialize that table first.
+    this.gizmos = new GizmoStore(sql, (url, init) => this.fetchGizmoFile(url, init));
     this.texts = new TextLedger(sql, this.env.Files);
     this.files = new FileLedger(sql, this.env.Files);
   }
@@ -254,9 +257,22 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  drawTarot(pass: Pass, draw: TarotDraw) {
+  deck(pass: Pass, command: DeckCommand) {
     if (!pass.owner || this.admit(pass) !== null) return "link-reset";
-    return this.drawing.transaction((store) => revealTarot(store, this.ctx.storage, draw)).result;
+    const { kv, sql } = this.ctx.storage;
+    return this.drawing.transaction((store) =>
+      changeDeck(
+        store,
+        {
+          get: (key) => kv.get(key),
+          set: (key, value) => {
+            kv.put(key, value);
+          },
+        },
+        (url) => readInstalledGizmo(sql, url),
+        command,
+      ),
+    ).result;
   }
 
   roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
@@ -393,6 +409,32 @@ export class BoardRoom extends DurableObject<Env> {
     return (
       this.ctx.storage.sql.exec("SELECT 1 FROM people WHERE avatar = ?", hash).toArray().length > 0
     );
+  }
+
+  protected fetchGizmoFile(url: string, init: RequestInit) {
+    return fetch(url, init);
+  }
+
+  listGizmos(pass: Pass) {
+    return this.admit(pass) ?? this.gizmos.list();
+  }
+
+  installGizmo(pass: Pass, url: string) {
+    const store = this.gizmos;
+    return store.install(
+      pass.board,
+      url,
+      () =>
+        store === this.gizmos &&
+        pass.owner &&
+        kind(pass.sub) === "member" &&
+        this.admit(pass) === null,
+    );
+  }
+
+  gizmoImage(key: string, path: string, head: boolean) {
+    if (this.retired) return new Response(null, { status: 404 });
+    return this.gizmos.image(key, path, head);
   }
 
   fileAccess(pass: Pass): "link-reset" | null {

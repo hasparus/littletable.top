@@ -53,6 +53,11 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) {
 
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
 async function mount(): Promise<void> {
+  if (/^\/dev\/gizmos\/?$/.test(location.pathname)) {
+    const { mountGizmoPlayground } = await import("./gizmo-playground");
+    mountGizmoPlayground(root, language, settings.licenseKey);
+    return;
+  }
   if (settings.hosted === null && location.pathname === "/boards") {
     const { mountFront } = await import("./mount-front");
     mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });

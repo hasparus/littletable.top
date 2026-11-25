@@ -186,7 +186,7 @@ function PlaceMenuItems() {
 }
 
 export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
-  const { canDrawTarot, copy, exit, open, person } = useBoardUi();
+  const { canPlaceGizmos, copy, exit, open, person } = useBoardUi();
   const feedback = useFeedback();
   const editor = useEditor();
   return (
@@ -201,13 +201,13 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
           />
         </TldrawUiMenuGroup>
       )}
-      <BoardFileMenuItems />
-      <BoardBackgroundMenu />
-      {canDrawTarot && (
-        <TldrawUiMenuGroup id="board-decks">
-          <TldrawUiMenuItem id="board-tarot" label={copy.tarot} onSelect={() => open("tarot")} />
+      {canPlaceGizmos && (
+        <TldrawUiMenuGroup id="board-gizmos">
+          <TldrawUiMenuItem id="open-gizmos" label={copy.gizmos} onSelect={() => open("gizmos")} />
         </TldrawUiMenuGroup>
       )}
+      <BoardFileMenuItems />
+      <BoardBackgroundMenu />
       <DefaultMainMenuContent />
       {feedback !== null && (
         <TldrawUiMenuGroup id="board-feedback">

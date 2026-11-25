@@ -1,0 +1,74 @@
+[data-gizmo-practice] {
+  position: fixed;
+  inset: 0;
+  isolation: isolate;
+  --board-sheet-bottom: max(12px, env(safe-area-inset-bottom));
+}
+[data-practice-canvas] {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+}
+[data-practice-canvas] .tl-background {
+  background-color: #dad6c8;
+  background-image:
+    repeating-linear-gradient(0deg, #fff1 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, #493b1910 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 60% 40%, #ece7d9, #d3cdbd);
+}
+[data-practice-header] {
+  position: absolute;
+  top: var(--board-top);
+  left: var(--board-left);
+  right: var(--board-right);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+  color: #352e21;
+}
+[data-practice-header] h1 {
+  margin: 0;
+  font:
+    500 clamp(20px, 3vw, 28px) / 1.2 Georgia,
+    serif;
+}
+[data-practice-header] button,
+[data-practice-header] a {
+  pointer-events: auto;
+  border-radius: 8px;
+  cursor: pointer;
+}
+[data-practice-header] button {
+  min-height: var(--board-top-control-size);
+  padding: 0 16px;
+  color: #fff4de;
+  background: #314a3c;
+  border: 1px solid #283d31;
+  box-shadow: 0 2px 0 #28352b;
+  font-weight: 650;
+}
+[data-practice-header] a {
+  margin-left: auto;
+  padding: 10px 4px;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-practice-header] :is(a, button):focus-visible {
+  outline: 2px solid #7f5013;
+  outline-offset: 3px;
+}
+
+[data-practice-status] {
+  position: absolute;
+  top: 46%;
+  width: 100%;
+  text-align: center;
+}
+
+[data-practice-status] button {
+  margin-top: 8px;
+  text-decoration: underline;
+  cursor: pointer;
+}

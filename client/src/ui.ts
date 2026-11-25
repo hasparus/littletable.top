@@ -11,7 +11,7 @@ import type { Rolls } from "./rolls";
 import type { BoardSearch } from "./search-board";
 
 /** The search sheet is also where the board's places are listed. */
-export type Panel = "chat" | "dice" | "people" | "search" | "tarot";
+export type Panel = "chat" | "dice" | "people" | "search" | "gizmos";
 
 type RollDraft = { expression: string; pool: number[] };
 
@@ -21,7 +21,7 @@ type RollDraft = { expression: string; pool: number[] };
  */
 export type BoardUi = {
   board: string;
-  canDrawTarot: boolean;
+  canPlaceGizmos: boolean;
   close: (panel: Panel) => void;
   color: string;
   copy: Copy;
@@ -63,5 +63,5 @@ export const PANEL_ID: Record<Panel, string> = {
   dice: "board-dice",
   people: "board-people",
   search: "board-search",
-  tarot: "board-tarot",
+  gizmos: "board-gizmos",
 };

@@ -8,11 +8,13 @@ import {
 } from "./board-room";
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
+import { deckCommand } from "./deck";
 import { parseLaunch, parsePool } from "./dice";
 import { notationPool, parseNotation } from "./dice-notation";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
+import { gizmoInstallRequest } from "./gizmo-packages";
 import { addressKey } from "./limiter";
 import {
   type Pass,
@@ -27,7 +29,6 @@ import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
-import { tarotDraw } from "./tarot";
 
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
@@ -110,7 +111,9 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|tarot)$/u;
+const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
+const ACTION =
+  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|gizmos|link|rolls?|deck)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -124,6 +127,14 @@ async function rooms(
   verifiers: Verifiers,
 ): Promise<Response> {
   const url = new URL(request.url);
+  const asset = GIZMO_ASSET.exec(url.pathname);
+  if (asset) {
+    const [, board, key, path] = asset;
+    if (board === PUBLIC_BOARD || (request.method !== "GET" && request.method !== "HEAD"))
+      return new Response(null, { status: 404 });
+    const room = env.BoardRoom.get(env.BoardRoom.idFromName(board!));
+    return room.gizmoImage(key!, path!, request.method === "HEAD");
+  }
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
   const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
@@ -140,7 +151,7 @@ async function rooms(
   ) {
     return new Response("Not found", { status: 404 });
   }
-  if (action === "tarot" && (secret || board === PUBLIC_BOARD || request.method !== "POST")) {
+  if (action === "deck" && (secret || board === PUBLIC_BOARD || request.method !== "POST")) {
     return new Response(null, { status: 404 });
   }
   const passOf = async (token: string | null) => {
@@ -163,6 +174,25 @@ async function rooms(
       },
       file,
     );
+  }
+  if (action === "gizmos") {
+    if (secret || board === PUBLIC_BOARD || (request.method !== "GET" && request.method !== "POST"))
+      return new Response(null, { status: 404 });
+    const pass = await passOf(bearer(request));
+    if (pass === null) return new Response(null, { status: 403 });
+    if (request.method === "GET") return answer(await room.listGizmos(pass));
+    if (!pass.owner || pass.sub.startsWith("g:")) return new Response(null, { status: 403 });
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: 2048,
+    });
+    if (body === "too-large") return new Response(null, { status: 413 });
+    const input: unknown = await new Response(body).json().catch(() => null);
+    if (!gizmoInstallRequest.isValid(input)) return new Response(null, { status: 400 });
+    const result = await room.installGizmo(pass, input.url);
+    return "error" in result
+      ? Response.json({ error: result.error }, { status: result.status })
+      : answer(result);
   }
   if (action === "delete") {
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
@@ -211,7 +241,7 @@ async function rooms(
     forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
     return room.fetch(forwarded);
   }
-  if (action === "tarot") {
+  if (action === "deck") {
     if (!pass.owner) return new Response(null, { status: 403 });
     const body = await readCapped(request.body, {
       declared: Number(request.headers.get("Content-Length")),
@@ -219,8 +249,8 @@ async function rooms(
     });
     if (body === "too-large") return new Response(null, { status: 413 });
     const value: unknown = await new Response(body).json().catch(() => null);
-    if (!tarotDraw.isValid(value)) return new Response(null, { status: 400 });
-    const result = await room.drawTarot(pass, value);
+    if (!deckCommand.isValid(value)) return new Response(null, { status: 400 });
+    const result = await room.deck(pass, value);
     return result === null ? new Response(null, { status: 409 }) : answer(result);
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));

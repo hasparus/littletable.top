@@ -1,0 +1,114 @@
+[data-deck-stack] {
+  position: relative;
+  border-radius: 2px;
+  box-shadow:
+    1px 2px #e8d8b3,
+    2px 3px #766653,
+    3px 5px #e8d8b3,
+    4px 6px #766653,
+    7px 10px 14px #36281b55;
+}
+
+[data-deck-stack][data-deck-thin] {
+  box-shadow:
+    1px 2px #e8d8b3,
+    2px 3px #766653,
+    4px 7px 11px #36281b55;
+}
+
+[data-deck-stack] [data-deck-top] {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: 2px;
+  width: 100%;
+  height: 100%;
+  box-shadow: 0 2px 4px #35251866;
+  transform: translate(3%, -4%) rotate(5deg);
+  transition: transform 140ms ease-out;
+  pointer-events: none;
+}
+
+[data-deck-stack]:has([data-deck-draw]:hover) [data-deck-top],
+[data-deck-stack]:has([data-deck-draw]:focus-visible) [data-deck-top] {
+  transform: translate(7%, -8%) rotate(9deg);
+}
+
+[data-deck-stack]:has([data-deck-dragging]) [data-deck-top] {
+  transform: translate(2%, -3%) rotate(4deg);
+}
+
+[data-deck-draw] {
+  position: absolute;
+  z-index: 2;
+  inset: -7% -6% 40% 5%;
+  min-height: 24px;
+  border-radius: 4px;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+[data-deck-draw]:active {
+  cursor: grabbing;
+}
+
+[data-deck-draw]:focus-visible {
+  outline: 3px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-deck-stack] [data-deck-top] {
+    transition: none;
+  }
+}
+
+[data-deck-error] {
+  position: absolute;
+  inset: calc(100% + 8px) 0 auto;
+  padding: 3px;
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  color: var(--color-foreground);
+  font-size: 11px;
+}
+
+[data-deck-ghost] {
+  position: fixed;
+  z-index: 400;
+  width: 62px;
+  border-radius: 3px;
+  box-shadow: 0 4px 14px #36281b55;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+[data-deck-reveal] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-deck-card] {
+  position: relative;
+  transform-origin: center;
+  transform-style: preserve-3d;
+}
+
+[data-deck-front],
+[data-deck-turn] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+
+[data-deck-turn] {
+  transform: rotateY(180deg);
+}
