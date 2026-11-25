@@ -13,6 +13,7 @@ import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { BoardLoading } from "./board-loading";
 import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
@@ -232,7 +233,7 @@ export function BoardCanvas({
     [active, editor, open],
   );
   if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
-  if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
+  if (refusal !== null) return active ? <BoardLoading text={copy.loading} /> : null;
   if (store.status === "error") {
     return active ? (
       <Notice

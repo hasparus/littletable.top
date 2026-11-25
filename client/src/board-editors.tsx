@@ -13,6 +13,7 @@ import type { PublicLanding } from "./public-landing";
 
 import { BoardBackground } from "./board-background";
 import { BoardFileHandlers } from "./board-files";
+import { BoardLoading } from "./board-loading";
 import { BoardMainMenu, components } from "./chrome";
 import { MEDIA_PROPS } from "./file-flows";
 import { PageKeeper } from "./pages";
@@ -65,22 +66,22 @@ export function BoardEditors({
   store: TLStoreWithStatus;
 }) {
   const { board, copy, locale: language } = useBoardUi();
-  const canvasComponents = useMemo(
-    () =>
-      landing === undefined
-        ? { ...components, Background: overlay ? null : BoardBackground }
-        : {
-            ...components,
-            Background: () => (
-              <>
-                <BoardBackground />
-                <PublicBoardIntro {...landing} />
-              </>
-            ),
-            MainMenu: () => <BoardMainMenu hideExit />,
-          },
-    [overlay, landing],
-  );
+  const canvasComponents = useMemo(() => {
+    const LoadingScreen = () => <BoardLoading text={copy.loading} />;
+    return landing === undefined
+      ? { ...components, Background: overlay ? null : BoardBackground, LoadingScreen }
+      : {
+          ...components,
+          Background: () => (
+            <>
+              <BoardBackground />
+              <PublicBoardIntro {...landing} />
+            </>
+          ),
+          LoadingScreen,
+          MainMenu: () => <BoardMainMenu hideExit />,
+        };
+  }, [copy.loading, overlay, landing]);
 
   // WARNING: Keep the foreground editor isolated so tldraw's z-index 300 UI cannot cover the board's sheets.
   return (

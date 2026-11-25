@@ -2,27 +2,18 @@ import { useEffect, useRef } from "react";
 
 export type NoticeAction = { href: string; label: string } | { label: string; run: () => void };
 
-export function Notice({
-  action,
-  busy = false,
-  text,
-}: {
-  action?: NoticeAction;
-  busy?: boolean;
-  text: string;
-}) {
+export function Notice({ action, text }: { action?: NoticeAction; text: string }) {
   const message = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
-    if (!busy) message.current?.focus();
-  }, [busy, text]);
+    message.current?.focus();
+  }, [text]);
   return (
     <div className="fixed inset-0 z-80 grid place-items-center bg-background px-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="flex max-w-sm flex-col items-center gap-5 text-center">
         <p
-          aria-busy={busy}
           className="text-lg text-foreground outline-none"
           ref={message}
-          role={busy ? "status" : "alert"}
+          role="alert"
           tabIndex={-1}
         >
           {text}

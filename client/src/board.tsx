@@ -5,6 +5,7 @@ import { type Editor, useValue } from "tldraw";
 import type { Language } from "../settings";
 import type { PublicLanding } from "./public-landing";
 
+import { BoardLoading } from "./board-loading";
 import { BoardNameProvider } from "./board-name";
 import { BoardShare } from "./board-share";
 import {
@@ -231,15 +232,11 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
         />
       );
     case "loading":
-      return landing ? (
+      return (
         <>
-          <LandingPlaceholder copy={landing.copy} />
-          <span className="sr-only" role="status">
-            {copy.loading}
-          </span>
+          <BoardLoading text={copy.loading} />
+          {landing && <LandingPlaceholder copy={landing.copy} />}
         </>
-      ) : (
-        <Notice busy text={copy.loading} />
       );
     case "name":
       return (
