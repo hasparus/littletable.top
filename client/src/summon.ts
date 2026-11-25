@@ -1,6 +1,5 @@
-import type { Editor } from "tldraw";
-
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { type Editor, reactor } from "tldraw";
 
 import type { PassKeeper } from "./bootstrap";
 
@@ -12,34 +11,31 @@ type IncomingSummons = {
   cancel?: () => void;
 };
 
-function goToSummon(editor: Editor, view: SummonView) {
-  const { page, x, y, zoom } = view;
-  if (editor.getPage(page) === undefined) return false;
-  if (editor.getCurrentPageId() === page) {
-    editor.complete();
-  } else {
-    editor.markHistoryStoppingPoint("change-page");
-    editor.setCurrentPage(page);
-  }
-  const { width, height } = editor.getViewportScreenBounds();
-  editor.setCamera({ x: width / (2 * zoom) - x, y: height / (2 * zoom) - y, z: zoom });
-  return true;
-}
-
-function applySummon(editor: Editor, view: SummonView) {
-  if (goToSummon(editor, view)) return;
-  // WARNING: tldraw may batch the page record until the next frame after the summon arrives.
-  const release = editor.store.listen(
-    () => {
-      if (goToSummon(editor, view)) stop();
-    },
-    { scope: "document", source: "remote" },
-  );
-  const timer = setTimeout(release, 5000);
+function applySummon(editor: Editor, { page, x, y, zoom }: SummonView) {
+  let expiry: ReturnType<typeof setTimeout> | undefined;
+  const pending = reactor("apply summon when ready", () => {
+    // WARNING: tldraw may batch the page record until the next frame after the summon arrives.
+    if (editor.getPage(page) === undefined) {
+      expiry ??= setTimeout(stop, 5000);
+      return;
+    }
+    clearTimeout(expiry);
+    expiry = undefined;
+    // WARNING: Changing the camera dispatches a pointer move. Let the active gesture finish first.
+    if (editor.inputs.getIsPointing() || editor.inputs.getIsPinching()) return;
+    stop();
+    if (editor.getCurrentPageId() !== page) {
+      editor.markHistoryStoppingPoint("change-page");
+      editor.setCurrentPage(page);
+    }
+    const { width, height } = editor.getViewportScreenBounds();
+    editor.setCamera({ x: width / (2 * zoom) - x, y: height / (2 * zoom) - y, z: zoom });
+  });
   function stop() {
-    clearTimeout(timer);
-    release();
+    clearTimeout(expiry);
+    pending.stop();
   }
+  pending.start();
   return stop;
 }
 

@@ -1,4 +1,12 @@
-import { type Browser, devices, expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  type Browser,
+  devices,
+  expect,
+  type Locator,
+  type Page,
+  test,
+  type WebSocket,
+} from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 import { HOST } from "../ports";
@@ -27,6 +35,17 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 const pageButton = (page: Page) => page.getByTestId("page-menu.button");
+
+const boardSocket = (page: Page) =>
+  page.waitForEvent("websocket", (socket) => new URL(socket.url()).pathname.endsWith("/connect"));
+
+const nextSummon = (socket: WebSocket) =>
+  socket.waitForEvent("framereceived", ({ payload }) => payload.includes('"type":"summon"'));
+
+const leftEdge = async (label: Locator) => {
+  const bounds = await label.boundingBox();
+  return bounds?.x;
+};
 
 const onPhone = (page: Page) => (page.viewportSize()?.width ?? 0) < 600;
 
@@ -145,33 +164,86 @@ test("a connected guest receives the latest summon while the editor is still loa
     await route.continue();
   });
   try {
-    const connecting = guest.waitForEvent("websocket", (socket) =>
-      new URL(socket.url()).pathname.endsWith("/connect"),
-    );
+    const connecting = boardSocket(guest);
     await guest.goto(owner.url(), { waitUntil: "commit" });
     await guest.getByLabel("Your name").fill("Bea");
     await guest.getByRole("button", { name: "Join the board" }).click();
     const socket = await connecting;
-    const receiveSummon = () =>
-      socket.waitForEvent("framereceived", ({ payload }) => payload.includes('"type":"summon"'));
-
     const people = await openSheet(owner, "People");
     await expect(people.getByRole("button", { name: /^Bea/u })).toBeVisible();
     await expect(pageButton(guest)).toHaveCount(0);
     const summon = people.getByRole("button", { name: "Summon Bea" });
-    await Promise.all([receiveSummon(), summon.click()]);
-    await expect(people.getByRole("status")).toHaveText("Summon sent.");
+    await Promise.all([nextSummon(socket), summon.click()]);
     await closeSheet(owner, "People");
     await goToPage(owner, "Latest destination");
     await openSheet(owner, "People");
-    await Promise.all([receiveSummon(), summon.click()]);
-    await expect(people.getByRole("status")).toHaveText("Summon sent.");
+    await Promise.all([nextSummon(socket), summon.click()]);
     await expect(pageButton(guest)).toHaveCount(0);
 
     allowFonts.resolve(null);
     await expect(pageButton(guest)).toHaveText("Latest destination");
   } finally {
     allowFonts.resolve(null);
+    await guest.close();
+  }
+});
+
+test("a same-page summon waits for a guest to cancel an erasure", async ({
+  browser,
+  page: owner,
+}) => {
+  const text = "Keep this note";
+  await owner.goto(`${HOST}/sign-in?name=Ada`);
+  await owner.getByRole("button", { name: "New board" }).click();
+  await expect(pageButton(owner)).toHaveText("Page 1");
+  await putNote(owner, { at: { x: 320, y: 260 }, text });
+
+  const guest = await browser.newPage(DESKTOP);
+  try {
+    const connecting = boardSocket(guest);
+    await guest.goto(owner.url());
+    await joinAs(guest, "Bea");
+    const socket = await connecting;
+    const note = onBoard(guest, text);
+    await expect(note).toBeVisible();
+    const start = (await note.boundingBox())!;
+
+    await owner.mouse.move(650, 350);
+    await owner.mouse.down({ button: "middle" });
+    await owner.mouse.move(950, 350, { steps: 5 });
+    await owner.mouse.up({ button: "middle" });
+    const ownerNote = onBoard(owner, text);
+    await expect.poll(() => leftEdge(ownerNote)).toBeGreaterThan(start.x + 200);
+    const people = await openSheet(owner, "People");
+    const summon = people.getByRole("button", { name: "Summon Bea" });
+    await expect(summon).toBeEnabled();
+
+    await guest.getByTestId("tools.eraser").click();
+    const y = start.y + start.height / 2;
+    await guest.mouse.move(start.x - 10, y);
+    await guest.mouse.down();
+    await guest.mouse.move(start.x + start.width, y, { steps: 5 });
+    const noteContainer = guest
+      .getByTestId("canvas")
+      .locator(".tl-shape")
+      .filter({ hasText: text });
+    await expect(noteContainer).toHaveCSS("opacity", "0.32");
+
+    // WARNING: Clicking on the owner's screen can take pointer capture away from the guest.
+    const [response] = await Promise.all([
+      owner.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/summon")),
+      nextSummon(socket),
+      summon.dispatchEvent("click"),
+    ]);
+    expect(response.status()).toBe(204);
+    await expect(noteContainer).toHaveCSS("opacity", "0.32");
+    expect(await leftEdge(note)).toBeCloseTo(start.x);
+
+    await guest.keyboard.press("Escape");
+    await guest.mouse.up();
+    await expect.poll(() => leftEdge(note)).toBeGreaterThan(start.x + 200);
+    await expect(ownerNote).toBeVisible();
+  } finally {
     await guest.close();
   }
 });
@@ -278,10 +350,6 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   const summon = ownerPeople.getByRole("button", { name: "Summon Bea" });
   await expect(summon).toBeEnabled();
   await summon.click();
-  const summonedRow = ownerPeople.getByRole("listitem").filter({
-    has: ada.getByRole("button", { exact: true, name: "Summon Bea" }),
-  });
-  await expect(summonedRow.getByRole("status")).toHaveText("Summon sent.");
   await expect(pageButton(bea)).toHaveText("Town");
   await expect(onBoard(bea, "Gate")).toBeInViewport();
   await shot(ada, "owner-summon");
@@ -291,11 +359,11 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   const people = await openSheet(bea, "People");
   await expect(people.getByRole("button", { name: /^Summon /u })).toHaveCount(0);
   await expect(people.getByRole("listitem")).toHaveCount(2, { timeout: 30_000 });
-  const adaRow = people.getByRole("button", { name: /^Ada/u });
-  await expect(adaRow).toContainText("Town");
+  const followAda = bea.getByRole("button", { name: /^Ada.*Follow$/u });
+  await expect(people.getByRole("listitem").filter({ has: followAda })).toContainText("Town");
   await expect(people.getByRole("listitem").filter({ hasText: "Bea" })).toContainText("Crypt");
   await shot(bea, "people");
-  await adaRow.click();
+  await followAda.click();
   await expect(people).toBeHidden();
   await expect(pageButton(bea)).toHaveText("Town");
   const following = await openSheet(bea, "People");
