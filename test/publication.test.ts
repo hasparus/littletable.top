@@ -1,7 +1,8 @@
 import { expect, it } from "vitest";
 
+import { publicationKey } from "../src/file-store";
 import { IMAGES_37_BY_21 } from "./image-samples";
-import { Browser, ORIGIN } from "./standalone-support";
+import { Browser, ORIGIN, standaloneEnv } from "./standalone-support";
 
 const png = IMAGES_37_BY_21["size.png"];
 
@@ -64,4 +65,24 @@ it("lets only the owner publish, update, and withdraw a separate public snapshot
   expect((await reader.fetch(url)).status).toBe(404);
   expect((await owner.post(`/api/boards/${board.id}/delete`)).status).toBe(204);
   expect((await reader.fetch(fresh.url)).status).toBe(404);
+});
+
+it("refuses stale snapshots even while their image remains in storage", async () => {
+  const owner = new Browser();
+  const reader = new Browser();
+  await owner.signIn("Owner");
+  const board = await owner.createBoard();
+  const path = `/api/boards/${board.id}/publish`;
+  const response = await owner.fetch(path, {
+    body: png,
+    headers: { "Content-Type": "image/png", Origin: ORIGIN, "X-CSRF-Token": owner.csrf! },
+    method: "POST",
+  });
+  const { url } = (await response.json()) as { url: string };
+  const otherCode = crypto.randomUUID();
+  await standaloneEnv.Files.put(publicationKey(board.id, otherCode), png);
+  expect((await reader.fetch(`/p/${board.id}/${otherCode}`)).status).toBe(404);
+
+  await standaloneEnv.DB!.prepare("DELETE FROM boards WHERE id = ?").bind(board.id).run();
+  expect((await reader.fetch(url)).status).toBe(404);
 });

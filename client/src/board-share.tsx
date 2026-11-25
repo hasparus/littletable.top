@@ -7,6 +7,7 @@ import { useValue } from "tldraw";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 
+import { MAX_FILE_BYTES } from "../../src/limits";
 import { useBoardName } from "./board-name";
 import { MENU_BUTTON } from "./front-menu";
 
@@ -47,18 +48,19 @@ export function BoardShare({
     setStatus(copy.linkCopied);
   }
 
-  async function renderPage() {
+  async function renderPage(scale = 1) {
     if (!editor || !pageContent?.length) throw new Error("Page unavailable");
-    const { blob } = await editor.toImage(pageContent, {
+    return editor.toImage(pageContent, {
       background: true,
       format: "png",
       pixelRatio: 1,
+      scale,
     });
-    return blob;
   }
 
   async function download() {
-    const url = URL.createObjectURL(await renderPage());
+    const { blob } = await renderPage();
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = `${title}.png`;
@@ -68,8 +70,16 @@ export function BoardShare({
 
   async function publish() {
     if (!publication) return;
+    const image = await renderPage();
+    let body = image.blob;
+    if (body.size > MAX_FILE_BYTES) {
+      // WARNING: Reserve room for PNG scanlines and headers beyond the four bytes per pixel.
+      const scale = Math.sqrt(MAX_FILE_BYTES / (5 * image.width * image.height));
+      const smaller = await renderPage(Math.min(scale, 0.9));
+      body = smaller.blob;
+    }
     const response = await fetch(endpoint, {
-      body: await renderPage(),
+      body,
       headers: { "Content-Type": "image/png", "X-CSRF-Token": publication.csrf },
       method: "POST",
     });

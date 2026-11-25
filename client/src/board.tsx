@@ -1,7 +1,6 @@
-import type { Editor } from "tldraw";
-
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { type Editor, useValue } from "tldraw";
 
 import type { Language } from "../settings";
 import type { PublicLanding } from "./public-landing";
@@ -63,6 +62,20 @@ function ReadyBoard({
   const [privateEditor, setPrivateEditor] = useState<Editor | null>(null);
   const [layer, setLayer] = useState<Layer>("shared");
   const editingSecret = layer === "overlay" || layer === "manage";
+  const visibleSharedEditor = useValue(
+    "visible shared page",
+    () => {
+      if (layer === "manage") return null;
+      if (
+        layer === "overlay" &&
+        privateEditor &&
+        shared?.getCurrentPageId() !== privateEditor.getCurrentPageId()
+      )
+        return null;
+      return shared;
+    },
+    [layer, privateEditor, shared],
+  );
   const canEnterSecret = layer !== "unavailable" && keeper.bootstrap.secretPass !== undefined;
   const closeSecret = useCallback(() => {
     setSecret(undefined);
@@ -107,7 +120,7 @@ function ReadyBoard({
       )}
       {landing === undefined && (
         <div data-board-sharing>
-          <BoardShare copy={copy} editor={shared} keeper={keeper} />
+          <BoardShare copy={copy} editor={visibleSharedEditor} keeper={keeper} />
           {canEnterSecret && (
             <button
               aria-busy={editingSecret && privateEditor === null}

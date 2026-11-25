@@ -155,13 +155,7 @@ export class Standalone {
     }
     const published = /^\/p\/([A-Za-z0-9]{1,64})\/([a-f0-9-]{36})$/u.exec(pathname);
     if (published !== null && (method === "GET" || method === "HEAD")) {
-      return serveStored(request, {
-        bucket: this.env.Files,
-        config: this.config,
-        key: publicationKey(published[1]!, published[2]!),
-        name: "page",
-        secret: true,
-      });
+      return this.published(request, published[1]!, published[2]!);
     }
     const thumbnail = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/thumbnail$/u.exec(pathname);
     if (thumbnail !== null) {
@@ -364,6 +358,19 @@ export class Standalone {
       config: this.config,
       key: thumbnailKey(id),
       name: id,
+      secret: true,
+    });
+  }
+
+  private async published(request: Request, id: string, code: string) {
+    if (!(await this.store.exists(id))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    if ((await room.publicationCode()) !== code) return refuse(404, "not-found");
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: publicationKey(id, code),
+      name: "page",
       secret: true,
     });
   }

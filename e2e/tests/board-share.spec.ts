@@ -1,8 +1,10 @@
+import type { Editor } from "tldraw";
+
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { STANDALONE } from "../ports";
-import { putNote } from "./helpers";
+import { putNote, reachEditor } from "./helpers";
 
 test("Share exports and publishes the shared page while the secret layer is active", async ({
   context,
@@ -40,6 +42,17 @@ test("Share exports and publishes the shared page while the secret layer is acti
   expect(publicPage.headers()["content-type"]).toContain("image/png");
   expect(await publicPage.body()).toEqual(exported);
 
+  await page.keyboard.press("Escape");
+  await reachEditor(page);
+  await page.evaluate(() => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    editor.createPage({ name: "Private preparations" });
+    const privatePage = editor.getPages().find((entry) => entry.name === "Private preparations")!;
+    editor.setCurrentPage(privatePage.id);
+  });
+  await share.click();
+  await expect(page.getByRole("button", { name: "Export page as PNG" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Update published page" })).toBeDisabled();
   await page.getByRole("button", { name: "Unpublish" }).click();
   await expect(
     page.getByRole("status", { name: "" }).filter({ hasText: "Page unpublished." }),
