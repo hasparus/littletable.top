@@ -1,18 +1,19 @@
 # Little Table
 
-A shared whiteboard for tabletop games. Drop in a map or a character sheet,
-draw on it, and roll dice where everyone can see.
+Little Table is a shared whiteboard with dice for tabletop RPGs. Drop a map on
+the board and ask the party where they cross the river. A player can circle the
+ford and roll for the crossing where everyone can see the result.
 
-[Try the public board](https://littletable.top/) · [Make a board](https://littletable.top/boards)
+[Open the public board](https://littletable.top/) to draw alongside other
+visitors. You get a guest name automatically. Drawings fade after a day and
+disappear after two.
+
+[Start a board for your group](https://littletable.top/boards). Sign in, choose
+**New board**, then send the board URL to your players. Anyone with the link
+can join with just a name. As the owner, you can keep your notes on the secret
+layer while the group draws on the map.
 
 ![A hand-drawn river crossing and an uploaded handout on a Little Table board, with a two-die result](docs/screenshots/board.webp)
-
-Sign in to make a board and send your group the link. Guests join with a name.
-On the public board, anyone can draw or chat. Drawings disappear after two days.
-
-Search for words in an image or jump to a named place. Board owners can plan in
-a secret layer that guests can't see. The board works on phones and can be added
-to a home screen. Import or download a board as a `.tldr` file.
 
 <p>
   <img width="360" src="docs/screenshots/search.webp" alt="Mobile board search finding SALTPEARL in the uploaded tollhouse ledger" />
