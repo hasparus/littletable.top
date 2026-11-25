@@ -87,7 +87,7 @@ export default defineConfig({
       command: tabletop(
         "standalone",
         PORTS.standalone,
-        `--assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS}`,
+        `--assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS} --var MCP_RESOURCE:https://mcp.example.test/mcp`,
         ["wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone"],
       ),
       cwd: root,

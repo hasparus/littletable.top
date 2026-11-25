@@ -242,7 +242,9 @@ assistants deploys the board Worker alone.
 
 For standalone staging or production, set `MCP_AUTHKIT_ORIGIN` to that
 stage's AuthKit issuer origin and `MCP_DOMAIN` to the MCP Worker's custom
-hostname. Register `https://<MCP_DOMAIN>/mcp` as a Resource Indicator in
+hostname (without a scheme or path). In GitHub Actions, set both as
+variables on the deployment Environment. Preview stages do not receive
+these variables. Register `https://<MCP_DOMAIN>/mcp` as a Resource Indicator in
 the same WorkOS environment and enable Client ID Metadata Documents (or
 Dynamic Client Registration for older clients). The MCP Worker uses the
 same D1 database as the board Worker, including the assistant grants

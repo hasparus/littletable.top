@@ -145,7 +145,12 @@ export class Standalone {
       pathname === "/assistants" &&
       (method === "GET" || method === "POST")
     ) {
-      return this.assistants(request).then((response) => harden(response, request, this.config));
+      return this.assistants(request).then((response) => {
+        const page = harden(response, request, this.config);
+        // Native POST navigations need the same-origin Origin header for the form check.
+        if (method === "GET" && page.ok) page.headers.set("Referrer-Policy", "same-origin");
+        return page;
+      });
     }
     if (pathname === "/api/me" && method === "GET") return this.me(request);
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
@@ -221,6 +226,8 @@ export class Standalone {
     )
       return refuse(400, "invalid-request");
     if (!(await grants.set(account.id, client, board, access))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board));
+    await room.assistantGrantsChanged();
     return Response.redirect(new URL("/assistants", url), 303);
   }
 
@@ -443,7 +450,6 @@ export class Standalone {
     if (board === null) return refuse(404, "not-found");
     if (!(await this.store.setRole(id, person, role))) return refuse(404, "not-found");
     if (role === "write") {
-      if (this.config.assistants) await new AssistantGrants(this.env.DB).revokeManager(person, id);
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
       await room.endAssistants(id);
     }

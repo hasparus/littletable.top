@@ -78,14 +78,6 @@ export class AssistantGrants {
     return result.meta.changes > 0;
   }
 
-  async revokeManager(account: string, board: string) {
-    await this.db
-      .prepare(`UPDATE assistant_grants SET access = 'off', revision = revision + 1
-      WHERE account_id = ? AND board_id = ? AND access != 'off'`)
-      .bind(account, board)
-      .run();
-  }
-
   async admits(grant: BoardGrant) {
     const { standalone } = grant;
     if (!standalone) return false;

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 
 import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
@@ -93,4 +94,46 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expectNoCspViolations(front);
   await expectNoCspViolations(guest);
   await guest.context().close();
+});
+
+test("a signed-in owner saves and revokes an assistant grant in the browser", async ({ page }) => {
+  await page.goto(`${STANDALONE}/`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Assistant Test Owner");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Signed in as Assistant Test Owner")).toBeVisible();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+
+  // Start with a connection already registered by the assistant's first request.
+  const me = await page.request.get(`${STANDALONE}/api/me`);
+  const { account }: { account: { id: string } } = await me.json();
+  const accountId = account.id.replaceAll("'", "''");
+  execFileSync("wrangler", [
+    "d1",
+    "execute",
+    "DB",
+    "--local",
+    "--persist-to",
+    ".wrangler/e2e-standalone",
+    "--command",
+    `INSERT OR IGNORE INTO assistant_clients (account_id, client_id) VALUES ('${accountId}', 'e2e-assistant')`,
+  ]);
+
+  const settings = `${STANDALONE}/assistants`;
+  await page.goto(settings);
+  const access = page.getByRole("combobox", { name: "Board" });
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(access).toHaveValue("off");
+  for (const value of ["write", "off"]) {
+    await access.selectOption(value);
+    const posted = page.waitForResponse(
+      (response) => response.url() === settings && response.request().method() === "POST",
+    );
+    await save.click();
+    const response = await posted;
+    expect(response.status()).toBe(303);
+    await page.reload();
+    await expect(access).toHaveValue(value);
+  }
 });

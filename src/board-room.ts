@@ -58,6 +58,7 @@ function kind(sub: string): "guest" | "member" {
 
 export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<TLRecord, Person>;
+  private assistantGrantEpoch = 0;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private document!: RoomDocument;
@@ -300,10 +301,15 @@ export class BoardRoom extends DurableObject<Env> {
     log("board.mcp_revoked", { board, version });
   }
 
+  assistantGrantsChanged(): void {
+    this.assistantGrantEpoch++;
+  }
+
   // Ends every assistant connected to this board at once (a shaman was
   // demoted, or the owner wants them gone). Returns the grant version that
   // later tokens must carry.
   endAssistants(board: string): number {
+    this.assistantGrantsChanged();
     const version = this.grantVersion() + 1;
     this.revokeMcpGrants(board, version);
     return version;
@@ -322,8 +328,12 @@ export class BoardRoom extends DurableObject<Env> {
     grant: BoardGrant,
     diff: DocumentDiff,
   ): Promise<"read-only" | "revoked" | CommitOutcome> {
+    const epoch = this.assistantGrantEpoch;
     const refusal = await this.admitGrant(grant);
     if (refusal !== null) return refusal;
+    // A settings write waits for the room's notification before confirming. A stale
+    // D1 response delivered after that notification cannot authorize a commit.
+    if (grant.standalone !== undefined && epoch !== this.assistantGrantEpoch) return "revoked";
     if (grant.access !== "write") return "read-only";
     const outcome = this.document.commit(diff);
     log("board.document_commit", {

@@ -47,6 +47,6 @@ export function standaloneMcp(
     },
     authorizationServer: issuer,
     resource,
-    scopes: ["openid"],
+    scopes: ["openid", "offline_access"],
   };
 }

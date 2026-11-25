@@ -116,6 +116,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
           TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY }}
+          MCP_AUTHKIT_ORIGIN: ${{ (env.STAGE == 'prod' || env.STAGE == 'staging') && vars.MCP_AUTHKIT_ORIGIN || '' }}
+          MCP_DOMAIN: ${{ (env.STAGE == 'prod' || env.STAGE == 'staging') && vars.MCP_DOMAIN || '' }}
         run: |
           log="$RUNNER_TEMP/alchemy-deploy.log"
           aube exec -- alchemy deploy --stage "$STAGE" --yes 2>&1 | tee "$log"

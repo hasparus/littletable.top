@@ -7,6 +7,7 @@
 // stack's own TypeScript but leaves everything under node_modules to Node.
 
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
@@ -210,7 +211,7 @@ export const Tabletop = (id, props) =>
                     DB: standalone.DB,
                     MCP_BOARD_ORIGIN:
                       props.domain === undefined
-                        ? new URL(worker.url).origin
+                        ? worker.url.pipe(Output.map((url) => (url ? new URL(url).origin : "")))
                         : `https://${props.domain.primary}`,
                     MCP_RESOURCE: `https://${props.mcp.domain}/mcp`,
                   }),
