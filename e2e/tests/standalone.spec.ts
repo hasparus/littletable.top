@@ -23,6 +23,10 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+declare global {
+  var __editor: Editor;
+}
+
 test("board sections collapse on phones only when both lists have three boards", async ({
   page,
   request,
@@ -282,7 +286,10 @@ test("the prerendered landing intro uses dark mode before JavaScript runs", asyn
   }
 });
 
-test("the public page menu preserves the landing page and its drawings", async ({ page }) => {
+test("the public page menu preserves the landing page and its drawings", async ({
+  browser,
+  page,
+}) => {
   await page.goto(`${STANDALONE}/?lang=en`);
   const pageButton = page.getByTestId("page-menu.button");
   await expect(pageButton).toHaveText("Landing Page");
@@ -306,6 +313,37 @@ test("the public page menu preserves the landing page and its drawings", async (
 
   if (!(await pageList.isVisible())) await pageButton.click();
   const other = pageList.getByTestId("page-menu.item").filter({ hasText: "Another page" });
+  await other.getByTestId("page-menu.item-submenu").click();
+  await page.getByRole("menuitem", { exact: true, name: "Move up" }).click();
+  await expect(pageList.getByTestId("page-menu.item").first()).toContainText("Another page");
+
+  const fresh = await browser.newPage();
+  try {
+    await fresh.goto(`${STANDALONE}/?lang=en`);
+    await expect(fresh.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await expect(fresh.locator("[data-public-board-note]")).toBeInViewport();
+    await expect(onBoard(fresh, text)).toBeVisible();
+  } finally {
+    await fresh.close();
+  }
+
+  await reachEditor(page);
+  const attemptedDeletion = await page.evaluate(() => {
+    const editor = globalThis.__editor;
+    const landing = editor.getCurrentPageId();
+    const drawings = editor.getSortedChildIdsForParent(landing);
+    editor.store.remove([...drawings, landing]);
+    return { landing: String(landing), wasRemoved: editor.getPage(landing) === undefined };
+  });
+  expect(attemptedDeletion.wasRemoved).toBe(true);
+  await page.waitForFunction((id) => {
+    return globalThis.__editor.getPages().some((candidate) => candidate.id === id);
+  }, attemptedDeletion.landing);
+  await page.reload();
+  await expect(pageButton).toHaveText("Landing Page");
+  await expect(onBoard(page, text)).toBeVisible();
+
+  if (!(await pageList.isVisible())) await pageButton.click();
   await other.getByTestId("page-menu.item-submenu").click();
   await page.getByRole("menuitem", { exact: true, name: "Delete" }).click();
   if (!(await pageList.isVisible())) await pageButton.click();

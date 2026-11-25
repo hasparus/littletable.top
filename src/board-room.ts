@@ -32,7 +32,9 @@ import {
   stampPublicShape,
 } from "./public-board-expiry";
 import {
+  discardLandingPageDeletion,
   isPublicSignature,
+  type LandingPageMessage,
   placePublicSignature,
   PUBLIC_SIGNATURE_GROUP,
 } from "./public-signature";
@@ -87,6 +89,7 @@ function kind(sub: string): "guest" | "member" {
 export class BoardRoom extends DurableObject<Env> {
   private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
+  private publicSignaturePage?: TLPageId;
   private retired = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
@@ -114,6 +117,7 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
     this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
+    this.publicSignaturePage = this.ctx.storage.kv.get<TLPageId>(PUBLIC_SIGNATURE_PAGE);
     this.retired = this.ctx.storage.kv.get(RETIRED) === true;
     this.drawingRoom = undefined;
     this.lastRollAt = new Map();
@@ -148,11 +152,6 @@ export class BoardRoom extends DurableObject<Env> {
     const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
     const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
-        page: (write) => {
-          if (write.type !== "delete") return write.next;
-          const protectedPage = this.ctx.storage.kv.get<TLPageId>(PUBLIC_SIGNATURE_PAGE);
-          return write.prev.id === protectedPage ? null : write.prev;
-        },
         shape: (write) => {
           const record = write.type === "delete" ? write.prev : write.next;
           if (!this.publicExpiryEnabled) return record;
@@ -166,7 +165,11 @@ export class BoardRoom extends DurableObject<Env> {
       },
       // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
-        stampPresence((received as { message?: unknown }).message, received.meta);
+        const { message } = received as typeof received & { message?: LandingPageMessage };
+        stampPresence(message, received.meta);
+        if (this.publicSignaturePage !== undefined) {
+          discardLandingPageDeletion(message, this.publicSignaturePage);
+        }
       },
       storage: drawing,
     });
@@ -532,7 +535,7 @@ export class BoardRoom extends DurableObject<Env> {
 
   private preparePublicLandingPage(): void {
     const { kv } = this.ctx.storage;
-    if (kv.get(PUBLIC_SIGNATURE_PAGE) !== undefined) return;
+    if (this.publicSignaturePage !== undefined) return;
     const namePage = kv.get(PUBLIC_LANDING_PAGE_NAMED) !== true;
     const page = this.drawing.transaction((store) => {
       const first = [...store.values()]
@@ -548,6 +551,7 @@ export class BoardRoom extends DurableObject<Env> {
     if (page !== undefined) {
       kv.put(PUBLIC_LANDING_PAGE_NAMED, true);
       kv.put(PUBLIC_SIGNATURE_PAGE, page);
+      this.publicSignaturePage = page;
     }
   }
 

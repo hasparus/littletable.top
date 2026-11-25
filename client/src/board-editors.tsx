@@ -20,7 +20,7 @@ import { fitPublicBoardIntro } from "./landing-preview";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
-import { PublicBoardIntro, PublicPageDeleteGuard } from "./public-landing";
+import { PublicBoardIntro, publicLandingPage, PublicPageDeleteGuard } from "./public-landing";
 import { useBoardUi } from "./ui";
 
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
@@ -108,6 +108,9 @@ export function BoardEditors({
           // WARNING: tldraw's menus read the user preference rather than the locale prop.
           mounted.user.updateUserPreferences({ locale: language });
           if (landing !== undefined) {
+            const page = publicLandingPage(mounted);
+            if (page !== undefined && mounted.getCurrentPageId() !== page)
+              mounted.setCurrentPage(page);
             fitPublicBoardIntro(mounted);
             rememberExistingArrows(mounted);
           }

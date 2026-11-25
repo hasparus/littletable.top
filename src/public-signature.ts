@@ -57,6 +57,22 @@ export function isPublicSignature(id: Drawing["id"]) {
   return id === PUBLIC_SIGNATURE_GROUP || originalStrokes.some((stroke) => stroke.id === id);
 }
 
+export type LandingPageMessage = {
+  type: string;
+  diff?: Partial<Record<TLPageId, readonly [operation: string, ...changes: unknown[]]>>;
+};
+
+export function discardLandingPageDeletion(
+  message: LandingPageMessage | undefined,
+  protectedPage: TLPageId,
+) {
+  if (message?.type !== "push") return;
+  const removal = message.diff?.[protectedPage];
+  if (!Array.isArray(removal) || removal[0] !== "remove") return;
+  // WARNING: Clear the diff rather than dropping just the page operation; tldraw must discard the whole optimistic deletion.
+  message.diff = {};
+}
+
 export function placePublicSignature(store: TLSyncStorageTransaction<TLRecord>, page: TLPageId) {
   const last = [...store.values()]
     .filter((record) => record.typeName === "shape")

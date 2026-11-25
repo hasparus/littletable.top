@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "react";
-import { type Editor, useEditor, useToasts, useValue } from "tldraw";
+import { type Editor, isPageId, useEditor, useToasts, useValue } from "tldraw";
 
 import type { LandingCopy } from "./front-copy";
 
@@ -8,17 +8,21 @@ import { useBoardUi } from "./ui";
 
 export type PublicLanding = { copy: LandingCopy };
 
-const signaturePage = (editor: Editor) => editor.store.get(PUBLIC_SIGNATURE_GROUP)?.parentId;
+function signaturePage(editor: Editor) {
+  const parent = editor.store.get(PUBLIC_SIGNATURE_GROUP)?.parentId;
+  return parent !== undefined && isPageId(parent) ? parent : undefined;
+}
+
+export const publicLandingPage = (editor: Editor) =>
+  signaturePage(editor) ?? editor.getPages()[0]?.id;
 
 function guardLandingPageDeletion(editor: Editor, blocked: () => void) {
-  const landingPage = signaturePage(editor);
-  if (landingPage === undefined) return;
   // WARNING: The native page menu calls deletePage directly, which removes drawings before the page.
   const { deletePage } = editor;
   editor.deletePage = (page) => {
     // oxlint-disable-next-line anti-slop/no-runtime-typeof -- tldraw's deletePage accepts an ID or a page record.
     const id = typeof page === "string" ? page : page.id;
-    if (id === landingPage) {
+    if (id === signaturePage(editor)) {
       blocked();
       return editor;
     }
@@ -49,8 +53,7 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
   const position = useValue(
     "public board introduction",
     () => {
-      const landingPage = signaturePage(editor) ?? editor.getPages()[0]?.id;
-      if (editor.getCurrentPageId() !== landingPage) return null;
+      if (editor.getCurrentPageId() !== publicLandingPage(editor)) return null;
       const { x, y } = editor.pageToViewport({ x: 0, y: 0 });
       return {
         x,
