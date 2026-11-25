@@ -46,7 +46,7 @@ export function usePresent(editor: Editor | null): Present[] {
 
 const isGuest = (id: string) => id.startsWith("g:");
 const personAction =
-  "min-h-11 shrink-0 rounded-md px-2 text-sm text-foreground-secondary hover:bg-bg-tertiary hover:text-foreground focus-visible:outline-2 focus-visible:outline-border-focus disabled:opacity-40";
+  "min-h-9 shrink-0 rounded-md px-2 text-sm text-foreground-secondary hover:bg-bg-tertiary hover:text-foreground focus-visible:outline-2 focus-visible:outline-border-focus disabled:opacity-40";
 
 function Who({ page, who }: { page: string | undefined; who: Person }) {
   const { copy, files, person } = useBoardUi();
@@ -144,23 +144,25 @@ export function PeopleSheet() {
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <Who page={pageOf(present.page)} who={present} />
               </div>
-              <button
-                aria-label={`${present.name} ${action}`}
-                className={personAction}
-                onClick={() => {
-                  if (editor === null) return;
-                  if (followed) {
-                    editor.stopFollowingUser();
-                    return;
-                  }
-                  open(null);
-                  editor.startFollowingUser(userId);
-                }}
-                type="button"
-              >
-                {action}
-              </button>
-              <SummonButton target={present} />
+              <div className="flex shrink-0 items-start gap-1 py-0.5">
+                <button
+                  aria-label={`${present.name} ${action}`}
+                  className={personAction}
+                  onClick={() => {
+                    if (editor === null) return;
+                    if (followed) {
+                      editor.stopFollowingUser();
+                      return;
+                    }
+                    open(null);
+                    editor.startFollowingUser(userId);
+                  }}
+                  type="button"
+                >
+                  {action}
+                </button>
+                <SummonButton target={present} />
+              </div>
             </li>
           );
         })}
