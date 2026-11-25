@@ -43,7 +43,7 @@ function ChatResizeCue({ cue }: { cue: ResizeCue }) {
 type Drag = {
   edge: Edge;
   pointer: number;
-  minWidth: number;
+  widthLimits: ReturnType<typeof widthLimits>;
   rect: DOMRect;
   size: ChatSize;
   x: number;
@@ -53,6 +53,14 @@ type Drag = {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const desktop = () => matchMedia("(min-width: 40rem)").matches;
 const margin = 8;
+
+function widthLimits(panel: HTMLElement) {
+  const style = getComputedStyle(panel);
+  return {
+    min: Number.parseFloat(style.minWidth),
+    right: margin + Number.parseFloat(style.maxWidth),
+  };
+}
 
 export function useChatMove(
   sheet: RefObject<HTMLElement | null>,
@@ -64,6 +72,7 @@ export function useChatMove(
     pointer: number;
     preferredSize: ChatSize;
     rect: DOMRect;
+    right: number;
     x: number;
     y: number;
   } | null>(null);
@@ -80,6 +89,7 @@ export function useChatMove(
         pointer: event.pointerId,
         preferredSize: layout.size,
         rect,
+        right: widthLimits(sheet.current).right,
         x: event.clientX,
         y: event.clientY,
       };
@@ -93,7 +103,7 @@ export function useChatMove(
       const dy = event.clientY - from.y;
       const minBottom = keyboardArea?.bottom ?? margin;
       const availableHeight = keyboardArea?.height ?? innerHeight - 2 * margin;
-      const left = clamp(rect.left + dx, margin, innerWidth - rect.width - margin);
+      const left = clamp(rect.left + dx, margin, from.right - rect.width);
       const bottom = clamp(
         from.bottom - dy,
         minBottom,
@@ -114,7 +124,7 @@ export function useChatMove(
 function resize(
   size: ChatSize,
   rect: DOMRect,
-  minWidth: number,
+  limits: ReturnType<typeof widthLimits>,
   edge: Edge,
   dx: number,
   dy: number,
@@ -122,10 +132,10 @@ function resize(
   const next = { ...size };
   if (desktop() && (edge.includes("e") || edge.includes("w"))) {
     const left = edge.includes("w")
-      ? clamp(rect.left + dx, margin, rect.right - minWidth)
+      ? clamp(rect.left + dx, margin, rect.right - limits.min)
       : rect.left;
     const right = edge.includes("e")
-      ? clamp(rect.right + dx, left + minWidth, innerWidth - margin)
+      ? clamp(rect.right + dx, left + limits.min, limits.right)
       : rect.right;
     next.width = right - left;
     next.left = left;
@@ -183,17 +193,17 @@ export function ChatResize({
     const panel = sheet.current;
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
-    const minWidth = Number.parseFloat(getComputedStyle(panel).minWidth);
+    const limits = widthLimits(panel);
     const dx = event.key === "ArrowLeft" ? -24 : event.key === "ArrowRight" ? 24 : 0;
     const dy = event.key === "ArrowUp" ? -24 : event.key === "ArrowDown" ? 24 : 0;
     if (event.key === "Enter" || event.key === " ") {
       change(
         size.width !== undefined || size.height !== undefined
           ? {}
-          : resize(size, rect, minWidth, "ne", 120, -120),
+          : resize(size, rect, limits, "ne", 120, -120),
       );
     } else if (dy || (dx && desktop())) {
-      change(resize(size, rect, minWidth, dy ? "n" : "e", dx, dy));
+      change(resize(size, rect, limits, dy ? "n" : "e", dx, dy));
     } else return;
     event.preventDefault();
     event.stopPropagation();
@@ -204,7 +214,7 @@ export function ChatResize({
     event.preventDefault();
     drag.current = {
       pointer: event.pointerId,
-      minWidth: Number.parseFloat(getComputedStyle(sheet.current).minWidth),
+      widthLimits: widthLimits(sheet.current),
       rect: sheet.current.getBoundingClientRect(),
       size,
       edge,
@@ -227,7 +237,7 @@ export function ChatResize({
     const dx = event.clientX - from.x;
     const dy = event.clientY - from.y;
     if (event.pointerType === "touch") setCue({ x: event.clientX, y: event.clientY });
-    change(resize(from.size, from.rect, from.minWidth, from.edge, dx, dy));
+    change(resize(from.size, from.rect, from.widthLimits, from.edge, dx, dy));
   }
 
   return (

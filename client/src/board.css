@@ -399,7 +399,9 @@
 
 @media (min-width: 40rem) {
   [data-chat-size] {
-    --chat-min-width: min(16rem, calc(100dvw - 16px));
+    --chat-right-inset: 8px;
+    --chat-max-width: calc(100dvw - 8px - var(--chat-right-inset));
+    --chat-min-width: min(16rem, var(--chat-max-width));
     --chat-min-bottom: var(--sheet-keyboard-bottom, 8px);
     --chat-available-height: var(--sheet-keyboard-height, calc(100dvh - 16px));
     --chat-used-height: min(
@@ -407,12 +409,17 @@
       var(--chat-available-height)
     );
     min-width: var(--chat-min-width);
-    --used-chat-width: clamp(var(--chat-min-width), var(--chat-width, 24rem), calc(100dvw - 16px));
+    max-width: var(--chat-max-width);
+    --used-chat-width: clamp(
+      var(--chat-min-width),
+      var(--chat-width, 24rem),
+      var(--chat-max-width)
+    );
     width: var(--used-chat-width);
     left: clamp(
       8px,
       var(--chat-left, calc(50% - var(--used-chat-width) / 2)),
-      calc(100dvw - var(--used-chat-width) - 8px)
+      calc(100dvw - var(--used-chat-width) - var(--chat-right-inset))
     );
     bottom: clamp(
       var(--chat-min-bottom),
@@ -420,6 +427,10 @@
       calc(var(--chat-min-bottom) + var(--chat-available-height) - var(--chat-used-height))
     );
     translate: none;
+  }
+
+  [data-board-layout]:has([data-testid^="tl-watermark"]) [data-chat-size] {
+    --chat-right-inset: var(--board-toolbar-right);
   }
 
   [data-chat-size="fixed"] {

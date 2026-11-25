@@ -124,6 +124,30 @@ test("dragging the chat title moves the window within the viewport", async ({ pa
   expect(await box(chat)).toEqual(bounded);
 });
 
+test("moving and resizing chat leave the public board watermark clickable", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 900 });
+  const chat = await openThread(page);
+  const watermark = page.locator('[data-testid^="tl-watermark"]');
+  await expect(watermark).toBeVisible();
+  const title = await box(chat.getByRole("heading", { name: "Chat" }));
+  await drag(page, title.x + 20, title.y + 20, 900, 740);
+
+  const expectClear = async () => {
+    const panel = await box(chat);
+    const mark = await box(watermark);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(mark.x);
+    await watermark.click({ trial: true });
+  };
+  await expectClear();
+
+  const moved = await box(chat);
+  await drag(page, moved.x + moved.width - 2, moved.y + moved.height / 2, 150, 0);
+  await expectClear();
+
+  await page.setViewportSize({ height: 740, width: 700 });
+  await expectClear();
+});
+
 test("a wide touch screen can move chat above the open keyboard", async ({ browser }) => {
   const context = await browser.newContext({ ...PHONE, viewport: { height: 740, width: 900 } });
   try {
