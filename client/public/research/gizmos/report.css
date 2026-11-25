@@ -326,3 +326,72 @@ footer {
   cursor: pointer;
   color: var(--leaf);
 }
+
+.tarot {
+  border: 1px solid var(--rule);
+  padding: clamp(1rem, 4%, 2rem);
+  background: #eee9dd;
+}
+.chapter .tarot h3,
+.tarot h4 {
+  margin: 0;
+}
+.tarot-card {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 8rem;
+  align-content: center;
+  text-align: center;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: var(--leaf);
+  color: #fffaf1;
+}
+.tarot-card strong {
+  font:
+    1.8rem/1.2 Georgia,
+    serif;
+}
+.tarot-card small {
+  font-variant-numeric: tabular-nums;
+}
+.tarot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.tarot button,
+.tarot input {
+  font: inherit;
+  border: 1px solid #797565;
+  border-radius: 4px;
+  padding: 0.45rem 0.75rem;
+  background: #fffcf6;
+  color: var(--ink);
+}
+.tarot button:enabled,
+.tarot summary {
+  cursor: pointer;
+}
+.tarot button:enabled:hover {
+  background: #f5f2e9;
+}
+.tarot button:disabled {
+  opacity: 0.55;
+}
+.tarot details,
+#tarot-review {
+  margin-top: 1rem;
+}
+.tarot form {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin-top: 1rem;
+}
+.tarot input {
+  width: 100%;
+}
+.tarot [role="status"]:empty {
+  margin: 0;
+}

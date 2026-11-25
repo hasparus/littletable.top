@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./report.css" />
     <link rel="stylesheet" href="./lab.css" />
     <script type="module" src="./lab.js"></script>
+    <script type="module" src="./tarot.js"></script>
   </head>
   <body>
     <a class="skip" href="#report">Skip to report</a>
@@ -21,11 +22,12 @@
       <div class="opening">
         <div>
           <p class="kicker">Gizmos · Design alternatives</p>
-          <h1>What can a GM make?</h1>
+          <h1>What can your table make?</h1>
           <p class="intro">
             At one table, changing a tracker means ticking a box. At another, it means teaching a
             clock a house rule. At a third, it means inventing a prop nobody has seen before. Each
-            calls for a different kind of workbench.
+            calls for a different kind of workbench. What happens when a player makes something
+            worth sharing?
           </p>
           <a class="cta" href="#decision">Compare three approaches ↓</a>
         </div>
@@ -42,10 +44,154 @@
         </figure>
       </div>
       <nav class="contents" aria-label="In this report">
-        <a href="#decision">Alternatives</a><a href="#security">Security concerns</a
+        <a href="#starters">Official starters</a><a href="#office">tldraw office</a
+        ><a href="#decision">Alternatives</a><a href="#security">Security concerns</a
         ><a href="#experiments">Workbench</a><a href="#field-notes">Field notes</a
         ><a href="#precedents">Plugin models</a><a href="#agent-workshop">Agent workspaces</a>
       </nav>
+      <section class="chapter" id="starters">
+        <header><h2>Two Gizmos worth bringing to game night</h2></header>
+        <div class="prose">
+          <p class="lead">
+            A spotlight tracker remembers who’s been waiting to speak. A tarot deck gives the next
+            person something to say. Both could come from Little Table, and a player with a house
+            rule could make either their own.
+          </p>
+          <p>
+            <strong>Spotlight tracker.</strong> Give the quiet player the next scene. Mark whoever
+            actually took the spotlight, even out of turn. A duet table might count two turns toward
+            a shared clock. <a href="#experiments">Play with the tracker</a>
+          </p>
+          <p>
+            <strong>Tarot deck.</strong> Draw a card as the ferryman names his price. The official
+            starter asks a question anyone can answer. Fork it as a player, write a question for
+            your campaign, then take the owner’s seat to try that edition. This tab simulates both
+            seats with a 22-card Major Arcana deck.
+          </p>
+          <div class="tarot" id="tarot-lab" hidden>
+            <h3 id="tarot-title">Tarot deck</h3>
+            <p id="tarot-credit">Little Table · Official starter · Edition 1</p>
+            <div class="tarot-card" aria-live="polite">
+              <strong id="tarot-face">The deck is shuffled.</strong>
+              <span id="tarot-prompt"></span>
+              <small id="tarot-count"></small>
+            </div>
+            <div class="tarot-actions">
+              <button type="button" id="tarot-draw">Draw a card</button>
+              <button type="button" id="tarot-shuffle">Reshuffle</button>
+            </div>
+            <details id="tarot-fork">
+              <summary>Fork the official deck</summary>
+              <form id="tarot-form">
+                <label for="tarot-question">Your question after each draw</label>
+                <input id="tarot-question" maxlength="140" required />
+                <button type="submit">Propose fork as player</button>
+              </form>
+            </details>
+            <div id="tarot-review" hidden>
+              <h4>Owner review</h4>
+              <p id="tarot-diff"></p>
+              <div class="tarot-actions">
+                <button type="button" id="tarot-install">Install this edition</button>
+                <button type="button" id="tarot-dismiss">Keep current deck</button>
+              </div>
+            </div>
+            <p role="status" id="tarot-status"></p>
+          </div>
+          <h3>What earns a place in the marketplace?</h3>
+          <p>
+            A link-only fork lets Mira hand her deck to a friend tonight. A curated shelf makes good
+            forks discoverable and gives Little Table a review queue. Open publishing lets strangers
+            surprise each other and calls for reporting, delisting and a way to disable a harmful
+            release. All three can carry the original creator, fork author, remix license and exact
+            parent edition.
+          </p>
+          <p>
+            Publishing should copy the definition and redistributable assets. The party’s private
+            readings, shuffle order and provider credentials belong to the session or author. An
+            owner installs a specific edition after seeing its behavior and requested access.
+            Another author publishing a revision should never silently change tonight’s game.
+          </p>
+          <p>
+            <strong>My first playtest would be a handoff.</strong> Give one player the official deck
+            and ask them to make a reading another table wants. Can that owner explain the change
+            before installing it? Do they want to pass it on after playing? That tests the reason to
+            build a marketplace while leaving its publishing model open.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="office">
+        <header><h2>What tldraw office puts inside the file</h2></header>
+        <div class="prose">
+          <p class="lead">
+            The closest example is a map with clickable dice. tldraw publishes it as a downloadable
+            document. The same file carries the drawing and the behavior that turns it into a game
+            accessory. <a href="https://office.tldraw.com/">Office example gallery</a>
+          </p>
+          <p>
+            I inspected the published tabletop archive. It contains a SQLite database, a preview
+            image and five JavaScript files. Two modules define dice shapes, one adds the grid, and
+            the entry point creates eight starter dice only where their IDs are missing. That gives
+            a returning player a concrete benefit: opening the document again needn’t scatter a
+            second set of dice across the map. This was an archive inspection. Peer synchronization
+            is part of the example brief and still needs a two-client playtest.
+            <a href="https://pub-6ce42c104372415d97d2ee86b717059f.r2.dev/tabletop-game.tldraw"
+              >Original tabletop example</a
+            >
+          </p>
+          <p>
+            Office lets a trusted external coding agent inspect and edit an open canvas. A document
+            can carry a script that runs on opening. The desktop app works with local files, and
+            tldraw also offers a self-hosted collaboration server in preview. The published gallery
+            demonstrates distribution by file. The marketplace, fork lineage and owner installation
+            described here are proposals for Little Table.
+            <a href="https://github.com/tldraw/tldraw-office/blob/main/README.md"
+              >Desktop file and trust model</a
+            >
+            · <a href="https://office.tldraw.com/">Team server and gallery</a>
+          </p>
+          <p>
+            For a shared table, the portable unit could be one Gizmo plus a sample scene. An agent
+            could draw its own controls and rehearse a turn with sample players. Installing a
+            stranger’s fork would then give it just the actions its owner approved. A public listing
+            preview could render a static image before the viewer decides to run a rehearsal.
+          </p>
+          <h3>Where does the author sign in?</h3>
+          <p>
+            <strong>Bring the agent to the draft.</strong> A player working in Claude could connect
+            to Little Table through a remote MCP connector. Little Table would authorize access to
+            one draft, accept a proposed revision and leave installation to the owner. Players could
+            also edit the same package by hand. This path adds a handoff between apps and keeps the
+            coding conversation in the author’s chosen tool.
+            <a
+              href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+              >Claude connector guide</a
+            >
+          </p>
+          <p>
+            <strong>Bring the agent into Little Table.</strong> The author could prompt beside a
+            live preview. OpenAI documents website sign-in for selected partners and a separate
+            consent for eligible ChatGPT plan usage. Its public plan flow covers open-source and
+            locally hosted clients, with an interest process for remotely hosted apps. Anthropic
+            requires prior approval to offer Claude account login or subscription limits in a
+            third-party product. A hosted workshop could instead pay for API calls and set a
+            spending limit per author. Eligibility for Little Table’s hosted service is unverified.
+            <a href="https://developers.openai.com/siwc/quickstart">ChatGPT sign-in</a> ·
+            <a href="https://developers.openai.com/siwc/token-sharing-open-source"
+              >Hosted and local availability</a
+            >
+            ·
+            <a href="https://platform.claude.com/docs/en/agent-sdk/overview"
+              >Claude Agent SDK terms for login</a
+            >
+          </p>
+          <p>
+            In either design, Little Table decides who can publish a fork or install it on a table.
+            Keep the author’s model credentials outside the Gizmo. Once installed, a deck draw or
+            spotlight pass should work even after the author disconnects their agent.
+          </p>
+        </div>
+      </section>
       <section class="chapter" id="decision">
         <header>
           <p class="kicker">Open design question</p>
