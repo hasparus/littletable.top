@@ -183,7 +183,7 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
     <Sheet chatResize={{ change: resize, size }} panel="chat" title={copy.chat}>
       <div
         aria-label={copy.chat}
-        className={`min-h-0 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${size.height === undefined ? "max-h-[min(52dvh,23rem)]" : "flex-1"}`}
+        className={`min-h-0 overflow-y-auto overscroll-contain px-4 py-3 mask-[linear-gradient(to_top,transparent,black_8px)] [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${size.height === undefined ? "max-h-[min(52dvh,23rem)]" : "flex-1"}`}
         onScroll={({ currentTarget }) => {
           // WARNING: Chrome can deliver scroll clamping before the observer sees the new size.
           if (
@@ -261,8 +261,13 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
           </button>
         </div>
       )}
+      {(submission === "failed" || submission === "too-fast") && (
+        <p className="shrink-0 px-4 pb-2 text-sm text-danger-text" role="status">
+          {submission === "too-fast" ? copy.chatTooFast : copy.chatFailed}
+        </p>
+      )}
       <form
-        className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2"
+        className="shrink-0 p-(--chat-padding)"
         onSubmit={(event) => {
           event.preventDefault();
           const message = text.trim();
@@ -270,33 +275,30 @@ export function ChatSheet({ chat, shown }: { chat: ReturnType<typeof useChat>; s
           void send(message);
         }}
       >
-        <input
-          aria-label={copy.chatMessage}
-          autoComplete="off"
-          className="h-11 min-w-0 flex-1 rounded-full border border-border bg-bg-tertiary px-4 text-base placeholder:text-foreground-muted focus-visible:outline-2 focus-visible:outline-border-focus"
-          dir="auto"
-          enterKeyHint="send"
-          maxLength={MAX_CHAT_LENGTH}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={copy.chatMessage}
-          ref={input}
-          value={text}
-        />
-        <button
-          aria-label={copy.chatSend}
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-(--brand-primary-strong) text-white hover:brightness-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus disabled:bg-bg-tertiary disabled:text-foreground-muted disabled:brightness-100"
-          disabled={busy || text.trim() === ""}
-          title={copy.chatSend}
-          type="submit"
-        >
-          <Icon name="Send" />
-        </button>
+        <div className="flex h-11 rounded-(--chat-composer-radius) border border-border bg-bg-tertiary has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-border-focus">
+          <input
+            aria-label={copy.chatMessage}
+            autoComplete="off"
+            className="min-w-0 flex-1 px-3 text-base outline-none placeholder:text-foreground-muted"
+            dir="auto"
+            enterKeyHint="send"
+            maxLength={MAX_CHAT_LENGTH}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={copy.chatMessage}
+            ref={input}
+            value={text}
+          />
+          <button
+            aria-label={copy.chatSend}
+            className="grid w-11 shrink-0 place-items-center rounded-[inherit] text-primary-strong enabled:hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus disabled:text-foreground-muted"
+            disabled={busy || text.trim() === ""}
+            title={copy.chatSend}
+            type="submit"
+          >
+            <Icon name="Send" />
+          </button>
+        </div>
       </form>
-      {(submission === "failed" || submission === "too-fast") && (
-        <p className="shrink-0 px-4 pb-3 text-sm text-danger-text" role="status">
-          {submission === "too-fast" ? copy.chatTooFast : copy.chatFailed}
-        </p>
-      )}
     </Sheet>
   );
 }

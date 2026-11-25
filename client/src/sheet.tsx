@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import { ChatResize, type ChatSize } from "./chat-resize";
+import { ChatResize, type ChatSize, useChatMove } from "./chat-resize";
 import { Icon } from "./icons";
 import { enterSurface } from "./surface-entry";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
@@ -17,20 +17,22 @@ import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 const KEYBOARD_MIN_PX = 120;
 const GAP_PX = 8;
 
+type SheetStyle = CSSProperties & Partial<Record<`--${"chat" | "sheet"}-${string}`, string>>;
+
 const pixels = (value: number | undefined) => (value === undefined ? undefined : `${value}px`);
 
 // WARNING: The on-screen keyboard can cover the layout viewport without resizing it. Position the sheet using the visual viewport.
-function useAboveKeyboard(): CSSProperties | undefined {
-  const [style, setStyle] = useState<CSSProperties>();
+function useAboveKeyboard() {
+  const [area, setArea] = useState<{ bottom: number; height: number }>();
   useEffect(() => {
     const viewport = globalThis.visualViewport;
     if (viewport === null || viewport === undefined) return;
     const measure = () => {
       const hidden = globalThis.innerHeight - viewport.height - viewport.offsetTop;
-      setStyle(
+      setArea(
         hidden < KEYBOARD_MIN_PX
           ? undefined
-          : { bottom: hidden + GAP_PX, maxHeight: viewport.height - 2 * GAP_PX },
+          : { bottom: hidden + GAP_PX, height: viewport.height - 2 * GAP_PX },
       );
     };
     measure();
@@ -41,7 +43,7 @@ function useAboveKeyboard(): CSSProperties | undefined {
       viewport.removeEventListener("scroll", measure);
     };
   }, []);
-  return style;
+  return area;
 }
 
 /**
@@ -67,12 +69,16 @@ export function Sheet({
   const { copy, open } = useBoardUi();
   const heading = useId();
   const sheet = useRef<HTMLElement>(null);
-  const aboveKeyboard = useAboveKeyboard();
+  const keyboardArea = useAboveKeyboard();
+  const move = useChatMove(sheet, chatResize, keyboardArea);
   const hasField = field !== undefined;
   const isChat = panel === "chat";
   const { height, width, left, bottom } = chatResize?.size ?? {};
-  const style: CSSProperties & Partial<Record<`--chat-${string}`, string>> = {
-    ...aboveKeyboard,
+  const keyboardHeight = pixels(keyboardArea?.height);
+  const style: SheetStyle = {
+    "--sheet-keyboard-bottom": pixels(keyboardArea?.bottom),
+    "--sheet-keyboard-height": keyboardHeight,
+    maxHeight: keyboardHeight,
     "--chat-height": pixels(height),
     "--chat-left": pixels(left),
     "--chat-bottom": pixels(bottom),
@@ -123,7 +129,7 @@ export function Sheet({
       <section
         aria-label={hasField ? title : undefined}
         aria-labelledby={hasField ? undefined : heading}
-        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
+        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--sheet-keyboard-bottom,var(--board-sheet-bottom)) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-(--sheet-keyboard-bottom,5rem) sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
         data-chat-size={isChat ? (height === undefined ? "natural" : "fixed") : undefined}
         id={PANEL_ID[panel]}
         ref={sheet}
@@ -136,7 +142,12 @@ export function Sheet({
           className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"} ${isChat ? "shrink-0 border-b border-border" : ""}`}
         >
           {field ?? (
-            <h2 className="flex-1 text-lg font-semibold outline-none" id={heading} tabIndex={-1}>
+            <h2
+              className="flex-1 text-lg font-semibold outline-none"
+              id={heading}
+              tabIndex={-1}
+              {...move}
+            >
               {title}
             </h2>
           )}
