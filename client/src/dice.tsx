@@ -13,7 +13,13 @@ import {
 } from "../../src/dice-notation";
 import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { type Copy, dieLabel, fill } from "./copy";
-import { useDialogBackdrop } from "./dialog";
+import {
+  BOARD_DIALOG,
+  BOARD_DIALOG_CLOSE,
+  BOARD_DIALOG_HEADER,
+  BOARD_DIALOG_TITLE,
+  useDialogBackdrop,
+} from "./dialog";
 import { modifierLabel, notationLabel, poolLabel } from "./dice-labels";
 import { DieShape } from "./die-shape";
 import { Icon } from "./icons";
@@ -88,6 +94,7 @@ function RollLog() {
             if (surface === null) return;
             event.currentTarget.focus({ preventScroll: true });
             surface.showModal();
+            surface.querySelector("h2")?.focus({ preventScroll: true });
             surface.scrollTop = 0;
             enterSurface(surface, event.currentTarget);
           }}
@@ -98,17 +105,19 @@ function RollLog() {
       </div>
       <dialog
         aria-labelledby={heading}
-        className="fixed inset-0 m-auto max-h-[min(36rem,calc(100dvh-2rem))] w-[calc(100%-2rem)] max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-bg-secondary text-foreground shadow-sheet backdrop:bg-ink/30"
+        className={`${BOARD_DIALOG} top-auto m-0 w-auto max-w-none overflow-y-auto overscroll-contain backdrop:bg-ink/20 sm:w-88`}
         data-roll-log
         ref={dialog}
       >
-        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg-secondary pr-1 pl-3">
-          <h2 className="flex-1 text-base font-semibold" id={heading}>
+        <header
+          className={`${BOARD_DIALOG_HEADER} sticky top-0 z-10 bg-bg-secondary py-1 pr-1 pl-4`}
+        >
+          <h2 className={BOARD_DIALOG_TITLE} id={heading} tabIndex={-1}>
             {copy.rollLog}
           </h2>
           <button
             aria-label={copy.close}
-            className="grid size-11 place-items-center rounded-full text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+            className={BOARD_DIALOG_CLOSE}
             onClick={() => dialog.current?.close()}
             type="button"
           >
@@ -118,7 +127,7 @@ function RollLog() {
         {rolls.log.length === 0 ? (
           <p className="px-4 py-3 text-sm text-foreground-muted">{copy.noRollsYet}</p>
         ) : (
-          <ol className="divide-y divide-border px-3 pb-1">
+          <ol className="divide-y divide-border px-4 pb-2">
             {rolls.log.toReversed().map((entry) => (
               <LogEntry copy={copy} key={entry.id} locale={locale} roll={entry} />
             ))}

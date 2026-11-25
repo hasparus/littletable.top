@@ -30,7 +30,13 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "connect-src": connect,
     "default-src": ["'none'"],
     "font-src": ["'self'"],
-    "form-action": ["'none'"],
+    "form-action": [
+      new URL(request.url).pathname === "/assistants" &&
+      config.mode === "standalone" &&
+      config.assistants
+        ? "'self'"
+        : "'none'",
+    ],
     "frame-ancestors": ["'none'"],
     // WARNING: Blocking blob: images breaks tldraw's preview while the upload is in flight.
     "img-src": ["'self'", "data:", "blob:"],

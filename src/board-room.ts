@@ -16,6 +16,13 @@ import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
 import type { GizmoDecision } from "./gizmo-packages";
 import type { Pass } from "./pass";
+import type {
+  BoardGrant,
+  CommitOutcome,
+  DocumentDiff,
+  DocumentScope,
+  DocumentSnapshot,
+} from "./room-contract";
 import type { SummonRequest } from "./summon";
 import type { EngineKey } from "./text-result";
 
@@ -43,7 +50,9 @@ import {
   placePublicSignature,
   PUBLIC_SIGNATURE_GROUP,
 } from "./public-signature";
+import { RoomDocument } from "./room-document";
 import { isSecretLayer } from "./secret-layer";
+import { AssistantGrants } from "./standalone/assistant-grants";
 import { hasActiveSession } from "./standalone/store";
 import {
   type Claim,
@@ -56,7 +65,12 @@ import {
 } from "./text-store";
 import { type ThumbnailWrite, writeThumbnail } from "./thumbnail-store";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
+type Env = {
+  BOARD_DATA_SCOPE?: string;
+  BoardRoom: DurableObjectNamespace<BoardRoom>;
+  DB?: D1Database;
+  Files: R2Bucket;
+};
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -92,6 +106,8 @@ function kind(sub: string): "guest" | "member" {
 }
 
 export class BoardRoom extends DurableObject<Env> {
+  private assistantGrantEpoch = 0;
+  private document!: RoomDocument;
   private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
   private publicSignaturePage?: TLPageId;
@@ -123,6 +139,10 @@ export class BoardRoom extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS mcp_grant (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)",
+    );
+    this.document = new RoomDocument(sql, () => this.drawing);
     this.publicExpiryEnabled = this.ctx.storage.kv.get(PUBLIC_EXPIRY_ENABLED) === true;
     this.publicSignaturePage = this.ctx.storage.kv.get<TLPageId>(PUBLIC_SIGNATURE_PAGE);
     this.retired = this.ctx.storage.kv.get(RETIRED) === true;
@@ -207,6 +227,7 @@ export class BoardRoom extends DurableObject<Env> {
   /** Advances the link version and evicts sessions still using an older one. */
   moveLink(board: string, link: number): void {
     if (this.retired || link <= this.link()) return;
+    this.assistantGrantsChanged();
     this.ctx.storage.sql.exec(
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
@@ -733,7 +754,85 @@ export class BoardRoom extends DurableObject<Env> {
     await this.destroy(board);
   }
 
+  private grantVersion() {
+    const [row] = this.ctx.storage.sql
+      .exec<{ version: number }>("SELECT version FROM mcp_grant")
+      .toArray();
+    return row?.version ?? 0;
+  }
+
+  private setGrantVersion(version: number) {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO mcp_grant (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
+      version,
+    );
+  }
+
+  private async withDocumentGrant<T>(grant: BoardGrant, apply: () => T): Promise<"revoked" | T> {
+    if (this.retired) return "revoked";
+    if (grant.standalone !== undefined) {
+      const epoch = this.assistantGrantEpoch;
+      if (
+        !this.env.DB ||
+        !(await new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE).admits(grant))
+      )
+        return "revoked";
+      // WARNING: A stale D1 result can arrive after revocation, a link reset, or deletion.
+      return this.assistantGrantEpoch === epoch ? apply() : "revoked";
+    }
+    const current = this.grantVersion();
+    if (grant.role !== "manager" && grant.role !== "owner") return "revoked";
+    if (grant.grant < current) return "revoked";
+    if (grant.grant > current) this.setGrantVersion(grant.grant);
+    return apply();
+  }
+
+  /** The host revokes every assistant grant signed before this version. */
+  revokeMcpGrants(board: string, version: number) {
+    if (version <= this.grantVersion()) return;
+    this.setGrantVersion(version);
+    log("board.mcp_revoked", { board, version });
+  }
+
+  assistantGrantsChanged() {
+    this.assistantGrantEpoch++;
+  }
+
+  /** Revokes existing hosted grants and returns the minimum grant version. */
+  endAssistants(board: string) {
+    this.assistantGrantsChanged();
+    const version = this.grantVersion() + 1;
+    this.revokeMcpGrants(board, version);
+    return version;
+  }
+
+  readDocument(
+    grant: BoardGrant,
+    request: { runId?: string; scope: DocumentScope },
+  ): Promise<"revoked" | DocumentSnapshot> {
+    return this.withDocumentGrant(grant, () => this.document.read(request.scope, request.runId));
+  }
+
+  commitDocument(
+    grant: BoardGrant,
+    diff: DocumentDiff,
+  ): Promise<"read-only" | "revoked" | CommitOutcome> {
+    return this.withDocumentGrant(grant, () => {
+      if (grant.access !== "write") return "read-only";
+      const outcome = this.document.commit(diff);
+      log("board.document_commit", {
+        board: grant.board,
+        outcome: outcome.kind,
+        people: this.room.getNumActiveSessions(),
+        puts: diff.puts.length,
+        removes: diff.removes.length,
+      });
+      return outcome;
+    });
+  }
+
   async destroy(board: string) {
+    this.assistantGrantsChanged();
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }

@@ -1,6 +1,11 @@
 export type { Roll } from "../../src/dice-notation";
 
-export type Person = { id: string; name: string; owner: boolean; role?: string };
+export type Person = {
+  id: string;
+  name: string;
+  owner: boolean;
+  role?: "owner" | "manager" | "write";
+};
 
 /** What the pass endpoint answers (docs/hosting.md, "The host contract"). */
 export type Bootstrap = {

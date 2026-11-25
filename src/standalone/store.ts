@@ -51,6 +51,13 @@ const board = (row: BoardRow): Board => ({
   title: row.title,
 });
 
+export type BoardPerson = {
+  avatar: string | null;
+  id: string;
+  name: string;
+  role: "manager" | "write";
+};
+
 export async function hasActiveSession(db: D1Database | undefined, hash: string | undefined) {
   if (db === undefined || hash === undefined) return false;
   const found = await db
@@ -244,6 +251,51 @@ export class Store {
       )
       .bind(id, link, this.deployment)
       .run();
+  }
+
+  /** What an account that joined this board by link is on it; null if it never joined. */
+  async roleOf(accountId: string, boardId: string) {
+    const row = await this.db
+      .prepare(
+        `SELECT v.role FROM visits v JOIN boards b ON b.id = v.board_id
+         WHERE v.account_id = ? AND v.board_id = ? AND b.deployment = ?`,
+      )
+      .bind(accountId, boardId, this.deployment)
+      .first<{ role: "manager" | "write" }>();
+    return row?.role ?? null;
+  }
+
+  /** The accounts that joined a board by link, newest visit first. */
+  async people(boardId: string) {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.id, a.name, a.avatar_hash, v.role FROM visits v
+         JOIN accounts a ON a.id = v.account_id JOIN boards b ON b.id = v.board_id
+         WHERE v.board_id = ? AND b.deployment = ? ORDER BY v.visited_at DESC LIMIT 200`,
+      )
+      .bind(boardId, this.deployment)
+      .all<{ avatar_hash: string | null; id: string; name: string; role: "manager" | "write" }>();
+    return results.map(
+      (row) =>
+        ({
+          avatar: row.avatar_hash,
+          id: row.id,
+          name: row.name,
+          role: row.role,
+        }) satisfies BoardPerson,
+    );
+  }
+
+  /** Sets a joined account's role; false if that account never joined the board. */
+  async setRole(boardId: string, accountId: string, role: "manager" | "write") {
+    const result = await this.db
+      .prepare(
+        `UPDATE visits SET role = ?2 WHERE board_id = ?1 AND account_id = ?3
+         AND EXISTS (SELECT 1 FROM boards WHERE id = ?1 AND deployment = ?4)`,
+      )
+      .bind(boardId, role, accountId, this.deployment)
+      .run();
+    return result.meta.changes > 0;
   }
 
   async list(accountId: string): Promise<{ owned: Listed[]; visited: Visited[] }> {

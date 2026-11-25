@@ -1,6 +1,6 @@
 import { type Browser, devices, expect, type Page, test } from "@playwright/test";
 
-import { HOST } from "../ports";
+import { HOST, STANDALONE } from "../ports";
 import {
   closeSheet,
   collectCspViolations,
@@ -67,6 +67,30 @@ async function nameAsPlace(page: Page, name: string): Promise<void> {
 }
 
 const options = (page: Page) => results(page).getByRole("option");
+
+test("Search is compact when empty and closes after choosing a place", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await newBoard(page);
+  const search = await openSheet(page, "Search");
+  await expect(search.getByText("No places yet.", { exact: false })).toBeVisible();
+  const empty = (await search.boundingBox())!;
+  expect(empty.height).toBeLessThan(128);
+  expect(empty.x + empty.width / 2).toBeCloseTo(page.viewportSize()!.width / 2);
+  await shot(page, "desktop-empty");
+  await closeSheet(page, "Search");
+
+  await putNote(page, { at: { x: 400, y: 210 }, text: "Basic Moves" });
+  await nameAsPlace(page, "Basic Moves");
+  await openSheet(page, "Search");
+  const place = search.getByRole("button", { exact: true, name: "Basic Moves" });
+  await expect(place.locator("svg")).toHaveCount(0);
+  await shot(page, "desktop-place");
+  await place.click();
+
+  await expect(search).toBeHidden();
+  await expect(onBoard(page, "Basic Moves")).toBeInViewport();
+  await expectNoCspViolations(page);
+});
 
 test("someone on another page finds what was typed, goes there and sees it flash", async ({
   browser,
@@ -189,6 +213,45 @@ test("on a desktop, Ctrl+F searches the board, arrows choose, Enter goes, Escape
 const KEYBOARD_PX = 340;
 
 const below = (box: { height: number; y: number }) => box.y + box.height;
+
+test("phone search fits a panned keyboard viewport and restores the board controls when closed", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    ...PHONE,
+    reducedMotion: "reduce",
+    viewport: { height: 740, width: 360 },
+  });
+  try {
+    await installKeyboard(context);
+    const page = await context.newPage();
+    await page.goto(STANDALONE);
+    const toolbar = page.locator("[data-board-toolbar]");
+    await expect(toolbar).toBeVisible();
+    const original = await toolbar.boundingBox();
+    const search = await openSheet(page, "Search");
+    await field(page).tap();
+    await withKeyboard(page, 340, 260);
+
+    await expect.poll(async () => below((await search.boundingBox())!)).toBe(652);
+    const active = await search.boundingBox();
+    expect(active?.y).toBeGreaterThanOrEqual(268);
+
+    // WARNING: Simulate Safari scrolling the layout viewport while an input is focused.
+    await page.evaluate(() => {
+      document.body.style.minHeight = "calc(100vh + 300px)";
+      window.scrollTo(0, 90);
+    });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(90);
+    await search.getByRole("button", { name: "Close" }).dispatchEvent("click");
+    await expect(search).toBeHidden();
+    await withKeyboard(page, 0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => toolbar.boundingBox()).toEqual(original);
+  } finally {
+    await context.close();
+  }
+});
 
 test("on a phone, in Polish, the results stand above the keyboard and leave tldraw's mark alone", async ({
   browser,

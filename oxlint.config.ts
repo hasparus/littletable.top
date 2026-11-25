@@ -7,7 +7,7 @@ const tailwindEntryPoint = fileURLToPath(new URL("client/src/app.css", import.me
 export default defineConfig({
   extends: [baseConfig],
   options: { typeAware: false },
-  ignorePatterns: [...ignorePatterns, "e2e/test-results", "e2e/report"],
+  ignorePatterns: [...ignorePatterns, "e2e/test-results", "e2e/report", "src/mcp/upstream"],
   jsPlugins: ["@shadcn/lint"],
   overrides: [
     // The Worker logs one JSON line per event to the console, which is what
@@ -17,7 +17,10 @@ export default defineConfig({
       files: ["src/**/*.ts", "e2e/fake-host.ts", "e2e/fake-workos.ts"],
       rules: { "no-console": "off" },
     },
-    { files: ["src/index.ts"], rules: { "import/no-default-export": "off" } },
+    {
+      files: ["src/index.ts", "src/mcp/worker.ts", "dev/both.ts"],
+      rules: { "import/no-default-export": "off" },
+    },
     {
       files: ["client/src/**/*.tsx"],
       rules: {

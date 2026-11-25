@@ -45,6 +45,9 @@ test("the board uses one synchronized spinner during bootstrap and connection", 
     const rotationStart = () => spinner.evaluate((node) => node.getAnimations()[0]?.startTime);
     expect(await rotationStart()).toBe(0);
 
+    await page.addStyleTag({
+      content: "[data-board-editor]:has(.tl-spinner) { height: calc(100dvh + 64px) }",
+    });
     bootstrap.resolve(null);
     await expect(page.locator("[data-board-editor]").locator(spinner)).toBeVisible();
     await expect(spinner).toHaveCount(1);
@@ -56,6 +59,11 @@ test("the board uses one synchronized spinner during bootstrap and connection", 
     connection.resolve(null);
     await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
     await expect(loading).toHaveCount(0);
+    const navigation = await page.locator(".tlui-menu-zone").boundingBox();
+    const navigationBottom = navigation!.y + navigation!.height;
+    expect(box!.y + box!.height / 2).toBeCloseTo(
+      (navigationBottom + page.viewportSize()!.height) / 2,
+    );
   } finally {
     bootstrap.resolve(null);
     connection.resolve(null);

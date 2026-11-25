@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+private_key_b64=${GIT_SIGNING_KEY:-}
+unset GIT_SIGNING_KEY
+[[ -n "$private_key_b64" ]] || exit 0
+
+fail() {
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
+gpg_program=$(command -v gpg) || fail 'GnuPG is required to set up commit signing.'
+git rev-parse --git-dir >/dev/null
+committer_email=hasparus@gmail.com
+
+decode_key() {
+  printf '%s' "$private_key_b64" | base64 --decode
+}
+
+fingerprint=$(
+  decode_key |
+    "$gpg_program" --batch --no-tty --with-colons --show-keys 2>/dev/null |
+    awk -F: '
+      $1 == "pub" || $1 == "sec" { primary++; awaiting = ($1 == "sec"); next }
+      awaiting && $1 == "fpr" { print $10; awaiting = 0 }
+      END { if (primary != 1) exit 1 }
+    '
+) || fail 'GIT_SIGNING_KEY must contain one OpenPGP private key.'
+[[ "$fingerprint" =~ ^[0-9A-F]{40}$ ]] ||
+  fail 'GIT_SIGNING_KEY must contain one OpenPGP v4 private key.'
+
+key_mailboxes=$(
+  decode_key |
+    "$gpg_program" --batch --no-tty --list-options show-only-fpr-mbox --show-keys 2>/dev/null
+) || fail 'GnuPG could not read the signing key email.'
+if ! grep -Fxq -- "$fingerprint $committer_email" <<< "$key_mailboxes"; then
+  fail "The signing key must include the Git committer email: $committer_email"
+fi
+
+decode_key | "$gpg_program" --batch --no-tty --import >/dev/null 2>&1 ||
+  fail 'GnuPG could not import the commit signing key.'
+unset private_key_b64
+
+if ! "$gpg_program" --batch --no-tty --pinentry-mode error --local-user "$fingerprint" \
+    --detach-sign --output - </dev/null >/dev/null 2>&1; then
+  fail 'GnuPG could not sign unattended with the imported key.'
+fi
+
+git config --local user.email "$committer_email"
+git config --local gpg.format openpgp
+git config --local gpg.openpgp.program "$gpg_program"
+git config --local user.signingKey "$fingerprint"
+git config --local commit.gpgSign true

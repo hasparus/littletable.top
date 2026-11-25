@@ -23,7 +23,20 @@ test("board background follows collaborators and survives a reload", async ({ br
 
   await menu.click();
   await page.getByRole("menuitem", { name: "Background color" }).hover();
-  await page.getByRole("menuitemcheckbox", { name: "Sage" }).click();
+  const defaultColor = page.getByRole("menuitemcheckbox", { name: "Default" });
+  await expect(defaultColor).toHaveAttribute("aria-checked", "true");
+  await expect(defaultColor).toHaveAttribute("data-isactive", "true");
+  const swatches = page.locator("[data-board-background-swatch]");
+  await expect(swatches).toHaveCount(5);
+  const swatchTops = await swatches.evaluateAll((nodes) =>
+    nodes.map((node) => node.getBoundingClientRect().top),
+  );
+  expect(new Set(swatchTops).size).toBe(1);
+  await expect(swatches.first()).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0.02)");
+  const sage = page.getByRole("menuitemcheckbox", { name: "Sage" });
+  await sage.click();
+  await expect(defaultColor).toHaveAttribute("data-isactive", "false");
+  await expect(sage).toHaveAttribute("data-isactive", "true");
   await expect(canvasBackground(page)).toHaveCSS("background-color", "rgb(235, 237, 231)");
   await expect(canvasBackground(guest)).toHaveCSS("background-color", "rgb(235, 237, 231)");
   await guest.emulateMedia({ colorScheme: "dark" });

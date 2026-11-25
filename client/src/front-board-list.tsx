@@ -4,6 +4,7 @@ import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
 
 import { thumbnailUrl } from "../../src/board-thumbnail";
+import { BoardPeople, type BoardRoleChange } from "./board-people";
 import { fill } from "./copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
@@ -36,12 +37,14 @@ const UTC_DATE_FORMATS = {
 const subscribeToDateFormats = () => () => null;
 const browserDateFormats = () => DATE_FORMATS;
 const serverDateFormats = () => UTC_DATE_FORMATS;
-const ACTIONS = ["rename", "reset", "delete"] as const;
-export type Action = (typeof ACTIONS)[number];
-export type Editing = { id: string; kind: Action } | null;
+export type Action = "rename" | "reset" | "delete";
+const ACTIONS = ["rename", "people", "reset", "delete"] as const;
+export type Editing = { id: string; kind: (typeof ACTIONS)[number] } | null;
+
+type Post = (path: string, body: BoardRoleChange) => Promise<Response>;
 
 const ROW =
-  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
 const BOARD_TITLE = "col-start-2 row-start-1 min-w-0 self-end font-semibold @3xl:self-center";
 const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`;
 const BOARD_DATE =
@@ -51,12 +54,12 @@ function BoardThumbnail({ board }: { board: Owned | Visited }) {
   return (
     <span
       aria-hidden="true"
-      className="col-start-1 row-span-2 row-start-1 aspect-video w-12 overflow-hidden rounded-md border border-border bg-bg-secondary sm:w-16 @3xl:row-span-1"
+      className="col-start-1 row-span-2 row-start-1 aspect-video w-18 overflow-hidden rounded-md border border-border bg-bg-secondary sm:w-24 @3xl:row-span-1 @3xl:w-28"
     >
       {board.hasThumbnail === true && board.shareCode !== null && (
         <img
           alt=""
-          className="size-full object-cover"
+          className="size-full bg-(--light-board-background) object-cover"
           decoding="async"
           loading="lazy"
           onError={(event) => {
@@ -92,6 +95,7 @@ function OwnedRow({
   editing,
   format,
   onAction,
+  post,
   setEditing,
 }: {
   board: Owned;
@@ -99,6 +103,7 @@ function OwnedRow({
   editing: Editing;
   format: Intl.DateTimeFormat;
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  post: Post;
   setEditing: (editing: Editing) => void;
 }) {
   const [title, setTitle] = useState(board.title);
@@ -209,6 +214,9 @@ function OwnedRow({
           {copy.actionFailed}
         </p>
       )}
+      {mode === "people" && (
+        <BoardPeople boardId={board.id} copy={copy} onClose={() => setEditing(null)} post={post} />
+      )}
       {(mode === "reset" || mode === "delete") && (
         <dialog
           aria-labelledby={`confirm-${board.id}`}
@@ -306,6 +314,7 @@ export function BoardList({
   lists,
   locale,
   onAction,
+  post,
   setEditing,
 }: {
   copy: FrontCopy;
@@ -313,6 +322,7 @@ export function BoardList({
   lists: Lists;
   locale: Language;
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  post: Post;
   setEditing: (editing: Editing) => void;
 }) {
   const format = useSyncExternalStore(
@@ -373,6 +383,7 @@ export function BoardList({
               format={format}
               key={board.id}
               onAction={onAction}
+              post={post}
               setEditing={setEditing}
             />
           ))}
@@ -384,7 +395,7 @@ export function BoardList({
     <div
       className={
         hasVisited
-          ? "mt-6 grid gap-4 sm:gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]"
+          ? "mt-6 grid gap-4 sm:gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]"
           : "mt-6"
       }
     >

@@ -16,8 +16,12 @@ const tabletop = (mode: string, port: number, extra: string, setUp: string[] = [
     `rm -rf .wrangler/e2e-${mode} dist-e2e/${mode}`,
     `vite build --logLevel warn --outDir "$PWD/dist-e2e/${mode}"`,
     ...setUp,
-    `exec wrangler dev e2e/gizmo-worker.mjs --port ${port} --assets dist-e2e/${mode} --persist-to .wrangler/e2e-${mode} ${extra}`,
+    `exec wrangler dev --port ${port} --persist-to .wrangler/e2e-${mode} ${extra}`,
   ].join(" && ");
+
+// WARNING: In multi-Worker dev mode Wrangler applies CLI asset and variable overrides to the first config, which is the proxy.
+const HOSTED_CONFIG = "wrangler.e2e.json";
+const writeHostedConfig = `node -e 'const fs = require("fs"); const c = JSON.parse(fs.readFileSync("wrangler.json", "utf8")); c.assets.directory = "./dist-e2e/hosted"; c.vars.HOST_ORIGIN = "${HOST}"; fs.writeFileSync("${HOSTED_CONFIG}", JSON.stringify(c, null, 2));'`;
 
 export default defineConfig({
   expect: { timeout: 10_000 },
@@ -54,7 +58,12 @@ export default defineConfig({
       url: `${HOST}/`,
     },
     {
-      command: tabletop("hosted", PORTS.hosted, `--var HOST_ORIGIN:${HOST}`),
+      command: tabletop(
+        "hosted",
+        PORTS.hosted,
+        `-c wrangler.dev.json -c ${HOSTED_CONFIG} -c wrangler.mcp.json`,
+        [writeHostedConfig],
+      ),
       cwd: root,
       env: { ...env, TABLETOP_HOST_ORIGIN: HOST },
       reuseExistingServer: !isCI,
@@ -73,7 +82,7 @@ export default defineConfig({
       command: tabletop(
         "standalone",
         PORTS.standalone,
-        `--env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS}`,
+        `e2e/gizmo-worker.mjs --assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS} --var MCP_RESOURCE:https://mcp.example.test/mcp`,
         ["wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone"],
       ),
       cwd: root,
