@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RollRequest } from "../../src/dice-notation";
 import type { PassKeeper, Roll } from "./bootstrap";
 
+import { EXPRESSION_ERRORS, type ExpressionError } from "../../src/dice-expression";
+
 const LOG_LENGTH = 50;
 
-export type RollRefusal = "failed" | "too-fast";
+export type RollRefusal = ExpressionError | "failed" | "too-fast";
 
 export type Rolls = {
   arrived: Roll | null;
@@ -74,6 +76,10 @@ export function useRolls(keeper: PassKeeper): Rolls {
         if (response.status === 403) {
           keeper.end("link-reset");
           return null;
+        }
+        if (response.status === 400 && "expression" in roll) {
+          const body: { error?: unknown } | null = await response.json().catch(() => null);
+          return EXPRESSION_ERRORS.find((error) => error === body?.error) ?? "failed";
         }
         if (!response.ok) throw new Error(`status ${response.status}`);
         add([(await response.json()) as Roll], true);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { Roll } from "./bootstrap";
@@ -7,6 +7,7 @@ import type { DiceThrow } from "./dice-scene";
 import type { RollRefusal, Rolls } from "./rolls";
 
 import { type RollResult, rollResult } from "../../src/dice-notation";
+import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { dieLabel, fill } from "./copy";
 import { modifierLabel } from "./dice-labels";
 import { dropDice3d, isDice3dDown } from "./dice-stage-fallback";
@@ -20,6 +21,7 @@ const WIDE_BOARD_WIDTH = 1024;
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 const RESTING_AFTER_MS = 4000;
+const ANIMATED_SIDES = new Set<number>(DIE_SIDES);
 
 export type DiceStageProps = {
   copy: Copy;
@@ -126,6 +128,15 @@ function nameFits(toast: HTMLElement, dice: HTMLElement, sum: HTMLElement | null
   probe.remove();
   const room = width - chrome - dice.scrollWidth - (sum === null ? 0 : sum.offsetWidth + GAP) - GAP;
   return room >= Math.min(name, NAME_MIN_WIDTH);
+}
+
+function needsTotal(dice: Roll["dice"], result: RollResult, modifier: number | null) {
+  return (
+    dice.length !== 1 ||
+    modifier !== null ||
+    result.kept[0] === false ||
+    result.total !== dice[0]?.value
+  );
 }
 
 function ResultToast({
@@ -246,7 +257,9 @@ function ResultToast({
             <DieShape
               copy={copy}
               dropped={!result.kept[index]}
+              fate={die.fate}
               key={index}
+              mark={die.mark}
               sides={die.sides}
               size="xs"
               tone="soft"
@@ -254,7 +267,7 @@ function ResultToast({
             />
           ))}
         </span>
-        {(roll.dice.length > 1 || modifier !== null || result.kept.includes(false)) && (
+        {needsTotal(roll.dice, result, modifier) && (
           <span
             className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums"
             ref={sum}
@@ -274,22 +287,39 @@ function ResultToast({
 export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);
+  const setHost = useCallback((element: HTMLDivElement | null) => {
+    if (host.current === element) return;
+    host.current = element;
+    const previous = thrown.current;
+    thrown.current = null;
+    void previous?.then(
+      (dice) => dice.dispose(),
+      () => null,
+    );
+  }, []);
   const [settledId, setSettledId] = useState<number | null>(null);
   const [rowBottom, setRowBottom] = useState<number | null>(null);
   const [refusal, setRefusal] = useState<{ id: number; reason: RollRefusal } | null>(null);
   const [, setFailures] = useState(0);
   const still = useMemo(() => prefersStill(), []);
   const result = useMemo(() => rollResult(roll), [roll]);
-  const unavailable = isDice3dDown();
+  const unavailable =
+    isDice3dDown() ||
+    roll.dice.length > MAX_DICE ||
+    roll.dice.length === 0 ||
+    roll.dice.some(
+      ({ fate, sides, value }) => fate || !ANIMATED_SIDES.has(sides) || value < 1 || value > sides,
+    );
   const showToast = still || unavailable || settledId === roll.id;
 
   useEffect(() => {
-    if (still || isDice3dDown() || host.current === null) return;
     const element = host.current;
+    if (still || unavailable || element === null || !editorLayer.contains(element)) return;
     let current = true;
     const giveUpTimer = setTimeout(() => setSettledId(roll.id), GIVE_UP_MS);
     thrown.current ??= import("./dice-scene").then(({ createDiceThrow }) =>
       createDiceThrow(element, (error) => {
+        if (host.current !== element) return;
         dropDice3d(error);
         setFailures((count) => count + 1);
       }),
@@ -313,25 +343,15 @@ export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceSt
       })
       .then(() => current && setSettledId(roll.id))
       .catch((error: unknown) => {
+        if (!current) return;
         dropDice3d(error);
-        if (current) setSettledId(roll.id);
+        setSettledId(roll.id);
       });
     return () => {
       current = false;
       clearTimeout(giveUpTimer);
     };
-  }, [copy, onRoll, result, roll, still]);
-
-  useEffect(
-    () => () => {
-      void thrown.current?.then(
-        (dice) => dice.dispose(),
-        () => null,
-      );
-      thrown.current = null;
-    },
-    [],
-  );
+  }, [copy, editorLayer, onRoll, result, roll, still, unavailable]);
 
   return (
     <>
@@ -340,7 +360,7 @@ export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceSt
         createPortal(
           <div
             className="pointer-events-none fixed inset-x-0 top-14 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10"
-            ref={host}
+            ref={setHost}
             style={rowBottom === null ? undefined : { top: rowBottom + GAP }}
           />,
           editorLayer,

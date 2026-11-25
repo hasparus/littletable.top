@@ -17,7 +17,7 @@ import {
   type TLRecord,
   toRichText,
 } from "@tldraw/tlschema";
-import { getIndexAbove, ZERO_INDEX_KEY } from "@tldraw/utils";
+import { getIndexAbove, sortByIndex, ZERO_INDEX_KEY } from "@tldraw/utils";
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
@@ -27,17 +27,21 @@ import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/index";
 
 import { avatarKey } from "../src/avatars";
-import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
+import { type ChatMessage, MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { PUBLIC_SIGNATURE_GROUP } from "../src/public-signature";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
-import { pass as hostedPass } from "./support";
+import { pass as hostedPass, seat, until } from "./support";
 
 type Answer = { board: string; pass: string; person: { id: string; name: string; owner: boolean } };
 
 const hostedEnv = env as unknown as Env;
+const drawing = (state: DurableObjectState) =>
+  new SQLiteSyncStorage<TLRecord>({
+    sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
+  });
 
 describe("the public board", () => {
   it("assigns public-board ownership only to the configured WorkOS account", async () => {
@@ -145,6 +149,80 @@ describe("the public board", () => {
       });
       expect(invalid.status).toBe(status);
     }
+  });
+
+  it("keeps overlapping siblings in paint order when a moved, older group expires", async () => {
+    const board = "public-paint-order";
+    const namespace = hostedEnv.BoardRoom;
+    const id = namespace.idFromName(board);
+    const initial = namespace.get(id);
+    await initial.schedulePublicExpiry();
+    const page = PageRecordType.createId("page");
+    const stacked = getIndexAbove(getIndexAbove(ZERO_INDEX_KEY));
+    const group = (name: string, parentId: TLGroupShape["parentId"] = page): TLGroupShape => ({
+      id: createShapeId(name),
+      index: stacked,
+      isLocked: false,
+      meta: {},
+      opacity: 1,
+      parentId,
+      props: {},
+      rotation: 0,
+      type: "group",
+      typeName: "shape",
+      x: 0,
+      y: 0,
+    });
+    const old = stampPublicShape(group("lower-expiring"), Date.now() - 8 * PUBLIC_SWEEP_MS - 1);
+    const upper = stampPublicShape(group("upper-surviving"), Date.now());
+    const child = stampPublicShape(group("child-surviving", old.id), Date.now());
+    await runInDurableObject(initial, (_room, state) => {
+      drawing(state).transaction((store) => {
+        for (const record of [old, upper, child]) store.set(record.id, record);
+      });
+      state.storage.kv.delete("publicOrderNormalized");
+    });
+    await expect(
+      runInDurableObject(initial, (_room, state) => state.abort("reload legacy drawing")),
+    ).rejects.toThrow("reload legacy drawing");
+
+    const room = namespace.get(id);
+    const writer = await seat(board, await hostedPass({ board }));
+    const newSibling = group("new-sibling");
+    writer.send({
+      clientClock: 1,
+      diff: { [newSibling.id]: ["put", newSibling], [old.id]: ["patch", { x: ["put", 20] }] },
+      type: "push",
+    });
+    await until(() =>
+      writer.received.some(({ data }) => JSON.stringify(data)?.includes('"push_result"')),
+    );
+
+    const indices = await runInDurableObject(
+      room,
+      (_room, state) =>
+        drawing(state).transaction((store) =>
+          [old, upper, newSibling].map((record) => (store.get(record.id) as TLGroupShape).index),
+        ).result,
+    );
+    expect(new Set(indices).size).toBe(3);
+    expect(indices[0]).toBe(stacked);
+
+    expect(await runDurableObjectAlarm(room)).toBe(true);
+    await runInDurableObject(room, (_room, state) => {
+      drawing(state).transaction((store) => {
+        expect(store.get(old.id)).toBeUndefined();
+        const after = [child, upper, newSibling].map(
+          (record) => store.get(record.id) as TLGroupShape,
+        );
+        expect(after[0]).toMatchObject({ parentId: page, x: 20 });
+        expect(after.sort(sortByIndex).map(({ id }) => id)).toEqual([
+          child.id,
+          newSibling.id,
+          upper.id,
+        ]);
+      });
+    });
   });
 
   it("fades and expires shapes independently on its recurring alarm", async () => {
@@ -263,10 +341,6 @@ describe("the public board", () => {
     const expiredImage = stampPublicShape(image("expired-image", orphan.id), now - 2 * day - 1);
     const oldSharedImage = stampPublicShape(image("old-shared-image", held.id), now - 2 * day - 1);
     const newSharedImage = stampPublicShape(image("new-shared-image", held.id), now);
-    const drawing = (state: DurableObjectState) =>
-      new SQLiteSyncStorage<TLRecord>({
-        sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
-      });
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
         const signature = store.get(PUBLIC_SIGNATURE_GROUP);
@@ -812,4 +886,27 @@ describe("the two modes' passes", () => {
     const response = await guest.fetch("/", {}, { ...standaloneEnv, ...overrides });
     expect(response.status).toBe(500);
   });
+});
+
+it("shares the posting allowance between chat rolls and text", async () => {
+  const guest = new Browser();
+  const { board, pass } = await (await guest.post("/api/public-board/bootstrap")).json<Answer>();
+  const chat = "/rooms/" + board + "/chat";
+  const send = (body: string) =>
+    guest.fetch(chat, {
+      body,
+      headers: { Authorization: "Bearer " + pass },
+      method: "POST",
+    });
+  const first = await send("/roll 1d1");
+  expect(first.status).toBe(200);
+  expect(await first.json()).toMatchObject({ diceTotal: 1, text: "1d1" });
+  for (let index = 1; index < MAX_CHAT_MESSAGES_PER_MINUTE; index++) {
+    expect((await send("Message " + index)).status).toBe(200);
+  }
+  const before = await (await roomCall(chat, pass)).json<ChatMessage[]>();
+  expect((await send("/r 2d1")).status).toBe(429);
+  const history = await (await roomCall(chat, pass)).json<ChatMessage[]>();
+  expect(history).toEqual(before);
+  expect(history.at(-MAX_CHAT_MESSAGES_PER_MINUTE)).toMatchObject({ diceTotal: 1, text: "1d1" });
 });

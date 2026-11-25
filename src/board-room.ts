@@ -13,7 +13,8 @@ import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
 import type { ThumbnailType } from "./board-thumbnail";
-import type { DiceLaunch, Roll } from "./dice-notation";
+import type { ExpressionError } from "./dice-expression";
+import type { Roll, RollRequest } from "./dice-notation";
 import type { Pass } from "./pass";
 import type {
   BoardGrant,
@@ -27,8 +28,11 @@ import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
-import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
+import { type ChatMessage, rollCommand } from "./chat";
+import { appendChat, openChat, recentChat } from "./chat-store";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
+import { evaluateExpression } from "./dice-evaluation";
+import { InvalidRoll, parseExpression } from "./dice-expression";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
@@ -37,6 +41,7 @@ import {
   preservesPublicShapeAge,
   PUBLIC_SWEEP_MS,
   publicFileReferences,
+  separatePublicSiblingIndices,
   stampPublicShape,
 } from "./public-board-expiry";
 import {
@@ -80,6 +85,7 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
 export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
+const PUBLIC_ORDER_NORMALIZED = "publicOrderNormalized";
 const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
 
@@ -91,7 +97,13 @@ export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "sta
 type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
   avatar: string | null;
 };
+type RollCompletion =
+  | { refusal: Refusal }
+  | { error: ExpressionError }
+  | { roll: Roll; message: ChatMessage | null };
+
 type DrawingRoom = { drawing: SQLiteSyncStorage<TLRecord>; room: TLSocketRoom<TLRecord, Person> };
+type PublicDrawing = Extract<TLRecord, { typeName: "shape" }>;
 
 function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -127,9 +139,10 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS board (id INTEGER PRIMARY KEY CHECK (id = 1), link INTEGER NOT NULL)",
     );
     sql.exec(
-      "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT)",
+      "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT, outcome TEXT, chat INTEGER)",
     );
     addRollColumns(sql);
+    this.ctx.storage.transactionSync(() => openChat(sql));
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
@@ -171,6 +184,11 @@ export class BoardRoom extends DurableObject<Env> {
           }
         : undefined;
     const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
+    const { kv } = this.ctx.storage;
+    if (this.publicExpiryEnabled && kv.get(PUBLIC_ORDER_NORMALIZED) !== true) {
+      drawing.transaction(separatePublicSiblingIndices);
+      kv.put(PUBLIC_ORDER_NORMALIZED, true);
+    }
     const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
         shape: (write) => {
@@ -183,6 +201,26 @@ export class BoardRoom extends DurableObject<Env> {
           if (write.type === "create") return stampPublicShape(record, Date.now());
           return preservesPublicShapeAge(write.prev, record) ? record : null;
         },
+      },
+      onCommittedChanges: ({ diff }) => {
+        if (!this.publicExpiryEnabled) return;
+        const parents = new Set<PublicDrawing["parentId"]>();
+        const moved = new Set<PublicDrawing["id"]>();
+        for (const put of Object.values(diff.puts)) {
+          const [before, after] = Array.isArray(put) ? put : [undefined, put];
+          if (
+            after.typeName === "shape" &&
+            (before?.typeName !== "shape" ||
+              before.parentId !== after.parentId ||
+              before.index !== after.index)
+          ) {
+            parents.add(after.parentId);
+            moved.add(after.id);
+          }
+        }
+        if (parents.size > 0) {
+          drawing.transaction((store) => separatePublicSiblingIndices(store, parents, moved));
+        }
       },
       // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
@@ -293,42 +331,76 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  roll(pass: Pass, pool: number[], expression?: string, launch?: DiceLaunch): Refusal | Roll {
+  roll(pass: Pass, request: RollRequest) {
+    const result = this.rollWithChat(pass, request);
+    if ("refusal" in result) return result.refusal;
+    return "error" in result ? result : result.roll;
+  }
+
+  private rollWithChat: (pass: Pass, request: RollRequest, inChat?: boolean) => RollCompletion = (
+    pass,
+    request,
+    inChat = false,
+  ) => {
     const refusal = this.admit(pass);
-    if (refusal !== null) return refusal;
+    if (refusal !== null) return { refusal };
+    const expression = "expression" in request ? request.expression : undefined;
+    const formula = expression === undefined ? null : parseExpression(expression);
+    if (formula !== null && "error" in formula) return formula;
     const at = Date.now();
-    if (at - (this.lastRollAt.get(pass.sub) ?? 0) < MIN_ROLL_INTERVAL_MS) return "too-fast";
+    if (at - (this.lastRollAt.get(pass.sub) ?? 0) < MIN_ROLL_INTERVAL_MS)
+      return { refusal: "too-fast" };
     this.lastRollAt.set(pass.sub, at);
-    const dice = pool.map((sides) => ({ sides, value: rollDie(sides) }));
+
+    let dice: Roll["dice"];
+    let outcome: Roll["outcome"];
+    try {
+      if ("dice" in request) dice = request.dice.map((sides) => ({ sides, value: rollDie(sides) }));
+      else ({ dice, outcome } = evaluateExpression(formula!, rollDie));
+    } catch (error) {
+      if (error instanceof InvalidRoll) return { error: error.reason };
+      throw error;
+    }
+
+    const { storage } = this.ctx;
+    const { sql } = storage;
     const seed = drawSeed();
-    const [row] = this.ctx.storage.sql
-      .exec(
-        "INSERT INTO rolls (at, sub, name, dice, seed, expression) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-        at,
-        pass.sub,
-        pass.name,
-        JSON.stringify(dice),
-        seed,
-        expression ?? null,
-      )
-      .toArray();
-    const roll: Roll = {
-      at,
-      dice,
-      ...(expression === undefined ? {} : { expression }),
-      id: row!.id as number,
-      ...(launch === undefined ? {} : { launch }),
-      name: pass.name,
-      seed,
-      sub: pass.sub,
-    };
-    this.ctx.storage.sql.exec("DELETE FROM rolls WHERE id <= ?", roll.id - ROLL_LOG_LENGTH);
+    const launch = "launch" in request ? request.launch : undefined;
+    const text = expression?.trim();
+    const { name, sub } = pass;
+    const { roll, message } = storage.transactionSync(() => {
+      const row = sql
+        .exec(
+          "INSERT INTO rolls (at, sub, name, dice, seed, expression, outcome, chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+          at,
+          sub,
+          name,
+          JSON.stringify(dice),
+          seed,
+          text ?? null,
+          outcome === undefined ? null : JSON.stringify(outcome),
+          inChat ? 1 : null,
+        )
+        .one();
+      const roll: Roll = { at, dice, id: Number(row.id), name, seed, sub };
+      if (inChat) roll.chat = true;
+      if (text !== undefined) roll.expression = text;
+      if (launch !== undefined) roll.launch = launch;
+      if (outcome !== undefined) roll.outcome = outcome;
+      sql.exec("DELETE FROM rolls WHERE id <= ?", roll.id - ROLL_LOG_LENGTH);
+      const message =
+        inChat && text !== undefined && outcome !== undefined
+          ? appendChat(sql, { at, name, sub, text, diceTotal: outcome.total })
+          : null;
+      return { roll, message };
+    });
     for (const session of this.room.getSessions()) {
       this.room.sendCustomMessage(session.sessionId, { roll, type: "roll" });
     }
-    log("board.rolled", { board: pass.board, dice: pool.length, person: kind(pass.sub) });
-    return roll;
-  }
+    if (message !== null) this.announceChat(message);
+    log("board.rolled", { board: pass.board, dice: dice.length, person: kind(pass.sub) });
+    return { roll, message };
+  };
 
   summon(pass: Pass, { target, ...view }: SummonRequest) {
     const refusal = this.admit(pass);
@@ -350,53 +422,55 @@ export class BoardRoom extends DurableObject<Env> {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
     return this.ctx.storage.sql
-      .exec("SELECT id, at, sub, name, dice, seed, expression FROM rolls ORDER BY id")
+      .exec(
+        "SELECT id, at, sub, name, dice, seed, expression, outcome, chat FROM rolls ORDER BY id",
+      )
       .toArray()
-      .map((row) => ({
-        at: row.at as number,
-        dice: JSON.parse(row.dice as string),
-        ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
-        id: row.id as number,
-        name: row.name as string,
-        seed: row.seed as number | null,
-        sub: row.sub as string,
-      }));
-  }
-
-  private chatStorage(): SqlStorage {
-    const { sql } = this.ctx.storage;
-    sql.exec(
-      "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL)",
-    );
-    return sql;
+      .map((row) => {
+        const roll: Roll = {
+          at: Number(row.at),
+          dice: JSON.parse(String(row.dice)),
+          id: Number(row.id),
+          name: String(row.name),
+          seed: row.seed === null ? null : Number(row.seed),
+          sub: String(row.sub),
+        };
+        if (row.chat === 1) roll.chat = true;
+        if (row.expression !== null) roll.expression = String(row.expression);
+        if (row.outcome !== null) roll.outcome = JSON.parse(String(row.outcome));
+        return roll;
+      });
   }
 
   chatHistory(pass: Pass): ChatMessage[] | Refusal {
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
-    return this.chatStorage()
-      .exec<ChatMessage>("SELECT id, at, sub, name, text FROM chat ORDER BY id")
-      .toArray();
+    return recentChat(this.ctx.storage.sql);
   }
 
-  sendChat(pass: Pass, text: string): ChatMessage | Refusal {
+  sendChat(pass: Pass, text: string) {
+    const expression = rollCommand(text);
+    if (expression !== null) {
+      const result = this.rollWithChat(pass, { expression }, true);
+      if ("refusal" in result) return result.refusal;
+      return "error" in result ? result : result.message!;
+    }
+
     const refusal = this.admit(pass);
     if (refusal !== null) return refusal;
-    const sql = this.chatStorage();
-    const message = sql
-      .exec<ChatMessage>(
-        "INSERT INTO chat (at, sub, name, text) VALUES (?, ?, ?, ?) RETURNING id, at, sub, name, text",
-        Date.now(),
-        pass.sub,
-        pass.name,
-        text,
-      )
-      .one();
-    sql.exec("DELETE FROM chat WHERE id <= ?", message.id - CHAT_HISTORY_LENGTH);
+    const { storage } = this.ctx;
+    const { name, sub } = pass;
+    const message = storage.transactionSync(() =>
+      appendChat(storage.sql, { at: Date.now(), name, sub, text }),
+    );
+    this.announceChat(message);
+    return message;
+  }
+
+  private announceChat(message: ChatMessage) {
     for (const session of this.room.getSessions()) {
       this.room.sendCustomMessage(session.sessionId, { message, type: "chat" });
     }
-    return message;
   }
 
   /**
@@ -599,6 +673,7 @@ export class BoardRoom extends DurableObject<Env> {
       // WARNING: Stamp existing shapes when enabling expiry so drawings without a timestamp can expire.
       const now = Date.now();
       this.drawing.transaction((store) => {
+        separatePublicSiblingIndices(store);
         // WARNING: Materialize these SQLite rows before updating the table they came from.
         const records = [...store.values()];
         for (const record of records) {
@@ -608,6 +683,7 @@ export class BoardRoom extends DurableObject<Env> {
         }
       });
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
+      this.ctx.storage.kv.put(PUBLIC_ORDER_NORMALIZED, true);
       this.publicExpiryEnabled = true;
     }
     if ((await this.ctx.storage.getAlarm()) === null) {

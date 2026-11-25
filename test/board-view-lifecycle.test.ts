@@ -1,9 +1,6 @@
-import { env, runInDurableObject } from "cloudflare:test";
 import { expect, it } from "vitest";
 
-import type { BoardRoom } from "../src/board-room";
-
-import { call, pass, seat, until } from "./support";
+import { call, pass, restartRoom, seat, until } from "./support";
 
 type Seat = Awaited<ReturnType<typeof seat>>;
 type Delivery = { type: "summon"; page: string; x: number; y: number; zoom: number };
@@ -15,9 +12,6 @@ it.each([0, 1])(
     const owner = await pass({ board, owner: true });
     const target = "g:viewer";
     const viewer = await pass({ board, sub: target });
-    const namespace = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> })
-      .BoardRoom;
-    const room = namespace.get(namespace.idFromName(board));
     const pages = new Map<string, string>();
     const sockets = new Map<Seat, { expected: Delivery[]; recipient: boolean }>();
     const trace: string[] = [];
@@ -110,9 +104,7 @@ it.each([0, 1])(
       await edit(page, "Renamed");
       for (let restart = 0; restart < 2; restart++) {
         trace.push("restart");
-        await expect(
-          runInDurableObject(room, (_instance, state) => state.abort("view model restart")),
-        ).rejects.toThrow("view model restart");
+        await restartRoom(board);
         for (const socket of sockets.keys()) socket.close();
         sockets.clear();
         if (restart === order) await join(viewer);

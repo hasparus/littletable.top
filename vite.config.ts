@@ -106,6 +106,11 @@ function tabletop(): Plugin {
       if (typeof value === "string") settings = JSON.parse(value) as ClientSettings;
     },
     configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url?.split("?")[0] === "/docs")
+          request.url = request.url.replace("/docs", "/docs/");
+        next();
+      });
       server.middlewares.use("/manifest.webmanifest", (_request, response) => {
         response.setHeader("Content-Type", "application/manifest+json");
         response.end(manifest());
@@ -130,14 +135,14 @@ function tabletop(): Plugin {
     resolveId(id) {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
-    transformIndexHtml(html, { bundle, originalUrl }) {
+    transformIndexHtml(html, { bundle, originalUrl, path }) {
       if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
         html = html.replace("<!-- boards-shell -->", boardShell);
       }
       if (settings.mode === "standalone" && !bundle && originalUrl?.split("?")[0] === "/") {
         html = html.replace("<!-- landing-preview -->", LANDING_PREVIEW);
       }
-      if (settings.mode === "standalone" && bundle) {
+      if (settings.mode === "standalone" && bundle && path === "/index.html") {
         html = html.replace(
           "<!-- landing-preview -->",
           `<template data-landing-prerender>${LANDING_PREVIEW}</template>`,
@@ -291,6 +296,12 @@ export default defineConfig({
     assetsInlineLimit: (file) => (file.includes("@tldraw/assets") ? false : undefined),
     emptyOutDir: true,
     outDir: fileURLToPath(new URL("dist", import.meta.url)),
+    rolldownOptions: {
+      input: [
+        fileURLToPath(new URL("client/index.html", import.meta.url)),
+        fileURLToPath(new URL("client/docs/index.html", import.meta.url)),
+      ],
+    },
     sourcemap: true,
   },
   define: { __TABLETOP__: JSON.stringify(settingsFromEnv()) },
