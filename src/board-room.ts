@@ -14,6 +14,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
+import type { GizmoDecision } from "./gizmo-packages";
 import type { Pass } from "./pass";
 import type { EngineKey } from "./text-result";
 
@@ -23,6 +24,7 @@ import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { changeDeck, type DeckCommand } from "./deck";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
+import { gizmoProblem, GizmoRequests } from "./gizmo-requests";
 import { GizmoStore, readInstalledGizmo } from "./gizmo-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
@@ -88,6 +90,7 @@ export class BoardRoom extends DurableObject<Env> {
   private files!: FileLedger;
   private texts!: TextLedger;
   private gizmos!: GizmoStore;
+  private gizmoRequests!: GizmoRequests;
   private readonly textUploads = new Map<string, number>();
   private thumbnailPending = false;
   private readonly pendingUploads = new Set<Promise<unknown>>();
@@ -116,6 +119,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.lastRollAt = new Map();
     // WARNING: The image ledger queries the texts table for its quota, so initialize that table first.
     this.gizmos = new GizmoStore(sql, (url, init) => this.fetchGizmoFile(url, init));
+    this.gizmoRequests = new GizmoRequests(sql);
     this.texts = new TextLedger(sql, this.env.Files);
     this.files = new FileLedger(sql, this.env.Files);
   }
@@ -258,8 +262,7 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   deck(pass: Pass, command: DeckCommand) {
-    if ((!pass.owner && command.action !== "flip") || this.admit(pass) !== null)
-      return "link-reset";
+    if (this.admit(pass) !== null) return "link-reset";
     const { kv, sql } = this.ctx.storage;
     return this.drawing.transaction((store) =>
       changeDeck(
@@ -423,7 +426,54 @@ export class BoardRoom extends DurableObject<Env> {
     return this.admit(pass) ?? this.gizmos.list();
   }
 
+  private gizmosChanged() {
+    for (const session of this.room.getSessions()) {
+      this.room.sendCustomMessage(session.sessionId, "gizmos-changed");
+    }
+  }
+
+  listGizmoRequests(pass: Pass) {
+    return (
+      this.admit(pass) ??
+      this.gizmoRequests.list(pass.owner && kind(pass.sub) === "member" ? null : pass.sub)
+    );
+  }
+
+  requestGizmo(pass: Pass, url: string) {
+    if (this.admit(pass) !== null) return gizmoProblem(403, "Forbidden");
+    return this.gizmoRequests.submit(pass, url, () => this.gizmosChanged());
+  }
+
+  async reviewGizmo(pass: Pass, { id, action }: GizmoDecision) {
+    if (!pass.owner || kind(pass.sub) !== "member" || this.admit(pass) !== null)
+      return gizmoProblem(403, "Forbidden");
+    const requests = this.gizmoRequests;
+    const [current] = requests.list(null, id);
+    if (!current) return gizmoProblem(404, "Unknown request");
+    if (current.status === (action === "approve" ? "installed" : "declined")) return current;
+    if (current.status !== "pending") return gizmoProblem(409, "Request already resolved");
+    if (action === "decline") {
+      requests.decline(id);
+      this.gizmosChanged();
+    } else {
+      const result = await this.installPackage(pass, current.url, () => requests.pending(id));
+      if (requests !== this.gizmoRequests || this.admit(pass) !== null)
+        return gizmoProblem(403, "Forbidden");
+      if ("error" in result) {
+        const [latest] = requests.list(null, id);
+        if (latest?.status === "installed") return latest;
+        if (latest?.status === "declined") return gizmoProblem(409, "Request already resolved");
+        return result;
+      }
+    }
+    return requests.list(null, id)[0]!;
+  }
+
   installGizmo(pass: Pass, url: string) {
+    return this.installPackage(pass, url, () => true);
+  }
+
+  private installPackage(pass: Pass, url: string, active: () => boolean) {
     const store = this.gizmos;
     return store.install(
       pass.board,
@@ -432,7 +482,12 @@ export class BoardRoom extends DurableObject<Env> {
         store === this.gizmos &&
         pass.owner &&
         kind(pass.sub) === "member" &&
-        this.admit(pass) === null,
+        this.admit(pass) === null &&
+        active(),
+      (pinned) => {
+        this.gizmoRequests.installed(url, pinned);
+        this.gizmosChanged();
+      },
     );
   }
 

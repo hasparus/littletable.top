@@ -49,7 +49,7 @@ describe("Gizmo packages", () => {
     expect((await install(board, await pass({ board, owner: true, sub: "g:guest" }))).status).toBe(
       403,
     );
-    expect((await install(board, owner, source.replace("1".repeat(40), "main"))).status).toBe(400);
+    expect((await install(board, owner, "https://example.test/deck")).status).toBe(400);
     expect((await install(board, owner, prefix + "large/gizmo.json")).status).toBe(413);
     expect((await install(board, owner, prefix + "bad/gizmo.json")).status).toBe(422);
     expect((await install(board, owner, prefix + "redirect/gizmo.json")).status).toBe(502);
@@ -58,6 +58,20 @@ describe("Gizmo packages", () => {
     expect((await call("/rooms/" + board + "/link", reset, { method: "POST" })).status).toBe(204);
     expect((await install(board, owner)).status).toBe(403);
     expect((await list(board, owner)).status).toBe(403);
+  });
+
+  it("pins a branch folder or manifest to the same installed revision", async () => {
+    const board = "gizmo-branch";
+    const owner = await pass({ board, owner: true });
+    for (const url of [
+      "https://github.com/test/gizmos/tree/main/deck/",
+      "https://github.com/test/gizmos/blob/main/deck/gizmo.json",
+    ]) {
+      const response = await install(board, owner, url);
+      expect(response.status).toBe(200);
+      expect((await response.json<InstalledGizmo>()).url).toBe(source);
+    }
+    expect(await (await list(board, owner)).json()).toHaveLength(1);
   });
 
   it("checks raster headers before serving upstream bytes", async () => {

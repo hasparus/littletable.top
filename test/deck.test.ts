@@ -423,7 +423,7 @@ describe("installable physical decks", () => {
     expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
   });
 
-  it("places and draws a package pinned on the board with current owner access", async () => {
+  it("lets current participants place and deal an installed package", async () => {
     const board = "deck-admission";
     const guest = await pass({ board, link: 1, sub: "g:guest" });
     const owner = await pass({ board, link: 1, owner: true });
@@ -448,7 +448,7 @@ describe("installable physical decks", () => {
       });
     }
     const command = { ...place, install: source };
-    expect((await request(guest, command)).status).toBe(403);
+    expect((await request(guest, command)).status).toBe(409);
     expect((await request(owner, command)).status).toBe(409);
     expect(
       (
@@ -458,19 +458,21 @@ describe("installable physical decks", () => {
         })
       ).status,
     ).toBe(200);
-    const response = await request(owner, command);
+    const response = await request(guest, command);
     expect(response.status).toBe(200);
     const { deck } = await response.json<{ deck: string }>();
     const warm = { action: "warm", deck };
-    expect((await request(guest, warm)).status).toBe(403);
+    expect((await request(guest, warm)).status).toBe(200);
     expect((await request(stale, warm)).status).toBe(403);
     const warmed = await request(owner, warm);
     expect(warmed.status).toBe(200);
     expect(warmed.headers.get("Cache-Control")).toBe("no-store");
     expect((await warmed.json<{ face: string }>()).face).toMatch(/\/front\.png$/u);
     expect((await request(stale, draw(deck))).status).toBe(403);
-    expect((await request(guest, { action: "prepare", deck })).status).toBe(403);
-    const dealt = await request(owner, { ...draw(deck), language: "pl" });
+    const cancelled = crypto.randomUUID();
+    expect((await request(guest, { action: "prepare", deck, id: cancelled })).status).toBe(200);
+    expect((await request(guest, { action: "cancel", deck, id: cancelled })).status).toBe(200);
+    const dealt = await request(guest, { ...draw(deck), language: "pl" });
     expect(dealt.status).toBe(200);
     expect(await dealt.json()).toEqual({ card: "moon", name: "Księżyc", width: 380 });
     const id = crypto.randomUUID();

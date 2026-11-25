@@ -20,6 +20,10 @@ const deck = {
 };
 export function fakeGizmoUpstream(request: Request): Response | undefined {
   const url = new URL(request.url);
+  if (url.hostname === "api.github.com")
+    return url.pathname === "/repos/test/gizmos/commits/main"
+      ? new Response("1".repeat(40))
+      : new Response(null, { status: 404 });
   if (url.hostname !== "raw.githubusercontent.com") return undefined;
   const prefix = "/test/gizmos/" + "1".repeat(40) + "/";
   const path = url.pathname.slice(prefix.length);

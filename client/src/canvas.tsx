@@ -108,11 +108,10 @@ export function BoardCanvas({
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
   const canUseGizmos = !keeper.secret && landing === undefined;
-  const canPlaceGizmos = person.owner && canUseGizmos;
-  const deck = useBoardDeck(keeper, canPlaceGizmos);
+  const deck = useBoardDeck(keeper, canUseGizmos);
   const chat = useChat(keeper, landing !== undefined);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
-  const { refusal, store } = useBoardStore({
+  const { refusal, store, gizmoRevision } = useBoardStore({
     active,
     color,
     files,
@@ -188,7 +187,7 @@ export function BoardCanvas({
   const ui = useMemo<BoardUi>(
     () => ({
       board,
-      canPlaceGizmos,
+      canPlaceGizmos: canUseGizmos,
       close: (name) => {
         if (name === "chat") setReadChat(chat.latestIncoming);
         setPanel((current) => (current === name ? null : current));
@@ -220,7 +219,7 @@ export function BoardCanvas({
     }),
     [
       board,
-      canPlaceGizmos,
+      canUseGizmos,
       chat.latestIncoming,
       color,
       copy,
@@ -323,8 +322,14 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
-        {active && canPlaceGizmos && editor && panel === "gizmos" && (
-          <BoardGizmoGallery editor={editor} online={online} deck={deck} keeper={keeper} />
+        {active && canUseGizmos && editor && (
+          <BoardGizmoGallery
+            editor={editor}
+            online={online}
+            deck={deck}
+            keeper={keeper}
+            revision={gizmoRevision}
+          />
         )}
         {active && canUseGizmos && <DeckAnnouncement name={deck.revealed?.name ?? ""} />}
         {active && editorLayer !== null && rolls.arrived !== null && (

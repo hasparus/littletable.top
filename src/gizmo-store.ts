@@ -1,6 +1,7 @@
 import { readCapped, sha256Hex, sniff } from "./file-store";
 import {
   gizmoSource,
+  normalizeGizmoLink,
   isPackageAssetPath,
   normalizeManifest,
   installedManifestSchema,
@@ -47,6 +48,40 @@ async function fetchLimited(fetchFile: FetchFile, url: string, max: number) {
   }
 }
 
+async function pinSource(fetchFile: FetchFile, input: string) {
+  const link = normalizeGizmoLink(input);
+  if (!link) return problem(400, "Use a GitHub folder or gizmo.json link");
+  const pinned = gizmoSource(link);
+  if (pinned) return pinned;
+  const [, owner, repo, , ...parts] = new URL(link).pathname.split("/");
+  for (let split = 1; split < parts.length; split++) {
+    const ref = encodeURIComponent(parts.slice(0, split).join("/"));
+    const url = `https://api.github.com/repos/${owner}/${repo}/commits/${ref}`;
+    const response = await fetchFile(url, {
+      headers: { Accept: "application/vnd.github.sha", "User-Agent": "Little-Table-Gizmos" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      if ([404, 422].includes(response.status)) continue;
+      return problem(502, "GitHub revision lookup failed");
+    }
+    const bytes = await readCapped(response.body, {
+      max: 128,
+      declared: Number(response.headers.get("content-length")),
+    });
+    if (!(bytes instanceof ArrayBuffer)) return problem(502, "Invalid GitHub revision");
+    const sha = new TextDecoder().decode(bytes).trim();
+    if (!/^[a-f\d]{40}$/u.test(sha)) return problem(502, "Invalid GitHub revision");
+    const source = gizmoSource(
+      `https://github.com/${owner}/${repo}/blob/${sha}/${parts.slice(split).join("/")}`,
+    );
+    if (source) return source;
+  }
+  return problem(404, "GitHub revision unavailable");
+}
+
 async function loadManifest(fetchFile: FetchFile, source: Source, board: string) {
   const body = await fetchLimited(fetchFile, source.rawManifest, MAX_MANIFEST_BYTES);
   if (!(body instanceof ArrayBuffer)) return body;
@@ -90,12 +125,23 @@ export class GizmoStore {
     );
   }
 
-  async install(board: string, input: string, authorized: () => boolean) {
+  async install(
+    board: string,
+    input: string,
+    authorized: () => boolean,
+    onInstalled?: (url: string) => void,
+  ) {
     if (!authorized()) return problem(403, "Forbidden");
-    const source = gizmoSource(input);
-    if (!source) return problem(400, "Use a GitHub gizmo.json URL pinned to a full commit");
+    const source = await pinSource(this.fetchFile, input).catch(() =>
+      problem(502, "GitHub revision lookup failed"),
+    );
+    if (!authorized()) return problem(403, "Forbidden");
+    if ("error" in source) return source;
     const existing = readInstalledGizmo(this.sql, source.url);
-    if (existing) return existing;
+    if (existing) {
+      onInstalled?.(existing.url);
+      return existing;
+    }
     let pending = this.pending.get(source.url);
     if (!pending) {
       if (this.pending.size >= 4 || this.full()) return problem(429, "Package capacity reached");
@@ -108,7 +154,10 @@ export class GizmoStore {
     if (!authorized()) return problem(403, "Forbidden");
     if ("error" in loaded) return loaded;
     const installed = readInstalledGizmo(this.sql, source.url);
-    if (installed) return installed;
+    if (installed) {
+      onInstalled?.(installed.url);
+      return installed;
+    }
     if (this.full()) return problem(429, "Package capacity reached");
     this.sql.exec(
       "INSERT INTO gizmo_packages(url, key, manifest, paths) VALUES (?, ?, ?, ?)",
@@ -117,6 +166,7 @@ export class GizmoStore {
       JSON.stringify(loaded.manifest),
       JSON.stringify(loaded.paths),
     );
+    onInstalled?.(source.url);
     return { url: source.url, manifest: loaded.manifest };
   }
 

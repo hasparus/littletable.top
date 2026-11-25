@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { STANDALONE } from "../ports";
+import { browseGizmos, joinAs, openGallery } from "./helpers";
 
 for (const viewport of [
   { width: 1190, height: 760 },
@@ -74,4 +75,126 @@ test("a workshop button without a shake capability keeps the table still", async
   await bell.click();
   await expect(bell).toHaveAttribute("data-hits", "1");
   expect(await page.locator(".tl-canvas").evaluate((el) => el.getAnimations().length)).toBe(0);
+});
+
+test("practice installs a marketplace piece and brings its drawer button into view", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 480 });
+  await page.goto(STANDALONE + "/dev/gizmos/?empty&lang=en");
+  const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
+  for (const name of ["Tarot deck", "Explosion button"]) {
+    await market.getByRole("button", { name: "Install " + name }).click();
+    await browseGizmos(page);
+  }
+  const listing = market.getByRole("article", { name: "Spotlight tracker" });
+  await expect(listing.getByRole("link", { name: "View code" })).toHaveAttribute(
+    "href",
+    /^https:\/\/github\.com\//u,
+  );
+  await listing.getByRole("button", { name: "Install Spotlight tracker" }).click();
+  const drawer = page.getByRole("dialog", { name: "Gizmo gallery" });
+  const placed = drawer.getByRole("button", { name: "Spotlight tracker" });
+  await expect(market).toBeHidden();
+  await expect(placed).toBeInViewport({ ratio: 0.98 });
+  await expect(placed).toBeFocused();
+  await expect
+    .poll(() =>
+      drawer.locator("[data-gizmo-compartment]").evaluate((compartment) => compartment.scrollTop),
+    )
+    .toBeGreaterThan(0);
+  await browseGizmos(page);
+  await expect(listing.getByText("Installed", { exact: true })).toBeVisible();
+  await market.getByRole("button", { name: "Back", exact: true }).click();
+  await placed.press("Enter");
+  await expect(drawer).toBeHidden();
+  await expect(page.locator("[data-gizmo-tracker]")).toHaveCount(1);
+});
+
+test("requests survive the owner's absence, merge across players, and install once approved", async ({
+  page,
+  browser,
+}) => {
+  await page.goto(STANDALONE + "/boards");
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Marketplace owner");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page.getByRole("button", { name: "Dice", exact: true })).toBeVisible();
+  const board = page.url();
+  await page.goto(STANDALONE + "/boards");
+  const first = await browser.newContext();
+  const second = await browser.newContext();
+  try {
+    const player = await first.newPage();
+    const friend = await second.newPage();
+    for (const [tab, name] of [
+      [player, "Mira"],
+      [friend, "Sam"],
+    ] as const) {
+      await tab.goto(board);
+      await joinAs(tab, name);
+      const market = await openGallery(tab, "Gizmo marketplace");
+      const listing = market.getByRole("article", { name: "Explosion button" });
+      await listing.getByRole("button", { name: "Request Explosion button" }).click();
+      await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
+    }
+    await friend
+      .getByRole("dialog", { name: "Gizmo marketplace" })
+      .getByRole("button", { name: "Close" })
+      .click();
+    await player.reload();
+    const market = await openGallery(player, "Gizmo marketplace");
+    const listing = market.getByRole("article", { name: "Explosion button" });
+    await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
+    await expect(listing.getByRole("button", { name: "Request Explosion button" })).toHaveCount(0);
+    await page.goto(board);
+    const inbox = page.getByRole("dialog", { name: "Review Gizmo request" });
+    await expect(inbox.getByRole("heading", { name: "Explosion button" })).toBeVisible();
+    await expect(inbox).toContainText("Mira");
+    await expect(inbox).toContainText("Sam");
+    await expect(inbox.getByRole("link")).toHaveAttribute("href", /^https:\/\/github\.com\//u);
+    await inbox.getByRole("button", { name: "Install", exact: true }).click();
+    await expect(inbox).toBeHidden();
+    const installed = page.getByRole("dialog", { name: "Gizmo gallery" });
+    await expect(installed.getByRole("button", { name: "Explosion button" })).toBeFocused();
+    await installed.getByRole("button", { name: "Close" }).click();
+    const drawer = player.getByRole("dialog", { name: "Gizmo gallery" });
+    const explosion = drawer.getByRole("button", { name: "Explosion button" });
+    await expect(explosion).toBeVisible();
+    await expect(friend.getByRole("dialog", { name: "Gizmo gallery" })).toBeHidden();
+    await explosion.press("Enter");
+    await expect(drawer).toBeHidden();
+    await expect(page.getByRole("button", { name: "Explosion button" })).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Dice", exact: true })).toBeVisible();
+    await expect(inbox).toHaveCount(0);
+    const ownerDrawer = await openGallery(page);
+    await expect(ownerDrawer.getByRole("button", { name: "Explosion button" })).toHaveCount(1);
+
+    await openGallery(player);
+    await browseGizmos(player);
+    const folder = "https://github.com/example/gizmos/tree/main/gizmos/spotlight";
+    const manifest = "https://github.com/example/gizmos/blob/main/gizmos/spotlight/gizmo.json";
+    await market.getByRole("textbox", { name: /GitHub/ }).fill(folder);
+    await market.getByRole("button", { name: "Request", exact: true }).click();
+    const custom = market.locator("[data-gizmo-custom-status]");
+    await expect(custom.getByRole("link")).toHaveAttribute("href", manifest);
+    await expect(custom.getByText("Requested", { exact: true })).toBeVisible();
+    await expect(inbox.getByRole("heading", { name: "spotlight", exact: true })).toBeVisible();
+    await expect(inbox).toContainText("example/gizmos");
+    await expect(inbox).toContainText("main/gizmos/spotlight/gizmo.json");
+    await expect(inbox.getByRole("link", { name: "View code" })).toHaveAttribute("href", manifest);
+    await inbox.getByRole("button", { name: "Decline", exact: true }).click();
+    await expect(inbox).toBeHidden();
+    await expect(custom.getByText("Declined", { exact: true })).toBeVisible();
+    await player.reload();
+    await openGallery(player);
+    await browseGizmos(player);
+    await expect(custom.getByText("Declined", { exact: true })).toBeVisible();
+    await expect(ownerDrawer.getByRole("button", { name: "Spotlight tracker" })).toHaveCount(0);
+  } finally {
+    await first.close();
+    await second.close();
+  }
 });

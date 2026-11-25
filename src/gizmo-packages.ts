@@ -26,6 +26,40 @@ const hostAsset = T.string.check((url) => {
 export const isGizmoAssetUrl = hostAsset.isValid.bind(hostAsset);
 export const gizmoInstallRequest = T.object({ url: T.string });
 
+export const gizmoDecision = T.object({
+  action: T.literalEnum("approve", "decline"),
+  id: T.positiveInteger,
+});
+export type GizmoDecision = T.TypeOf<typeof gizmoDecision>;
+export type GizmoRequest = {
+  id: number;
+  url: string;
+  status: "pending" | "installed" | "declined";
+  requesters: string[];
+  installedUrl?: string;
+};
+
+/** Normalize folder and manifest links locally, before the owner authorizes a download. */
+export function normalizeGizmoLink(input: string) {
+  if (input.length > 450) return null;
+  const match =
+    /^https:\/\/github\.com\/([a-zA-Z\d][a-zA-Z\d-]{0,38})\/([a-zA-Z\d][a-zA-Z\d_.-]{0,99})\/(tree|blob)\/(.+)$/u.exec(
+      input.trim(),
+    );
+  if (!match) return null;
+  const [, owner, repo, view, target] = match;
+  const path = view === "tree" ? target!.replace(/\/$/u, "") + "/gizmo.json" : target!;
+  if (!safePath(path) || !path.endsWith("/gizmo.json")) return null;
+  return (
+    "https://github.com/" +
+    owner!.toLowerCase() +
+    "/" +
+    repo!.toLowerCase() +
+    "/blob/" +
+    path.replace(/^[a-f\d]{40}(?=\/)/iu, (sha) => sha.toLowerCase())
+  );
+}
+
 /** Both outbound targets and persisted identities originate from this restricted grammar. */
 export function gizmoSource(input: string) {
   if (input.length > 450 || /\s/u.test(input)) return null;

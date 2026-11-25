@@ -122,6 +122,26 @@ export async function putNote(
   await expect(onBoard(page, text)).toBeVisible();
 }
 
+export async function openGallery(
+  page: Page,
+  dialog: "Gizmo gallery" | "Gizmo marketplace" = "Gizmo gallery",
+) {
+  await page.getByTestId("main-menu.button").click();
+  await expect(page.getByRole("menuitem", { name: "Tarot deck" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Gizmos", exact: true }).click();
+  return page.getByRole("dialog", { name: dialog });
+}
+
+export async function browseGizmos(page: Page) {
+  await page
+    .getByRole("dialog", { name: "Gizmo gallery" })
+    .getByRole("button", { name: "Browse marketplace", exact: true })
+    .click();
+  const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
+  await expect(market).toBeVisible();
+  return market;
+}
+
 export async function joinAs(page: Page, name: string): Promise<void> {
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join the board" }).click();

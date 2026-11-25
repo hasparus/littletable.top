@@ -1,6 +1,6 @@
 # Gizmos
 
-Open `/dev/gizmos` to play with the packages in this checkout. The practice table starts with all three pieces and resets on reload.
+Open `/dev/gizmos` to play with the packages in this checkout. The practice table starts with all three pieces and resets on reload. Open `/dev/gizmos?empty` to try a first installation.
 
 | Package                                   | At the table                                                                                                                                                                                        |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -10,9 +10,11 @@ Open `/dev/gizmos` to play with the packages in this checkout. The practice tabl
 
 ## Install on a shared board
 
-1. Open a package’s `gizmo.json` on GitHub. Press **Y** to get a permalink containing the full commit SHA, then copy the URL.
-2. As the board owner, open **Gizmos** from the board menu. Paste the permalink and choose **Install**.
-3. Drag the piece from the gallery onto the board. Tap it or press Enter to place it at the center instead.
+Open **Gizmos** from the board menu. A new board opens the marketplace. Once a piece is installed, the menu opens the drawer and **Browse marketplace** takes you back to the catalog.
+
+Owners can install an [official listing](registry.json) or paste a public GitHub folder or `gizmo.json` link. Browsing loads only listing metadata and thumbnails. Install resolves the link to a commit and fetches the manifest. The drawer opens with the installed piece in view. Anyone at the table can drag the piece onto the board, or tap it or press Enter to place it at the center.
+
+Participants can request a listing or paste their own link. The owner sees the package source and who requested it, and can install or decline it. Requests survive the owner being away. Repeated requests for the same source share one decision.
 
 A fork is a separate package. For example, copy the explosion directory to a public repository, replace the cap artwork or change `effect` to `"none"`, commit, and install that permalink. Each installation stays on the selected commit.
 

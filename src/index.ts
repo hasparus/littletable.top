@@ -14,7 +14,7 @@ import { notationPool, parseNotation } from "./dice-notation";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
-import { gizmoInstallRequest } from "./gizmo-packages";
+import { gizmoDecision, gizmoInstallRequest } from "./gizmo-packages";
 import { addressKey } from "./limiter";
 import {
   type Pass,
@@ -109,11 +109,13 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
   }
 }
 
+const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
+const GIZMO_ACTION =
+  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(gizmos|gizmo-requests|deck)$/u;
+
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
-const ACTION =
-  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|gizmos|link|rolls?|deck)$/u;
+const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|summon)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -136,7 +138,7 @@ async function rooms(
     return room.gizmoImage(key!, path!, request.method === "HEAD");
   }
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
-  const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
+  const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? GIZMO_ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
   if (action === "chat" && (config.mode !== "standalone" || board !== PUBLIC_BOARD)) {
     return new Response("Not found", { status: 404 });
@@ -175,21 +177,31 @@ async function rooms(
       file,
     );
   }
-  if (action === "gizmos") {
+  if (action === "gizmos" || action === "gizmo-requests") {
     if (secret || board === PUBLIC_BOARD || (request.method !== "GET" && request.method !== "POST"))
       return new Response(null, { status: 404 });
     const pass = await passOf(bearer(request));
     if (pass === null) return new Response(null, { status: 403 });
-    if (request.method === "GET") return answer(await room.listGizmos(pass));
-    if (!pass.owner || pass.sub.startsWith("g:")) return new Response(null, { status: 403 });
+    if (request.method === "GET")
+      return answer(
+        action === "gizmos" ? await room.listGizmos(pass) : await room.listGizmoRequests(pass),
+      );
+    if (action === "gizmos" && (!pass.owner || pass.sub.startsWith("g:")))
+      return new Response(null, { status: 403 });
     const body = await readCapped(request.body, {
       declared: Number(request.headers.get("Content-Length")),
       max: 2048,
     });
     if (body === "too-large") return new Response(null, { status: 413 });
     const input: unknown = await new Response(body).json().catch(() => null);
-    if (!gizmoInstallRequest.isValid(input)) return new Response(null, { status: 400 });
-    const result = await room.installGizmo(pass, input.url);
+    const result = gizmoInstallRequest.isValid(input)
+      ? action === "gizmos"
+        ? await room.installGizmo(pass, input.url)
+        : await room.requestGizmo(pass, input.url)
+      : action === "gizmo-requests" && gizmoDecision.isValid(input)
+        ? await room.reviewGizmo(pass, input)
+        : null;
+    if (result === null) return new Response(null, { status: 400 });
     return "error" in result
       ? Response.json({ error: result.error }, { status: result.status })
       : answer(result);
@@ -249,7 +261,6 @@ async function rooms(
     if (body === "too-large") return new Response(null, { status: 413 });
     const value: unknown = await new Response(body).json().catch(() => null);
     if (!deckCommand.isValid(value)) return new Response(null, { status: 400 });
-    if (!pass.owner && value.action !== "flip") return new Response(null, { status: 403 });
     const result = await room.deck(pass, value);
     return result === null ? new Response(null, { status: 409 }) : answer(result);
   }

@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { deckPrepared } from "../../src/deck-records";
 import { STANDALONE } from "../ports";
-import { joinAs } from "./helpers";
+import { browseGizmos, joinAs, openGallery } from "./helpers";
 
 async function tapCard(page: Page, x: number, y: number, times = 1) {
   const finger = await page.context().newCDPSession(page);
@@ -228,13 +228,6 @@ async function dragCard(
   }
 }
 
-async function openGallery(page: Page) {
-  await page.getByTestId("main-menu.button").click();
-  await expect(page.getByRole("menuitem", { name: "Tarot deck" })).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Gizmos", exact: true }).click();
-  return page.getByRole("dialog", { name: "Gizmo gallery" });
-}
-
 test("the owner warms each top card and a loose back reveals the same face after rejoining", async ({
   browser,
   page,
@@ -254,27 +247,25 @@ test("the owner warms each top card and a loose back reveals the same face after
   try {
     await guest.goto(page.url());
     await joinAs(guest, "Card player");
-    await guest.getByTestId("main-menu.button").click();
-    await expect(guest.getByRole("menuitem", { name: "Gizmos" })).toHaveCount(0);
-    await guest.keyboard.press("Escape");
+    const guestMarket = await openGallery(guest, "Gizmo marketplace");
+    await guestMarket.getByRole("button", { name: "Close" }).click();
 
     await page.mouse.move(180, 255);
     await page.keyboard.down("Control");
     await page.mouse.wheel(0, -120);
     await page.keyboard.up("Control");
-    const gallery = await openGallery(page);
-    await expect(gallery).toBeInViewport({ ratio: 1 });
-    await expect(gallery.getByText("Install your first Gizmo from GitHub.")).toBeVisible();
-    const source = gallery.getByRole("textbox", { name: /GitHub/ });
-    const upstream = "https://github.com/example/gizmos/blob/" + "a".repeat(40);
-    for (const [name, folder] of [
-      ["Tarot deck", "tarot"],
-      ["Spotlight tracker", "spotlight"],
-    ]) {
-      await source.fill(upstream + "/gizmos/" + folder + "/gizmo.json");
-      await gallery.getByRole("button", { name: "Install", exact: true }).click();
-      await expect(gallery.getByRole("button", { name, exact: true })).toBeVisible();
-    }
+    const market = await openGallery(page, "Gizmo marketplace");
+    await expect(market).toBeInViewport({ ratio: 1 });
+    const gallery = page.getByRole("dialog", { name: "Gizmo gallery" });
+    await market.getByRole("button", { name: "Install Tarot deck", exact: true }).click();
+    await expect(gallery.getByRole("button", { name: "Tarot deck", exact: true })).toBeFocused();
+    await browseGizmos(page);
+    const source = "https://github.com/example/gizmos/tree/main/gizmos/spotlight";
+    await market.getByRole("textbox", { name: /GitHub/ }).fill(source);
+    await market.getByRole("button", { name: "Install", exact: true }).click();
+    await expect(
+      gallery.getByRole("button", { name: "Spotlight tracker", exact: true }),
+    ).toBeFocused();
     const sounds = gallery.getByRole("button", { name: "Gizmo sounds" });
     await sounds.click();
     await expect(sounds).toHaveAttribute("aria-pressed", "false");
@@ -301,13 +292,12 @@ test("the owner warms each top card and a loose back reveals the same face after
     expect(Math.abs(bounds!.x + bounds!.width / 2 - 105)).toBeLessThan(6);
     expect(Math.abs(bounds!.y + bounds!.height / 2 - 234)).toBeLessThan(6);
     await expect(guest.locator("[data-deck-stack]")).toBeVisible();
-    await expect(guest.getByRole("button", { name: "Draw a card" })).toHaveCount(0);
+    await expect(guest.getByRole("button", { name: "Draw a card" })).toBeEnabled();
 
     const top = (await stack.getByRole("button", { name: "Draw a card" }).boundingBox())!;
     const center = { x: top.x + top.width / 2, y: top.y + top.height / 2 };
     const warmed = await firstWarm;
     await expect.poll(() => faceLoaded(page, warmed)).toBe(true);
-    expect(await faceLoaded(guest, warmed)).toBe(false);
     await expect(stack.locator("[data-deck-base]")).toHaveText("78");
     const prepared = deckFace(page, "prepare");
     const nextWarm = deckFace(page, "warm", warmed);
@@ -328,7 +318,6 @@ test("the owner warms each top card and a loose back reveals the same face after
     const face = await prepared;
     const secondFace = await nextWarm;
     await expect.poll(() => faceLoaded(page, secondFace)).toBe(true);
-    expect(await faceLoaded(guest, secondFace)).toBe(false);
 
     const loose = page.locator("[data-deck-down]");
     const guestBack = guest.locator("[data-deck-down]");
@@ -393,15 +382,19 @@ test("the owner warms each top card and a loose back reveals the same face after
     await expect(guest.locator('[data-deck-front] img.tl-image[alt=""]')).toHaveCount(0);
     await expect(stack.locator("[data-deck-base]")).toHaveText("77");
 
-    await openGallery(page);
-    await gallery.getByRole("button", { name: "Spotlight tracker" }).focus();
-    await page.keyboard.press("Enter");
-    await expect(gallery).toBeHidden();
+    await guest.getByRole("button", { name: "Draw a card" }).click();
+    await expect(stack.locator("[data-deck-base]")).toHaveText("76");
+    const guestGallery = await openGallery(guest);
+    await guestGallery.getByRole("button", { name: "Spotlight tracker" }).press("Enter");
+    await expect(guestGallery).toBeHidden();
     const next = page.locator("[data-tracker-seat]").first();
-    await expect(next).toHaveAccessibleName("Mark a moment for Deck owner");
+    await expect(next).toHaveAttribute("aria-label", "Mark a moment for Card player");
     await guest.keyboard.press("Escape");
-    await guest.getByRole("button", { name: "Mark a moment for Deck owner" }).click();
-    await expect(next).toHaveAccessibleName("Mark a moment for Card player");
+    await guest.getByRole("button", { name: "Mark a moment for Card player" }).click();
+    await expect(next).toHaveAttribute("aria-label", "Mark a moment for Deck owner");
+    await openGallery(guest);
+    await guestGallery.getByRole("button", { name: "Tarot deck" }).press("Enter");
+    await expect(stack).toHaveCount(2);
   } finally {
     await guestContext.close();
   }

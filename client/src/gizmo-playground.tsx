@@ -9,6 +9,7 @@ import type { Language } from "../settings";
 
 import "./board.css";
 import "./gizmo-playground.css";
+import registry from "../../gizmos/registry.json";
 import { BoardLoading } from "./board-loading";
 import { COPY } from "./copy";
 import { DeckContext, useLocalDeck } from "./deck";
@@ -17,7 +18,7 @@ import { DeckImageUtil } from "./deck-piece";
 import { GizmoDrawer } from "./gizmo-drawer";
 import { GizmoGeoUtil, placeGizmoGeo } from "./gizmo-geo";
 import { PracticeInstallations } from "./gizmo-installed";
-import { loadPracticeGizmos } from "./gizmo-library";
+import { loadPracticeGizmo } from "./gizmo-library";
 import { GizmoPracticeContext } from "./gizmo-ui";
 import { PANEL_ID } from "./ui";
 
@@ -29,17 +30,20 @@ const seats = [person.name, "Rowan"];
 function PracticeTable({
   locale,
   licenseKey,
-  pieces,
+  pieces: initialPieces,
 }: {
   locale: Language;
   licenseKey: string;
   pieces: InstalledGizmo[];
 }) {
+  const [pieces, setPieces] = useState(initialPieces);
   const copy = COPY[locale];
   const deck = useLocalDeck();
   const [editor, setEditor] = useState<Editor | null>(null);
   const [open, setOpen] = useState(
-    () => matchMedia("(min-width: 760px) and (min-height: 600px)").matches,
+    () =>
+      initialPieces.length === 0 ||
+      matchMedia("(min-width: 760px) and (min-height: 600px)").matches,
   );
   const trigger = useRef<HTMLButtonElement>(null);
   const title = locale === "pl" ? "Stół próbny" : "Practice table";
@@ -104,7 +108,24 @@ function PracticeTable({
               <a href="/research/gizmos/">{locale === "pl" ? "Notatki" : "Research notes"}</a>
             </header>
             {editor && open && (
-              <GizmoDrawer editor={editor} online seats={seats} deck={deck} pieces={pieces} />
+              <GizmoDrawer
+                editor={editor}
+                online
+                seats={seats}
+                deck={deck}
+                pieces={pieces}
+                custom={false}
+                marketplace={registry}
+                install={async (url) => {
+                  const piece = await loadPracticeGizmo(url);
+                  setPieces((current) =>
+                    current.some((entry) => entry.url === piece.url)
+                      ? current
+                      : [...current, piece],
+                  );
+                  return piece;
+                }}
+              />
             )}
             <DeckAnnouncement name={deck.revealed?.name ?? ""} />
           </main>
@@ -120,7 +141,11 @@ export function mountGizmoPlayground(root: HTMLElement, locale: Language, licens
   const copy = COPY[locale];
   function load() {
     view.render(<BoardLoading text={copy.loading} />);
-    void loadPracticeGizmos().then(
+    void Promise.all(
+      (new URLSearchParams(location.search).has("empty") ? [] : registry).map((entry) =>
+        loadPracticeGizmo(entry.url),
+      ),
+    ).then(
       (pieces) =>
         view.render(<PracticeTable locale={locale} licenseKey={licenseKey} pieces={pieces} />),
       () =>
