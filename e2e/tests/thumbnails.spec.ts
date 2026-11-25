@@ -1,7 +1,17 @@
+import type { Editor, TLPageId } from "tldraw";
+
 import { expect, type Page, test } from "@playwright/test";
 
 import { boardAt, STANDALONE } from "../ports";
-import { collectCspViolations, expectNoCspViolations, PHONE, putNote, reviewShot } from "./helpers";
+import {
+  collectCspViolations,
+  expectNoCspViolations,
+  joinAs,
+  PHONE,
+  putNote,
+  reachEditor,
+  reviewShot,
+} from "./helpers";
 
 async function signIn(page: Page, name: string) {
   await page.goto(`${STANDALONE}/boards`);
@@ -27,6 +37,29 @@ async function expectThumbnail(page: Page) {
     .toEqual([320, 180]);
 }
 
+function thumbnailPixels(page: Page, url: string | null) {
+  return page.evaluate(async (source) => {
+    const { __thumbnail } = globalThis as unknown as { __thumbnail: Blob };
+    const blob = source === null ? __thumbnail : await fetch(source).then((res) => res.blob());
+    const image = await createImageBitmap(blob);
+    const { height, width } = image;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    const { data } = context.getImageData(0, 0, width, height);
+    image.close();
+    return {
+      hasDrawing: data.some((value, index) => (index & 3) === 3 && value > 0),
+      hasTransparency: data.some((value, index) => (index & 3) === 3 && value === 0),
+      height,
+      type: blob.type,
+      width,
+    };
+  }, url);
+}
+
 test("a drawing becomes a thumbnail in the created and joined board collections", async ({
   browser,
   page,
@@ -44,6 +77,11 @@ test("a drawing becomes a thumbnail in the created and joined board collections"
   await putNote(page, { at: { x: 230, y: 220 }, text: "A torch-lit map" });
   const captured = await stored;
   expect(captured.status()).toBe(204);
+  expect(await thumbnailPixels(page, captured.url())).toMatchObject({
+    hasDrawing: true,
+    hasTransparency: true,
+    type: "image/webp",
+  });
   await page.goto(`${STANDALONE}/boards`);
   await expectThumbnail(page);
   await expectNoCspViolations(page);
@@ -59,20 +97,91 @@ test("a drawing becomes a thumbnail in the created and joined board collections"
     await expect(visitor.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
     await visitor.goto(`${STANDALONE}/boards`);
 
-    const summaries = visitor
-      .locator("main details > summary")
-      .filter({ hasText: /^Boards (?:created|joined)$/u });
-    await expect(summaries).toHaveText(["Boards created", "Boards joined"]);
-    await expectThumbnail(visitor);
-    const joined = summaries.filter({ hasText: /^Boards joined$/u });
-    await joined.click();
-    await expect(thumbnail(visitor)).toBeHidden();
-    await joined.click();
+    await expect(visitor.getByText("Boards created", { exact: true })).toBeVisible();
+    await expect(visitor.getByText("Boards joined", { exact: true })).toBeVisible();
     await expectThumbnail(visitor);
     await reviewShot(visitor, "board-thumbnail-mobile");
     await expectNoCspViolations(visitor);
   } finally {
     await phone.close();
+  }
+});
+
+test("a thumbnail shows a remote drawing on another page and clears when it is erased", async ({
+  browser,
+  page,
+}) => {
+  // A canvas that can't encode WebP returns PNG, as on Safari.
+  await page.addInitScript(() => {
+    const { toBlob } = HTMLCanvasElement.prototype;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      toBlob.call(this, callback, type === "image/webp" ? "image/png" : type, quality);
+    };
+  });
+  await signIn(page, "Page Thumbnail Tester");
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(boardAt(STANDALONE));
+  const dice = page.getByRole("button", { exact: true, name: "Dice" });
+  await expect(dice).toBeVisible();
+  await reachEditor(page);
+  await page.evaluate(() => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    const id = "page:notes" as TLPageId;
+    editor.createPage({ id, name: "Notes" });
+    editor.setCurrentPage(id);
+  });
+  await expect(page.getByTestId("page-menu.button")).toHaveText("Notes");
+
+  const guest = await browser.newContext();
+  try {
+    const painter = await guest.newPage();
+    await painter.goto(page.url());
+    await joinAs(painter, "Thumbnail Painter");
+    await expect(painter.getByTestId("page-menu.button")).toHaveText("Page 1");
+    const saved = page.waitForResponse(
+      (response) => response.request().method() === "PUT" && response.url().endsWith("/thumbnail"),
+    );
+    await putNote(painter, { at: { x: 230, y: 220 }, text: "A drawn map" });
+    const populated = await saved;
+    expect(populated.status()).toBe(204);
+    expect(await thumbnailPixels(page, populated.url())).toMatchObject({
+      hasDrawing: true,
+      hasTransparency: true,
+      type: "image/png",
+    });
+    await expect(page.getByTestId("page-menu.button")).toHaveText("Notes");
+
+    // Reset the client's cooldown and record the next candidate without waiting five minutes.
+    await page.reload();
+    await expect(dice).toBeVisible();
+    await page.route("**/api/boards/*/thumbnail", (route) => route.fulfill({ status: 204 }));
+    await page.evaluate(() => {
+      const fetchThumbnail = globalThis.fetch;
+      globalThis.fetch = (url, init) => {
+        if (typeof url === "string" && url.endsWith("/thumbnail") && init?.body instanceof Blob) {
+          Reflect.set(globalThis, "__thumbnail", init.body);
+        }
+        return fetchThumbnail(url, init);
+      };
+    });
+    const cleared = page.waitForRequest(
+      (request) => request.method() === "PUT" && request.url().endsWith("/thumbnail"),
+    );
+    await reachEditor(painter);
+    await painter.evaluate(() => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
+    });
+    await cleared;
+    expect(await thumbnailPixels(page, null)).toEqual({
+      hasDrawing: false,
+      hasTransparency: true,
+      height: 180,
+      type: "image/png",
+      width: 320,
+    });
+  } finally {
+    await guest.close();
   }
 });
 

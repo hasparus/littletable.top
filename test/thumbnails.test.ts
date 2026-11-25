@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { THUMBNAIL_MAX_BYTES, THUMBNAIL_TYPE, thumbnailUrl } from "../src/board-thumbnail";
+import { THUMBNAIL_MAX_BYTES, thumbnailUrl } from "../src/board-thumbnail";
 import { thumbnailKey } from "../src/thumbnail-store";
 import { IMAGES_37_BY_21 } from "./image-samples";
 import { Browser, ORIGIN, standaloneEnv } from "./standalone-support";
@@ -17,7 +17,7 @@ function put(
   return browser.fetch(path, {
     body,
     headers: {
-      "Content-Type": THUMBNAIL_TYPE,
+      "Content-Type": "image/webp",
       Origin: ORIGIN,
       "X-Board-Link": String(link),
       "X-CSRF-Token": browser.csrf ?? "",
@@ -59,7 +59,7 @@ it("keeps one bounded thumbnail visible to the owner and current members only", 
   const before = await owner.fetch(path);
   expect(before.status).toBe(200);
   expect(before.headers.get("Cache-Control")).toBe("no-store");
-  expect(before.headers.get("Content-Type")).toBe(THUMBNAIL_TYPE);
+  expect(before.headers.get("Content-Type")).toBe("image/webp");
   expect(new Uint8Array(await before.arrayBuffer())).toEqual(image);
 
   const tooFast = await put(owner, path, 0, IMAGES_37_BY_21["size-lossy.webp"]);
@@ -70,7 +70,10 @@ it("keeps one bounded thumbnail visible to the owner and current members only", 
 
   expect((await visitor.bootstrap(board.shareCode)).status).toBe(200);
   expect((await visitor.list()).visited[0]).toMatchObject({ hasThumbnail: true });
-  expect((await visitor.fetch(path)).status).toBe(200);
+  expect((await put(visitor, path, 0, image.subarray(0, image.length - 12))).status).toBe(415);
+  const unchanged = await visitor.fetch(path);
+  expect(unchanged.status).toBe(200);
+  expect(new Uint8Array(await unchanged.arrayBuffer())).toEqual(image);
 
   const reset = await owner.post(`/api/boards/${board.id}/reset`);
   const renewed = (await reset.json()) as { shareCode: string };
@@ -86,4 +89,18 @@ it("keeps one bounded thumbnail visible to the owner and current members only", 
   expect((await owner.fetch(path)).status).toBe(404);
   expect((await put(owner, path, 1)).status).toBe(404);
   expect(await standaloneEnv.Files.head(thumbnailKey(board.id))).toBeNull();
+});
+
+it("stores and serves a browser's PNG thumbnail with its original content type", async () => {
+  const owner = new Browser();
+  await owner.signIn("PNG Thumbnail");
+  const board = await owner.createBoard();
+  const path = thumbnailUrl(board.id);
+  const png = IMAGES_37_BY_21["size.png"];
+  const headers = { "Content-Type": "image/png" };
+  expect((await put(owner, path, 0, png.subarray(0, 40), headers)).status).toBe(415);
+  expect((await put(owner, path, 0, png, headers)).status).toBe(204);
+  const stored = await owner.fetch(path);
+  expect(stored.headers.get("Content-Type")).toBe("image/png");
+  expect(new Uint8Array(await stored.arrayBuffer())).toEqual(png);
 });

@@ -1,36 +1,49 @@
+import { PhotonImage } from "@cf-wasm/photon/workerd";
+
 import {
   THUMBNAIL_DAILY_LIMIT,
   THUMBNAIL_DAY_MS,
   THUMBNAIL_HEIGHT,
   THUMBNAIL_INTERVAL_MS,
-  THUMBNAIL_TYPE,
   THUMBNAIL_WIDTH,
+  type ThumbnailType,
 } from "./board-thumbnail";
 import { sniff } from "./file-store";
 import { imageDimensions } from "./image-size";
 
 export type ThumbnailWrite = "duplicate" | "forbidden" | "stored" | { retryAt: number };
 
-export const thumbnailKey = (board: string) => `thumbnails/${board}.webp`;
+export const thumbnailKey = (board: string) => `thumbnails/${board}`;
 
-export function isThumbnail(body: ArrayBuffer): boolean {
+export function isThumbnail(body: ArrayBuffer, type: ThumbnailType): boolean {
   const bytes = new Uint8Array(body);
-  if (sniff(bytes) !== THUMBNAIL_TYPE) return false;
-  // A static raster only. Animated extended WebP sets bit 1 in VP8X flags.
+  if (sniff(bytes) !== type) return false;
+  // The extended WebP header's animation bit is only set for animated files.
   if (
-    bytes[12] === 86 &&
-    bytes[13] === 80 &&
-    bytes[14] === 56 &&
-    bytes[15] === 88 &&
+    type === "image/webp" &&
+    String.fromCodePoint(...bytes.subarray(12, 16)) === "VP8X" &&
     ((bytes[20] ?? 0) & 2) !== 0
-  )
+  ) {
     return false;
+  }
   const dimensions = imageDimensions(bytes);
-  return (
-    dimensions !== null &&
-    dimensions.width <= THUMBNAIL_WIDTH &&
-    dimensions.height <= THUMBNAIL_HEIGHT
-  );
+  if (
+    dimensions === null ||
+    dimensions.width > THUMBNAIL_WIDTH ||
+    dimensions.height > THUMBNAIL_HEIGHT
+  ) {
+    return false;
+  }
+  try {
+    // Reject truncated or corrupt image data before replacing the stored thumbnail.
+    const image = PhotonImage.new_from_byteslice(bytes);
+    const matches =
+      image.get_width() === dimensions.width && image.get_height() === dimensions.height;
+    image.free();
+    return matches;
+  } catch {
+    return false;
+  }
 }
 
 // Serialized by the board's Durable Object. Keep the rate limit across
@@ -40,6 +53,7 @@ export async function writeThumbnail(
   bucket: R2Bucket,
   board: string,
   body: ArrayBuffer,
+  type: ThumbnailType,
   now: number,
 ): Promise<ThumbnailWrite> {
   sql.exec(
@@ -62,7 +76,7 @@ export async function writeThumbnail(
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   if (latest?.hash === hash) return "duplicate";
-  await bucket.put(thumbnailKey(board), body, { httpMetadata: { contentType: THUMBNAIL_TYPE } });
+  await bucket.put(thumbnailKey(board), body, { httpMetadata: { contentType: type } });
   sql.exec(
     `INSERT INTO thumbnail (id, updated_at, writes_today, hash) VALUES (1, ?1, ?2, ?3)
      ON CONFLICT (id) DO UPDATE SET updated_at = ?1, writes_today = ?2, hash = ?3`,

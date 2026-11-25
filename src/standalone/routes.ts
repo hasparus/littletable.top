@@ -11,7 +11,7 @@ import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
 import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
-import { THUMBNAIL_MAX_BYTES, THUMBNAIL_TYPE } from "../board-thumbnail";
+import { isThumbnailType, thumbnailByteLimit } from "../board-thumbnail";
 import { readCapped } from "../file-store";
 import { serveStored } from "../files";
 import { addressKey } from "../limiter";
@@ -359,7 +359,9 @@ export class Standalone {
   }
 
   private async updateThumbnail(request: Request, id: string): Promise<Response> {
-    const found = await this.member(request, THUMBNAIL_TYPE);
+    const type = request.headers.get("Content-Type");
+    if (!isThumbnailType(type)) return refuse(415, "invalid-thumbnail");
+    const found = await this.member(request, type);
     if ("refusal" in found) return found.refusal;
     const access = await this.store.thumbnailAccess(id, found.session.account.id);
     if (access === null || request.headers.get("X-Board-Link") !== String(access.link)) {
@@ -367,12 +369,12 @@ export class Standalone {
     }
     const body = await readCapped(request.body, {
       declared: Number(request.headers.get("Content-Length") ?? "0"),
-      max: THUMBNAIL_MAX_BYTES,
+      max: thumbnailByteLimit(type),
     });
     if (body === "too-large") return refuse(413, "too-large");
-    if (!isThumbnail(body)) return refuse(415, "invalid-thumbnail");
+    if (!isThumbnail(body, type)) return refuse(415, "invalid-thumbnail");
     const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
-    const result = await room.storeThumbnail(id, access.link, body);
+    const result = await room.storeThumbnail(id, access.link, body, type);
     if (result === "forbidden") return refuse(404, "not-found");
     if (typeof result === "object") {
       return json(

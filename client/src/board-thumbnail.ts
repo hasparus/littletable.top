@@ -1,39 +1,49 @@
-import { Box, type Editor } from "tldraw";
+import { Box, type Editor, type TLShapeId } from "tldraw";
 
 import type { Bootstrap } from "./bootstrap";
 
 import {
+  isThumbnailType,
   THUMBNAIL_HEIGHT,
   THUMBNAIL_INTERVAL_MS,
-  THUMBNAIL_MAX_BYTES,
-  THUMBNAIL_TYPE,
   THUMBNAIL_WIDTH,
+  thumbnailByteLimit,
   thumbnailUrl,
 } from "../../src/board-thumbnail";
 
 const SETTLE_MS = 3000;
 const FIRST_RETRY_MS = 5000;
 
-async function renderThumbnail(editor: Editor): Promise<Blob | null> {
-  const content = editor.getCurrentPageBounds();
-  if (content === undefined) {
-    // A board whose last shape was deleted now shows an empty whiteboard.
+function thumbnailPage(editor: Editor) {
+  // Use the first populated shared page so every editor captures the same content.
+  for (const page of editor.getPages()) {
+    const shapes = editor.getPageShapeIds(page);
+    if (shapes.size > 0) return { id: page.id, shapes };
+  }
+  return null;
+}
+
+async function renderThumbnail(editor: Editor, shapes: Set<TLShapeId>): Promise<Blob | null> {
+  const boxes = [...shapes].flatMap((id) => {
+    if (editor.isShapeHidden(id)) return [];
+    const bounds = editor.getShapeMaskedPageBounds(id);
+    return bounds === undefined ? [] : [bounds];
+  });
+  if (boxes.length === 0) {
+    // Store a transparent canvas after the last drawing was erased.
     const canvas = document.createElement("canvas");
     canvas.width = THUMBNAIL_WIDTH;
     canvas.height = THUMBNAIL_HEIGHT;
-    const context = canvas.getContext("2d");
-    if (context === null) return null;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    return new Promise((resolve) => canvas.toBlob(resolve, THUMBNAIL_TYPE));
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.65));
   }
+  const content = Box.Common(boxes);
   const aspect = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
   // Leave a small margin around the drawing and pad to the list's aspect.
   const height = Math.max(1, content.h, content.w / aspect) * 1.1;
   const width = height * aspect;
   const bounds = new Box(content.midX - width / 2, content.midY - height / 2, width, height);
-  const { blob } = await editor.toImage([], {
-    background: true,
+  const { blob } = await editor.toImage([...shapes], {
+    background: false,
     bounds,
     darkMode: false,
     format: "webp",
@@ -54,7 +64,8 @@ export function keepThumbnail(
   let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: AbortController | null = null;
-  let dirty = grant.needed && editor.getCurrentPageShapeIds().size > 0;
+  let page = thumbnailPage(editor);
+  let dirty = grant.needed && page !== null;
   let nextCapture = 0;
   let retryDelay = FIRST_RETRY_MS;
 
@@ -75,21 +86,23 @@ export function keepThumbnail(
 
   async function capture() {
     const attempt = new AbortController();
+    const target = page;
     pending = attempt;
     dirty = false;
     try {
-      const image = await renderThumbnail(editor);
+      const image = await renderThumbnail(editor, target?.shapes ?? new Set());
       if (
         attempt.signal.aborted ||
+        target?.id !== page?.id ||
         image === null ||
-        image.type !== THUMBNAIL_TYPE ||
-        image.size > THUMBNAIL_MAX_BYTES
+        !isThumbnailType(image.type) ||
+        image.size > thumbnailByteLimit(image.type)
       )
         return;
       const response = await fetch(thumbnailUrl(board), {
         body: image,
         headers: {
-          "Content-Type": THUMBNAIL_TYPE,
+          "Content-Type": image.type,
           "X-Board-Link": String(grant.link),
           "X-CSRF-Token": grant.csrf,
         },
@@ -113,7 +126,28 @@ export function keepThumbnail(
   }
 
   const unlisten = editor.store.listen(
-    () => {
+    ({ changes }) => {
+      const previous = page;
+      page = thumbnailPage(editor);
+      if (previous?.id === page?.id) {
+        if (page === null) return;
+        const { shapes } = page;
+        const records = [
+          ...Object.values(changes.added),
+          ...Object.values(changes.updated).map(([, after]) => after),
+          ...Object.values(changes.removed),
+        ];
+        const affectsPage = records.some((record) => {
+          if (record.typeName === "shape") {
+            return shapes.has(record.id) || previous?.shapes.has(record.id) === true;
+          }
+          if (record.typeName === "binding") {
+            return shapes.has(record.fromId) || shapes.has(record.toId);
+          }
+          return record.typeName === "asset";
+        });
+        if (!affectsPage) return;
+      }
       dirty = true;
       schedule();
     },

@@ -36,12 +36,11 @@ export default defineConfig({
   outputDir: "test-results",
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // NOTE: mobile Safari reads text in images too (a nested worker, both
-    // engines' WebAssembly); WebKit runs that core flow.
+    // Safari differs on image OCR and canvas encoders, so run both flows in WebKit.
     {
-      grep: /found by others/u,
+      grep: /found by others|a thumbnail shows a remote drawing/u,
       name: "webkit",
-      testMatch: /image-text\.spec\.ts/u,
+      testMatch: /(?:image-text|thumbnails)\.spec\.ts/u,
       use: { ...devices["Desktop Safari"] },
     },
   ],
