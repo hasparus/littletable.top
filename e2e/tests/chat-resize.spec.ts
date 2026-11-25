@@ -43,7 +43,7 @@ async function box(locator: Locator) {
   return rect!;
 }
 
-async function dragBorder(page: Page, x: number, y: number, dx: number, dy: number) {
+async function drag(page: Page, x: number, y: number, dx: number, dy: number) {
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + dx, y + dy, { steps: 8 });
@@ -91,7 +91,7 @@ test("shrinking the left border with larger text keeps the right border fixed", 
     document.documentElement.style.fontSize = "20px";
   });
   const initial = await box(chat);
-  await dragBorder(page, initial.x + 2, initial.y + initial.height / 2, initial.width, 0);
+  await drag(page, initial.x + 2, initial.y + initial.height / 2, initial.width, 0);
   const resized = await box(chat);
   expect(resized.width).toBeLessThan(initial.width);
   expect(resized.x + resized.width).toBeCloseTo(initial.x + initial.width, 0);
@@ -99,6 +99,109 @@ test("shrinking the left border with larger text keeps the right border fixed", 
     "aria-valuetext",
     `${Math.round(resized.width)} × ${Math.round(resized.height)} px`,
   );
+});
+
+test("dragging the chat title moves the window within the viewport", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 900 });
+  const chat = await openThread(page);
+  const heading = chat.getByRole("heading", { name: "Chat" });
+  const original = await box(chat);
+  const title = await box(heading);
+  await drag(page, title.x + 20, title.y + 20, 90, -60);
+  const moved = await box(chat);
+  expect(moved).toEqual({ ...original, x: original.x + 90, y: original.y - 60 });
+  await expect(chat).toHaveAttribute("data-chat-size", "natural");
+
+  const movedTitle = await box(heading);
+  await drag(page, movedTitle.x + 20, movedTitle.y + 20, -movedTitle.x - 20, -movedTitle.y - 20);
+  const bounded = await box(chat);
+  expect(bounded).toEqual({ ...original, x: 8, y: 8 });
+
+  await chat.getByRole("button", { name: "Close" }).click();
+  await expect(chat).toBeHidden();
+  await openSheet(page, "Chat");
+  await settleSheet(chat);
+  expect(await box(chat)).toEqual(bounded);
+});
+
+test("moving and resizing chat leave the public board watermark clickable", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 900 });
+  const chat = await openThread(page);
+  const watermark = page.locator('[data-testid^="tl-watermark"]');
+  await expect(watermark).toBeVisible();
+  const title = await box(chat.getByRole("heading", { name: "Chat" }));
+  await drag(page, title.x + 20, title.y + 20, 900, 740);
+
+  const expectClear = async () => {
+    const panel = await box(chat);
+    const mark = await box(watermark);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(mark.x);
+    await watermark.click({ trial: true });
+  };
+  await expectClear();
+
+  const moved = await box(chat);
+  await drag(page, moved.x + moved.width - 2, moved.y + moved.height / 2, 150, 0);
+  await expectClear();
+
+  await page.setViewportSize({ height: 740, width: 700 });
+  await expectClear();
+});
+
+test("a wide touch screen can move chat above the open keyboard", async ({ browser }) => {
+  const context = await browser.newContext({ ...PHONE, viewport: { height: 740, width: 900 } });
+  try {
+    await installKeyboard(context);
+    const page = await context.newPage();
+    await page.route("**/rooms/*/chat", (route) => route.fulfill({ json: [] }));
+    await page.goto(STANDALONE);
+    const chat = await openSheet(page, "Chat");
+    const composer = chat.getByRole("textbox", { name: "Message" });
+    await expect(chat.getByText("No messages yet.")).toBeVisible();
+    await settleSheet(chat);
+    const rest = await box(chat);
+    await composer.tap();
+    await withKeyboard(page, 340);
+
+    const bottom = async () => {
+      const { y, height } = await box(chat);
+      return y + height;
+    };
+    await expect.poll(bottom).toBe(392);
+    const heading = chat.getByRole("heading", { name: "Chat" });
+    const cdp = await context.newCDPSession(page);
+    const dragTitle = async (dx: number, dy: number) => {
+      const title = await box(heading);
+      const x = title.x + 20;
+      const y = title.y + 20;
+      await cdp.send("Input.dispatchTouchEvent", { touchPoints: [{ x, y }], type: "touchStart" });
+      await cdp.send("Input.dispatchTouchEvent", {
+        touchPoints: [{ x: x + dx, y: y + dy }],
+        type: "touchMove",
+      });
+      await cdp.send("Input.dispatchTouchEvent", { touchPoints: [], type: "touchEnd" });
+    };
+    await dragTitle(60, 0);
+    await expect
+      .poll(async () => {
+        const { x } = await box(chat);
+        return x;
+      })
+      .toBe(rest.x + 60);
+    await withKeyboard(page, 0);
+    await expect.poll(bottom).toBe(rest.y + rest.height);
+    await withKeyboard(page, 340);
+    await expect.poll(bottom).toBe(392);
+
+    await dragTitle(0, -60);
+    await expect.poll(bottom).toBe(332);
+    await expect(composer).toBeFocused();
+    await capture(page.locator("body"), "wide-keyboard");
+    await dragTitle(0, 100);
+    await expect.poll(bottom).toBe(392);
+  } finally {
+    await context.close();
+  }
 });
 
 test("desktop chat resizes by mouse and keyboard and keeps the message being read", async ({
@@ -141,7 +244,7 @@ test("desktop chat resizes by mouse and keyboard and keeps the message being rea
       const bottom = edge.includes("bottom");
       const startX = before.x + (left ? 2 : right ? before.width - 2 : before.width / 2);
       const startY = before.y + (top ? 2 : bottom ? before.height - 2 : before.height / 2);
-      await dragBorder(page, startX, startY, dx, dy);
+      await drag(page, startX, startY, dx, dy);
       await expect(resizeControl).toBeFocused();
       const after = await box(chat);
       expect(after.x).toBeCloseTo(before.x + (left ? dx : 0), 0);
@@ -151,7 +254,16 @@ test("desktop chat resizes by mouse and keyboard and keeps the message being rea
     });
   }
   const enlarged = await box(chat);
-  await page.mouse.click(enlarged.x + enlarged.width / 2, enlarged.y + 2);
+  const x = enlarged.x + enlarged.width / 2;
+  const y = enlarged.y + 2;
+  const cursorAt = (x: number, y: number) =>
+    page.evaluate(([x, y]) => getComputedStyle(document.elementFromPoint(x, y)!).cursor, [x, y]);
+  expect(await cursorAt(x, y)).toBe("ns-resize");
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect.poll(() => cursorAt(x, y + 25)).toBe("ns-resize");
+  await page.mouse.up();
+  await expect.poll(() => cursorAt(x, y + 25)).not.toBe("ns-resize");
   expect(await box(chat)).toEqual(enlarged);
   const priorMessage = log.locator("article").nth(anchor);
   await expect(priorMessage).toBeInViewport();
@@ -165,7 +277,7 @@ test("desktop chat resizes by mouse and keyboard and keeps the message being rea
   expect(keyboard.height).toBeGreaterThan(enlarged.height);
 
   const right = keyboard.x + keyboard.width - 2;
-  await dragBorder(page, right, keyboard.y + 2, 899 - right, -keyboard.y);
+  await drag(page, right, keyboard.y + 2, 899 - right, -keyboard.y);
   const bounded = await box(chat);
   expect(bounded.x).toBeGreaterThanOrEqual(8);
   expect(bounded.y).toBeGreaterThanOrEqual(8);
@@ -192,24 +304,52 @@ test("phone chat resizes by touch and leaves the composer above the keyboard", a
   try {
     await installKeyboard(context);
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      const { start } = AudioScheduledSourceNode.prototype;
+      AudioScheduledSourceNode.prototype.start = function (...args) {
+        const { documentElement: root } = document;
+        root.dataset.audioStarts = String(Number(root.dataset.audioStarts ?? 0) + 1);
+        return start.apply(this, args);
+      };
+    });
     const chat = await openThread(page);
     const resizeControl = chat.getByRole("separator", { name: "Resize chat", exact: true });
     const original = await box(chat);
     await capture(chat, "phone-default");
 
     const cdp = await context.newCDPSession(page);
+    const cue = page.locator("[data-chat-touch-resize]");
+    const audioStarts = () =>
+      page.evaluate(() => Number(document.documentElement.dataset.audioStarts ?? 0));
+    expect(await audioStarts()).toBe(0);
     for (const fraction of [0.12, 0.5, 0.88]) {
       const before = await box(chat);
       const x = before.x + before.width * fraction;
       const y = before.y + 2;
+      const previousStarts = await audioStarts();
       await cdp.send("Input.dispatchTouchEvent", { touchPoints: [{ x, y }], type: "touchStart" });
+      await expect(cue).toBeVisible();
+      await expect.poll(audioStarts).toBeGreaterThan(previousStarts);
+      const started = await audioStarts();
       for (const distance of [15, 30, 50]) {
         await cdp.send("Input.dispatchTouchEvent", {
           touchPoints: [{ x: x + distance / 4, y: y - distance }],
           type: "touchMove",
         });
       }
+      await expect
+        .poll(async () => {
+          const indicator = await box(cue);
+          return Math.hypot(
+            indicator.x + indicator.width / 2 - (x + 50 / 4),
+            indicator.y + indicator.height / 2 - (y - 50),
+          );
+        })
+        .toBeLessThan(1);
+      expect(await audioStarts()).toBe(started);
+      if (fraction === 0.5) await capture(page.locator("body"), "phone-resizing");
       await cdp.send("Input.dispatchTouchEvent", { touchPoints: [], type: "touchEnd" });
+      await expect(cue).toBeHidden();
       await expect(resizeControl).toBeFocused();
       const after = await box(chat);
       expect(after.x).toBe(before.x);

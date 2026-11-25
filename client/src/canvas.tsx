@@ -1,5 +1,6 @@
 import type { Editor } from "tldraw";
 
+import { unlock } from "cuelume";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import "./board.css";
@@ -202,6 +203,7 @@ export function BoardCanvas({
       locale: language,
       naming,
       open: (next, options) => {
+        if (next === "chat" && navigator.maxTouchPoints > 0) void unlock();
         if (panel === "chat" || next === "chat") setReadChat(chat.latestIncoming);
         setPanel(next);
         setTyping(options?.typing ?? false);
