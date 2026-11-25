@@ -1,0 +1,217 @@
+#gizmo-lab {
+  --lab-paper: #fcfaf5;
+  --lab-ink: #292723;
+  --lab-muted: #635d50;
+  --lab-line: #c6bfad;
+  --lab-accent: #98402a;
+  color: var(--lab-ink);
+  border: 1px solid var(--lab-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--lab-paper);
+  container-type: inline-size;
+}
+
+#gizmo-lab *,
+#gizmo-lab *::before,
+#gizmo-lab *::after {
+  box-sizing: border-box;
+}
+#gizmo-lab :is(button, textarea, select) {
+  font: inherit;
+}
+#gizmo-lab :is(button, select) {
+  border: 1px solid var(--lab-line);
+  background: #fffdf9;
+  color: var(--lab-ink);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-height: 40px;
+  font-weight: 650;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+#gizmo-lab :is(button, select):hover:enabled {
+  border-color: var(--lab-ink);
+}
+#gizmo-lab .lab-action {
+  background: var(--lab-ink);
+  color: white;
+  border-color: var(--lab-ink);
+}
+#gizmo-lab button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+#gizmo-lab :is(button, select, textarea):focus-visible {
+  outline: 3px solid #a64828;
+  outline-offset: 2px;
+}
+
+#gizmo-lab .lab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.8rem 1.25rem;
+  background: #f3efe6;
+}
+#gizmo-lab .lab-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+#gizmo-lab :is(label, .lab-caption) {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+#gizmo-lab .lab-unit {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  border-top: 1px solid var(--lab-line);
+  margin: 0;
+  padding: 0;
+}
+#gizmo-lab :is(.lab-edit, .lab-preview) {
+  min-width: 0;
+  padding: clamp(1.2rem, 4cqi, 2rem);
+}
+#gizmo-lab .lab-edit > h3,
+#gizmo-lab .lab-preview > h4 {
+  font-size: 1.4rem;
+  line-height: 1.13;
+  font-weight: 700;
+  margin: 0 0 0.7rem;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+#gizmo-lab .lab-edit > p {
+  font-size: 0.94rem;
+  line-height: 1.52;
+  margin: 0 0 1rem;
+  color: var(--lab-muted);
+}
+#gizmo-lab .lab-edit > label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+#gizmo-lab textarea {
+  display: block;
+  width: 100%;
+  min-height: 4.75rem;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 0.75rem;
+  resize: vertical;
+  line-height: 1.55;
+  font-family: ui-monospace, monospace;
+  font-size: 0.83rem;
+  color: var(--lab-ink);
+  background-color: #fffdfa;
+  border: 1px solid var(--lab-line);
+  border-radius: 6px;
+}
+#gizmo-lab .lab-preview {
+  background-color: #eae8d6;
+  border-left: 1px solid var(--lab-line);
+}
+#gizmo-lab .lab-clock {
+  background-color: #f5dfcb;
+}
+#gizmo-lab .lab-caption {
+  margin: 0 0 0.65rem;
+  color: var(--lab-muted);
+}
+#gizmo-lab [role="status"] {
+  display: block;
+  font-size: 0.83rem;
+  color: var(--lab-muted);
+  line-height: 1.4;
+  margin-top: 0.7rem;
+  overflow-wrap: anywhere;
+}
+#gizmo-lab .lab-error {
+  color: #862c21;
+}
+#gizmo-lab #lab-seats {
+  padding: 0;
+  margin: 1.2rem 0;
+  list-style: none;
+  counter-reset: seat;
+}
+#gizmo-lab #lab-seats li {
+  display: flex;
+  align-items: center;
+  padding: 0 0.65rem;
+  border-bottom: 1px solid #c2c1ae;
+  gap: 0.7rem;
+  counter-increment: seat;
+  overflow-wrap: anywhere;
+}
+#gizmo-lab .lab-help {
+  color: var(--lab-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin: 0.6rem 0;
+}
+#gizmo-lab #lab-seats button {
+  flex: 1;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-weight: inherit;
+  padding: 0.3rem 0;
+  border: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+#gizmo-lab #lab-seats button:hover:enabled {
+  text-decoration: underline;
+}
+#gizmo-lab #lab-seats li::before {
+  content: counter(seat, decimal-leading-zero);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+#gizmo-lab #lab-seats [aria-current] {
+  background: #3d4c3e;
+  color: white;
+  border-color: #3d4c3e;
+  font-weight: 650;
+  border-radius: 4px;
+}
+#gizmo-lab #lab-value {
+  font-weight: 750;
+  font-size: 2.6rem;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  margin: 0.8rem 0;
+  font-variant-numeric: tabular-nums;
+}
+#gizmo-lab #lab-ticks {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0.8rem 0 1.35rem;
+}
+#gizmo-lab #lab-ticks span {
+  flex: 1;
+  height: 1.1rem;
+  border: 1px solid #a78264;
+  border-radius: 2px;
+}
+#gizmo-lab #lab-ticks .lab-filled {
+  background: var(--lab-accent);
+  border-color: var(--lab-accent);
+}
+@container (max-width: 38rem) {
+  #gizmo-lab .lab-unit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #gizmo-lab .lab-preview {
+    border-left: 0;
+    border-top: 1px solid var(--lab-line);
+  }
+  #gizmo-lab .lab-toolbar {
+    padding: 0.7rem;
+  }
+}
