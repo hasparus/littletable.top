@@ -21,8 +21,10 @@ test("board background follows collaborators and survives a reload", async ({ br
   await menu.click();
   await page.getByRole("menuitem", { name: "Background color" }).hover();
   await page.getByRole("menuitemcheckbox", { name: "Sage" }).click();
-  await expect(canvasBackground(page)).toHaveCSS("background-color", "rgb(232, 240, 227)");
-  await expect(canvasBackground(guest)).toHaveCSS("background-color", "rgb(232, 240, 227)");
+  await expect(canvasBackground(page)).toHaveCSS("background-color", "rgb(235, 237, 231)");
+  await expect(canvasBackground(guest)).toHaveCSS("background-color", "rgb(235, 237, 231)");
+  await guest.emulateMedia({ colorScheme: "dark" });
+  await expect(canvasBackground(guest)).toHaveCSS("background-color", "rgb(44, 47, 42)");
   await reviewShot(page, "board-background-sage");
 
   await page.reload();

@@ -299,3 +299,31 @@
   margin-top: 16px;
   color: var(--color-foreground-muted);
 }
+
+[data-board-background-swatches] {
+  display: flex;
+  padding: 4px;
+}
+
+[data-board-background-swatches] .tlui-button {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+}
+
+[data-board-background-swatches] .tlui-icon {
+  filter: drop-shadow(0 0 1px var(--tl-color-text));
+}
+
+[data-board-background-swatches] .tlui-button__checkbox__indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  pointer-events: none;
+}

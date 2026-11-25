@@ -1,8 +1,10 @@
 import {
   type Editor,
-  TldrawUiMenuCheckboxItem,
+  TldrawUiButtonIcon,
+  TldrawUiDropdownMenuCheckboxItem,
   TldrawUiMenuGroup,
   TldrawUiMenuSubmenu,
+  useColorMode,
   useEditor,
   useValue,
 } from "tldraw";
@@ -13,12 +15,16 @@ import { isSecretLayer } from "../../src/secret-layer";
 import { useBoardUi } from "./ui";
 
 const PALETTE = {
-  default: { label: "boardBackgroundDefault", surface: "bg-(--tl-color-background)" },
-  lilac: { label: "boardBackgroundLilac", surface: "bg-[#f0e9f7] dark:bg-[#33283d]" },
-  sage: { label: "boardBackgroundSage", surface: "bg-[#e8f0e3] dark:bg-[#253126]" },
-  sand: { label: "boardBackgroundSand", surface: "bg-[#f6eedc] dark:bg-[#342c20]" },
-  sky: { label: "boardBackgroundSky", surface: "bg-[#e6eff9] dark:bg-[#222d3d]" },
-} as const satisfies Record<string, { label: keyof Copy; surface: string }>;
+  default: {
+    dark: "var(--tl-color-background)",
+    label: "boardBackgroundDefault",
+    light: "var(--tl-color-background)",
+  },
+  lilac: { dark: "#33283d", label: "boardBackgroundLilac", light: "#f0e9f7" },
+  sage: { dark: "#2c2f2a", label: "boardBackgroundSage", light: "#ebede7" },
+  sand: { dark: "#342c20", label: "boardBackgroundSand", light: "#f6eedc" },
+  sky: { dark: "#222d3d", label: "boardBackgroundSky", light: "#e6eff9" },
+} as const satisfies Record<string, { dark: string; label: keyof Copy; light: string }>;
 
 function boardColor(editor: Editor): keyof typeof PALETTE {
   const color = editor.getDocumentSettings().meta.backgroundColor;
@@ -28,13 +34,21 @@ function boardColor(editor: Editor): keyof typeof PALETTE {
 }
 
 export function BoardBackground() {
+  const mode = useColorMode();
   const editor = useEditor();
   const color = useValue("board background", () => boardColor(editor), [editor]);
-  return <div className={`size-full ${PALETTE[color].surface}`} data-board-background={color} />;
+  return (
+    <div
+      className="size-full"
+      data-board-background={color}
+      style={{ backgroundColor: PALETTE[color][mode] }}
+    />
+  );
 }
 
 export function BoardBackgroundMenu() {
   const { board, copy } = useBoardUi();
+  const mode = useColorMode();
   const editor = useEditor();
   const color = useValue("board background", () => boardColor(editor), [editor]);
   const readonly = useValue("read-only board", () => editor.getIsReadonly(), [editor]);
@@ -43,18 +57,24 @@ export function BoardBackgroundMenu() {
   return (
     <TldrawUiMenuGroup id="board-appearance">
       <TldrawUiMenuSubmenu id="board-background" label={copy.boardBackground}>
-        {Object.entries(PALETTE).map(([name, { label }]) => (
-          <TldrawUiMenuCheckboxItem
-            checked={color === name}
-            id={name}
-            key={name}
-            label={copy[label]}
-            onSelect={() => {
-              const { meta } = editor.getDocumentSettings();
-              editor.updateDocumentSettings({ meta: { ...meta, backgroundColor: name } });
-            }}
-          />
-        ))}
+        <div data-board-background-swatches>
+          {Object.entries(PALETTE).map(([name, option]) => (
+            <TldrawUiDropdownMenuCheckboxItem
+              checked={color === name}
+              key={name}
+              onSelect={() => {
+                const { meta } = editor.getDocumentSettings();
+                editor.updateDocumentSettings({ meta: { ...meta, backgroundColor: name } });
+              }}
+              title={copy[option.label]}
+            >
+              <span className="sr-only">{copy[option.label]}</span>
+              <span aria-hidden="true" style={{ color: option[mode] }}>
+                <TldrawUiButtonIcon icon="color" />
+              </span>
+            </TldrawUiDropdownMenuCheckboxItem>
+          ))}
+        </div>
       </TldrawUiMenuSubmenu>
     </TldrawUiMenuGroup>
   );
