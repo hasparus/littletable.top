@@ -14,6 +14,7 @@ import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
 import { DiceSheet } from "./dice";
@@ -133,6 +134,19 @@ export function BoardCanvas({
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  useEffect(() => {
+    const grant = keeper.bootstrap.thumbnail;
+    if (
+      !online ||
+      editor === null ||
+      grant === undefined ||
+      keeper.secret ||
+      landing !== undefined
+    ) {
+      return;
+    }
+    return keepThumbnail(editor, board, grant);
+  }, [board, editor, keeper, landing, online]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [readChat, setReadChat] = useState(0);
   const { refresh } = chat;

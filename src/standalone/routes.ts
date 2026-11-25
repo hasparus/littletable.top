@@ -11,6 +11,8 @@ import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
 import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
+import { THUMBNAIL_MAX_BYTES, THUMBNAIL_TYPE } from "../board-thumbnail";
+import { readCapped } from "../file-store";
 import { serveStored } from "../files";
 import { addressKey } from "../limiter";
 import {
@@ -22,6 +24,7 @@ import {
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
 import { secretLayerOf } from "../secret-layer";
+import { isThumbnail, thumbnailKey } from "../thumbnail-store";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
@@ -109,10 +112,10 @@ const refuse = (status: number, error: string) => json(status, { error });
 // A same-origin page's request, never a form or a page elsewhere: the
 // browser names the origin on every POST, and a JSON body needs a
 // preflight no other origin passes.
-function sameOrigin(request: Request): boolean {
+function sameOrigin(request: Request, contentType = "application/json"): boolean {
   return (
     request.headers.get("Origin") === new URL(request.url).origin &&
-    request.headers.get("Content-Type")?.split(";")[0] === "application/json"
+    request.headers.get("Content-Type")?.split(";")[0] === contentType
   );
 }
 
@@ -149,6 +152,12 @@ export class Standalone {
     if (picture !== null && (method === "GET" || method === "HEAD")) {
       return this.avatar(request, picture[1]!);
     }
+    const thumbnail = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/thumbnail$/u.exec(pathname);
+    if (thumbnail !== null) {
+      const id = thumbnail[1]!;
+      if (method === "GET" || method === "HEAD") return this.thumbnail(request, id);
+      if (method === "PUT") return this.updateThumbnail(request, id);
+    }
     if (pathname === "/api/boards" && method === "GET") return this.list(request);
     if (pathname === "/api/boards" && method === "POST") return this.create(request);
     if (pathname === "/api/public-board/bootstrap" && method === "POST") {
@@ -179,8 +188,9 @@ export class Standalone {
 
   // A signed-in person's state-changing request: same origin, and the
   // session's CSRF token echoed in a header.
-  private async member(request: Request) {
-    if (!sameOrigin(request)) return { refusal: refuse(403, "forbidden-origin") } as const;
+  private async member(request: Request, contentType?: string) {
+    if (!sameOrigin(request, contentType))
+      return { refusal: refuse(403, "forbidden-origin") } as const;
     const found = await this.session(request);
     if (found === null) return { refusal: refuse(401, "signed-out") } as const;
     if (request.headers.get("X-CSRF-Token") !== found.session.csrf) {
@@ -334,6 +344,49 @@ export class Standalone {
     return json(200, await this.store.list(found.session.account.id));
   }
 
+  private async thumbnail(request: Request, id: string): Promise<Response> {
+    const found = await this.session(request);
+    if (found === null) return refuse(404, "not-found");
+    const access = await this.store.thumbnailAccess(id, found.session.account.id);
+    if (access?.hasThumbnail !== true) return refuse(404, "not-found");
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: thumbnailKey(id),
+      name: id,
+      secret: true,
+    });
+  }
+
+  private async updateThumbnail(request: Request, id: string): Promise<Response> {
+    const found = await this.member(request, THUMBNAIL_TYPE);
+    if ("refusal" in found) return found.refusal;
+    const access = await this.store.thumbnailAccess(id, found.session.account.id);
+    if (access === null || request.headers.get("X-Board-Link") !== String(access.link)) {
+      return refuse(404, "not-found");
+    }
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length") ?? "0"),
+      max: THUMBNAIL_MAX_BYTES,
+    });
+    if (body === "too-large") return refuse(413, "too-large");
+    if (!isThumbnail(body)) return refuse(415, "invalid-thumbnail");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    const result = await room.storeThumbnail(id, access.link, body);
+    if (result === "forbidden") return refuse(404, "not-found");
+    if (typeof result === "object") {
+      return json(
+        429,
+        { error: "too-fast" },
+        {
+          "Retry-After": String(Math.max(1, Math.ceil((result.retryAt - Date.now()) / 1000))),
+        },
+      );
+    }
+    if (!access.hasThumbnail) await this.store.markThumbnail(id, access.link);
+    return new Response(null, { headers: { "Cache-Control": "no-store" }, status: 204 });
+  }
+
   private async create(request: Request): Promise<Response> {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
@@ -399,7 +452,8 @@ export class Standalone {
     if (!(await this.store.delete(id, owner))) return refuse(404, "not-found");
     const secret = secretLayerOf(id);
     await this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret);
-    await room.destroy(id);
+    await room.retire(id);
+    await this.env.Files.delete(thumbnailKey(id));
     return new Response(null, { status: 204 });
   }
 
@@ -482,6 +536,15 @@ export class Standalone {
         pass,
         person: { id: person.id, name: person.name, owner: person.owner },
         ...(secretPass === null ? {} : { secretPass }),
+        ...(saved === null || found === null
+          ? {}
+          : {
+              thumbnail: {
+                csrf: found.session.csrf,
+                link: saved.linkVersion,
+                needed: !saved.hasThumbnail,
+              },
+            }),
         title: board.title,
       },
       { headers, status: 200 },
