@@ -200,6 +200,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 test("a large import shows progress, explains a failed upload and can be retried", async ({
   page,
 }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
   await collectCspViolations(page);
   await page.goto(`${HOST}/sign-in?name=Sid`);
   await page.getByRole("button", { name: "New board" }).click();
@@ -224,9 +225,26 @@ test("a large import shows progress, explains a failed upload and can be retried
   });
   try {
     await chooseImport();
-    await expect(page.getByText("Importing large.tldr")).toBeInViewport();
-    await expect(page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" })).toBeVisible();
+    const progress = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
+    const card = page.locator("[data-board-import]");
+    await expect(card).toContainText("Importing large.tldr");
+    await expect(progress).toBeVisible();
+    const bounds = (await card.boundingBox())!;
+    const menu = (await page.locator(".tlui-menu-zone").boundingBox())!;
+    const actions = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
+    expect(bounds.x).toBeCloseTo(menu.x, 0);
+    expect(bounds.x + bounds.width).toBeCloseTo(actions.x + actions.width, 0);
+    expect(bounds.height).toBeLessThan(120);
+    const watermark = page.locator("[data-testid^='tl-watermark']");
+    await expect(watermark).toBeVisible();
+    await watermark.click({ trial: true });
+    await expect(page.getByTestId("page-menu.button")).toBeVisible();
+    await reviewShot(page, "import-phone-progress");
+
+    await page.setViewportSize({ height: 900, width: 1200 });
+    await expect(progress).toBeVisible();
     await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
+    await reviewShot(page, "import-desktop-progress");
   } finally {
     response.resolve(null);
   }

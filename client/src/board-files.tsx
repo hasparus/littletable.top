@@ -52,7 +52,7 @@ export function BoardStatus({ offline }: { offline: boolean }) {
   const percent = uploads.total === 0 ? 0 : Math.round((uploads.loaded / uploads.total) * 100);
   const pill = "w-fit rounded-full bg-ink px-4 py-2 text-center text-white shadow-toast";
   return (
-    <div className="pointer-events-none fixed inset-x-4 top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex max-w-sm flex-col items-center gap-2 text-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
+    <div className="pointer-events-none fixed right-(--board-toolbar-right) left-(--board-left) top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex flex-col items-center gap-2 text-sm sm:inset-x-4 sm:max-w-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
       {offline && (
         <p className={pill} role="status">
           {copy.connectionLost}
@@ -82,7 +82,10 @@ function ImportStatus({
   const label = importStage(copy, progress);
   const percent = "percent" in progress ? progress.percent : undefined;
   return (
-    <div className="w-full max-w-xs rounded-xl border border-border bg-bg-secondary px-3 py-2">
+    <div
+      className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 sm:max-w-xs"
+      data-board-import
+    >
       <p className="truncate font-medium">{fill(copy.boardFileImporting, { name })}</p>
       <div
         className="mt-1 flex items-baseline justify-between gap-2 text-xs text-foreground-secondary"
