@@ -2,22 +2,29 @@ const TURN_MS = 255;
 
 type TurnFlight = { duration: number; elapsed: number };
 
-function flyingBackAngle(progress: number) {
-  return 65 * Math.sin(Math.PI * progress ** 0.7);
+const EDGE_ANGLE = 78;
+
+function timeToEdge(duration: number) {
+  return Math.min(TURN_MS * (EDGE_ANGLE / 180), duration * 0.45);
+}
+
+function flyingBackAngle(elapsed: number, duration: number) {
+  return EDGE_ANGLE * Math.min(1, Math.max(0, elapsed) / timeToEdge(duration));
 }
 
 export function turnFlyingBack(paper: HTMLElement, duration: number, elapsed: number) {
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
-  if (motion.matches || elapsed >= duration || duration <= 0) return;
-  const frames = Array.from({ length: 17 }, (_, i) => ({
-    transform: `rotateY(${-flyingBackAngle(i / 16)}deg)`,
-  }));
-  const back = paper.animate(frames, { duration, id: "deck-flight-back" });
+  if (motion.matches || duration <= 0) return;
+  const back = paper.animate(
+    [{ transform: "rotateY(0deg)" }, { transform: `rotateY(${-EDGE_ANGLE}deg)` }],
+    { duration: timeToEdge(duration), fill: "forwards", id: "deck-flight-back" },
+  );
   back.currentTime = Math.max(0, elapsed);
-  const cancel = () => back.cancel();
+  const cancel = () => {
+    motion.removeEventListener("change", cancel);
+    back.cancel();
+  };
   motion.addEventListener("change", cancel);
-  const cleanup = () => motion.removeEventListener("change", cancel);
-  void back.finished.then(cleanup, cleanup);
   return cancel;
 }
 
@@ -27,7 +34,7 @@ function turnCard(
   travelX: number,
   travelY: number,
   settled?: () => void,
-  angle = 180,
+  startAngle = 180,
   duration = TURN_MS,
 ) {
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -40,9 +47,9 @@ function turnCard(
     `translate(${distance * travelX}px, ${distance * travelY}px) perspective(700px) rotateY(${side * angle}deg)`;
   const turn = paper.animate(
     [
-      { transform: pose(1, angle), easing: "cubic-bezier(.19,.28,.62,.68)" },
+      { transform: pose(1, startAngle), easing: "cubic-bezier(.19,.28,.62,.68)" },
       {
-        transform: pose(0.45, (angle * 96) / 180),
+        transform: pose(0.45, (startAngle * 96) / 180),
         offset: 90 / TURN_MS,
         easing: "cubic-bezier(.25,.34,.50,1)",
       },
@@ -67,6 +74,13 @@ function turnCard(
   return cancel;
 }
 
+export function loadedDeckArt(front: HTMLElement, face: string) {
+  const url = new URL(face, document.baseURI).href;
+  return [...front.getElementsByTagName("img")].find(
+    (image) => (image.currentSrc || image.src) === url && image.complete && image.naturalWidth > 0,
+  );
+}
+
 export function revealDeckCard(
   paper: HTMLElement,
   front: HTMLElement,
@@ -78,9 +92,7 @@ export function revealDeckCard(
   settled?: () => void,
   flight?: TurnFlight,
 ) {
-  const url = new URL(face, document.baseURI).href;
   let decoding: HTMLImageElement | undefined;
-  let frame = 0;
   let stopTurn: (() => void) | undefined;
   let cancelled = false;
   const released = performance.now() - (flight?.elapsed ?? 0);
@@ -90,43 +102,47 @@ export function revealDeckCard(
   paper.style.setProperty("--deck-travel-x", `${recent ? travelX : 0}px`);
   paper.style.setProperty("--deck-travel-y", `${recent ? travelY : 0}px`);
   function onLoad() {
-    const image = [...front.getElementsByTagName("img")].find(
-      (img) => img.currentSrc === url && img.complete && img.naturalWidth > 0,
-    );
+    const image = loadedDeckArt(front, face);
     if (!image || image === decoding) return;
     decoding = image;
-    void image.decode().then(
-      () => {
-        if (cancelled || decoding !== image) return;
-        frame = requestAnimationFrame(() => {
-          if (cancelled || image !== decoding || paper.dataset.deckWaiting === undefined) return;
-          if (!front.contains(image) || image.currentSrc !== url) {
-            decoding = undefined;
-            onLoad();
-            return;
-          }
-          delete paper.dataset.deckWaiting;
-          stopBack?.();
-          if (recent) {
-            const elapsed = Math.max(0, performance.now() - released);
-            const tilt = flight ? flyingBackAngle(Math.min(1, elapsed / flight.duration)) : 0;
-            const remaining = flight ? Math.min(TURN_MS, flight.duration - elapsed) : TURN_MS;
-            stopTurn = turnCard(paper, sheen, travelX, travelY, settled, 180 - tilt, remaining);
-          }
-          front.removeEventListener("load", onLoad, true);
-        });
-      },
-      () => {
-        if (decoding === image) decoding = undefined;
-      },
-    );
+    const showReady = () => {
+      if (cancelled || image !== decoding || paper.dataset.deckWaiting === undefined) return;
+      if (loadedDeckArt(front, face) !== image) {
+        decoding = undefined;
+        onLoad();
+        return;
+      }
+      delete paper.dataset.deckWaiting;
+      stopBack?.();
+      if (recent) {
+        const elapsed = performance.now() - released;
+        const tilt = flight ? flyingBackAngle(elapsed, flight.duration) : 0;
+        const angle = 180 - tilt;
+        paper.dataset.deckTurning = "";
+        stopTurn = turnCard(
+          paper,
+          sheen,
+          travelX,
+          travelY,
+          () => {
+            if (cancelled) return;
+            delete paper.dataset.deckTurning;
+            settled?.();
+          },
+          angle,
+          TURN_MS * (angle / 180),
+        );
+      }
+      front.removeEventListener("load", onLoad, true);
+    };
+    void image.decode().then(showReady, showReady);
   }
   front.addEventListener("load", onLoad, true);
   onLoad();
   return () => {
     cancelled = true;
+    delete paper.dataset.deckTurning;
     front.removeEventListener("load", onLoad, true);
-    cancelAnimationFrame(frame);
     stopBack?.();
     stopTurn?.();
   };

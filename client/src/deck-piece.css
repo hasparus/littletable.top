@@ -33,6 +33,19 @@ img[data-deck-top],
   border-radius: var(--deck-paper-radius);
 }
 
+[data-deck-art] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  object-view-box: inset(1.7% 3%);
+  pointer-events: none;
+}
+
+[data-deck-card]:not([data-deck-waiting], [data-deck-turning]) > [data-deck-turn] {
+  visibility: hidden;
+}
+
 [data-deck-stack] {
   position: relative;
   box-shadow:

@@ -185,7 +185,7 @@ describe("installable physical decks", () => {
       origin,
       point,
       precise: true,
-      flight: { duration: 489, rotation: Math.PI / 90 },
+      flight: { duration: 489, rotation: Math.PI / 60 },
     };
     expect(command({ ...drawn, precise: false })).toBeNull();
     expect(command({ ...drawn, faceDown: true })).toBeNull();

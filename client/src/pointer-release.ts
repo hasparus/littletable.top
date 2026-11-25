@@ -106,7 +106,9 @@ export function trackRelease(start: Sample) {
     const duration = STOP_TIME_PER_SPEED * speed;
     const reach = cardTravel(speed, duration) / displacement;
     const direction = Math.sign(Math.abs(dx) >= Math.abs(dy) ? dx : dy);
-    const rotation = (direction * (1 + speed / MAX_LAUNCH_PX_PER_MS) * Math.PI) / 180;
+    const minSpeed = TOSS_PX_PER_MS * RELEASE_TRANSFER;
+    const strength = (speed - minSpeed) / (MAX_LAUNCH_PX_PER_MS - minSpeed);
+    const rotation = direction * strength * (Math.PI / 60);
     return { x: dx * reach, y: dy * reach, duration, rotation } satisfies CardFlight;
   }
 

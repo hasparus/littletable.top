@@ -30,7 +30,7 @@ import {
 } from "./card-glide";
 import { DeckContext, type DeckDrop, type DeckPickup } from "./deck";
 import { suggestDeckGrid } from "./deck-grid";
-import { revealDeckCard, turnFlyingBack } from "./deck-motion";
+import { loadedDeckArt, revealDeckCard, turnFlyingBack } from "./deck-motion";
 import { playGizmoCue } from "./gizmo-feedback";
 import { useGizmoUi } from "./gizmo-ui";
 import { landPaper, liftPaper, paperLift } from "./paper-landing";
@@ -368,12 +368,7 @@ function DeckRevealEffect({
     );
     return () => {
       if (paper.dataset.deckWaiting === undefined) {
-        const url = new URL(src, document.baseURI).href;
-        rememberFace(
-          [...native.getElementsByTagName("img")].find(
-            (img) => img.currentSrc === url && img.complete && img.naturalWidth > 0,
-          ) ?? null,
-        );
+        rememberFace(loadedDeckArt(native, src) ?? null);
       }
       stop();
       stopSlide?.();
@@ -679,6 +674,18 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
   );
 }
 
+function cardArt(image: BoardImage, src: string) {
+  return (
+    <img
+      data-deck-art
+      alt={image.props.altText}
+      draggable={false}
+      src={src}
+      style={{ scale: `${image.props.flipX ? -1 : 1} ${image.props.flipY ? -1 : 1}` }}
+    />
+  );
+}
+
 export class DeckImageUtil extends ImageUtil {
   override onTranslateEnd(_initial: BoardImage, current: BoardImage) {
     const { editor } = this;
@@ -733,7 +740,7 @@ export class DeckImageUtil extends ImageUtil {
       return (
         <LooseCard
           id={image.id}
-          art={illustration}
+          art={cardArt(image, meta.deckBack)}
           width={image.props.w}
           height={image.props.h}
           back={meta.deckBack}
@@ -746,7 +753,7 @@ export class DeckImageUtil extends ImageUtil {
       return (
         <LooseCard
           id={image.id}
-          art={illustration}
+          art={image.props.crop ? illustration : cardArt(image, meta.deckFace)}
           width={image.props.w}
           height={image.props.h}
           back={meta.deckBack}

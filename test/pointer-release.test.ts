@@ -60,9 +60,11 @@ it("lets a hard flick bleed off speed over its final 200 ms", () => {
   const flight = trackRelease(point(0, 0)).throwAt(point(20, 1000))!;
   expect(flight.x).toBeCloseTo(145.83, 0);
   expect(flight.y).toBe(0);
-  expect(flight.rotation).toBeCloseTo(Math.PI / 90);
+  expect(flight.rotation).toBeCloseTo(Math.PI / 60);
   const left = trackRelease(point(0, 0)).throwAt(point(20, -1000))!;
   expect(left.rotation).toBe(-flight.rotation);
+  const gentle = trackRelease(point(0, 0)).throwAt(point(40, 24))!;
+  expect(gentle.rotation).toBeCloseTo(0);
   expect(flight.duration).toBeGreaterThan(470);
   expect(flight.duration).toBeLessThan(500);
 

@@ -52,7 +52,7 @@ export const cardFlightDuration = T.number.check((duration) => {
 });
 
 export const cardFlightRotation = T.number.check((radians) => {
-  if (Math.abs(radians) > Math.PI / 90) throw new Error("Invalid card flight rotation");
+  if (Math.abs(radians) > Math.PI / 60) throw new Error("Invalid card flight rotation");
 });
 
 export const dealtDeckCard = T.object({

@@ -49,8 +49,8 @@ function cardAngle(card: Locator) {
 
 function expectTurn(start: number, end: number, direction: number) {
   const degrees = (end - start) * Math.sign(direction);
-  expect(degrees).toBeGreaterThanOrEqual(0.98);
-  expect(degrees).toBeLessThanOrEqual(2.02);
+  expect(degrees).toBeGreaterThanOrEqual(2.9);
+  expect(degrees).toBeLessThanOrEqual(3.02);
 }
 
 function expectTurningInFlight(
@@ -99,8 +99,10 @@ function trackCardAfterRelease(page: Page, selector: string) {
                   ? paper
                   : paper.querySelector("img[data-deck-paper]");
                 const transform = back && getComputedStyle(back).transform;
-                const tilt =
-                  transform && transform !== "none" ? new DOMMatrixReadOnly(transform).m13 : 0;
+                const pose = new DOMMatrixReadOnly(
+                  transform && transform !== "none" ? transform : undefined,
+                );
+                const tilt = (Math.atan2(pose.m13, pose.m11) * 180) / Math.PI;
                 frames.push({ x: box.x + box.width / 2, angle, tilt });
               }
               if (performance.now() - released < 500) requestAnimationFrame(sample);
@@ -113,6 +115,36 @@ function trackCardAfterRelease(page: Page, selector: string) {
       }),
     selector,
   );
+}
+
+function recordReveal(card: Locator, turnDirection: number) {
+  return card.evaluateHandle((paper: HTMLElement, direction) => {
+    const samples = new Promise<number[]>((resolve) => {
+      const angles: number[] = [];
+      const observer = new MutationObserver(() => {
+        if (paper.dataset.deckWaiting !== undefined) return;
+        observer.disconnect();
+        const revealedAt = performance.now();
+        function sample() {
+          const { transform } = getComputedStyle(paper);
+          const pose = new DOMMatrixReadOnly(transform === "none" ? undefined : transform);
+          const remaining = (Math.atan2(-direction * pose.m13, pose.m11) * 180) / Math.PI;
+          angles.push(180 - remaining);
+          if (performance.now() - revealedAt < 400) requestAnimationFrame(sample);
+          else resolve(angles);
+        }
+        requestAnimationFrame(sample);
+      });
+      observer.observe(paper, { attributes: true, attributeFilter: ["data-deck-waiting"] });
+    });
+    return { samples };
+  }, turnDirection);
+}
+
+function expectForwardTurn(angles: number[]) {
+  for (let i = 1; i < angles.length; i++) {
+    expect(angles[i]!).toBeGreaterThanOrEqual(angles[i - 1]! - 1);
+  }
 }
 
 type PointerStep = { dx: number; dy: number; ms: number };
@@ -519,6 +551,8 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
     const frames = trackCardAfterRelease(page, "[data-deck-card], [data-deck-ghost]");
     const initialAngle = await cardAngle(top);
     let rest: Point & { angle: number };
+    let heldAngle: number;
+    let revealed: Awaited<ReturnType<typeof recordReveal>>;
     try {
       await dragCard(
         page,
@@ -542,9 +576,12 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
       rest = { ...(await cardCenter(card)), angle: await cardAngle(card) };
       expectTurn(initialAngle, rest.angle, dx);
       expectCoast(release, rest, { x: dx, y: 35 });
+      heldAngle = sampled.at(-1)!.tilt;
       if (reducedMotion === "no-preference") {
         expectTurningInFlight(sampled, release.x, rest, initialAngle);
-        expect(sampled.some(({ tilt }) => Math.abs(tilt) > 0.4)).toBe(true);
+        expectForwardTurn(sampled.map(({ tilt }) => tilt * Math.sign(heldAngle)));
+        expect(Math.abs(heldAngle)).toBeGreaterThan(65);
+        expect(Math.abs(heldAngle)).toBeLessThan(90);
         fullMotionRest = rest;
       } else {
         expect(sampled.every(({ tilt }) => Math.abs(tilt) < 0.01)).toBe(true);
@@ -552,10 +589,19 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
         expect(rest.x).toBeCloseTo(fullMotionRest!.x, 0);
         expect(rest.y).toBeCloseTo(fullMotionRest!.y, 0);
       }
+      revealed = await recordReveal(card, Math.sign(heldAngle));
     } finally {
       allowArt.resolve(true);
     }
+    const angles = await revealed.evaluate(({ samples }) => samples);
+    await revealed.dispose();
+    expect(angles.at(-1)).toBeCloseTo(180, 1);
+    if (reducedMotion === "no-preference") {
+      expectForwardTurn([Math.abs(heldAngle), ...angles]);
+      expect(angles.some((angle) => angle > 95 && angle < 170)).toBe(true);
+    }
     await expect(front).toBeVisible();
+    await expect(card.locator("[data-deck-turn]")).toBeHidden();
     expect(await cardAngle(card)).toBeCloseTo(rest.angle, 2);
     await expect(card).toHaveCount(1);
     const face = front.locator("img");
