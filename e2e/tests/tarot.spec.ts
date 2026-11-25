@@ -271,6 +271,7 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
     await expect(gallery).toBeHidden();
     const next = page.locator("[data-tracker-seat]").first();
     await expect(next).toHaveAccessibleName("Mark a moment for Deck owner");
+    await guest.keyboard.press("Escape");
     await guest.getByRole("button", { name: "Mark a moment for Deck owner" }).click();
     await expect(next).toHaveAccessibleName("Mark a moment for Card player");
   } finally {

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { trackRelease } from "../client/src/pointer-release";
+import { cardTravel, trackRelease } from "../client/src/pointer-release";
 
 const point = (timeStamp: number, clientX: number, clientY = 0) => ({
   timeStamp,
@@ -49,19 +49,24 @@ it("ignores fingertip jitter and equal-timestamp events", () => {
 it("coasts in the release direction, flying under gravity and slowing after contact", () => {
   const hand = trackRelease(point(0, 100, 100));
   const flight = hand.throwAt(point(40, 76, 132))!;
-  const speed = 0.75;
-  const airTime = (2 * speed * 0.25) / 0.006;
-  const slideTime = speed / 0.008;
-  const distance = speed * airTime + (speed / 2) * slideTime;
-  expect(flight.duration).toBeCloseTo(airTime + slideTime);
-  expect(flight.x).toBeCloseTo(-0.6 * distance);
-  expect(flight.y).toBeCloseTo(0.8 * distance);
+  // The established landing point for this diagonal flick is 82.03 px from release.
+  expect(flight.x).toBeCloseTo(-49.22, 0);
+  expect(flight.y).toBeCloseTo(65.63, 0);
 });
 
-it("bounds the range and duration of a hard flick", () => {
+it("lets a hard flick bleed off speed over its final 200 ms", () => {
   const flight = trackRelease(point(0, 0)).throwAt(point(20, 1000))!;
-  expect(flight.duration).toBeLessThan(220);
-  expect(flight.x).toBeGreaterThan(100);
-  expect(flight.x).toBeLessThan(150);
+  expect(flight.x).toBeCloseTo(145.83, 0);
   expect(flight.y).toBe(0);
+  expect(flight.duration).toBeGreaterThan(400);
+  expect(flight.duration).toBeLessThan(450);
+
+  const distanceAt = (ms: number) => cardTravel(0.8, ms);
+  const late = distanceAt(300) - distanceAt(200);
+  const last = distanceAt(400) - distanceAt(300);
+  expect(late).toBeGreaterThan(12);
+  expect(last).toBeGreaterThan(1);
+  expect(last).toBeLessThan(late / 3);
+  expect(flight.x - distanceAt(400)).toBeLessThan(0.05);
+  expect(distanceAt(flight.duration + 100)).toBeCloseTo(flight.x);
 });

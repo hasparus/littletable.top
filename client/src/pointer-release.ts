@@ -5,20 +5,26 @@ const TOSS_PX_PER_MS = 0.6;
 const MIN_SAMPLE_MS = 16;
 
 const GRAVITY_PX_PER_MS2 = 0.006;
-const FRICTION_PX_PER_MS2 = 0.008;
+const CONTACT_DECELERATION_PX_PER_MS2 = 0.0046;
 const LIFT_TO_FORWARD_SPEED = 0.25;
-const MAX_LAUNCH_PX_PER_MS = 1;
-const RELEASE_TRANSFER = 0.75;
+const MAX_LAUNCH_PX_PER_MS = 0.8;
+const RELEASE_TRANSFER = 0.6;
 const CAMERA_DISTANCE_PX = 220;
 const AIR_TIME_PER_SPEED = (2 * LIFT_TO_FORWARD_SPEED) / GRAVITY_PX_PER_MS2;
-const STOP_TIME_PER_SPEED = AIR_TIME_PER_SPEED + 1 / FRICTION_PX_PER_MS2;
+const SLIDE_TIME_PER_SPEED = 2 / CONTACT_DECELERATION_PX_PER_MS2;
+const STOP_TIME_PER_SPEED = AIR_TIME_PER_SPEED + SLIDE_TIME_PER_SPEED;
 
 type Offset = { x: number; y: number };
 export type CardFlight = Offset & { duration: number };
 
-function travel(speed: number, time: number) {
-  const sliding = Math.max(0, time - AIR_TIME_PER_SPEED * speed);
-  return speed * time - (FRICTION_PX_PER_MS2 * sliding * sliding) / 2;
+/** Integrate the slide velocity, which falls with the square of the remaining time. */
+export function cardTravel(speed: number, time: number) {
+  const airTime = AIR_TIME_PER_SPEED * speed;
+  if (time <= airTime || speed === 0) return speed * time;
+
+  const slideTime = SLIDE_TIME_PER_SPEED * speed;
+  const remaining = Math.max(0, 1 - (time - airTime) / slideTime);
+  return speed * airTime + (speed * slideTime * (1 - remaining ** 3)) / 3;
 }
 
 /** Animate from the release offset to the stored resting position. The card flies at its launch
@@ -33,9 +39,9 @@ export function animateCardFlight(
   if (motion.matches || duration <= 0 || elapsed >= duration) return;
   const speed = duration / STOP_TIME_PER_SPEED;
   const airTime = speed * AIR_TIME_PER_SPEED;
-  const distance = travel(speed, duration);
+  const distance = cardTravel(speed, duration);
   const pose = (t: number) => {
-    const remaining = 1 - travel(speed, t) / distance;
+    const remaining = 1 - cardTravel(speed, t) / distance;
     const height = (GRAVITY_PX_PER_MS2 * t * Math.max(0, airTime - t)) / 2;
     return {
       offset: t / duration,
@@ -97,7 +103,7 @@ export function trackRelease(start: Sample) {
     if (handSpeed < TOSS_PX_PER_MS) return null;
     const speed = Math.min(MAX_LAUNCH_PX_PER_MS, RELEASE_TRANSFER * handSpeed);
     const duration = STOP_TIME_PER_SPEED * speed;
-    const reach = travel(speed, duration) / displacement;
+    const reach = cardTravel(speed, duration) / displacement;
     return { x: dx * reach, y: dy * reach, duration } satisfies CardFlight;
   }
 
