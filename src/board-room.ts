@@ -102,8 +102,10 @@ type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
 type SocketAttachment = {
   sessionId: string;
   person: Person;
-  snapshot?: SessionStateSnapshot | "stored";
-};
+} & (
+  | { snapshot?: SessionStateSnapshot; stored?: never }
+  | { snapshot: SessionStateSnapshot; stored: true }
+);
 type RoomSocket = {
   socket: WebSocket;
   connectTimer?: ReturnType<typeof setTimeout>;
@@ -349,6 +351,7 @@ export class BoardRoom extends DurableObject<Env> {
     const unused = new Map(kv.list<SessionStateSnapshot>({ prefix: SOCKET_SNAPSHOT_PREFIX }));
     const link = sockets.length === 0 ? 0 : this.link();
     for (const socket of sockets) {
+      if (socket.readyState !== WebSocket.OPEN) continue;
       const saved = socket.deserializeAttachment() as SocketAttachment | null;
       if (saved === null) continue;
       if (this.retired || saved.person.link < link) {
@@ -360,9 +363,8 @@ export class BoardRoom extends DurableObject<Env> {
         );
       } else {
         const key = SOCKET_SNAPSHOT_PREFIX + saved.sessionId;
-        const { snapshot: attachment } = saved;
-        const inStorage = attachment === "stored";
-        const snapshot = inStorage ? unused.get(key) : attachment;
+        const inStorage = saved.stored === true;
+        const snapshot = inStorage ? unused.get(key) : saved.snapshot;
         if (snapshot === undefined) {
           socket.close(1012, "Reconnecting");
           continue;
@@ -386,16 +388,17 @@ export class BoardRoom extends DurableObject<Env> {
     const connection = this.sockets.get(saved.sessionId);
     if (connection?.socket !== socket) return;
     this.room.handleSocketMessage(saved.sessionId, message);
-    const snapshot = this.room.getSessionSnapshot(saved.sessionId);
-    if (snapshot === null) return;
+    const compact = this.room.getSessionSnapshot(saved.sessionId);
+    if (compact === null) return;
     clearTimeout(connection.connectTimer);
     connection.connectTimer = undefined;
     // WARNING: Peers already have the full presence record and the next client patch is relative to it.
-    if (snapshot.presenceId !== null) {
+    const snapshot = { ...compact };
+    if (compact.presenceId !== null) {
       const room = this.room as TLSocketRoom<TLRecord, Person> & {
         getPresenceRecords(): Record<string, TLRecord>;
       };
-      snapshot.presenceRecord = room.getPresenceRecords()[snapshot.presenceId] ?? null;
+      snapshot.presenceRecord = room.getPresenceRecords()[compact.presenceId] ?? null;
     }
     const previous = connection.snapshot;
     if (
@@ -403,10 +406,11 @@ export class BoardRoom extends DurableObject<Env> {
       previous.presenceRecord === snapshot.presenceRecord
     )
       return;
-    const key = SOCKET_SNAPSHOT_PREFIX + saved.sessionId;
+    const { person, sessionId } = saved;
+    const key = SOCKET_SNAPSHOT_PREFIX + sessionId;
     const { kv } = this.ctx.storage;
     try {
-      socket.serializeAttachment({ ...saved, snapshot });
+      socket.serializeAttachment({ person, sessionId, snapshot } satisfies SocketAttachment);
       if (connection.stored === true) {
         kv.delete(key);
         connection.stored = false;
@@ -415,9 +419,14 @@ export class BoardRoom extends DurableObject<Env> {
       try {
         kv.put(key, snapshot);
         connection.stored = true;
-        socket.serializeAttachment({ ...saved, snapshot: "stored" });
+        socket.serializeAttachment({
+          person,
+          sessionId,
+          snapshot: compact,
+          stored: true,
+        } satisfies SocketAttachment);
       } catch {
-        this.room.closeSession(saved.sessionId, TLSyncErrorCloseEventReason.UNKNOWN_ERROR);
+        this.room.closeSession(sessionId, TLSyncErrorCloseEventReason.UNKNOWN_ERROR);
         return;
       }
     }
@@ -427,14 +436,21 @@ export class BoardRoom extends DurableObject<Env> {
   override webSocketClose(socket: WebSocket) {
     const saved = socket.deserializeAttachment() as SocketAttachment | null;
     if (saved === null) return;
-    const connection = this.sockets.get(saved.sessionId);
-    if (connection?.socket !== socket) return;
-    clearTimeout(connection.connectTimer);
-    if (connection.stored === true) {
-      this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + saved.sessionId);
+    const { person, sessionId, snapshot } = saved;
+    const connection = this.sockets.get(sessionId);
+    if (connection === undefined) {
+      // WARNING: A disconnect can wake the room after getWebSockets has already dropped that socket.
+      if (snapshot?.presenceRecord == null) return;
+      this.room.handleSocketResume({ sessionId, socket, meta: person, snapshot });
+    } else {
+      if (connection.socket !== socket) return;
+      clearTimeout(connection.connectTimer);
+      if (connection.stored === true) {
+        this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + sessionId);
+      }
+      this.sockets.delete(sessionId);
     }
-    this.sockets.delete(saved.sessionId);
-    this.room.handleSocketClose(saved.sessionId);
+    this.room.handleSocketClose(sessionId);
   }
 
   override webSocketError(socket: WebSocket) {

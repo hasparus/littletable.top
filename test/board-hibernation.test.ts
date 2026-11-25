@@ -59,7 +59,7 @@ it("restores connected board sessions after eviction and delivers rolls and link
 });
 
 it.each([1, 1000])(
-  "broadcasts a deselection after sleep with %i selected shapes",
+  "clears restored presence on deselection and disconnect with %i selected shapes",
   async (count) => {
     const board = `hibernated-presence-${count}`;
     const writer = await seat(board, await pass({ board }));
@@ -70,20 +70,14 @@ it.each([1, 1000])(
       createShapeId(`selected-board-record-${index}`),
     );
 
-    writer.send({
-      clientClock: 1,
-      presence: [
-        "put",
-        InstancePresenceRecordType.create({
-          currentPageId: PageRecordType.createId("page"),
-          id: InstancePresenceRecordType.createId(),
-          selectedShapeIds: selected,
-          userId: createUserId("u:1"),
-          userName: "Ania",
-        }),
-      ],
-      type: "push",
+    const presence = InstancePresenceRecordType.create({
+      currentPageId: PageRecordType.createId("page"),
+      id: InstancePresenceRecordType.createId(),
+      selectedShapeIds: selected,
+      userId: createUserId("u:1"),
+      userName: "Ania",
     });
+    writer.send({ clientClock: 1, presence: ["put", presence], type: "push" });
     await until(() => JSON.stringify(peer.received).includes(selected.at(-1)!));
     const stored = () =>
       runInDurableObject(
@@ -103,5 +97,21 @@ it.each([1, 1000])(
       JSON.stringify(peer.received.slice(start)).includes('"selectedShapeIds":["put",[]]'),
     );
     expect(await stored()).toBe(0);
+
+    const beforeSelection = peer.received.length;
+    writer.send({ clientClock: 3, presence: ["put", presence], type: "push" });
+    await until(() =>
+      JSON.stringify(peer.received.slice(beforeSelection)).includes(selected.at(-1)!),
+    );
+    await evictDurableObject(room, { webSockets: "hibernate" });
+
+    const beforeClose = peer.received.length;
+    writer.close();
+    await expect
+      .poll(() => JSON.stringify(peer.received.slice(beforeClose)), { timeout: 8000 })
+      .toMatch(/"instance_presence:[^"]+":\["remove"\]/u);
+    expect(await stored()).toBe(0);
+    peer.close();
   },
+  15_000,
 );
