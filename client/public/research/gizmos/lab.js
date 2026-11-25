@@ -130,11 +130,17 @@ function message(id, text, error = false) {
   target.classList.toggle("lab-error", error);
 }
 
+const sceneMark = document.querySelector("#scene-mark");
+const sceneResult = document.querySelector("#scene-result");
+sceneMark.addEventListener("click", () => markMoment("Sable"));
+
 function render() {
   const owner = role.value === "owner";
   manifest.readOnly = source.readOnly = !owner;
   el("install").disabled = el("apply").disabled = !owner;
   const canPass = owner || installed.advance === "table";
+  sceneMark.disabled = !canPass || !queue.includes("Sable");
+  sceneResult.textContent = `Spotlight order: ${queue.join(", ")}. Scene pressure: ${pressure} of 6.`;
   el("pass").disabled = el("step").disabled = !canPass;
   el("name").textContent = installed.title;
   el("seats").replaceChildren(

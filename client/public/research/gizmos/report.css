@@ -307,3 +307,22 @@ footer {
   font-weight: 650;
   color: var(--leaf);
 }
+.model button.cta {
+  border: 0;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.model button.cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+#scene-result {
+  font-size: 0.92rem;
+  min-height: 3em;
+}
+#decision summary {
+  font-weight: 650;
+  cursor: pointer;
+  color: var(--leaf);
+}

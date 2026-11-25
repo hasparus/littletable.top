@@ -20,32 +20,168 @@
     <main id="report">
       <div class="opening">
         <div>
-          <p class="kicker">Interaction design · Research draft</p>
-          <h1>Making room <br />for Gizmos.</h1>
+          <p class="kicker">Gizmos · Design recommendation</p>
+          <h1>Give the GM a workbench.</h1>
           <p class="intro">
-            A GM can tape a paper dial to a screen between sessions. What would it take to give a
-            table owner that same freedom on a shared board?
+            I’d start with one tool a GM can change between scenes. Give them a spotlight tracker,
+            let them ask an agent for a house-rule variation, and let them play a turn on a copy
+            before adopting it.
           </p>
-          <a class="cta" href="#experiments"
-            >Try the experiments <span aria-hidden="true">↓</span></a
-          >
+          <a class="cta" href="#decision">What I’d build first ↓</a>
         </div>
         <figure class="model">
-          <div class="sheet-label">Design proposal</div>
-          <h2>Who gets the next turn?</h2>
-          <ol>
-            <li><b>Owner</b> Chooses a roster and who can pass the spotlight.</li>
-            <li><b>Player</b> Sees the active name and can pass when allowed.</li>
-            <li><b>Table</b> Records one turn change for everyone.</li>
-          </ol>
-          <figcaption>A spotlight tracker as the first installable Gizmo.</figcaption>
+          <div class="sheet-label">At tonight’s table</div>
+          <h2>The ferryman knows Sable’s real name.</h2>
+          <p>
+            Mira was due a turn, but Sable steps forward to bargain. Give Sable the moment. Can you
+            keep track of who has been waiting?
+          </p>
+          <button class="cta" id="scene-mark" type="button" disabled>Mark Sable’s moment</button>
+          <p id="scene-result" role="status">Spotlight order: Mira, Otto, Sable, Kit.</p>
+          <figcaption><a href="#experiments">Change how this tracker works ↓</a></figcaption>
         </figure>
       </div>
       <nav class="contents" aria-label="In this report">
-        <a href="#field-notes">Field notes</a><a href="#precedents">Plugin models</a
-        ><a href="#agent-workshop">Agent workspaces</a><a href="#experiments">Experiments</a
-        ><a href="#decision">Implementation proposal</a>
+        <a href="#decision">First build</a><a href="#security">Security concerns</a
+        ><a href="#experiments">Workbench</a><a href="#field-notes">Field notes</a
+        ><a href="#precedents">Plugin models</a><a href="#agent-workshop">Agent workspaces</a>
       </nav>
+      <section class="chapter" id="decision">
+        <header>
+          <p class="kicker">Product bet</p>
+          <h2>The first thing worth building</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            My preference is a forkable Gizmo with a small, host-rendered vocabulary and an agent
+            that edits its recipe. I’d spend the first engineering week on the round trip from a
+            working tool to a house rule and back to play.
+          </p>
+          <p>
+            The duet trial is the reason: changing four seats to two, restricting who can mark a
+            moment, and filling a clock in two marks took one recipe file. A general-purpose runtime
+            would add operating cost and a new trust boundary without improving that scene. The
+            trade-off is real: this vocabulary can express queues and counters; it cannot express a
+            hand-drawn relationship map with novel gestures.
+          </p>
+          <h3>First playable cut</h3>
+          <p>
+            Put <strong>Make a copy</strong> on the spotlight tracker. Give the GM a scratch table
+            with two sample players. Let them ask, “Only I can move the spotlight, and it takes two
+            turns to wake the ferryman.” Show two things before installation: the changed player
+            permission and the clock filling after two owner clicks. Keep the old revision available
+            for the rest of the session. A player who reconnects should see the same queue as the
+            GM.
+          </p>
+          <p>
+            For the first playtest, hand three GMs the working tracker and ask each to change one
+            rule for tonight. My threshold to continue: at least two can make a change, correctly
+            predict its effect from a player seat, and choose to use it in play without a developer
+            stepping in. If they all ask for the same extra option, add that option to the tracker.
+            If they repeatedly want different behaviors outside the catalog, take those actual
+            examples into the isolated-runtime experiment.
+          </p>
+          <details>
+            <summary>Implementation notes and release gates</summary>
+            <h3>Install and undo</h3>
+            <p>
+              On install, show the panel preview, author, definition version and actions that guests
+              may take. Store the validated definition and its digest on the table. An edited or
+              updated definition gets a new revision and an explicit owner confirmation. Preserve
+              state on compatible upgrades. Refuse incompatible updates until the owner chooses a
+              migration or reset. Pausing leaves the state intact. Removing a Gizmo removes its
+              instance from that table.
+            </p>
+            <h3>One authoritative transition</h3>
+            <p>
+              Reuse the standalone owner session and CSRF checks for installation. For play, send
+              the room a typed intent with an instance ID, expected revision and request ID. The
+              room authenticates the actor, checks the role and current definition, deduplicates
+              retries, applies one transition and broadcasts the committed revision. A stale click
+              gets the current state. Two players passing simultaneously must produce one advance
+              from the old revision. The browser role switch in the workshop is a local simulation
+              of this contract.
+            </p>
+            <h3>Keep the two rooms separate</h3>
+            <p>
+              Mount the panel beside the existing board controls. Route a public Gizmo action only
+              through the shared BoardRoom. A future GM-only Gizmo should live wholly in the owner’s
+              separate secret room. A hidden field in shared JSON still reaches everyone with the
+              shared pass. Keep player names, secret data, image URLs and room credentials out of
+              extension inputs unless an approved action explicitly requires a narrow projection.
+            </p>
+            <h3>When to expand the API</h3>
+            <p>
+              Have three GMs build a spotlight tracker and adapt it for their own table. Watch
+              whether they can predict who can press each button, fix a failed edit and recover the
+              old version. Then ask for a tool the catalog cannot express. A reusable missing action
+              argues for extending the catalog. A rule requiring genuinely novel computation is a
+              candidate for an isolated runtime.
+            </p>
+            <h3>Release gates</h3>
+            <ul>
+              <li>
+                Replaying a request after reconnect produces one state change. Concurrent stale
+                requests converge on the same revision.
+              </li>
+              <li>
+                An owner can pause a broken Gizmo and open the board normally. A guest cannot
+                install, edit or retrieve GM-only state.
+              </li>
+              <li>
+                Unknown catalog versions and malformed definitions leave the previous working
+                install in place. Measure render and action latency on a phone with several panels
+                before setting production limits.
+              </li>
+            </ul>
+          </details>
+        </div>
+      </section>
+      <section class="chapter" id="security">
+        <header>
+          <p class="kicker">Security judgment</p>
+          <h2>What could hurt a real table?</h2>
+        </header>
+        <div class="prose">
+          <p class="lead">
+            My main concern is an ordinary-looking Gizmo gaining the GM’s authority. A spoiler sent
+            to a player cannot be taken back. An agent can author a draft with sample data;
+            installing it and reading the secret layer are separate privileges.
+          </p>
+          <h3>A copied clock spoils the ambush</h3>
+          <p>
+            A GM shares a clock face. Its title is public, but its trigger names the hidden traitor.
+            If both fields travel to every client, hiding the trigger in the UI is too late. The
+            shared room should receive only the public projection. The private room keeps the
+            trigger. <strong>Release test:</strong> inspect a guest’s initial sync, reconnect data
+            and export. None may contain the private fixture string.
+          </p>
+          <h3>A minor update changes who can act</h3>
+          <p>
+            An agent edits a label and also broadens <code>advance</code> from owner to table. The
+            owner may miss that in a JSON diff. Pin the installed revision and display the
+            behavioral change in plain language. Bind approval to its content digest and base
+            revision. The room must check the actor on every action even if the button is disabled.
+            <strong>Release test:</strong> a guest submitting an owner action directly leaves the
+            queue untouched, and editing a reviewed draft invalidates its approval.
+          </p>
+          <h3>A broken rule stalls the session</h3>
+          <p>
+            A malformed recipe or expensive program can consume the room’s time while everyone
+            waits. Keep catalog actions bounded. If arbitrary code becomes necessary, give it a
+            separate invocation, a deadline, explicit resource limits and no ambient room
+            credentials or outbound network. The room validates the proposed result.
+            <strong>Release test:</strong> a timed-out rule leaves its last good state intact; the
+            next player can still draw and the owner can pause the Gizmo.
+          </p>
+          <p>
+            <strong>What is proven today?</strong> The tab demo demonstrates the interaction and
+            rejects unsupported rules. The local Wasm trial terminates one runaway fixture. Neither
+            establishes guest isolation across clients, safe handling of arbitrary uploads or a
+            production memory ceiling. Those are shipping gates for the corresponding capability.
+          </p>
+        </div>
+      </section>
       <section class="chapter" id="field-notes">
         <header>
           <p class="kicker">Field notes</p>
@@ -363,69 +499,6 @@
             this test in a hardened service with measured resource limits, versioned inputs and
             server-side action authorization.
           </p>
-        </div>
-      </section>
-      <section class="chapter" id="decision">
-        <header>
-          <p class="kicker">Implementation proposal</p>
-          <h2>The first vertical slice</h2>
-        </header>
-        <div class="prose">
-          <p class="lead">
-            Ship a single installable spotlight tracker on standalone account boards. Let the owner
-            change names, reorder the roster and choose who can advance it during play.
-          </p>
-          <h3>Install and undo</h3>
-          <p>
-            On install, show the panel preview, author, definition version and actions that guests
-            may take. Store the validated definition and its digest on the table. An edited or
-            updated definition gets a new revision and an explicit owner confirmation. Preserve
-            state on compatible upgrades. Refuse incompatible updates until the owner chooses a
-            migration or reset. Pausing leaves the state intact. Removing a Gizmo removes its
-            instance from that table.
-          </p>
-          <h3>One authoritative transition</h3>
-          <p>
-            Reuse the standalone owner session and CSRF checks for installation. For play, send the
-            room a typed intent with an instance ID, expected revision and request ID. The room
-            authenticates the actor, checks the role and current definition, deduplicates retries,
-            applies one transition and broadcasts the committed revision. A stale click gets the
-            current state. Two players passing simultaneously must produce one advance from the old
-            revision. The browser role switch in the workshop is a local simulation of this
-            contract.
-          </p>
-          <h3>Keep the two rooms separate</h3>
-          <p>
-            Mount the panel beside the existing board controls. Route a public Gizmo action only
-            through the shared BoardRoom. A future GM-only Gizmo should live wholly in the owner’s
-            separate secret room. A hidden field in shared JSON still reaches everyone with the
-            shared pass. Keep player names, secret data, image URLs and room credentials out of
-            extension inputs unless an approved action explicitly requires a narrow projection.
-          </p>
-          <h3>When to expand the API</h3>
-          <p>
-            Have three GMs build a spotlight tracker and adapt it for their own table. Watch whether
-            they can predict who can press each button, fix a failed edit and recover the old
-            version. Then ask for a tool the catalog cannot express. A reusable missing action
-            argues for extending the catalog. A rule requiring genuinely novel computation is a
-            candidate for an isolated runtime.
-          </p>
-          <h3>Release gates</h3>
-          <ul>
-            <li>
-              Replaying a request after reconnect produces one state change. Concurrent stale
-              requests converge on the same revision.
-            </li>
-            <li>
-              An owner can pause a broken Gizmo and open the board normally. A guest cannot install,
-              edit or retrieve GM-only state.
-            </li>
-            <li>
-              Unknown catalog versions and malformed definitions leave the previous working install
-              in place. Measure render and action latency on a phone with several panels before
-              setting production limits.
-            </li>
-          </ul>
         </div>
       </section>
     </main>
