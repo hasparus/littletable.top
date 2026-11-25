@@ -30,6 +30,7 @@ import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
+import { PUBLIC_SIGNATURE_GROUP } from "../src/public-signature";
 import { Browser, openSocket, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
 
@@ -240,6 +241,9 @@ describe("the public board", () => {
       });
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
+        const signature = store.get(PUBLIC_SIGNATURE_GROUP);
+        expect(signature).toMatchObject({ isLocked: true, parentId: page, type: "group" });
+        store.set(signature!.id, stampPublicShape(signature as TLGroupShape, now - 2 * day - 1));
         for (const record of [
           expired,
           faded,
@@ -291,6 +295,12 @@ describe("the public board", () => {
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
         expect(store.get(expired.id)).toBeUndefined();
+        expect(store.get(PUBLIC_SIGNATURE_GROUP)).toMatchObject({ opacity: 1 });
+        expect(
+          [...store.values()].filter(
+            (record) => record.typeName === "shape" && record.parentId === PUBLIC_SIGNATURE_GROUP,
+          ),
+        ).toHaveLength(4);
         expect(store.get(faded.id)).toMatchObject({ meta: faded.meta, opacity: 0.5 });
         expect(store.get(faint.id)).toEqual(faint);
         expect(store.get(recent.id)).toMatchObject({

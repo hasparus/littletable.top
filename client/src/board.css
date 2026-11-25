@@ -314,12 +314,6 @@
   color: var(--color-primary-strong);
 }
 
-[data-public-board-note] {
-  top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
-  left: var(--board-left);
-  width: min(502px, calc(100% - var(--board-left) - var(--board-right)));
-}
-
 [data-board-background-swatches] {
   display: flex;
   padding: 4px;

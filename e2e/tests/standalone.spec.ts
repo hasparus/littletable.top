@@ -213,6 +213,21 @@ test("the landing introduction keeps its typography and position when the board 
     await expectHandwriting("[data-public-board-note] p");
     expect(await live.boundingBox()).toEqual(box);
     await expect(preview).toHaveCount(0);
+    const lastParagraph = await live.locator("p").last().textContent();
+    expect(lastParagraph?.split("\n").at(-1)).toBe("A virtual tabletop without bloat.");
+
+    const signatureStroke = page
+      .locator('[data-shape-id="shape:2fFF6jTHq2tZ-b2tBYic2"] svg path')
+      .first();
+    await expect(signatureStroke).toBeVisible();
+    const signature = await signatureStroke.boundingBox();
+    expect(signature!.y).toBeGreaterThan(box!.y + box!.height);
+    await reviewShot(page, "landing-signature-phone");
+
+    await page.setViewportSize({ height: 800, width: 920 });
+    await expect(page.locator("[data-board-toolbar]")).toHaveAttribute("data-board-toolbar", "");
+    expect(await live.boundingBox()).toEqual(box);
+    await reviewShot(page, "landing-signature-resized");
   } finally {
     release.resolve(null);
     font.resolve(null);
