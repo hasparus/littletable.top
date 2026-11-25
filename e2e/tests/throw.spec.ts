@@ -257,7 +257,7 @@ test("roll history scrolls in a modal and Escape returns focus to the dice panel
   page,
 }) => {
   await page.setViewportSize({ height: 520, width: 360 });
-  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.route("**/rooms/*/rolls", (route) =>
     route.fulfill({
       json: Array.from({ length: 24 }, (_, index) => ({
@@ -273,19 +273,24 @@ test("roll history scrolls in a modal and Escape returns focus to the dice panel
   await startBoard(page);
   const dice = await openSheet(page, "Dice");
   const trigger = dice.getByRole("button", { exact: true, name: "Roll log" });
+  const diceBounds = await boxOf(dice);
   const log = await openRollLog(dice);
   const close = log.getByRole("button", { name: "Close" });
+  const heading = log.getByRole("heading", { name: "Roll log" });
   const entries = log.getByRole("listitem");
-  await expect(close).toBeFocused();
+  const mobileLog = await boxOf(log);
+  expect(mobileLog.width).toBe(diceBounds.width);
+  await expect(heading).toBeFocused();
   await expect(entries.first()).toContainText("Roller 24");
   await expect(entries.last()).toContainText("Roller 1");
   await expect(entries.last()).not.toBeInViewport();
-  await close.press("End");
+  await heading.press("End");
   await expect(entries.last()).toBeInViewport();
   await expect(close).toBeInViewport();
   await reviewShot(page, "roll-log-scroll-phone");
 
-  await close.press("Tab");
+  await heading.press("Tab");
+  await expect(close).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(log).toBeHidden();
   await expect(dice).toBeVisible();
@@ -299,6 +304,14 @@ test("roll history scrolls in a modal and Escape returns focus to the dice panel
   await page.mouse.click(1, 1);
   await expect(log).toBeHidden();
   await expect(trigger).toBeFocused();
+
+  await page.setViewportSize({ height: 800, width: 1024 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  const wideDice = await boxOf(dice);
+  await openRollLog(dice);
+  const wideLog = await boxOf(log);
+  expect(wideLog.width).toBe(wideDice.width);
+  await reviewShot(page, "roll-log-desktop");
 });
 
 type Box = { height: number; width: number; x: number; y: number };
