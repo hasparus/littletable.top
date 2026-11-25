@@ -16,7 +16,14 @@ const EN = {
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
   publicBoard: "Public whiteboard",
+  publicDemo:
+    "In Search, choose North Gate under Places to jump to the note. Type MOONBELL to find the word in the image.",
+  publicDraw:
+    "Add a map or a screenshot of a character sheet. Search finds words in your images, too. Chat is open to everyone on this board.",
   publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
+  publicMakeBoard:
+    "Sign in to make a board for your group. Share the link and your players can join with just a name. Only you can see what you put on the secret layer.",
+  publicRoll: "Open Dice and enter 1d20. On a 10 or higher, you slip past the sleeping guard.",
   publicStory: [
     "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
     "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
@@ -56,7 +63,15 @@ const PL: FrontCopy = {
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
   publicBoard: "Tablica publiczna",
+  publicDemo:
+    "W wyszukiwarce wybierz North Gate z listy Miejsca, żeby przejść do notatki. Wpisz MOONBELL, żeby znaleźć to słowo na obrazku.",
+  publicDraw:
+    "Dodaj mapę albo zrzut ekranu z kartą postaci. W swoich obrazach też możesz wyszukiwać słowa. Na tej tablicy każdy może pisać na czacie.",
   publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
+  publicMakeBoard:
+    "Zaloguj się, żeby założyć tablicę dla swojej grupy. Wyślij link i każda osoba dołączy po podaniu imienia. Tylko ty widzisz to, co zapisujesz na ukrytej warstwie.",
+  publicRoll:
+    "Otwórz Kości i wpisz 1k20. Przy wyniku 10 lub więcej przemkniesz obok śpiącego strażnika.",
   publicStory: [
     "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
     "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",

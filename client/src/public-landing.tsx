@@ -2,6 +2,8 @@ import { useEditor, useValue } from "tldraw";
 
 import type { FrontCopy } from "./front-copy";
 
+import { PUBLIC_DEMO_SHAPE } from "../../src/public-board-demo-ids";
+
 export type PublicLanding = { copy: FrontCopy };
 
 // The note is rendered in canvas coordinates, outside the shared document.
@@ -10,9 +12,15 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
   const position = useValue(
     "public board introduction",
     () => {
-      if (editor.getCurrentPageId() !== editor.getPages()[0]?.id) return null;
-      const { x, y } = editor.pageToViewport({ x: 0, y: 0 });
+      const demo = editor.getShape(PUBLIC_DEMO_SHAPE);
+      const image = demo?.type === "image" ? demo : undefined;
+      if (editor.getCurrentPageId() !== (image?.parentId ?? editor.getPages()[0]?.id)) return null;
+      const { x, y } = editor.pageToViewport({
+        x: 0,
+        y: image === undefined ? 0 : image.y + image.props.h + 12,
+      });
       return {
+        hasDemo: image !== undefined,
         x,
         y,
         zoom: editor.getZoomLevel(),
@@ -21,14 +29,27 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
     [editor],
   );
   if (position === null) return null;
-  const { x, y, zoom } = position;
+  const { hasDemo, x, y, zoom } = position;
   return (
     <section
       aria-label={copy.publicBoard}
       className="pointer-events-none absolute origin-top-left"
       data-public-board-note
-      style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})` }}
+      style={{
+        top: hasDemo ? 0 : undefined,
+        transform: `translate(${x}px, ${y}px) scale(${zoom})`,
+      }}
     >
+      <div className="mb-4">
+        {hasDemo && (
+          <>
+            <p>{copy.publicDemo}</p>
+            <p>{copy.publicRoll}</p>
+          </>
+        )}
+        <p>{copy.publicDraw}</p>
+        <p>{copy.publicMakeBoard}</p>
+      </div>
       {copy.publicStory.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
       ))}

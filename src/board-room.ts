@@ -22,6 +22,8 @@ import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
+import { seedPublicDemo } from "./public-board-demo";
+import { isPublicDemo, PUBLIC_BOARD } from "./public-board-demo-ids";
 import {
   expirePublicShapes,
   preservesPublicShapeAge,
@@ -41,7 +43,12 @@ import {
   type TextRefusal,
 } from "./text-store";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
+type Env = {
+  ASSETS: Fetcher;
+  BoardRoom: DurableObjectNamespace<BoardRoom>;
+  DB?: D1Database;
+  Files: R2Bucket;
+};
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -52,8 +59,8 @@ const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
-// Standalone account board IDs are alphanumeric and cannot collide with this room.
-export const PUBLIC_BOARD = "public-lobby";
+export { PUBLIC_BOARD } from "./public-board-demo-ids";
+
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
 const RETIRED = "retired";
@@ -83,6 +90,7 @@ function kind(sub: string): "guest" | "member" {
 export class BoardRoom extends DurableObject<Env> {
   private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
+  private publicDemo?: Promise<void>;
   private retired = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
@@ -147,9 +155,15 @@ export class BoardRoom extends DurableObject<Env> {
     const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
     const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
+        asset: (write) => {
+          const record = write.type === "delete" ? write.prev : write.next;
+          return this.publicExpiryEnabled && isPublicDemo(record.id) ? null : record;
+        },
         shape: (write) => {
+          const shape = write.type === "delete" ? write.prev : write.next;
+          if (!this.publicExpiryEnabled) return shape;
+          if (isPublicDemo(shape.id)) return null;
           if (write.type === "delete") return write.prev;
-          if (!this.publicExpiryEnabled) return write.next;
           if (write.type === "create") return stampPublicShape(write.next, Date.now());
           return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
         },
@@ -511,6 +525,12 @@ export class BoardRoom extends DurableObject<Env> {
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
       this.publicExpiryEnabled = true;
     }
+    this.publicDemo ??= seedPublicDemo(this.drawing, this.env.ASSETS, this.files, PUBLIC_BOARD)
+      .catch((error: unknown) => log("public_board.demo_failed", { error: String(error) }))
+      .finally(() => {
+        this.publicDemo = undefined;
+      });
+    await this.publicDemo;
     if ((await this.ctx.storage.getAlarm()) === null) {
       const next = (Math.floor(Date.now() / PUBLIC_SWEEP_MS) + 1) * PUBLIC_SWEEP_MS;
       await this.ctx.storage.setAlarm(next);

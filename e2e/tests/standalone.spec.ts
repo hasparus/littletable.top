@@ -125,6 +125,49 @@ test("the home page is one editable public board for anonymous visitors", async 
   await guest.context().close();
 });
 
+test("the public handout is searchable and the prompt rolls a d20", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto(`${STANDALONE}/?lang=en`);
+  await expect(page.getByText(/choose North Gate under Places/u)).toBeInViewport();
+  const handout = page
+    .getByTestId("canvas")
+    .locator('img.tl-image[alt="Note from the north gate"]');
+  await expect(handout).toBeInViewport();
+  await reachEditor(page);
+  await page.evaluate(() => {
+    const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+    editor.setCamera({ x: -2000, y: -2000, z: 1 }, { immediate: true });
+  });
+  await expect(handout).not.toBeInViewport();
+
+  const places = await openSheet(page, "Search");
+  await expect(places.getByRole("heading", { name: "Places" })).toBeVisible();
+  await expect(places.getByRole("button", { name: "Remove from places: North Gate" })).toHaveCount(
+    0,
+  );
+  await places.getByRole("button", { exact: true, name: "North Gate" }).click();
+  await expect(places).toBeHidden();
+  await expect(handout).toBeInViewport();
+
+  const search = await openSheet(page, "Search");
+  await search.getByRole("combobox", { name: "Search the board" }).fill("MOONBELL");
+  const result = search.getByRole("option").filter({ hasText: "In image" });
+  await expect(result, "the real OCR result contains the password").toContainText(/MOONBELL/iu, {
+    timeout: 90_000,
+  });
+  await result.click();
+  await expect(page.getByRole("img", { name: /Found:.*MOONBELL/iu })).toBeVisible();
+
+  const dice = await openSheet(page, "Dice");
+  await dice.getByRole("textbox", { name: "Dice notation" }).fill("1d20");
+  const request = page.waitForRequest(
+    (candidate) => candidate.method() === "POST" && candidate.url().endsWith("/roll"),
+  );
+  await dice.getByRole("button", { name: /^Roll/u }).click();
+  const rolled = await request;
+  expect(rolled.postDataJSON()).toMatchObject({ expression: "1d20" });
+});
+
 test("two guests can chat live and see their messages after reloading", async ({
   browser,
   page,

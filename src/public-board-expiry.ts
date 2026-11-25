@@ -8,6 +8,7 @@ import { getIndexAbove } from "@tldraw/utils";
 import type { ArrowTerminal } from "./public-arrow-endpoints";
 
 import { savedArrowEndpoint } from "./public-arrow-endpoints";
+import { PUBLIC_DEMO_SHAPE } from "./public-board-demo-ids";
 
 export const PUBLIC_SWEEP_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 4 * PUBLIC_SWEEP_MS;
@@ -36,7 +37,8 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
 
   for (const shape of shapes.values()) {
     const created = creationTime(shape);
-    if (created !== null && now - created >= 2 * DAY_MS) expired.add(shape.id);
+    if (shape.id !== PUBLIC_DEMO_SHAPE && created !== null && now - created >= 2 * DAY_MS)
+      expired.add(shape.id);
     const last = lastIndex.get(shape.parentId);
     if (last === undefined || last < shape.index) lastIndex.set(shape.parentId, shape.index);
   }
@@ -55,6 +57,7 @@ export function expirePublicShapes(store: TLSyncStorageTransaction<TLRecord>, no
   }
 
   for (const shape of shapes.values()) {
+    if (shape.id === PUBLIC_DEMO_SHAPE) continue;
     if (expired.has(shape.id)) {
       store.delete(shape.id);
       continue;
