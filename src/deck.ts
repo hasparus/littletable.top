@@ -4,7 +4,7 @@ import { AssetRecordType, idValidator, pageIdValidator } from "@tldraw/tlschema"
 import { getIndexAbove, type IndexKey } from "@tldraw/utils";
 import { T } from "@tldraw/validate";
 
-import type { InstalledGizmo } from "./gizmo-packages";
+import type { DeckManifest, InstalledGizmo } from "./gizmo-packages";
 
 import {
   dealtDeckCard,
@@ -12,6 +12,7 @@ import {
   type DeckReveal,
   deckStack,
   faceDownDeckCard,
+  isDealtCardId,
 } from "./deck-records";
 import { rollDie } from "./roll-die";
 
@@ -32,8 +33,8 @@ type StackState = {
   reservation?: Reservation;
   closed?: string[];
 };
-type DownCard = { install: string; index: number };
-export type DeckState = StackState | { face: DownCard };
+type CardIdentity = { install: string; index: number; originalName?: string };
+export type DeckState = StackState | { face: CardIdentity };
 
 type Decks = {
   get: (key: string) => DeckState | undefined;
@@ -115,6 +116,7 @@ const deckCancel = T.object({
 const deckFlip = T.object({
   action: T.literal("flip"),
   card: imageId,
+  faceDown: T.boolean.optional(),
   language,
   page: pageIdValidator,
 });
@@ -402,7 +404,7 @@ function prepareDeck(
   const game = playableDeck(drawing, resolve, state, deck, page);
   if (!game) return null;
   const { manifest } = game;
-  const result = priorDeal(drawing, storage, state, deck, id);
+  const result = priorDeal(drawing, storage, resolve, state, deck, id);
   if (result) {
     const face = "faceDown" in result ? privateFace(storage, result.card) : null;
     if (face) {
@@ -458,11 +460,24 @@ function privateFace(storage: Decks, card: string) {
   return state && "face" in state ? state.face : undefined;
 }
 
-function priorDeal(drawing: Drawing, storage: Decks, state: StackState, deck: string, id: string) {
+function priorDeal(
+  drawing: Drawing,
+  storage: Decks,
+  resolve: ResolvePackage,
+  state: StackState,
+  deck: string,
+  id: string,
+) {
   const recent = state.recent.find((entry) => entry.id === id);
   if (recent) return recent.reveal;
   const card = dealtCardId(deck, id);
-  if (privateFace(storage, card)) return { card, faceDown: true as const };
+  const identity = privateFace(storage, card);
+  if (identity) {
+    if (!identity.originalName) return { card, faceDown: true as const };
+    const found = resolve(identity.install);
+    const selected = found?.manifest.kind === "deck" ? found.manifest.cards[identity.index] : null;
+    if (selected) return { card: selected.id, name: identity.originalName, width: selected.width };
+  }
   const image = drawing.get(card);
   if (image?.typeName !== "shape" || image.type !== "image") return null;
   const { meta } = image;
@@ -479,65 +494,140 @@ function revealedResult(drawing: Drawing, image: BoardImage) {
   return { card: meta.deckFaceId, name: props.altText, width: asset.props.w };
 }
 
+function legacyFaceIndex(
+  image: BoardImage,
+  asset: Extract<TLRecord, { typeName: "asset"; type: "image" }>,
+  manifest: DeckManifest,
+) {
+  const { meta } = image;
+  if (!dealtDeckCard.isValid(meta)) return -1;
+  const key = image.id.slice("shape:".length);
+  if (
+    asset.id !== AssetRecordType.createId(key) &&
+    asset.id !== AssetRecordType.createId(`gizmo-deck-face-${key}`)
+  )
+    return -1;
+  if (meta.deckFace !== asset.props.src) return -1;
+  const { name, w } = asset.props;
+  const matches = manifest.cards.flatMap((candidate, index) =>
+    candidate.src === asset.props.src &&
+    candidate.width === w &&
+    (candidate.name.en === name || candidate.name.pl === name) &&
+    (meta.deckFaceId === undefined || candidate.id === meta.deckFaceId)
+      ? [index]
+      : [],
+  );
+  return matches.length === 1 ? matches[0]! : -1;
+}
+
+function flippedAsset(
+  command: DeckFlip,
+  manifest: DeckManifest,
+  selected: DeckManifest["cards"][number],
+  name: string,
+) {
+  return AssetRecordType.create({
+    id: AssetRecordType.createId(
+      `gizmo-deck-${command.faceDown ? "back" : "face"}-${command.card.slice("shape:".length)}`,
+    ),
+    props: {
+      h: manifest.cardHeight,
+      isAnimated: false,
+      mimeType: null,
+      name,
+      src: command.faceDown ? manifest.back : selected.src,
+      w: command.faceDown ? manifest.backWidth : selected.width,
+    },
+    type: "image",
+  });
+}
+
 function flipDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, command: DeckFlip) {
   const { card, page, language } = command;
   const image = drawing.get(card);
   if (image?.typeName !== "shape" || image.type !== "image") return null;
   const placement = pagePlacement(drawing, image, page);
   if (!placement || placement.isLocked) return null;
-  const { meta } = image;
+  const { meta, props } = image;
+  const wasDown = faceDownDeckCard.isValid(meta);
+  if (!wasDown && !dealtDeckCard.isValid(meta)) return null;
   if (
-    dealtDeckCard.isValid(meta) &&
-    meta.deckTurnedAt !== undefined &&
-    meta.deckCardId === card &&
-    meta.deckFaceId
+    !isDealtCardId(meta.deckId, card) ||
+    (meta.deckCardId !== undefined && meta.deckCardId !== card)
   )
-    return revealedResult(drawing, image);
-  if (!faceDownDeckCard.isValid(meta) || meta.deckCardId !== card) return null;
-  const face = privateFace(storage, card);
-  if (!face) return null;
-  const found = resolve(face.install);
-  if (found?.manifest.kind !== "deck") return null;
-  const selected = found.manifest.cards[face.index];
-  if (!selected) return null;
-  const name = selected.name[language];
+    return null;
+  const identity = privateFace(storage, card);
+  const install = identity?.install ?? stackState(storage, meta.deckId)?.install;
+  if (install === undefined) return null;
+  const found = resolve(install);
+  if (found?.manifest.kind !== "deck" || meta.deckBack !== found.manifest.back) return null;
+  const { manifest } = found;
+  const previousAsset = props.assetId === null ? undefined : drawing.get(props.assetId);
+  if (previousAsset?.typeName !== "asset" || previousAsset.type !== "image") return null;
+  const index = identity?.index ?? (wasDown ? -1 : legacyFaceIndex(image, previousAsset, manifest));
+  const selected = manifest.cards[index];
+  if (!selected || previousAsset.props.src !== (wasDown ? manifest.back : selected.src))
+    return null;
+
+  const down = command.faceDown === true;
+  const name = down
+    ? language === "pl"
+      ? "Zakryta karta"
+      : "Face-down card"
+    : selected.name[language];
+  const response = down
+    ? { card, faceDown: true as const }
+    : { card: selected.id, name: wasDown ? name : props.altText, width: selected.width };
+  if (down === wasDown) return response;
+
+  if (!identity) {
+    storage.set(cardKey(card), {
+      face: {
+        install,
+        index,
+        originalName: meta.deckTurnedAt === undefined ? previousAsset.props.name : undefined,
+      },
+    });
+  }
+
   const turnedAt = Date.now();
-  const asset = AssetRecordType.create({
-    id: AssetRecordType.createId(`gizmo-deck-face-${card.slice("shape:".length)}`),
-    props: {
-      h: found.manifest.cardHeight,
-      isAnimated: false,
-      mimeType: null,
-      name,
-      src: selected.src,
-      w: selected.width,
-    },
-    type: "image",
-  });
-  const { deckDown: _deckDown, ...previous } = meta;
+  const asset = flippedAsset(command, manifest, selected, name);
+  const {
+    deckDown: _down,
+    deckFace: _face,
+    deckFaceId: _id,
+    deckDealtAt: _dealt,
+    deckTravelX: _x,
+    deckTravelY: _y,
+    ...previous
+  } = image.meta;
   drawing.set(asset.id, asset);
   drawing.set(image.id, {
     ...image,
     meta: {
       ...previous,
-      deckDealtAt: turnedAt,
-      deckFace: selected.src,
-      deckFaceId: selected.id,
-      deckTravelX: 0,
-      deckTravelY: 0,
+      deckCardId: card,
       deckTurnedAt: turnedAt,
+      ...(down
+        ? { deckDown: true }
+        : {
+            deckDealtAt: turnedAt,
+            deckFace: selected.src,
+            deckFaceId: selected.id,
+            deckTravelX: 0,
+            deckTravelY: 0,
+          }),
     },
-    props: { ...image.props, altText: name, assetId: asset.id },
+    props: { ...props, altText: name, assetId: asset.id },
   });
-  storage.delete(cardKey(card));
-  return { card: selected.id, name, width: selected.width };
+  return response;
 }
 
 function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, command: DeckDeal) {
   const { deck, id, language, page } = command;
   const state = stackState(storage, deck);
   if (!state) return null;
-  const previous = priorDeal(drawing, storage, state, deck, id);
+  const previous = priorDeal(drawing, storage, resolve, state, deck, id);
   if (previous) return previous;
   const { reservation } = state;
   const live = reservation !== undefined && reservation.until > Date.now();
@@ -591,7 +681,9 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     src: faceDown ? manifest.back : card.src,
     width: faceDown ? manifest.backWidth : card.width,
   });
-  if (faceDown) storage.set(cardKey(cardId), { face: { install: state.install, index: selected } });
+  storage.set(cardKey(cardId), {
+    face: { install: state.install, index: selected, originalName: faceDown ? undefined : name },
+  });
   drawing.set(stack.id, { ...stack, meta: { ...stack.meta, deckRemaining: remaining.length } });
   const reveal = faceDown
     ? { card: cardId, faceDown: true as const }

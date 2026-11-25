@@ -277,8 +277,82 @@ describe("installable physical decks", () => {
     });
     expect(command(drop)).toEqual({ card, faceDown: true });
     expect(command({ action: "prepare", deck, id })).toEqual(pickup);
-    expect(stored.has(`gizmoDeckCard:${card}`)).toBe(false);
+    expect(stored.has(`gizmoDeckCard:${card}`)).toBe(true);
     expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 60 } });
+  });
+
+  it("turns a dealt face down and up without consuming another card or retriggering a retry", () => {
+    const { command, records, stored } = table();
+    const deck = placed(command(place));
+    const id = crypto.randomUUID();
+    const card = dealtCardId(deck, id);
+    const result = command({ ...draw(deck), id, precise: true });
+    const faceUp = records.get(card);
+    if (faceUp?.typeName !== "shape" || faceUp.type !== "image") throw new Error("No dealt card");
+    const face = faceUp.meta.deckFace;
+    expect(face).toBeTruthy();
+    const down = { action: "flip", card, faceDown: true };
+    expect(command(down)).toEqual({ card, faceDown: true });
+    const back = records.get(card);
+    if (back?.typeName !== "shape" || back.type !== "image" || !back.props.assetId)
+      throw new Error("No back");
+    expect(records.get(back.props.assetId)).toMatchObject({
+      props: { src: "/gizmos/tarot/art/back.webp" },
+    });
+    expect(back.meta).toMatchObject({ deckDown: true, deckTurnedAt: expect.any(Number) });
+    expect(back.meta).not.toHaveProperty("deckFace");
+    expect(back.meta).not.toHaveProperty("deckFaceId");
+    expect(command(down)).toEqual({ card, faceDown: true });
+    expect(records.get(card)).toBe(back);
+    expect(command({ ...draw(deck), id, precise: true })).toEqual(result);
+    expect(records.get(card)).toBe(back);
+
+    const page = PageRecordType.create({
+      id: PageRecordType.createId("other"),
+      name: "Other",
+      index: getIndexAbove(),
+    });
+    records.set(page.id, page);
+    records.set(card, { ...back, parentId: page.id, x: 420, y: 260, rotation: Math.PI / 2 });
+    for (const [key, value] of stored) stored.set(key, structuredClone(value));
+    expect(command({ action: "flip", card })).toBeNull();
+    expect(command({ action: "flip", card, page: page.id })).toEqual(result);
+    const revealedCard = records.get(card);
+    expect(revealedCard).toMatchObject({
+      x: 420,
+      y: 260,
+      rotation: Math.PI / 2,
+      parentId: page.id,
+      props: { w: faceUp.props.w, h: faceUp.props.h },
+      meta: { deckFace: face },
+    });
+    expect(command({ action: "flip", card, page: page.id, language: "pl" })).toEqual(result);
+    expect(records.get(card)).toBe(revealedCard);
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
+  });
+
+  it("turns legacy cards only when their canonical image matches the installed manifest", () => {
+    const { command, records, stored } = table();
+    const deck = placed(command(place));
+    const id = crypto.randomUUID();
+    const result = command({ ...draw(deck), id });
+    const card = dealtCardId(deck, id);
+    const current = records.get(card);
+    if (current?.typeName !== "shape" || current.type !== "image")
+      throw new Error("No legacy card");
+    const { deckCardId: _card, deckFaceId: _face, ...legacyMeta } = current.meta;
+    const legacy = { ...current, meta: legacyMeta };
+    stored.delete(`gizmoDeckCard:${card}`);
+    records.set(card, legacy);
+    const copy = createShapeId("copy");
+    records.set(copy, { ...legacy, id: copy });
+    expect(command({ action: "flip", card: copy, faceDown: true })).toBeNull();
+    records.set(card, { ...legacy, meta: { ...legacyMeta, deckFaceId: "fake-card" } });
+    expect(command({ action: "flip", card, faceDown: true })).toBeNull();
+    records.set(card, legacy);
+    expect(command({ action: "flip", card, faceDown: true })).toEqual({ card, faceDown: true });
+    expect(command({ action: "flip", card })).toEqual(result);
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
   });
 
   it("places and draws a package pinned on the board with current owner access", async () => {
@@ -335,5 +409,13 @@ describe("installable physical decks", () => {
     const turned = await request(guest, flip);
     expect(turned.status).toBe(200);
     expect(await turned.json()).toEqual({ card: "moon", name: "Księżyc", width: 380 });
+    const back = await request(guest, { ...flip, faceDown: true });
+    expect(back.status).toBe(200);
+    expect(await back.json()).toEqual({ card, faceDown: true });
+    expect(await (await request(guest, flip)).json()).toEqual({
+      card: "moon",
+      name: "Księżyc",
+      width: 380,
+    });
   });
 });

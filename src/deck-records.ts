@@ -23,6 +23,15 @@ export const deckRevealed = T.object({
 
 export type DeckReveal = T.TypeOf<typeof deckRevealed>;
 
+const requestId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u;
+
+export function isDealtCardId(deck: string, card: string) {
+  const deckPrefix = "shape:gizmo-deck-";
+  if (!deck.startsWith(deckPrefix) || !requestId.test(deck.slice(deckPrefix.length))) return false;
+  const cardPrefix = `${deckPrefix}${deck.slice("shape:".length)}-`;
+  return card.startsWith(cardPrefix) && requestId.test(card.slice(cardPrefix.length));
+}
+
 export const deckStack = T.object({
   deckId: T.string,
   deckBack: deckArt,
@@ -35,6 +44,7 @@ export const faceDownDeckCard = T.object({
   deckBack: deckArt,
   deckCardId: T.string,
   deckDown: T.literal(true),
+  deckTurnedAt: T.number.optional(),
 }).allowUnknownProperties();
 
 export const dealtDeckCard = T.object({

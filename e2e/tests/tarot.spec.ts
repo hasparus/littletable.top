@@ -19,6 +19,50 @@ async function tapCard(page: Page, x: number, y: number, times = 1) {
   }
 }
 
+type PointerStep = { dx: number; dy: number; ms: number };
+
+async function dragCard(
+  page: Page,
+  start: { x: number; y: number },
+  steps: PointerStep[],
+  releaseMs: number,
+  onPickup?: () => Promise<void>,
+) {
+  const mouse = await page.context().newCDPSession(page);
+  const startTime = (Date.now() - releaseMs) / 1000;
+  let point = start;
+  try {
+    await mouse.send("Input.dispatchMouseEvent", {
+      ...point,
+      button: "left",
+      buttons: 1,
+      clickCount: 1,
+      timestamp: startTime,
+      type: "mousePressed",
+    });
+    await onPickup?.();
+    for (const { dx, dy, ms } of steps) {
+      point = { x: start.x + dx, y: start.y + dy };
+      await mouse.send("Input.dispatchMouseEvent", {
+        ...point,
+        button: "left",
+        buttons: 1,
+        timestamp: startTime + ms / 1000,
+        type: "mouseMoved",
+      });
+    }
+    await mouse.send("Input.dispatchMouseEvent", {
+      ...point,
+      button: "left",
+      clickCount: 1,
+      timestamp: startTime + releaseMs / 1000,
+      type: "mouseReleased",
+    });
+  } finally {
+    await mouse.detach();
+  }
+}
+
 async function openGallery(page: Page) {
   await page.getByTestId("main-menu.button").click();
   await expect(page.getByRole("menuitem", { name: "Tarot deck" })).toHaveCount(0);
@@ -101,14 +145,23 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
         response.request().method() === "POST" &&
         response.request().postDataJSON().action === "prepare",
     );
-    await page.mouse.move(center.x, center.y);
-    await page.mouse.down();
+    await dragCard(
+      page,
+      center,
+      [
+        { dx: 40, dy: 12, ms: 150 },
+        { dx: 80, dy: 24, ms: 300 },
+        { dx: 120, dy: 36, ms: 450 },
+      ],
+      480,
+      async () => {
+        const pickup = await prepared;
+        expect(pickup.ok()).toBe(true);
+        await expect(stack.locator("[data-deck-base]")).toHaveText("78");
+      },
+    );
     const pickup = await prepared;
-    expect(pickup.ok()).toBe(true);
     const { face } = deckPrepared.validate(await pickup.json());
-    await expect(stack.locator("[data-deck-base]")).toHaveText("78");
-    await page.mouse.move(center.x + top.width * 0.35, center.y, { steps: 6 });
-    await page.mouse.up();
 
     const loose = page.locator("[data-deck-down]");
     const guestBack = guest.locator("[data-deck-down]");
@@ -123,30 +176,45 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
     const before = (await loose.boundingBox())!;
     const cx = before.x + before.width / 2;
     const cy = before.y + before.height / 2;
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx + 100, cy + 85, { steps: 8 });
-    await page.mouse.up();
+    await dragCard(
+      page,
+      { x: cx, y: cy },
+      [
+        { dx: -15, dy: 18, ms: 85 },
+        { dx: -30, dy: 40, ms: 180 },
+        { dx: -45, dy: 65, ms: 285 },
+      ],
+      300,
+    );
     await expect
       .poll(async () => {
         const landed = await loose.boundingBox();
         return landed?.x;
       })
-      .toBeCloseTo(before.x + 100, 0);
+      .toBeCloseTo(before.x - 45, 0);
     await expect(stack.locator("[data-deck-base]")).toHaveText("77");
     await expect(guestBack).toBeVisible();
     await guestBack.getByRole("button", { name: "Turn card over" }).click();
-    const guestFace = guest.locator("[data-deck-front] img");
+    const guestFace = guest.locator("[data-deck-front]").getByRole("img", { name: /./u });
     await expect(guestFace).toHaveCount(1);
     await expect(guestFace).toHaveJSProperty("src", new URL(face, page.url()).href);
     await expect
       .poll(() => guestFace.evaluate((img: HTMLImageElement) => img.naturalHeight))
       .toBe(640);
     await expect(guestBack).toHaveCount(0);
-    await expect(page.locator("[data-deck-front] img")).toHaveJSProperty(
-      "src",
-      new URL(face, page.url()).href,
-    );
+    await expect(
+      page.locator("[data-deck-front]").getByRole("img", { name: /./u }),
+    ).toHaveJSProperty("src", new URL(face, page.url()).href);
+    await expect(stack.locator("[data-deck-base]")).toHaveText("77");
+
+    const upButton = guest.getByRole("button", { name: "Turn card over" });
+    const upBounds = (await upButton.boundingBox())!;
+    await tapCard(guest, upBounds.x + upBounds.width / 2, upBounds.y + upBounds.height / 2);
+    await expect(loose).toBeVisible();
+    await expect(guestFace).toHaveCount(0);
+    await loose.getByRole("button", { name: "Turn card over" }).click();
+    await expect(guestFace).toHaveJSProperty("src", new URL(face, page.url()).href);
+    await expect(guest.locator('[data-deck-front] img.tl-image[alt=""]')).toHaveCount(0);
     await expect(stack.locator("[data-deck-base]")).toHaveText("77");
 
     await openGallery(page);
@@ -162,7 +230,7 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
   }
 });
 
-test("a drag can be cancelled or dropped face down at its release point", async ({ page }) => {
+test("a paused drop and a quick toss at the same spot land on opposite sides", async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 700 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(STANDALONE + "/dev/gizmos");
@@ -186,12 +254,13 @@ test("a drag can be cancelled or dropped face down at its release point", async 
   await expect(dealt).toHaveCount(0);
   await expect(count).toHaveText("78");
 
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 130, y - 74, { steps: 7 });
   const offset = rect.width * 0.35;
-  await page.mouse.move(x + offset, y, { steps: 5 });
-  await page.mouse.up();
+  const path = [
+    { dx: 80, dy: -35, ms: 100 },
+    { dx: 140, dy: -70, ms: 200 },
+    { dx: offset, dy: 0, ms: 222 },
+  ];
+  await dragCard(page, { x, y }, path, 400);
   const down = page.locator("[data-deck-down]");
   await expect(down).toBeVisible();
   const near = (await down.boundingBox())!;
@@ -199,12 +268,68 @@ test("a drag can be cancelled or dropped face down at its release point", async 
   expect(Math.abs(near.y - rect.y)).toBeLessThan(2);
   await expect(count).toHaveText("77");
   await expect(page.locator("[data-deck-front]")).toHaveCount(0);
-  await tapCard(page, near.x + near.width / 2, near.y + near.height / 2);
-  const face = page.locator("[data-deck-front] img");
-  await expect(face).toBeVisible();
-  await expect.poll(() => face.evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(640);
+  const center = { x: near.x + near.width / 2, y: near.y + near.height / 2 };
+  const shift = { dx: 160, dy: 90 };
+  await dragCard(
+    page,
+    center,
+    [
+      { dx: 48, dy: 28, ms: 140 },
+      { dx: 100, dy: 60, ms: 300 },
+      { ...shift, ms: 500 },
+    ],
+    530,
+  );
+  const parked = (await down.boundingBox())!;
+  expect(Math.abs(parked.x - near.x - shift.dx)).toBeLessThan(2);
+  expect(Math.abs(parked.y - near.y - shift.dy)).toBeLessThan(2);
+  await dragCard(page, { x, y }, path, 225);
+  await expect(dealt).toHaveCount(1);
+  await expect(dealt.locator("[data-deck-front] img")).toBeVisible();
+  await expect(down).toHaveCount(1);
+  await expect(count).toHaveText("76");
+
+  const up = (await dealt.boundingBox())!;
+  await dragCard(
+    page,
+    { x: up.x + up.width / 2, y: up.y + up.height / 2 },
+    [
+      { dx: 0, dy: 30, ms: 120 },
+      { dx: 0, dy: 75, ms: 300 },
+    ],
+    315,
+  );
+  const shifted = (await dealt.boundingBox())!;
+  expect(Math.abs(shifted.y - up.y - 75)).toBeLessThan(2);
+  await expect(down).toHaveCount(1);
+
+  await dragCard(
+    page,
+    { x: parked.x + parked.width / 2, y: parked.y + parked.height / 2 },
+    [
+      { dx: 20, dy: -12, ms: 20 },
+      { dx: 80, dy: -50, ms: 40 },
+    ],
+    42,
+  );
   await expect(down).toHaveCount(0);
-  await expect(count).toHaveText("77");
+  await expect(dealt).toHaveCount(2);
+  const tossed = {
+    x: parked.x + parked.width / 2 + 80,
+    y: parked.y + parked.height / 2 - 50,
+  };
+  await dragCard(
+    page,
+    tossed,
+    [
+      { dx: -20, dy: 12, ms: 20 },
+      { dx: -80, dy: 50, ms: 40 },
+    ],
+    42,
+  );
+  await expect(down).toHaveCount(1);
+  await expect(dealt).toHaveCount(1);
+  await expect(count).toHaveText("76");
 });
 
 test("rapid taps fill a three-column Tarot spread in reading order", async ({ page }) => {
@@ -250,15 +375,22 @@ test("a far drop keeps one back in place until its prepared face is ready", asyn
   const requested = page.waitForRequest(faceArt);
   const card = page.locator("[data-deck-card]");
   const front = card.locator("[data-deck-front]");
-  let expectedFace: string;
+
   try {
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    const request = await requested;
-    expectedFace = request.url();
-    await expect(page.locator("[data-deck-base]")).toHaveText("78");
-    await page.mouse.move(x + rect.width * 1.8, y + 35, { steps: 8 });
-    await page.mouse.up();
+    await dragCard(
+      page,
+      { x, y },
+      [
+        { dx: rect.width, dy: 16, ms: 120 },
+        { dx: rect.width * 1.8, dy: 35, ms: 145 },
+      ],
+      148,
+      async () => {
+        const request = await requested;
+        expect(request.resourceType()).toBe("image");
+        await expect(page.locator("[data-deck-base]")).toHaveText("78");
+      },
+    );
     await expect(page.locator("[data-deck-card][data-deck-waiting]")).toHaveCount(1);
     await expect(card.locator("[data-deck-turn]")).toBeVisible();
     await expect(front).toBeHidden();
@@ -269,7 +401,8 @@ test("a far drop keeps one back in place until its prepared face is ready", asyn
   await expect(front).toBeVisible();
   await expect(card).toHaveCount(1);
   const face = front.locator("img");
-  await expect(face).toHaveJSProperty("src", expectedFace);
+  const request = await requested;
+  await expect(face).toHaveJSProperty("src", request.url());
   await expect.poll(() => face.evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(640);
   await expect(page.locator("[data-deck-base]")).toHaveText("77");
 });

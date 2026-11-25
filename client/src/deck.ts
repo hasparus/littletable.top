@@ -183,17 +183,18 @@ function useDeckActions(canDeal: boolean, send: Transport) {
     });
   }
 
-  async function flip(editor: Editor, card: Deal["deck"]) {
+  async function flip(editor: Editor, card: Deal["deck"], faceDown = false) {
     if (editor.getIsReadonly() || editor["isShapeOrAncestorLocked"](card)) return false;
-    const result = await send(editor, {
+    const result = await sendGesture(editor, {
       action: "flip",
+      ...(faceDown && { faceDown: true }),
       card,
       page: editor.getCurrentPageId(),
       language: editor.user.getLocale() === "pl" ? "pl" : "en",
-    }).catch(() => null);
-    if (!result || !("name" in result)) return false;
+    });
+    if (!result || !("card" in result)) return false;
     playGizmoCue("deal");
-    setRevealed(result);
+    setRevealed("name" in result ? result : null);
     return true;
   }
 

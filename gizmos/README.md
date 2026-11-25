@@ -2,11 +2,11 @@
 
 Open `/dev/gizmos` to play with the packages in this checkout. The practice table starts with all three pieces and resets on reload.
 
-| Package                                   | At the table                                                                                                                                                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Tarot deck](tarot/gizmo.json)            | Tap to deal a spread. Drop a card near the deck to leave it face down, or farther away to reveal it. Anyone at the table can tap a loose face-down card to turn it over. [Artwork credits](tarot/ARTWORK.md) |
-| [Spotlight tracker](spotlight/gizmo.json) | Mark the player who just took a moment. Their count increases and the marker passes to the next player.                                                                                                      |
-| [Explosion button](explosion/gizmo.json)  | Press the red cap for a spring recoil and a short screenshake. Reduced motion keeps the board steady.                                                                                                        |
+| Package                                   | At the table                                                                                                                                                                                                   |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Tarot deck](tarot/gizmo.json)            | Tap to deal a spread. Set a card down slowly to keep its side up. Flick it as you release to turn it over. Anyone at the table can tap a loose card to turn it either way. [Artwork credits](tarot/ARTWORK.md) |
+| [Spotlight tracker](spotlight/gizmo.json) | Mark the player who just took a moment. Their count increases and the marker passes to the next player.                                                                                                        |
+| [Explosion button](explosion/gizmo.json)  | Press the red cap for a spring recoil and a short screenshake. Reduced motion keeps the board steady.                                                                                                          |
 
 ## Install on a shared board
 

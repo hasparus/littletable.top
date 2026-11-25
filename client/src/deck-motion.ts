@@ -1,8 +1,17 @@
 const TURN_MS = 255;
 
-function turnCard(paper: HTMLElement, sheen: HTMLElement, travelX: number, travelY: number) {
+function turnCard(
+  paper: HTMLElement,
+  sheen: HTMLElement | null,
+  travelX: number,
+  travelY: number,
+  settled?: () => void,
+) {
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
-  if (motion.matches) return;
+  if (motion.matches) {
+    settled?.();
+    return;
+  }
   const side = travelX > 0 ? -1 : 1;
   const pose = (distance: number, angle: number) =>
     `translate(${distance * travelX}px, ${distance * travelY}px) perspective(700px) rotateY(${side * angle}deg)`;
@@ -14,16 +23,19 @@ function turnCard(paper: HTMLElement, sheen: HTMLElement, travelX: number, trave
     ],
     { duration: TURN_MS, id: "deck-turn" },
   );
-  const glint = sheen.animate(
+  const glint = sheen?.animate(
     [{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1, offset: 0.67 }, { opacity: 0 }],
     { duration: TURN_MS },
   );
   const cancel = () => {
     turn.cancel();
-    glint.cancel();
+    glint?.cancel();
   };
   motion.addEventListener("change", cancel);
-  const cleanup = () => motion.removeEventListener("change", cancel);
+  const cleanup = () => {
+    motion.removeEventListener("change", cancel);
+    settled?.();
+  };
   void turn.finished.then(cleanup, cleanup);
   return cancel;
 }
@@ -31,11 +43,12 @@ function turnCard(paper: HTMLElement, sheen: HTMLElement, travelX: number, trave
 export function revealDeckCard(
   paper: HTMLElement,
   front: HTMLElement,
-  sheen: HTMLElement,
+  sheen: HTMLElement | null,
   face: string,
   recent: boolean,
   travelX: number,
   travelY: number,
+  settled?: () => void,
 ) {
   const url = new URL(face, document.baseURI).href;
   let decoding: HTMLImageElement | undefined;
@@ -55,13 +68,14 @@ export function revealDeckCard(
       () => {
         if (cancelled || decoding !== image) return;
         frame = requestAnimationFrame(() => {
+          if (cancelled || image !== decoding || paper.dataset.deckWaiting === undefined) return;
           if (!front.contains(image) || image.currentSrc !== url) {
             decoding = undefined;
             onLoad();
             return;
           }
           delete paper.dataset.deckWaiting;
-          if (recent) stopTurn = turnCard(paper, sheen, travelX, travelY);
+          if (recent) stopTurn = turnCard(paper, sheen, travelX, travelY, settled);
           front.removeEventListener("load", onLoad, true);
         });
       },
