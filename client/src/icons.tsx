@@ -66,6 +66,16 @@ const paths = {
       fillRule="evenodd"
     />
   ),
+  Resize: (
+    <path
+      d="M5 9v6h6m-6 0L15 5m-6 0h6v6"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.5"
+    />
+  ),
   Send: (
     <path d="M2.86 2.28a.75.75 0 0 0-.93.97L4.1 9.25h7.65a.75.75 0 0 1 0 1.5H4.1l-2.17 6a.75.75 0 0 0 .93.97l14.75-7a.75.75 0 0 0 0-1.44l-14.75-7Z" />
   ),

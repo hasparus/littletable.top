@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
+import { ChatResize, type ChatSize } from "./chat-resize";
 import { Icon } from "./icons";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
@@ -42,11 +43,13 @@ function useAboveKeyboard(): CSSProperties | undefined {
 // A sheet with a `field` shows it where the title would be, and keeps the
 // title as its name.
 export function Sheet({
+  chatResize,
   children,
   field,
   panel,
   title,
 }: {
+  chatResize?: { change: (size: ChatSize) => void; size: ChatSize };
   children: ReactNode;
   field?: ReactNode;
   panel: Panel;
@@ -58,6 +61,12 @@ export function Sheet({
   const aboveKeyboard = useAboveKeyboard();
   const hasField = field !== undefined;
   const isChat = panel === "chat";
+  const { height, width } = chatResize?.size ?? {};
+  const style = {
+    ...aboveKeyboard,
+    "--chat-height": height === undefined ? undefined : `${height}px`,
+    "--chat-width": width === undefined ? undefined : `${width}px`,
+  } as CSSProperties;
 
   // Focus moves in, and goes back to whatever opened the sheet.
   useEffect(() => {
@@ -90,11 +99,12 @@ export function Sheet({
       <section
         aria-label={hasField ? title : undefined}
         aria-labelledby={hasField ? undefined : heading}
-        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "sm:w-96" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
+        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
+        data-chat-size={isChat ? (height === undefined ? "natural" : "fixed") : undefined}
         id={PANEL_ID[panel]}
         ref={sheet}
         role="dialog"
-        style={aboveKeyboard}
+        style={style}
         tabIndex={-1}
       >
         <header
@@ -105,6 +115,7 @@ export function Sheet({
               {title}
             </h2>
           )}
+          {chatResize && <ChatResize sheet={sheet} {...chatResize} />}
           <button
             aria-label={copy.close}
             className="grid size-11 place-items-center rounded-full text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
