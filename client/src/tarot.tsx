@@ -126,7 +126,7 @@ function CardPreview({ reveal }: { reveal: TarotReveal }) {
     const lifetime = new AbortController();
     void import("./tarot-reveal-gpu")
       .then(({ playTarotReveal }) => playTarotReveal(surface, src, lifetime.signal))
-      .catch(() => undefined);
+      .catch(() => lifetime.abort());
     return () => lifetime.abort();
   }, [src]);
 
