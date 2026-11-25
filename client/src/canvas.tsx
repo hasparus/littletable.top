@@ -1,6 +1,6 @@
 import type { Editor } from "tldraw";
 
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import "./board.css";
 
@@ -8,12 +8,13 @@ import type { Exit } from "./board";
 import type { PassKeeper } from "./bootstrap";
 import type { Copy } from "./copy";
 import type { PublicLanding } from "./public-landing";
-import type { SharedView } from "./secret-backdrop";
 
 import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { BoardLoading } from "./board-loading";
+import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
 import { DiceSheet } from "./dice";
@@ -21,6 +22,7 @@ import { rollSentence } from "./dice-labels";
 import { makeHighlight } from "./highlight";
 import { Icon } from "./icons";
 import { ImageText } from "./image-text";
+import { LandingPlaceholder } from "./landing-placeholder";
 import { Notice } from "./notice";
 import { PeopleSheet } from "./people";
 import { useRolls } from "./rolls";
@@ -30,14 +32,12 @@ import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
 import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
 
-// The dice load after the canvas is usable (see warmUpDice).
 const DiceStage = lazy(async () => {
   const { DiceStage: Stage } = await import("./dice-stage");
   return { default: Stage };
 });
 
-// NOTE: someone who asked for reduced motion never throws 3D dice, so their
-// device does not fetch them either.
+// WARNING: Avoid fetching the 3D dice scene when reduced motion is enabled.
 const loadDice = () => {
   void import("./dice-stage");
   if (!globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -45,8 +45,7 @@ const loadDice = () => {
   }
 };
 
-// Trackpad pinches can arrive as modified wheel events or Safari gesture
-// events. Cancel browser zoom without intercepting the canvas handlers.
+// WARNING: Cancel browser pinch zoom for both modified wheel events and Safari gesture events without blocking the editor handlers.
 const cancelPinchZoom = (event: Event) => event.preventDefault();
 const cancelWheelZoom = (event: WheelEvent) => {
   if (event.ctrlKey || event.metaKey) cancelPinchZoom(event);
@@ -64,8 +63,7 @@ function keepBoardZoom(shell: HTMLDivElement | null) {
   };
 }
 
-// Fetches the dice code while the page is idle, so the first roll does not
-// wait for it. Safari has no requestIdleCallback.
+// WARNING: Keep the timer fallback for Safari versions without requestIdleCallback.
 function warmUpDice(): () => void {
   if ("requestIdleCallback" in globalThis) {
     const handle = requestIdleCallback(loadDice, { timeout: 5000 });
@@ -77,7 +75,9 @@ function warmUpDice(): () => void {
 
 export function BoardCanvas({
   active,
-  backdrop,
+  backdrop = false,
+  overlay = false,
+  waiting = false,
   copy,
   exit,
   keeper,
@@ -85,10 +85,11 @@ export function BoardCanvas({
   language,
   licenseKey,
   onEditor,
-  onLayerFull,
 }: {
   active: boolean;
-  backdrop?: SharedView;
+  backdrop?: boolean;
+  overlay?: boolean;
+  waiting?: boolean;
   copy: Copy;
   exit: Exit;
   keeper: PassKeeper;
@@ -96,7 +97,6 @@ export function BoardCanvas({
   language: string;
   licenseKey: string;
   onEditor?: (editor: Editor | null) => void;
-  onLayerFull?: () => void;
 }) {
   const { person } = keeper.bootstrap;
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
@@ -115,23 +115,37 @@ export function BoardCanvas({
   const usable = active && store.status === "synced-remote";
   const online = usable && store.connectionStatus === "online";
   useEffect(() => (usable ? warmUpDice() : undefined), [usable]);
-  // The cookie the board's pictures load with, before anyone opens a sheet
-  // that shows them.
+  // WARNING: Fetch the files cookie before any panel needs to display authenticated images.
   useEffect(() => {
     if (usable) files.keepReadable();
   }, [files, usable]);
-  // tldraw keeps trying a Worker it cannot reach behind a bare spinner; after
-  // a while the person is told why nothing shows.
-  const [stalled, setStalled] = useState(false);
   const connecting = active && store.status === "loading";
+  const [connection, setConnection] = useState({ connecting, stalled: false });
+  if (connection.connecting !== connecting) {
+    setConnection({ connecting, stalled: false });
+  }
   useEffect(() => {
-    setStalled(false);
     if (!connecting) return;
-    const timer = setTimeout(() => setStalled(true), STALLED_AFTER_MS);
+    const timer = setTimeout(() => setConnection({ connecting, stalled: true }), STALLED_AFTER_MS);
     return () => clearTimeout(timer);
   }, [connecting]);
 
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [editorLayer, setEditorLayer] = useState<HTMLDivElement | null>(null);
+  const thumbnail = useRef<ReturnType<typeof keepThumbnail> | null>(null);
+  useEffect(() => {
+    const grant = keeper.bootstrap.thumbnail;
+    if (editor === null || grant === undefined || keeper.secret || landing !== undefined) return;
+    const capture = keepThumbnail(editor, board, grant);
+    thumbnail.current = capture;
+    return () => {
+      capture.dispose();
+      thumbnail.current = null;
+    };
+  }, [board, editor, keeper, landing]);
+  useEffect(() => {
+    thumbnail.current?.setAvailable(online);
+  }, [board, editor, keeper, landing, online]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [readChat, setReadChat] = useState(0);
   const { refresh } = chat;
@@ -145,11 +159,12 @@ export function BoardCanvas({
   const [typing, setTyping] = useState(false);
   const [naming, setNaming] = useState<BoardUi["naming"]>(null);
   const [rollDraft, setRollDraft] = useState<BoardUi["rollDraft"]>({ expression: "", pool: [] });
-  const highlight = useMemo(makeHighlight, []);
+  const highlight = useMemo(() => makeHighlight(), []);
   const [search, setSearch] = useState<BoardSearch | null>(null);
   useEffect(() => {
     if (editor === null) return;
     const made = new BoardSearch(editor);
+    // oxlint-disable-next-line react/set-state-in-effect -- Publish the editor-bound index after its subscriptions are installed.
     setSearch(made);
     return () => made.dispose();
   }, [editor]);
@@ -158,6 +173,7 @@ export function BoardCanvas({
     if (editor === null || search === null || !usable) return;
     const made = new ImageText({ editor, engines: textEngines(), files, keeper, search });
     made.start();
+    // oxlint-disable-next-line react/set-state-in-effect -- Publish the OCR resource only after it starts listening to the active editor.
     setImageText(made);
     return () => made.dispose();
   }, [editor, files, keeper, search, usable]);
@@ -217,12 +233,8 @@ export function BoardCanvas({
     () => (active && editor !== null ? searchFromKeyboard(open) : undefined),
     [active, editor, open],
   );
-  // NOTE: a full board waits and asks again (useBoardStore); the way out
-  // stays in reach meanwhile.
   if (refusal === "full") return active ? <Notice action={exit} text={copy.boardFull} /> : null;
-  // NOTE: a reset link or a deleted board ends the board (keeper.end).
-  if (refusal !== null) return active ? <Notice busy text={copy.loading} /> : null;
-  // NOTE: tldraw logs the reason of any sync error itself.
+  if (refusal !== null) return active ? <BoardLoading text={copy.loading} /> : null;
   if (store.status === "error") {
     return active ? (
       <Notice
@@ -233,29 +245,32 @@ export function BoardCanvas({
   }
   const offline =
     (store.status === "synced-remote" && store.connectionStatus === "offline") ||
-    (connecting && stalled);
+    (connecting && connection.stalled);
 
   return (
     <BoardUiContext.Provider value={ui}>
       <div
         className="fixed inset-0 overflow-hidden"
         data-board-shell
-        hidden={!active}
+        hidden={!active && !backdrop}
+        style={keeper.secret && editor === null ? { visibility: "hidden" } : undefined}
         ref={keepBoardZoom}
       >
         <BoardEditors
           active={active}
-          backdrop={backdrop}
+          editorLayerRef={setEditorLayer}
+          overlay={overlay}
+          showUi={active || waiting}
           landing={landing}
           licenseKey={licenseKey}
           onEditor={(mounted) => {
             setEditor(mounted);
             onEditor?.(mounted);
           }}
-          onLayerFull={onLayerFull}
           secret={keeper.secret}
           store={store}
         />
+        {landing && editor === null && <LandingPlaceholder copy={landing.copy} />}
         {landing !== undefined && (
           <div className="absolute z-10 flex gap-1" data-public-board-controls>
             <button
@@ -276,6 +291,14 @@ export function BoardCanvas({
                 />
               )}
             </button>
+            <a
+              aria-label="Source code on GitHub"
+              data-public-board-github
+              href="https://github.com/hasparus/littletable.top"
+              title="Source code on GitHub"
+            >
+              <Icon name="GitHub" />
+            </a>
             <a data-public-board-account href={exit.href}>
               {exit.label}
             </a>
@@ -286,10 +309,11 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
-        {active && rolls.arrived !== null && (
+        {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage
               copy={copy}
+              editorLayer={editorLayer}
               onRoll={rolls.roll}
               onSettled={rolls.settle}
               roll={rolls.arrived}
@@ -306,13 +330,12 @@ export function BoardCanvas({
 
 const STALLED_AFTER_MS = 8000;
 
-// Ctrl+F (⌘F on a Mac) searches the board instead of the page, whose own
-// find cannot see into the canvas; pressed again, it goes back to the
-// field. Taken before tldraw sees it.
+// WARNING: Listen during capture so tldraw and the browser do not intercept board search first.
 function searchFromKeyboard(open: BoardUi["open"]): () => void {
   const find = (event: KeyboardEvent) => {
     const mod = /Mac|iPhone|iPad/u.test(navigator.platform) ? event.metaKey : event.ctrlKey;
     if (!mod || event.altKey || event.shiftKey || event.key.toLowerCase() !== "f") return;
+    if (document.querySelector("dialog:modal")) return;
     event.preventDefault();
     event.stopPropagation();
     const field = document.getElementById(SEARCH_FIELD_ID);

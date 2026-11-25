@@ -1,10 +1,5 @@
 // @ts-check
-// The tabletop as one piece of a Cloudflare stack: its Worker, the board
-// rooms' Durable Object, the boards' image bucket, and the client built for
-// this deployment. A host
-// writes `yield* Tabletop("Board", { mode: "hosted", ... })` inside its own
-// Alchemy.Stack. Plain JavaScript on purpose: Alchemy's loader transpiles a
-// stack's own TypeScript but leaves everything under node_modules to Node.
+// WARNING: Alchemy transpiles the stack's TypeScript but loads this package directly in Node.
 
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Output from "alchemy/Output";
@@ -17,17 +12,19 @@ import { fileURLToPath } from "node:url";
 
 import { buildClient } from "./build-client.js";
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 const packageFile = (/** @type {string} */ path) =>
   fileURLToPath(new URL(`../${path}`, import.meta.url));
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 const pem = (/** @type {string} */ value) => value.replaceAll(String.raw`\n`, "\n");
 
-// The committed dev pair's private half is public, so a Worker that trusts
-// its public half, or signs with it, accepts passes anyone can sign.
+// WARNING: Trusting the committed development key lets anyone mint passes for this deployment.
 const devPublicKey = createPublicKey(
   readFileSync(packageFile("dev/dev-signing-key.pem"), "utf8"),
 ).export({ format: "der", type: "spki" });
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {import("node:crypto").KeyObject} key @param {string} name */
 function refuseDevKey(key, name) {
   const publicKey = key.type === "public" ? key : createPublicKey(key);
@@ -36,19 +33,18 @@ function refuseDevKey(key, name) {
   }
 }
 
-// NOTE: Cloudflare's published API types predate Workers Issues, so `issues`
-// cannot sit in the Worker's props literal; Alchemy forwards the key anyway.
-// Every deploy uploads this whole block, and one without `issues` turns
-// Issues off.
+// WARNING: Moving `issues` into the typed props literal fails type checking. Omitting it disables Workers Issues.
 const observability = {
   enabled: true,
   issues: { enabled: true },
   logs: { enabled: true, invocationLogs: false },
 };
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {string | Redacted.Redacted<string>} value */
 const secret = (value) => (Redacted.isRedacted(value) ? value : Redacted.make(value));
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /** @param {string | Redacted.Redacted<string>} value */
 function signingSecret(value) {
   const key = secret(value);
@@ -56,6 +52,7 @@ function signingSecret(value) {
   return key;
 }
 
+// oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
 /**
  * @param {import("./index.js").TabletopProps} props
  * @returns {{ client: import("../client/settings.ts").ClientSettings, env: Record<string, unknown> }}
@@ -108,6 +105,7 @@ function configure(props) {
     client,
     env: {
       ...hosts,
+      BOARD_DATA_SCOPE: props.boardDataScope ?? "",
       DISPLAY_NAME: client.name,
       ...(feedback === undefined
         ? {}
@@ -121,6 +119,7 @@ function configure(props) {
       TABLETOP_MODE: "standalone",
       WORKOS_API_KEY: secret(props.workOs.apiKey),
       WORKOS_CLIENT_ID: props.workOs.clientId,
+      PUBLIC_BOARD_OWNER_ID: props.publicBoardOwnerId ?? "",
     },
   };
 }
@@ -135,11 +134,12 @@ export const Tabletop = (id, props) =>
     const sourceFile =
       prebuilt === undefined
         ? packageFile
-        : (/** @type {string} */ path) => resolve(prebuilt, path);
+        : // oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
+          (/** @type {string} */ path) => resolve(prebuilt, path);
+    // oxlint-disable-next-line landmines-style/no-comments -- TypeScript uses this JSDoc to check the JavaScript entry.
     /** @type {{ compatibility_date: string }} */
     const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);
-    // The client carries the deployment's brand, pass endpoint and tldraw key.
     const assets =
       prebuilt === undefined ? resolve(".alchemy", "tabletop", id) : sourceFile("client");
     if (prebuilt === undefined) {
@@ -147,18 +147,17 @@ export const Tabletop = (id, props) =>
         buildClient(packageFile("vite.config.ts"), assets, client, props.iconsDir),
       );
     }
-    // Standalone mode's accounts, sessions, boards and visits, and the
-    // per-address rate limiter.
     const standalone =
       props.mode === "standalone"
         ? {
-            DB: yield* Cloudflare.D1.Database(`${id}Accounts`, {
-              migrations: sourceFile("migrations"),
-            }),
+            DB:
+              props.database ??
+              (yield* Cloudflare.D1.Database(`${id}Accounts`, {
+                migrations: sourceFile("migrations"),
+              })),
             Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};
-    // Only explicitly disposable deployments may empty their image bucket.
     const files = yield* Cloudflare.R2.Bucket(
       `${id}Files`,
       props.forceDestroyFiles ? { forceDestroy: true } : undefined,
@@ -168,22 +167,18 @@ export const Tabletop = (id, props) =>
         directory: assets,
         htmlHandling: "none",
         notFoundHandling: "none",
-        // Every request meets the Worker first: aliases redirect, and pages
-        // and files leave with the tabletop's headers.
+        // WARNING: Serving assets first would bypass alias redirects and app security headers.
         runWorkerFirst: true,
       },
       compatibility: {
         date: testedRuntime.compatibility_date,
-        // NOTE: Alchemy switches Workers to the new module registry unless
-        // told otherwise, and the tests run the legacy one this date
-        // defaults to. nodejs_compat is on by default from 2026-08-04.
+        // WARNING: Alchemy otherwise selects a different module registry than the one Wrangler tests.
         flags:
           prebuilt === undefined
             ? ["legacy_module_registry"]
             : ["legacy_module_registry", "nodejs_compat"],
       },
-      // NOTE: the aliases are attached for DNS and TLS only; the Worker
-      // answers each with a 308 to the primary host (src/site.ts).
+      // WARNING: Domain aliases only attach DNS and TLS. The Worker must still redirect requests.
       domain:
         props.domain === undefined
           ? undefined

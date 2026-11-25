@@ -14,6 +14,8 @@ import {
   DEFAULT_SETTINGS,
   THEME_COLOR,
 } from "./client/settings";
+import { LANDING_COPY } from "./client/src/front-copy";
+import { boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
 // serves (wrangler.json "assets"). `bun run dev` serves it here with hot
@@ -21,6 +23,7 @@ import {
 // `bun run dev:worker` runs.
 
 const WORKER_DEV_PORT = 8789;
+const SHARE_IMAGES = ["open-graph.png", "open-graph-board.png"];
 // Hosted builds compile this client's source from an installed package.
 const clientSource = normalizePath(fileURLToPath(new URL("client/src/", import.meta.url)));
 const compilerFiles = new RegExp(
@@ -63,10 +66,12 @@ const escapeHtml = (text: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+const LANDING_PREVIEW = `<section data-landing-preview data-prerendered lang="en" aria-label="${escapeHtml(LANDING_COPY.publicBoard)}">${LANDING_COPY.publicStory
+  .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+  .join("")}<footer>${escapeHtml(LANDING_COPY.publicExpiry)}</footer></section>`;
+
 const BRAND_MODULE = "virtual:tabletop-brand.css";
 
-// Writes what depends on the settings: the page's title and language, the
-// brand colours, and the web app manifest.
 function tabletop(): Plugin {
   let settings = DEFAULT_SETTINGS;
   const manifest = () =>
@@ -109,11 +114,13 @@ function tabletop(): Plugin {
     generateBundle() {
       this.emitFile({ fileName: "manifest.webmanifest", source: manifest(), type: "asset" });
       if (settings.mode === "standalone") {
-        this.emitFile({
-          fileName: "open-graph.png",
-          source: readFileSync(new URL("client/open-graph.png", import.meta.url)),
-          type: "asset",
-        });
+        for (const fileName of SHARE_IMAGES) {
+          this.emitFile({
+            fileName,
+            source: readFileSync(new URL(`client/${fileName}`, import.meta.url)),
+            type: "asset",
+          });
+        }
       }
     },
     load(id) {
@@ -123,7 +130,54 @@ function tabletop(): Plugin {
     resolveId(id) {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
-    transformIndexHtml(html) {
+    transformIndexHtml(html, { bundle, originalUrl }) {
+      if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
+        html = html.replace("<!-- boards-shell -->", boardShell);
+      }
+      if (settings.mode === "standalone" && !bundle && originalUrl?.split("?")[0] === "/") {
+        html = html.replace("<!-- landing-preview -->", LANDING_PREVIEW);
+      }
+      if (settings.mode === "standalone" && bundle) {
+        html = html.replace(
+          "<!-- landing-preview -->",
+          `<template data-landing-prerender>${LANDING_PREVIEW}</template>`,
+        );
+        const board = Object.values(bundle).find(
+          (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",
+        );
+        if (board?.type !== "chunk") throw new Error("Missing board entry chunk");
+        const modules = new Set<string>();
+        const styles = new Set<string>();
+        function visit(file: string) {
+          const chunk = bundle?.[file];
+          if (chunk?.type !== "chunk" || modules.has(file)) return;
+          modules.add(file);
+          for (const css of chunk.viteMetadata?.importedCss ?? []) styles.add(css);
+          for (const imported of chunk.imports) visit(imported);
+        }
+        visit(board.fileName);
+        const handwriting = Object.values(bundle).find(
+          (file) =>
+            file.type === "asset" && file.names.includes("Shantell_Sans-Informal_Regular.woff2"),
+        );
+        if (!handwriting) throw new Error("Missing landing handwriting font");
+        const hints = [
+          `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${escapeHtml(handwriting.fileName)}">`,
+          ...Array.from(
+            modules,
+            (file) => `<link rel="modulepreload" crossorigin href="/${escapeHtml(file)}">`,
+          ),
+          ...Array.from(
+            styles,
+            (file) => `<link rel="preload" as="style" crossorigin href="/${escapeHtml(file)}">`,
+          ),
+        ];
+        // The Worker unwraps these inert hints only for the standalone public board.
+        html = html.replace(
+          "</head>",
+          `<template data-board-preloads>${hints.join("")}</template></head>`,
+        );
+      }
       return html
         .replaceAll("%TABLETOP_NAME%", escapeHtml(settings.name))
         .replaceAll("%TABLETOP_SHORT_NAME%", escapeHtml(settings.shortName))
@@ -180,7 +234,6 @@ const SERVED_AS: Record<string, string> = {
 function textEngineFiles(): Plugin {
   let serving = false;
   const served = new Map<string, string>();
-  // Where each file is published, with its bytes.
   const layout = () => {
     const files = Object.entries(ENGINE_FILES).map(([key, { from, name }]) => {
       const source = readFileSync(from);
@@ -234,16 +287,14 @@ function textEngineFiles(): Plugin {
 
 export default defineConfig({
   build: {
-    // NOTE: tldraw's fonts and translations stay files: the tabletop's
-    // Content-Security-Policy allows no data: fonts and no host but its own.
+    // WARNING: Keep tldraw fonts as files. The tabletop’s CSP forbids data: fonts and cross-origin fonts.
     assetsInlineLimit: (file) => (file.includes("@tldraw/assets") ? false : undefined),
     emptyOutDir: true,
     outDir: fileURLToPath(new URL("dist", import.meta.url)),
     sourcemap: true,
   },
   define: { __TABLETOP__: JSON.stringify(settingsFromEnv()) },
-  // NOTE: the dependency pre-bundler cannot follow @tldraw/assets' `?url`
-  // imports; Vite serves the package as it is instead.
+  // WARNING: The Vite dependency pre-bundler cannot follow @tldraw/assets’ ?url imports. Serve that package as-is.
   optimizeDeps: { exclude: ["@tldraw/assets"] },
   plugins: [
     react(),
@@ -259,8 +310,6 @@ export default defineConfig({
     textEngineFiles(),
   ],
   publicDir: fileURLToPath(new URL("client/public", import.meta.url)),
-  // NOTE: the text worker is a module worker (client/src/text-worker.ts),
-  // built with the plugin that hands it the engines' files.
   worker: { format: "es", plugins: () => [textEngineFiles()] },
   root: fileURLToPath(new URL("client", import.meta.url)),
   server: {

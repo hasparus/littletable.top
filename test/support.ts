@@ -2,8 +2,7 @@ import { createTLSchema } from "@tldraw/tlschema";
 import { env, exports } from "cloudflare:workers";
 import { importPKCS8, SignJWT } from "jose";
 
-// NOTE: sync-core keeps its protocol version internal. A room answers a
-// wrong one with an incompatibility error, which fails every seat() here.
+// WARNING: Keep this version in sync with sync-core’s internal protocol. A mismatch fails every seat() with an incompatibility error.
 const TLSYNC_PROTOCOL_VERSION = 8;
 
 const testEnv = env as unknown as { TEST_SIGNING_KEY: string };

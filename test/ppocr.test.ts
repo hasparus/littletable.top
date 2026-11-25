@@ -14,14 +14,6 @@ import {
   sortReading,
 } from "../client/src/ppocr";
 
-// How the pipeline's geometry goes wrong, each of which loses or misplaces
-// a word: the hull keeps inner or repeated points; the rectangle around a
-// tilted label comes out upright (and the crop reads two labels at once);
-// corners come in an order that reads the label backwards; the detector's
-// map turns specks into words or merges what is apart; a tall label is
-// read sideways; the crop is not sampled along the label; CTC repeats a
-// letter, keeps blanks or puts a word where its letters were not.
-
 const rotate = ([x, y]: Point, degrees: number, [cx, cy]: Point): Point => {
   const r = (degrees * Math.PI) / 180;
   const [dx, dy] = [x - cx, y - cy];

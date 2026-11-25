@@ -18,19 +18,11 @@ import {
   openSheet,
   PHONE,
   reviewShot,
+  sheet,
 } from "./helpers";
-
-// The 3D throw on a real board, against e2e/fake-host.ts. What can go wrong
-// and is checked here: two screens show different placements; the overlay
-// swallows taps meant for the board; the dice outlive their result toast; a logged
-// roll animates on load; reduced motion or a missing WebGL2 leaves someone
-// without their result; a lost context or a resize leaves a blank tray; the
-// page's Content-Security-Policy is broken by the dice code.
-// The artifacts are the attached tray screenshots.
 
 const tray = (page: Page): Locator => page.locator("[data-dice-tier]");
 const diceCanvas = (page: Page): Locator => tray(page).locator("canvas");
-// The result toast; it joins the accessibility tree once the dice settle.
 const toast = (page: Page): Locator => page.getByRole("button", { exact: true, name: "Close" });
 const dieLabels = (container: Locator) =>
   container
@@ -39,8 +31,7 @@ const dieLabels = (container: Locator) =>
 const isRollRequest = (request: Request) =>
   request.method() === "POST" && new URL(request.url()).pathname.endsWith("/roll");
 
-// NOTE: without animations, so nothing passing over the tray, such as a
-// button's fade, can make two shots of the same dice differ.
+// WARNING: Disable animations in tray screenshots so a fading control cannot break the pixel comparison.
 const shoot = async (target: Locator): Promise<Buffer> =>
   target.screenshot({ animations: "disabled" });
 
@@ -82,7 +73,7 @@ async function fillPool(page: Page, pool: number[]): Promise<Locator> {
 
 async function roll(page: Page, pool: number[]): Promise<void> {
   const dice = await fillPool(page, pool);
-  await dice.getByRole("button", { name: /^Roll/u }).click();
+  await dice.getByRole("button", { name: /^Roll \d*d\d/u }).click();
   await expect(dice).toBeHidden();
 }
 
@@ -102,7 +93,7 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
     await expect(diceCanvas(screen)).toBeVisible();
     await expect(toast(screen)).toBeVisible();
     await expect(toast(screen)).toContainText("Ada");
-    // Only the dice: the board under them shows each person the other's cursor.
+    // WARNING: Hide the board during pixel comparisons so the other browser’s cursor cannot affect them.
     await setVisibility(screen.locator(".tl-container"), "hidden");
     const shot = await shoot(tray(screen));
     await testInfo.attach(`tray-${name}.png`, { body: shot, contentType: "image/png" });
@@ -116,7 +107,6 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   }
   expect(shots[0]!.equals(shots[1]!), "both screens show the same tray").toBe(true);
 
-  // A tap away from the dice reaches the board under the tray.
   const reachesBoard = await tray(page).evaluate((element) => {
     const box = element.getBoundingClientRect();
     return [0.25, 0.5, 0.75].some((x) =>
@@ -132,13 +122,13 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   await expect(tray(page)).toHaveCount(0);
   await expect(toast(page)).toHaveCount(0);
 
-  // The log does not throw again on load.
   await page.reload();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   const dice = await openSheet(page, "Dice");
-  await expect(dice.locator("details")).not.toHaveAttribute("open", "");
+  await expect(sheet(page, "Roll log")).toBeHidden();
   const log = await openRollLog(dice);
   await expect(log.getByRole("listitem")).toHaveCount(1);
+  await closeSheet(page, "Roll log");
   await closeSheet(page, "Dice");
   await expect(tray(page)).toHaveCount(0);
   await expect(toast(page)).toHaveCount(0);
@@ -207,6 +197,7 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
   );
   const emptyLog = await openRollLog(dice);
   await expect(emptyLog.getByRole("listitem")).toHaveCount(0);
+  await closeSheet(page, "Roll log");
 
   await notation.fill("2d20kl1 − 2");
   await closeSheet(page, "Dice");
@@ -255,10 +246,59 @@ test("two phones show the same kept dice, modifier and total in the tray, toast 
     await expect(entry.getByText(`Total: ${total}`, { exact: false })).toBeAttached();
     expect(await dieLabels(entry)).toEqual(expected);
     if (screen === page) await reviewShot(screen, "dice-notation-result-phone");
+    await closeSheet(screen, "Roll log");
     await closeSheet(screen, "Dice");
   }
   expect(shots[0]!.equals(shots[1]!)).toBe(true);
   await guest.context().close();
+});
+
+test("roll history scrolls in a modal and Escape returns focus to the dice panel", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 520, width: 360 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/rooms/*/rolls", (route) =>
+    route.fulfill({
+      json: Array.from({ length: 24 }, (_, index) => ({
+        at: Date.UTC(2026, 10, 25, 14, 0, index),
+        dice: [{ sides: 6, value: (index % 6) + 1 }],
+        id: index + 1,
+        name: `Roller ${index + 1}`,
+        seed: null,
+        sub: `roller-${index + 1}`,
+      })),
+    }),
+  );
+  await startBoard(page);
+  const dice = await openSheet(page, "Dice");
+  const trigger = dice.getByRole("button", { exact: true, name: "Roll log" });
+  const log = await openRollLog(dice);
+  const close = log.getByRole("button", { name: "Close" });
+  const entries = log.getByRole("listitem");
+  await expect(close).toBeFocused();
+  await expect(entries.first()).toContainText("Roller 24");
+  await expect(entries.last()).toContainText("Roller 1");
+  await expect(entries.last()).not.toBeInViewport();
+  await close.press("End");
+  await expect(entries.last()).toBeInViewport();
+  await expect(close).toBeInViewport();
+  await reviewShot(page, "roll-log-scroll-phone");
+
+  await close.press("Tab");
+  await page.keyboard.press("Escape");
+  await expect(log).toBeHidden();
+  await expect(dice).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await openRollLog(dice);
+  await expect(entries.first()).toBeInViewport();
+  await reviewShot(page, "roll-log-phone");
+
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(log).toBeVisible();
+  await page.mouse.click(1, 1);
+  await expect(log).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 type Box = { height: number; width: number; x: number; y: number };
@@ -268,15 +308,11 @@ const overlap = (a: Box, b: Box) =>
 
 const boxOf = async (target: Locator): Promise<Box> => (await target.boundingBox())!;
 
-// tldraw's top-left controls: the main menu, the page menu, and on a wide
-// screen undo, redo and the rest.
 const menuZone = (page: Page): Locator => page.locator(".tlui-menu-zone");
 
-// The toast shares the menu button's row without moving or covering it.
 async function expectInMenuRow(page: Page): Promise<Box> {
   const button = await boxOf(page.getByTestId("main-menu.button"));
   const zone = await boxOf(menuZone(page));
-  // Once its entrance is over.
   await expect
     .poll(async () => {
       const box = await boxOf(toast(page));
@@ -314,12 +350,10 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
     .getByRole("img")
     .evaluateAll((dice) => new Set(dice.map((die) => die.getBoundingClientRect().top)).size);
   expect(rows).toBe(1);
-  // The total stays in view at the end of a row of dice that scrolls.
   const sum = toast(page).getByText(/^\d+$/u).last();
   const end = await boxOf(sum);
   expect(end.x + end.width).toBeLessThanOrEqual(box.x + box.width);
 
-  // The tray starts below the toast and the menus.
   const tray = await boxOf(page.locator("[data-dice-tier]"));
   expect(tray.y).toBeGreaterThanOrEqual(box.y + box.height);
   const zone = await boxOf(menuZone(page));
@@ -330,13 +364,48 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
   expect([await boxOf(menu), await boxOf(pageMenu)]).toEqual(atRest);
 });
 
+test("the hamburger menu paints above the visible dice tray", async ({ page }) => {
+  await page.setViewportSize({ height: 740, width: 390 });
+  await startBoard(page);
+  await roll(page, [6, 20]);
+  await expect(toast(page)).toBeVisible();
+  const canvas = diceCanvas(page);
+  await expect(canvas).toBeVisible();
+  const dice = await shoot(tray(page));
+  await setVisibility(canvas, "hidden");
+  expect(await shows(tray(page), dice), "dice are painted over the board").toBe(false);
+  await setVisibility(canvas, "");
+
+  await page.getByTestId("main-menu.button").click();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await reviewShot(page, "dice-hamburger-menu");
+  const menuBox = await boxOf(menu);
+  const canvasBox = await boxOf(canvas);
+  const top = Math.max(menuBox.y, canvasBox.y) + 10;
+  const bottom = Math.min(menuBox.y + menuBox.height, canvasBox.y + canvasBox.height) - 10;
+  expect(bottom).toBeGreaterThan(top);
+  const pixels = () =>
+    page.screenshot({
+      animations: "disabled",
+      clip: { height: bottom - top, width: menuBox.width - 20, x: menuBox.x + 10, y: top },
+    });
+  await canvas.evaluate((element) => {
+    element.style.backgroundColor = "magenta";
+  });
+  const aboveDice = await pixels();
+  await setVisibility(canvas, "hidden");
+  const withoutDice = await pixels();
+  expect(withoutDice.equals(aboveDice), "the overlapping canvas cannot cover the menu").toBe(true);
+});
+
 test("a new roll takes the tray over from the one before", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const guest = await guestOn(browser, boardUrl);
   const ready = await fillPool(guest, [6]);
 
   await roll(page, [20, 20, 20]);
-  await ready.getByRole("button", { name: /^Roll/u }).click();
+  await ready.getByRole("button", { exact: true, name: "Roll d6" }).click();
 
   await expect(toast(page)).toContainText("Bea");
   await expect(diceCanvas(page)).toHaveCount(1);
@@ -352,7 +421,7 @@ test("with reduced motion the toast shows at once and no 3D code is fetched", as
   const guest = await guestOn(browser, boardUrl, { reducedMotion: "reduce" });
   const fetched: string[] = [];
   guest.on("request", (request) => fetched.push(request.url()));
-  // Past the idle warm-up, which is when the 3D code would have been fetched.
+  // WARNING: Wait past the idle warm-up so an unintended dice download would be observed.
   await guest.waitForTimeout(6000);
 
   await roll(page, [6, 6]);
@@ -445,8 +514,7 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
     await new Promise((resolve) => {
       canvas.addEventListener("webglcontextlost", resolve, { once: true });
     });
-    // NOTE: the browser allows a restore only once the lost event has been
-    // through every listener, so not from inside its dispatch.
+    // WARNING: WebGL permits restoring a context only after the loss event has reached every listener. Restore after dispatch returns.
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
@@ -472,9 +540,6 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
   await expectNoCspViolations(page);
 });
 
-// tldraw's page menu shares the top row with the main menu, and its name
-// sets how wide that corner is. On desktop the toast centres on the screen
-// while fitting between that corner and tldraw's style panel.
 test("the toast centres on desktop and fits beside the page menu on phones", async ({
   browser,
   page,
@@ -487,7 +552,6 @@ test("the toast centres on desktop and fits beside the page menu on phones", asy
     ["desktop", devices["Desktop Chrome"]],
   ] as const;
   for (const [name, device] of screens) {
-    // NOTE: reduced motion puts the toast up at once, so the shots are still.
     const screen = await guestOn(browser, boardUrl, {
       ...device,
       deviceScaleFactor: 2,
@@ -516,9 +580,6 @@ test("the toast centres on desktop and fits beside the page menu on phones", asy
   }
 });
 
-// The dice and the total come before the roller's name: the name shows only
-// when every die fits beside it, never squeezing the seventh die into the
-// row's fade; with more dice than fit, the row scrolls and the total stays.
 test("the toast gives its row to the dice before the roller's name", async ({ browser, page }) => {
   const boardUrl = await startBoard(page);
   const pools = {

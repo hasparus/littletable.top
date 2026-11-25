@@ -1,5 +1,4 @@
-// The text engines' files as vite.config.ts publishes them: an address on
-// this origin each, and the folder of Tesseract's language data.
+/** Same-origin URLs for the OCR engines and language data emitted by Vite. */
 declare module "virtual:text-engine-files" {
   const files: {
     detector: string;

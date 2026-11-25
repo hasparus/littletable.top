@@ -12,28 +12,68 @@ import {
   rollTwoD6,
 } from "./helpers";
 
-// Hosted mode against e2e/fake-host.ts (HOST): the host owns accounts and
-// boards and signs passes; the tabletop (HOSTED) trusts it. The artifact is
-// the run's trace (test-results/) when it fails, and the assertions below.
-
 const ON_TABLETOP = boardAt(HOSTED);
+
+test("the board uses one synchronized spinner during bootstrap and connection", async ({
+  page,
+}) => {
+  const bootstrap = Promise.withResolvers<null>();
+  const connection = Promise.withResolvers<null>();
+  await page.route("**/b/*/bootstrap/", async (route) => {
+    await bootstrap.promise;
+    await route.continue();
+  });
+  await page.routeWebSocket(/\/connect/u, (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage(async (message) => {
+      await connection.promise;
+      socket.send(message);
+    });
+  });
+
+  try {
+    await page.goto(`${HOST}/sign-in?name=Spinner`);
+    await page.getByRole("button", { name: "New board" }).click();
+    await expect(page).toHaveURL(ON_TABLETOP);
+
+    const loading = page.getByRole("status").filter({ hasText: "Opening the board…" });
+    const spinner = page.locator(".tl-spinner:visible");
+    await expect(loading).toHaveCount(1);
+    await expect(loading.getByText("Opening the board…")).toHaveCSS("clip-path", "inset(50%)");
+    await expect(spinner).toHaveCount(1);
+    const box = await spinner.boundingBox();
+    const rotationStart = () => spinner.evaluate((node) => node.getAnimations()[0]?.startTime);
+    expect(await rotationStart()).toBe(0);
+
+    bootstrap.resolve(null);
+    await expect(page.locator("[data-board-editor]").locator(spinner)).toBeVisible();
+    await expect(spinner).toHaveCount(1);
+    expect(await rotationStart()).toBe(0);
+    const syncedBox = await spinner.boundingBox();
+    expect(syncedBox!.x + syncedBox!.width / 2).toBeCloseTo(box!.x + box!.width / 2);
+    expect(syncedBox!.y + syncedBox!.height / 2).toBeCloseTo(box!.y + box!.height / 2);
+
+    connection.resolve(null);
+    await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+    await expect(loading).toHaveCount(0);
+  } finally {
+    bootstrap.resolve(null);
+    connection.resolve(null);
+  }
+});
 
 test("a member and a guest share a board the host signed them onto", async ({ browser, page }) => {
   await collectCspViolations(page);
 
-  // The member signs in on the host and starts a board there.
   await page.goto(`${HOST}/sign-in?name=Ada`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_TABLETOP);
   const boardUrl = page.url();
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   await expectOwnPolicy(page, `'self' ${socketOf(HOSTED)} ${HOST}`);
-  // The fake host numbers boards across the run; this one is whichever
-  // number it was given.
   await expect(page).toHaveTitle(/^Board \d+$/u);
   const title = await page.title();
 
-  // A guest on a phone opens the link and names themself once.
   const guest = await phone(browser, boardUrl);
   await joinAs(guest, "Bea");
 
@@ -41,7 +81,6 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(onBoard(guest, "Hello table")).toBeVisible();
   await rollTwoD6(guest, page, "Bea");
 
-  // The host resets the link: the guest, who has only the old one, is out.
   const host = await page.context().newPage();
   await host.goto(`${HOST}/boards/`);
   await host.getByRole("button", { exact: true, name: `Reset link of ${title}` }).click();
@@ -56,7 +95,6 @@ test("a member and a guest share a board the host signed them onto", async ({ br
   await expect(page).not.toHaveURL(boardUrl);
   await expect(onBoard(page, "Hello table")).toBeVisible();
 
-  // The host deletes the board: the member is put out and the room is wiped.
   await host.getByRole("button", { exact: true, name: `Delete ${title}` }).click();
   await expect(page.getByText("This board no longer exists.")).toBeVisible();
 

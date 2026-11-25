@@ -7,8 +7,7 @@ name: Deploy
 # `vars` and `secrets` come from the GitHub Environment the stage maps to:
 # `production` for `prod`, `staging` for `staging` and every preview stage.
 # Until that Environment has its required inputs, the deploy job ends green
-# with a notice and deploys nothing. See docs/deployment.md
-# for the required inputs.
+# with a notice listing the missing inputs.
 
 on:
   push:
@@ -50,6 +49,7 @@ jobs:
       STAGE: ${{ inputs.stage || 'prod' }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
+      PUBLIC_BOARD_OWNER_ID: ${{ vars.PUBLIC_BOARD_OWNER_ID }}
       TABLETOP_DOMAIN: littletable.top
       # Public by design: tldraw ties the key to the domain.
       TLDRAW_LICENSE_KEY: ${{ vars.TLDRAW_LICENSE_KEY }}
@@ -79,7 +79,7 @@ jobs:
           if [ "${#missing[@]}" -gt 0 ]; then
             list=$(printf '%s, ' "${missing[@]}")
             echo "::notice title=Deploy skipped::The $ENVIRONMENT Environment lacks ${list%, };" \
-              "nothing was deployed. See docs/deployment.md."
+              "nothing was deployed."
             {
               echo "### Deploy of \`$STAGE\` skipped"
               echo

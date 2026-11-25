@@ -3,12 +3,6 @@ import { describe, expect, it } from "vitest";
 import { imageDimensions } from "../src/image-size";
 import { IMAGES_37_BY_21 } from "./image-samples";
 
-// How reading an image's size goes wrong: a format's header misread (the
-// wrong field, the wrong byte order), a JPEG frame missed behind metadata
-// or a progressive frame's other marker, a WebP's other two headers, an
-// AVIF's thumbnail taken for the image, a cut-short or hostile header
-// that reads past the bytes or loops, and a type with no size (SVG).
-
 describe("an image's size, from the start of its bytes", () => {
   it.each(Object.keys(IMAGES_37_BY_21).filter((name) => name !== "size-exif.jpg"))(
     "reads %s",

@@ -1,10 +1,3 @@
-// WorkOS AuthKit as the sign-in provider, over its REST API with fetch: the
-// hosted AuthKit page offers whichever methods the WorkOS dashboard enables
-// (passkeys, Google, Discord, Magic Auth e-mail codes), and the Worker only
-// sees the authorization code come back.
-// https://workos.com/docs/reference/authkit/authentication/get-authorization-url
-// https://workos.com/docs/reference/authkit/authentication/code
-
 import { decodeJwt } from "jose";
 
 import { type Exchange, type Identity, ProviderError, type SignInProvider } from "./provider";
@@ -28,9 +21,7 @@ function displayName(user: WorkOsUser): string {
   return full === "" ? user.email.split("@")[0]! : full;
 }
 
-// The access token's `sid` names the AuthKit session, which sign-out ends.
-// NOTE: the token came straight from WorkOS over TLS in answer to our
-// secret, so it is read, not verified against WorkOS's keys.
+// WARNING: Only decode AuthKit tokens received directly from the authenticated WorkOS API call.
 function sessionOf(accessToken: unknown): string | null {
   if (typeof accessToken !== "string") return null;
   try {
@@ -41,6 +32,10 @@ function sessionOf(accessToken: unknown): string | null {
   }
 }
 
+/**
+ * Runs sign-in through WorkOS AuthKit's authorization code flow.
+ * @see https://workos.com/docs/reference/authkit/authentication/code
+ */
 export function workOs(settings: WorkOsSettings): SignInProvider {
   const api = (path: string) => new URL(path, settings.apiBase);
   return {

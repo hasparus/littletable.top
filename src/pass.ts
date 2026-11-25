@@ -2,26 +2,32 @@ import { importSPKI, jwtVerify } from "jose";
 
 import { MAX_NAME_LENGTH } from "./limits";
 
-// Who may vouch for a pass: one key, one issuer, one audience. Hosted mode
-// trusts the host's public key; standalone mode the Worker's own.
+/**
+ * Who may vouch for a pass: one key, one issuer, one audience. Hosted mode
+ * trusts the host's public key; standalone mode the Worker's own.
+ */
 export type Verifier = {
   audience: string;
   issuer: string;
   key: CryptoKey;
 };
 
-// What the issuer vouches for: this person may be on this board while the
-// board's link is at this version.
+/**
+ * What the issuer vouches for: this person may be on this board while the
+ * board's link is at this version.
+ */
 export type Pass = {
-  // Hosted mode: the person's picture, a URL on the host's origin.
-  // Standalone mode: the SHA-256 of the copy the Worker made at sign-in.
-  // Null for a guest or anyone without one.
+  /**
+   * Hosted mode: the person's picture, a URL on the host's origin.
+   * Standalone mode: the SHA-256 of the copy the Worker made at sign-in.
+   * Null for a guest or anyone without one.
+   */
   avatar: string | null;
   board: string;
   link: number;
   name: string;
   owner: boolean;
-  // Only a standalone secret-layer pass is bound to an account session.
+  /** Only a standalone secret-layer pass is bound to an account session. */
   sessionHash?: string;
   sub: string;
 };
@@ -59,7 +65,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
   ) {
     throw new Error("Invalid pass");
   }
-  // NOTE: a malformed picture costs the person their picture, not the board.
+  // WARNING: Invalid optional avatars must not cause an otherwise valid pass to be rejected.
   const picture =
     typeof avatar === "string" && avatar.length > 0 && avatar.length <= MAX_AVATAR_CLAIM
       ? avatar

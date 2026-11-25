@@ -34,7 +34,6 @@ export default defineConfig({
           ),
           TEST_SIGNING_KEY: devSigningKey,
         },
-        // Every request the Worker sends out meets a fake WorkOS.
         outboundService: (request) => fakeWorkOs(request as unknown as Request) as never,
       },
       wrangler: { configPath: "./wrangler.json" },

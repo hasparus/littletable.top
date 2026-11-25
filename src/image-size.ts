@@ -1,15 +1,7 @@
-// How large an image is, read from the start of its bytes: PNG, JPEG,
-// WebP, GIF and AVIF. The Worker checks a text reading's stated size
-// against it (src/text-store.ts), so it never decodes an image. A JPEG's
-// size is as it shows: its EXIF orientation applied, as browsers apply it.
-// NOTE: PNG and WebP may carry EXIF too, and AVIF a rotation (irot, imir)
-// and a crop (clap); those are not read, so for them `exact` is false.
-
 export type Dimensions = { height: number; width: number };
 export type Shown = Dimensions & { exact: boolean };
 
-// The most of an image's start the reader needs: a JPEG's frame header can
-// sit behind tens of kilobytes of metadata and a thumbnail.
+/** Covers JPEG frame headers that follow large metadata blocks or embedded thumbnails. */
 export const SIZE_PREFIX_BYTES = 256 * 1024;
 
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
@@ -28,11 +20,6 @@ function gif(view: DataView, bytes: Uint8Array): Dimensions | null {
   return sized(view.getUint16(6, true), view.getUint16(8, true));
 }
 
-// JPEG markers, by the byte after FF: start of image (D8), the frames
-// (C0 to CF but for C4, Huffman tables, C8, reserved, and CC, arithmetic
-// coding conditions), restarts (D0 to D7) and TEM (01), which carry no
-// length, and start of scan (DA) and end of image (D9), past which no
-// frame header comes.
 const MARK = 255;
 const START = 216;
 const [SOF0, SOF15, DHT, JPG, DAC] = [192, 207, 196, 200, 204];
@@ -43,11 +30,8 @@ const isFrame = (marker: number) =>
 
 const APP1 = 225;
 const ORIENTATION_TAG = 274;
-// EXIF orientations 5 to 8 turn the image a quarter.
 const TURNS_QUARTER = 5;
 
-// The orientation an APP1 segment's EXIF block names, from its first IFD;
-// 1, upright, when it names none.
 function exifOrientation(view: DataView, bytes: Uint8Array, start: number, end: number): number {
   if (ascii(bytes, start, start + 6) !== "Exif\u0000\u0000") return 1;
   const tiff = start + 6;
@@ -71,7 +55,6 @@ function jpeg(view: DataView, bytes: Uint8Array): Dimensions | null {
   while (at + 4 <= bytes.length) {
     if (bytes[at] !== MARK) return null;
     const marker = bytes[at + 1]!;
-    // Fill bytes, and markers that carry no length.
     if (marker === MARK) {
       at += 1;
       continue;
@@ -98,10 +81,8 @@ function jpeg(view: DataView, bytes: Uint8Array): Dimensions | null {
   return null;
 }
 
-// A lossless frame's signature byte, and a lossy one's start code.
 const VP8L_SIGNATURE = 47;
 const VP8_START = [157, 1, 42];
-// Sizes of 14 bits (WebP), and property indexes of 7 or 15 (AVIF).
 const LOW_14 = 2 ** 14 - 1;
 const LOW_7 = 2 ** 7 - 1;
 const LOW_15 = 2 ** 15 - 1;
@@ -117,7 +98,6 @@ function webp(view: DataView, bytes: Uint8Array): Dimensions | null {
     const bits = view.getUint32(21, true);
     return sized((bits & LOW_14) + 1, ((bits >>> 14) & LOW_14) + 1);
   }
-  // A lossy frame: a start code, then 14-bit sizes and 2-bit scales.
   if (
     chunk === "VP8 " &&
     bytes.length >= 30 &&
@@ -130,7 +110,6 @@ function webp(view: DataView, bytes: Uint8Array): Dimensions | null {
 
 type Box = { end: number; start: number; type: string };
 
-// The boxes of an ISO media file between `from` and `to`.
 function boxes(view: DataView, bytes: Uint8Array, from: number, to: number): Box[] {
   const found: Box[] = [];
   let at = from;
@@ -151,13 +130,10 @@ function boxes(view: DataView, bytes: Uint8Array, from: number, to: number): Box
 
 const child = (list: Box[], type: string) => list.find((box) => box.type === type);
 
-// An AVIF's size is its primary item's "ispe" property: meta names the
-// primary item (pitm), lists the properties (iprp/ipco) and says which
-// belong to which item (iprp/ipma).
 function avif(view: DataView, bytes: Uint8Array): Dimensions | null {
   const meta = child(boxes(view, bytes, 0, bytes.length), "meta");
   if (meta === undefined) return null;
-  // NOTE: meta is a full box: four bytes of version and flags first.
+  // WARNING: Skip the four version and flag bytes before reading child boxes in meta.
   const inMeta = boxes(view, bytes, meta.start + 4, meta.end);
   const pitm = child(inMeta, "pitm");
   const iprp = child(inMeta, "iprp");
@@ -191,12 +167,14 @@ function avif(view: DataView, bytes: Uint8Array): Dimensions | null {
   return null;
 }
 
-// The size the image's header states, or null for anything else (an SVG
-// has none) or a header cut short. Orientation is not applied: a JPEG's
-// EXIF orientation or an AVIF's rotation can show it the other way up.
 const exactly = (size: Dimensions | null, exact: boolean): Shown | null =>
   size === null ? null : { ...size, exact };
 
+/**
+ * Reads PNG, JPEG, WebP, GIF or AVIF dimensions without decoding pixel data.
+ * JPEG orientation is applied. Formats with unparsed orientation or crops
+ * can return `exact: false`. Returns null if no supported header is present.
+ */
 export function imageDimensions(bytes: Uint8Array): Shown | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   try {
@@ -210,7 +188,6 @@ export function imageDimensions(bytes: Uint8Array): Shown | null {
     }
     if (ascii(bytes, 4, 8) === "ftyp") return exactly(avif(view, bytes), false);
   } catch (error) {
-    // A length that runs past the bytes: a damaged or cut-short header.
     if (error instanceof RangeError) return null;
     throw error;
   }

@@ -3,19 +3,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 import type { TextResult } from "../../src/text-result";
 
-import { HOST, HOSTED } from "../ports";
+import { HOST } from "../ports";
 import { score, type Truth } from "../text-score";
 import { collectCspViolations, expectNoCspViolations } from "./helpers";
 import { fixture, sha256, uploadImage } from "./tldr";
-
-// How well the real engines read the committed fixtures, in a real
-// browser, through the board itself: one person uploads all six, their
-// browser reads them, and the stored readings are scored against the
-// ground truth. Floors sit a little below what both engines measured
-// (docs/internals.md, "Text in images"), so a regression in the pipeline, a model
-// or a parameter fails here. Slow (a cold start of both engines and six
-// images): `bun run e2e -- --grep @accuracy` runs it alone. The
-// artifact is accuracy.json, every score.
 
 type Floor = { diacritics: number; names: number; tesseractLocated: number };
 
@@ -50,19 +41,23 @@ test(
     await page.goto(`${HOST}/sign-in?name=Ola`);
     await page.getByRole("button", { name: "New board" }).click();
     await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
-    for (const image of Object.values(IMAGES)) await uploadImage(page, `text/${image}`);
-
-    // The board's id, from where its images load.
-    const src = await page
-      .getByTestId("canvas")
-      .locator("img.tl-image")
-      .first()
-      .evaluate((image) => new URL((image as HTMLImageElement).src).pathname);
-    const files = src.slice(0, src.lastIndexOf("/"));
+    // WARNING: The canvas may still show a local blob after upload. Read back from the room endpoint that accepted the image.
+    const [upload] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          /^\/rooms\/[^/]+\/files$/u.test(new URL(response.url()).pathname) &&
+          response.ok(),
+      ),
+      (async () => {
+        for (const image of Object.values(IMAGES)) await uploadImage(page, `text/${image}`);
+      })(),
+    ]);
+    const files = upload.url();
     await expect
       .poll(
         async () => {
-          const response = await page.request.get(`${HOSTED}${files}/text`);
+          const response = await page.request.get(`${files}/text`);
           const listing = (await response.json()) as { stored: unknown[] };
           return listing.stored.length;
         },
@@ -75,7 +70,7 @@ test(
       const hash = sha256(readFileSync(fixture(`text/${image}`)));
       const readings = await Promise.all(
         ["tesseract-6.0.1", "ppocr-v6tiny.1"].map(async (engine) => {
-          const response = await page.request.get(`${HOSTED}${files}/${hash}/text/${engine}`);
+          const response = await page.request.get(`${files}/${hash}/text/${engine}`);
           return (await response.json()) as TextResult;
         }),
       );

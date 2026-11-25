@@ -3,13 +3,7 @@ import { devices, expect, type Locator, type Page, test } from "@playwright/test
 import { HOST } from "../ports";
 import { closeSheet, collectCspViolations, openSheet, PHONE, reviewShot } from "./helpers";
 
-// tldraw's licence asks that its "made with tldraw" mark stays visible,
-// unobscured and open to interaction. It sits in the bottom right corner
-// of the canvas: a small tab on the edge of a phone, the full mark on a
-// wider screen. Nothing of the board's own may cover it: not the bottom
-// bar's controls, a sheet, or the dice toast.
-// NOTE: without a licence key on localhost tldraw draws the same element in
-// the same place, with "Get a license for production" on wide screens.
+// WARNING: The tldraw license requires its watermark to stay visible and interactive. The localhost prompt occupies the same target.
 
 const watermark = (page: Page): Locator => page.locator("[data-testid^='tl-watermark']");
 
@@ -18,7 +12,6 @@ type Box = { height: number; width: number; x: number; y: number };
 const overlap = (a: Box, b: Box) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-// Check the visible height, including the top edge beside an open sheet.
 const onTop = (page: Page) =>
   watermark(page).evaluate((mark) => {
     const box = mark.getBoundingClientRect();
@@ -111,7 +104,6 @@ for (const [name, device] of SCREENS) {
     const context = await browser.newContext({
       ...device,
       deviceScaleFactor: 2,
-      // The toast shows at once, and stays for the shot.
       reducedMotion: "reduce",
     });
     const page = await context.newPage();
@@ -123,13 +115,11 @@ for (const [name, device] of SCREENS) {
     const { height, width } = page.viewportSize()!;
     await expect(watermark(page)).toBeVisible();
     const mark = (await watermark(page).boundingBox())!;
-    // Bottom right, inside the screen but for the tab's 2px tuck on a phone.
     expect(mark.x + mark.width).toBeGreaterThan(width - 16);
     expect(mark.x).toBeLessThan(width);
     expect(mark.y + mark.height).toBeLessThanOrEqual(height);
     expect(mark.y).toBeGreaterThan(height - 80);
 
-    // The bottom bar, with the board's own controls in it.
     for (const control of ["Search", "People", "Dice"]) {
       await expectClearOf(page, page.getByRole("button", { exact: true, name: control }), control);
     }
@@ -161,7 +151,7 @@ for (const [name, device] of SCREENS) {
     await expectClearOf(page, dice, "the Dice sheet");
     await reviewShot(page, `watermark-${name}-sheet`);
     await dice.getByRole("button", { exact: true, name: "Add d20" }).click();
-    await dice.getByRole("button", { name: /^Roll/u }).click();
+    await dice.getByRole("button", { exact: true, name: "Roll d20" }).click();
     await expect(dice).toBeHidden();
 
     const toast = page.getByRole("button", { exact: true, name: "Close" });

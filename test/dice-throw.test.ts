@@ -40,7 +40,6 @@ import {
 const SIDES = [4, 6, 8, 10, 12, 20, 100];
 const KINDS: DieKind[] = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"];
 
-// Mixed pools of 1 to 20 dice.
 function pool(seed: number): number[] {
   return Array.from(
     { length: 1 + (seed % 20) },
@@ -48,7 +47,6 @@ function pool(seed: number): number[] {
   );
 }
 
-// Pools whose balls are thrown smaller: twenty, and two mixed ones.
 const CROWDS: DieKind[][] = [
   Array.from({ length: 20 }, (): DieKind => "d100"),
   Array.from({ length: 20 }, (_, i): DieKind => (i % 4 === 3 ? "d20" : "d100")),
@@ -126,7 +124,6 @@ describe("the shared throw", () => {
   it.each(SEEDS.slice(0, 12))(
     "with seed %i a crowd of balls comes to rest by itself, apart, on the floor",
     (seed) => {
-      // Twenty balls have until 4.2 s.
       expect(simulate(CROWDS[0]!, seed).settledAt).toBeLessThan(4.2);
       for (const kinds of CROWDS) {
         const thrown = simulate(kinds, seed);
@@ -271,13 +268,11 @@ describe("the shared throw", () => {
   // (e2e/tests/dice-determinism.spec.ts) agrees on the new values; every
   // client of a board must run the same simulation.
   it("throws as it always has", () => {
-    // NOTE: the two with a d100 changed when it became a ball; the two
-    // without are as they were before it.
     expect(hashThrow(simulate(KINDS, 7))).toBe("0d2cc80e");
     expect(hashThrow(simulate(["d100"], 2_026))).toBe("76bc62aa");
     expect(hashThrow(simulate(KINDS.slice(0, 6), 7))).toBe("2e06c497");
     expect(hashThrow(simulate(["d20"], 2_026))).toBe("e4fe3cb2");
-    // NOTE: crowds, whose balls are thrown smaller; pinned when that began.
+    // Crowded throws use smaller balls.
     expect(CROWDS.map((kinds) => hashThrow(simulate(kinds, 7)))).toEqual([
       "6d78f8a6",
       "239f70ee",

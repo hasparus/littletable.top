@@ -3,28 +3,71 @@ import { type ReactNode, useState, useSyncExternalStore } from "react";
 import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
 
+import { thumbnailUrl } from "../../src/board-thumbnail";
 import { fill } from "./copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
-export type Owned = { createdAt: number; id: string; shareCode: string; title: string };
-type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
+export type Owned = {
+  createdAt: number;
+  hasThumbnail?: boolean;
+  id: string;
+  shareCode: string;
+  title: string;
+};
+type Visited = {
+  hasThumbnail?: boolean;
+  id: string;
+  shareCode: string | null;
+  title: string;
+  visitedAt: number;
+};
 export type Lists = { owned: Owned[]; visited: Visited[] };
 
 const DATE_FORMATS = {
   en: new Intl.DateTimeFormat("en", { dateStyle: "medium" }),
   pl: new Intl.DateTimeFormat("pl", { dateStyle: "medium" }),
 };
+const UTC_DATE_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }),
+  pl: new Intl.DateTimeFormat("pl", { dateStyle: "medium", timeZone: "UTC" }),
+};
+const subscribeToDateFormats = () => () => null;
+const browserDateFormats = () => DATE_FORMATS;
+const serverDateFormats = () => UTC_DATE_FORMATS;
 const ACTIONS = ["rename", "reset", "delete"] as const;
 export type Action = (typeof ACTIONS)[number];
 export type Editing = { id: string; kind: Action } | null;
 
 const ROW =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
-const BOARD_LINK =
-  "col-start-1 row-start-1 self-end rounded-sm font-semibold wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus @3xl:self-center";
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
+const BOARD_TITLE = "col-start-2 row-start-1 min-w-0 self-end font-semibold @3xl:self-center";
+const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`;
 const BOARD_DATE =
-  "col-start-1 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-2 @3xl:row-start-1 @3xl:self-center";
+  "col-start-2 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-3 @3xl:row-start-1 @3xl:self-center";
+
+function BoardThumbnail({ board }: { board: Owned | Visited }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="col-start-1 row-span-2 row-start-1 aspect-video w-12 overflow-hidden rounded-md border border-border bg-bg-secondary sm:w-16 @3xl:row-span-1"
+    >
+      {board.hasThumbnail === true && board.shareCode !== null && (
+        <img
+          alt=""
+          className="size-full object-cover"
+          decoding="async"
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+          src={thumbnailUrl(board.id)}
+        />
+      )}
+    </span>
+  );
+}
 
 function BoardDate({
   date,
@@ -78,37 +121,84 @@ function OwnedRow({
   return (
     <li className="py-2">
       <div className={`${ROW} min-h-11`}>
-        <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-          {board.title}
-        </a>
-        <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
-        <div className="col-start-2 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-3 @3xl:row-span-1">
-          <button
-            aria-label={shareLabel}
-            className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium hover:bg-bg-secondary focus-visible:outline-2 focus-visible:outline-border-focus"
-            onClick={() => void copyLink()}
-            title={shareLabel}
-            type="button"
+        <BoardThumbnail board={board} />
+        {mode === "rename" ? (
+          <form
+            className={BOARD_TITLE}
+            id={`rename-${board.id}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onAction(board, "rename", title);
+            }}
           >
-            <Icon className="size-4" name="Link" />
-            <span className="hidden @md:inline">{shareLabel}</span>
-          </button>
-          <FrontMenu label={manageLabel} trigger={<Icon className="size-4" name="More" />}>
-            {ACTIONS.map((kind) => (
+            <input
+              aria-label={copy.boardName}
+              autoFocus
+              className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
+              maxLength={80}
+              onChange={(event) => setTitle(event.target.value)}
+              onFocus={(event) => event.currentTarget.select()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setEditing(null);
+              }}
+              required
+              value={title}
+            />
+          </form>
+        ) : (
+          <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+            {board.title}
+          </a>
+        )}
+        <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
+        <div className="col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
+          {mode === "rename" ? (
+            <>
               <button
-                className={kind === "delete" ? `${MENU_BUTTON} text-danger-text` : MENU_BUTTON}
-                key={kind}
-                onClick={(event) => {
-                  event.currentTarget.closest("details")?.removeAttribute("open");
-                  setTitle(board.title);
-                  setEditing({ id: board.id, kind });
-                }}
+                className="min-h-11 px-2 text-sm font-semibold"
+                form={`rename-${board.id}`}
+                type="submit"
+              >
+                {copy.save}
+              </button>
+              <button
+                className="min-h-11 px-2 text-sm text-foreground-secondary"
+                onClick={() => setEditing(null)}
                 type="button"
               >
-                {kind === "reset" ? copy.resetLink : copy[kind]}
+                {copy.cancel}
               </button>
-            ))}
-          </FrontMenu>
+            </>
+          ) : (
+            <>
+              <button
+                aria-label={shareLabel}
+                className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium hover:bg-bg-secondary focus-visible:outline-2 focus-visible:outline-border-focus"
+                onClick={() => void copyLink()}
+                title={shareLabel}
+                type="button"
+              >
+                <Icon className="size-4" name="Link" />
+                <span className="hidden @md:inline">{shareLabel}</span>
+              </button>
+              <FrontMenu label={manageLabel} trigger={<Icon className="size-4" name="More" />}>
+                {ACTIONS.map((kind) => (
+                  <button
+                    className={kind === "delete" ? `${MENU_BUTTON} text-danger-text` : MENU_BUTTON}
+                    key={kind}
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      setTitle(board.title);
+                      setEditing({ id: board.id, kind });
+                    }}
+                    type="button"
+                  >
+                    {kind === "reset" ? copy.resetLink : copy[kind]}
+                  </button>
+                ))}
+              </FrontMenu>
+            </>
+          )}
         </div>
       </div>
       <span className="sr-only" role="status">
@@ -119,46 +209,12 @@ function OwnedRow({
           {copy.actionFailed}
         </p>
       )}
-      {mode === "rename" && (
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onAction(board, "rename", title);
-          }}
-        >
-          <label
-            className="flex min-w-0 flex-1 flex-col gap-1 text-sm"
-            htmlFor={`title-${board.id}`}
-          >
-            {copy.boardName}
-            <input
-              autoFocus
-              className="h-11 rounded-lg border border-border bg-bg-secondary px-3 text-base focus:border-primary focus:outline-none"
-              id={`title-${board.id}`}
-              maxLength={80}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              value={title}
-            />
-          </label>
-          <button className="btn btn-primary min-h-11" type="submit">
-            {copy.save}
-          </button>
-          <button
-            className="btn btn-secondary min-h-11"
-            onClick={() => setEditing(null)}
-            type="button"
-          >
-            {copy.cancel}
-          </button>
-        </form>
-      )}
       {(mode === "reset" || mode === "delete") && (
         <dialog
           aria-labelledby={`confirm-${board.id}`}
           className="static mt-2 w-full rounded-xl bg-bg-secondary p-3 text-foreground"
           open
+          data-board-confirmation
           role="alertdialog"
         >
           <p id={`confirm-${board.id}`}>
@@ -189,10 +245,11 @@ function OwnedRow({
   );
 }
 
-// Match Tailwind's sm breakpoint so DOM order follows the visible layout.
-const phoneViewport = matchMedia("(width < 640px)");
-const isPhone = () => phoneViewport.matches;
+// WARNING: Keep this aligned with Tailwind's sm breakpoint so DOM order follows the visible layout.
+const phoneQuery = "(width < 640px)";
+const isPhone = () => matchMedia(phoneQuery).matches;
 function subscribeToPhone(listener: () => void) {
+  const phoneViewport = matchMedia(phoneQuery);
   phoneViewport.addEventListener("change", listener);
   return () => phoneViewport.removeEventListener("change", listener);
 }
@@ -200,38 +257,46 @@ function subscribeToPhone(listener: () => void) {
 function BoardCollection({
   children,
   className = "",
+  collapsible,
   label,
-  phone,
   showHeading = true,
 }: {
   children: ReactNode;
   className?: string;
+  collapsible: boolean;
   label: string;
-  phone: boolean;
   showHeading?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const open = !collapsible || expanded;
   return (
-    <details
-      className={`group @container min-w-0 ${className}`}
-      onToggle={(event) => {
-        if (phone) setExpanded(event.currentTarget.open);
-      }}
-      open={!phone || expanded}
-    >
-      <summary
-        className={
-          phone
-            ? "flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-semibold focus-visible:outline-2 focus-visible:outline-border-focus [&::-webkit-details-marker]:hidden"
-            : "hidden"
-        }
-      >
-        {label}
-        <Icon className="size-4 group-open:rotate-180" name="ChevronDown" />
-      </summary>
-      {!phone && <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>}
-      {children}
-    </details>
+    <Collapsible asChild onOpenChange={setExpanded} open={open}>
+      <section className={`@container min-w-0 ${className}`}>
+        {collapsible ? (
+          <h2 className="font-semibold">
+            <CollapsibleTrigger className="group flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-border-focus">
+              {label}
+              <Icon
+                className="size-4 shrink-0 motion-safe:transition-transform group-data-[state=open]:rotate-180"
+                name="ChevronDown"
+              />
+            </CollapsibleTrigger>
+          </h2>
+        ) : (
+          <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>
+        )}
+        <CollapsibleContent
+          className={
+            collapsible
+              ? "motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down"
+              : undefined
+          }
+          inert={!open}
+        >
+          {children}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
 
@@ -250,17 +315,23 @@ export function BoardList({
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
   setEditing: (editing: Editing) => void;
 }) {
-  const format = DATE_FORMATS[locale];
-  const phone = useSyncExternalStore(subscribeToPhone, isPhone);
+  const format = useSyncExternalStore(
+    subscribeToDateFormats,
+    browserDateFormats,
+    serverDateFormats,
+  )[locale];
+  const phone = useSyncExternalStore(subscribeToPhone, isPhone, () => false);
   const hasVisited = lists.visited.length > 0;
+  const collapsible = phone && lists.owned.length > 2 && lists.visited.length > 2;
   const joined = hasVisited ? (
-    <BoardCollection key="joined" label={copy.visited} phone={phone}>
+    <BoardCollection collapsible={collapsible} key="joined" label={copy.visited}>
       <ul className="divide-y divide-border border-t border-border">
         {lists.visited.map((board) => (
           <li className={`${ROW} min-h-15 py-2`} key={board.id}>
+            <BoardThumbnail board={board} />
             {board.shareCode === null ? (
               <>
-                <span className="self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
+                <span className="col-start-2 row-start-1 self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
                   {board.title}
                 </span>
                 <span className={BOARD_DATE}>{copy.linkWasReset}</span>
@@ -285,10 +356,10 @@ export function BoardList({
           ? "self-start lg:-mt-3 lg:rounded-xl lg:bg-bg-secondary lg:px-4 lg:pt-3 lg:pb-2"
           : ""
       }
+      collapsible={collapsible}
       key="created"
       label={copy.created}
-      phone={phone}
-      showHeading={hasVisited}
+      showHeading={phone || hasVisited}
     >
       {lists.owned.length === 0 ? (
         <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>

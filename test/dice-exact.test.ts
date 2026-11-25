@@ -31,7 +31,6 @@ it("throws without any Math function that engines may round differently", async 
   const { bodies, numbering, thrown } = run.planned();
   expect(numbering).toHaveLength(bodies.length);
   expect(thrown.frames).toHaveLength(7);
-  // A crowd of balls, which are thrown smaller.
   const crowd = throwDice(
     Array.from({ length: 20 }, (_, i) => ({ sides: i % 4 === 3 ? 20 : 100, value: 1 })),
     7,

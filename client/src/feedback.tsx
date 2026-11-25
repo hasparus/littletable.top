@@ -11,6 +11,9 @@ import {
 
 import type { Language } from "../settings";
 
+import { useDialogBackdrop } from "./dialog";
+import { enterSurface } from "./surface-entry";
+
 const COPY = {
   en: {
     cancel: "Cancel",
@@ -59,8 +62,10 @@ export function FeedbackProvider({
   language: Language;
 }) {
   const [available, setAvailable] = useState(false);
-  const [source, setSource] = useState<Source | null>(null);
-  const returnFocus = useRef<HTMLElement | null>(null);
+  const [request, setRequest] = useState<{ source: Source; trigger: HTMLElement | null } | null>(
+    null,
+  );
+
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
@@ -79,22 +84,22 @@ export function FeedbackProvider({
           ? {
               label: copy.title,
               open: (openedFrom, trigger = null) => {
-                returnFocus.current = trigger;
-                setSource(openedFrom);
+                setRequest({ source: openedFrom, trigger });
               },
             }
           : null
       }
     >
       {children}
-      {source !== null && (
+      {request !== null && (
         <FeedbackDialog
           copy={copy}
           onClose={() => {
-            setSource(null);
-            returnFocus.current?.focus();
+            setRequest(null);
+            request.trigger?.focus();
           }}
-          source={source}
+          source={request.source}
+          trigger={request.trigger}
         />
       )}
     </FeedbackContext.Provider>
@@ -105,10 +110,12 @@ function FeedbackDialog({
   copy,
   onClose,
   source,
+  trigger,
 }: {
   copy: (typeof COPY)[Language];
   onClose: () => void;
   source: Source;
+  trigger: HTMLElement | null;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const done = useRef<HTMLButtonElement>(null);
@@ -121,30 +128,12 @@ function FeedbackDialog({
   const sending = status === "sending";
 
   useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
-  useEffect(() => {
-    const element = dialog.current;
-    if (element === null || sending) return;
-    const events = new AbortController();
-    let pressedBackdrop = false;
-    element.addEventListener(
-      "pointerdown",
-      (event) => {
-        pressedBackdrop = hitBackdrop(element, event);
-      },
-      { signal: events.signal },
-    );
-    element.addEventListener(
-      "click",
-      (event) => {
-        if (pressedBackdrop && hitBackdrop(element, event)) element.close();
-        pressedBackdrop = false;
-      },
-      { signal: events.signal },
-    );
-    return () => events.abort();
-  }, [sending]);
+    const surface = dialog.current;
+    if (!surface) return;
+    surface.showModal();
+    enterSurface(surface, trigger);
+  }, [trigger]);
+  useDialogBackdrop(dialog, !sending);
   useEffect(() => {
     if (status === "sent") done.current?.focus();
   }, [status]);
@@ -248,11 +237,4 @@ function FeedbackDialog({
       )}
     </dialog>
   );
-}
-
-function hitBackdrop(dialog: HTMLDialogElement, event: MouseEvent): boolean {
-  if (event.target !== dialog) return false;
-  const { bottom, left, right, top } = dialog.getBoundingClientRect();
-  const { clientX, clientY } = event;
-  return clientX < left || clientX >= right || clientY < top || clientY >= bottom;
 }

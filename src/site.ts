@@ -1,12 +1,13 @@
-// The tabletop's pages and files: the names it answers to, the SPA shell at
-// /b/<share code>, and the headers every page and file leaves with.
-
 import type { Config, Hosts, StandaloneConfig } from "./config";
+import type { PreviewBindings } from "./share-preview";
+import type { Standalone } from "./standalone/routes";
+import type { Board } from "./standalone/store";
 
+import { renderBoards } from "./render-boards";
+import { composeBoardPreview } from "./share-preview";
 import { Store } from "./standalone/store";
 
-// A request to an alias moves to the same path on the primary host, before
-// anything else runs: no page, file, API or socket is served there.
+/** Redirects aliases to the same path on the primary host before routing. */
 export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
   if (hosts.primary === null) return null;
   const url = new URL(request.url);
@@ -15,17 +16,10 @@ export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
   return Response.redirect(url.toString(), 308);
 }
 
-// NOTE: reading text off images (docs/internals.md, "Text in images") runs two
-// engines compiled to WebAssembly in a worker of this origin, which needs
-// 'wasm-unsafe-eval': it compiles WebAssembly and nothing else, so eval
-// and string-built functions stay refused. Their workers are files of
-// this origin too, never blob: URLs.
+// WARNING: The OCR workers need `wasm-unsafe-eval`, which allows WebAssembly without allowing JavaScript eval.
 const SCRIPT_SRC = ["'self'", "'wasm-unsafe-eval'"];
 const WORKER_SRC = ["'self'"];
 
-// The shell's Content-Security-Policy: its own scripts, fonts and tldraw's
-// self-hosted assets, the rooms socket on this host, and in hosted mode the
-// host's origin for the pass request.
 export function contentSecurityPolicy(request: Request, config: Config): string {
   const { host, protocol } = new URL(request.url);
   const socket = `${protocol === "https:" ? "wss" : "ws"}://${host}`;
@@ -38,13 +32,12 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "font-src": ["'self'"],
     "form-action": ["'none'"],
     "frame-ancestors": ["'none'"],
-    // A board's images come from its /rooms/<board>/files route on this
-    // origin; tldraw previews an image from a blob: URL while it uploads.
+    // WARNING: Blocking blob: images breaks tldraw's preview while the upload is in flight.
     "img-src": ["'self'", "data:", "blob:"],
     "manifest-src": ["'self'"],
     "object-src": ["'none'"],
     "script-src": SCRIPT_SRC,
-    // NOTE: tldraw positions every shape with inline style attributes.
+    // WARNING: Blocking inline style attributes breaks positioning of tldraw shapes.
     "style-src": ["'self'", "'unsafe-inline'"],
     "worker-src": WORKER_SRC,
   };
@@ -53,14 +46,13 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     .join("; ");
 }
 
-// What every response of the app carries, page or file. The policy goes on
-// files too, so that index.html fetched by its own name is no way around it.
+// WARNING: Apply the policy to static files too so direct requests for index.html cannot bypass it.
 export function harden(response: Response, request: Request, config: Config): Response {
   const hardened = new Response(response.body, response);
   const { headers } = hardened;
   headers.set("Content-Security-Policy", contentSecurityPolicy(request, config));
   headers.set("X-Content-Type-Options", "nosniff");
-  // The address holds the board's share code, which opens the board.
+  // WARNING: Sending referrers could leak the share code in the board URL.
   headers.set("Referrer-Policy", "no-referrer");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Cross-Origin-Opener-Policy", "same-origin");
@@ -75,11 +67,10 @@ export function harden(response: Response, request: Request, config: Config): Re
 }
 
 const SHELL = /^\/b\/([A-Za-z0-9]{1,64})\/?$/u;
+const BOARD_PREVIEW = /^\/b\/([A-Za-z0-9]{1,64})\/preview\.png$/u;
 const WEBSITE_DESCRIPTION =
   "Draw maps, roll dice, and play tabletop games together on a shared whiteboard.";
-// Vite names every built script, style and font after its content, and
-// the text engines' files (WebAssembly, models, language data) carry the
-// hash of theirs in their name or their folder's (vite.config.ts).
+// WARNING: Only use immutable caching for paths that carry content hashes in their file or folder name.
 const HASHED = /^\/assets\//u;
 
 async function shell(request: Request, assets: Fetcher, config: Config): Promise<Response> {
@@ -100,9 +91,10 @@ const htmlAttribute = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 
-// Social previews are read before any JavaScript runs. Use the public name
-// a board already returns to people with its current share link.
-function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, boardTitle?: string) {
+// WARNING: Link preview crawlers need metadata in the HTML before client JavaScript runs.
+function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board?: Board) {
+  const boardTitle = board?.title;
+  const illustrated = board?.hasThumbnail === true;
   if (!page.ok || page.body === null) return page;
   const title =
     boardTitle === undefined ? config.displayName : `${boardTitle} · ${config.displayName}`;
@@ -112,8 +104,10 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
       : `Join ${boardTitle} on ${config.displayName}. ${WEBSITE_DESCRIPTION}`;
   const graph = {
     description,
-    image: new URL("/open-graph.png", url).href,
-    "image:alt": "Little Table logo and tabletop dice",
+    image: new URL(illustrated ? `/b/${board.shareCode}/preview.png` : "/open-graph.png", url).href,
+    "image:alt": illustrated
+      ? `Little Table board: ${board.title}`
+      : "Little Table logo and tabletop dice",
     "image:height": "630",
     "image:type": "image/png",
     "image:width": "1200",
@@ -123,6 +117,18 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     url: new URL(url.pathname.replace(/\/$/u, "") || "/", url).href,
   };
   return new HTMLRewriter()
+    .on("template[data-board-preloads]", {
+      element: (template) => {
+        if (url.pathname === "/") template.removeAndKeepContent();
+        else template.remove();
+      },
+    })
+    .on("template[data-landing-prerender]", {
+      element: (template) => {
+        if (url.pathname === "/") template.removeAndKeepContent();
+        else template.remove();
+      },
+    })
     .on("head", {
       element: (head) => {
         const tags = Object.entries(graph).map(
@@ -142,32 +148,102 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     .transform(page);
 }
 
-export async function serveSite(
+export async function serveBoards(
   request: Request,
   assets: Fetcher,
+  config: StandaloneConfig,
+  own: Standalone,
+) {
+  const page = await shell(request, assets, config);
+  page.headers.set("Cache-Control", "private, no-store");
+  if (!page.ok || page.body === null || request.method === "HEAD") return page;
+  const data = await own.boardPage(request);
+  const url = new URL(request.url);
+  const requested = [
+    url.searchParams.get("lang"),
+    ...(request.headers.get("Accept-Language") ?? "")
+      .split(",")
+      .map((tag) => tag.split(";")[0]?.trim().split("-")[0]),
+  ];
+  let locale = requested.find((tag) => tag === "en" || tag === "pl");
+  return new HTMLRewriter()
+    .on("template[data-landing-prerender]", {
+      element: (template) => {
+        template.remove();
+      },
+    })
+    .on("html", {
+      element(html) {
+        locale ??= html.getAttribute("lang") === "pl" ? "pl" : "en";
+        html.setAttribute("lang", locale);
+      },
+    })
+    .on("[data-board-root]", {
+      element(root) {
+        const state = {
+          failed: url.searchParams.get("sign-in") === "failed",
+          initialPage: data,
+          locale: locale ?? "en",
+          name: config.displayName,
+        } as const;
+        root.setAttribute("class", "fixed inset-0 overflow-y-auto bg-background");
+        root.setInnerContent(renderBoards(state), { html: true });
+        root.after(
+          `<script type="application/json" id="boards-state">${JSON.stringify(state).replaceAll("<", String.raw`\u003c`)}</script>`,
+          { html: true },
+        );
+      },
+    })
+    .transform(page);
+}
+
+type SiteBindings = PreviewBindings & { BOARD_DATA_SCOPE?: string; DB?: D1Database };
+
+export async function serveSite(
+  request: Request,
+  env: SiteBindings,
   config: Config,
-  database?: D1Database,
 ): Promise<Response> {
+  const { ASSETS: assets, DB: database } = env;
   const url = new URL(request.url);
   if (request.method !== "GET" && request.method !== "HEAD") {
     return harden(new Response("Method not allowed", { status: 405 }), request, config);
   }
   if (url.pathname === "/") {
-    // Hosted, nothing lives at the root: a person who types the name goes
-    // to the host. Standalone, the root opens the public board.
     if (config.mode === "hosted") {
       return harden(Response.redirect(config.homeUrl, 302), request, config);
     }
     return withOpenGraph(await shell(request, assets, config), url, config);
   }
-  if (url.pathname === "/boards" && config.mode === "standalone")
-    return shell(request, assets, config);
+  const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
+  if (imageCode !== undefined && config.mode === "standalone") {
+    const board =
+      database === undefined
+        ? null
+        : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(imageCode);
+    let preview: Response | null = null;
+    if (board?.hasThumbnail === true) {
+      preview =
+        request.method === "HEAD"
+          ? new Response(null, { headers: { "Content-Type": "image/png" } })
+          : await composeBoardPreview(url, board, env);
+    }
+    const image =
+      preview ?? (await assets.fetch(new URL("/open-graph.png", url), { method: request.method }));
+    const response = harden(image, request, config);
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
+  }
   const shareCode = SHELL.exec(url.pathname)?.[1];
   if (shareCode !== undefined) {
     const page = await shell(request, assets, config);
     if (config.mode === "hosted" || !page.ok || page.body === null) return page;
-    const board = database === undefined ? null : await new Store(database).byShareCode(shareCode);
-    return withOpenGraph(page, url, config, board?.title);
+    const board =
+      database === undefined
+        ? null
+        : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(shareCode);
+    return withOpenGraph(page, url, config, board ?? undefined);
   }
   const file = harden(await assets.fetch(request), request, config);
   if (file.ok && HASHED.test(url.pathname)) {

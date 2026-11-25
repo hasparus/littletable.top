@@ -1,27 +1,26 @@
 # Little Table
 
-A shared whiteboard for tabletop games. Drop in a map or a character sheet,
-draw on it, and roll dice where everyone can see.
+<!-- prettier-ignore -->
+A whiteboard for tabletop RPGs, built on tldraw. 
+No bloat and no forms to fill.
 
-[Try the public board](https://littletable.top/) · [Make a board](https://littletable.top/boards)
+- Roll a d20 across the map with your mouse or finger.
+- Write `/roll 3d6kh2` to roll 3 d6s and keep 2 highest.
+- Find a text on this map, your character sheet or any other image thanks to magic of OCR.
+- Chat with your friends.
+- Ping them when they inevitably get lost.
+- Summon them when they ignore your pings.
+- Set landmarks to jump to.
+- Scheme on a secret layer. Reveal your schemes to applause (or terror)
+- Give your AI of choice MCP access to clean up your mess and compress the 50MB concept art of a goblin you forgot about.
 
-![A hand-drawn river crossing and an uploaded handout on a Little Table board, with a two-die result](docs/screenshots/board.webp)
+[Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
 
-Sign in to make a board and send your group the link. Guests join with a name.
-On the public board, anyone can draw or chat. Drawings disappear after two days.
-
-Search for words in an image or jump to a named place. Board owners can plan in
-a secret layer that guests can't see. The board works on phones and can be added
-to a home screen. Import or download a board as a `.tldr` file.
-
-<p>
-  <img width="360" src="docs/screenshots/search.webp" alt="Mobile board search finding SALTPEARL in the uploaded tollhouse ledger" />
-  <img width="360" src="docs/screenshots/chat.webp" alt="Two guests talking about where to meet in the public board’s chat on a phone" />
-</p>
+<img src="docs/screenshots/table.png" width="720" alt="A red d20 showing 7 in the courtyard of the Château de Pierrefonds floor plan on a Little Table board." />
 
 ## Development
 
-[Run locally and test](docs/development.md) · [Deploy Little Table](docs/deployment.md) · [Connect a host app](docs/hosting.md) · [Internals](docs/internals.md)
+[Run locally and test](docs/development.md) · [Internals](docs/internals.md)
 
 ## Licence
 

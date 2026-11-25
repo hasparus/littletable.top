@@ -1,12 +1,7 @@
-// Vectors, quaternions and the seeded generator of the shared throw.
-//
-// SAFETY: every client must compute bit-identical throws. Only + - * / and
-// Math.sqrt (plus abs, min, max, floor and imul) are exact in every JS engine;
-// Math.sin, cos, atan2, pow, exp and hypot are not, and must stay out of
-// everything the simulation reaches.
+// WARNING: Keep shared throws bit-identical. Use only +, -, *, / and Math.sqrt, abs, min, max, floor and imul.
 
 export type Vec = [number, number, number];
-// x, y, z, w
+/** Quaternion components in x, y, z, w order. */
 export type Quat = [number, number, number, number];
 
 export const add = (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -44,13 +39,12 @@ export function rotate(q: Quat, v: Vec): Vec {
   return add(add(v, scale(t, q[3])), cross(axis, t));
 }
 
-// The shortest rotation taking unit `from` onto unit `to` (not opposite).
+/** Shortest rotation between unit vectors that do not point in opposite directions. */
 export function rotationBetween(from: Vec, to: Vec): Quat {
   const c = cross(from, to);
   return normalizeQuat([c[0], c[1], c[2], 1 + dot(from, to)]);
 }
 
-// Normalised lerp: a stand-in for slerp that needs no trigonometry.
 export function blend(a: Quat, b: Quat, t: number): Quat {
   const sign = quatDot(a, b) < 0 ? -1 : 1;
   return normalizeQuat([
@@ -61,7 +55,7 @@ export function blend(a: Quat, b: Quat, t: number): Quat {
   ]);
 }
 
-// The rotation whose matrix has columns x, y, z.
+/** Quaternion of the basis whose columns are x, y, z. */
 export function fromBasis(x: Vec, y: Vec, z: Vec): Quat {
   const trace = x[0] + y[1] + z[2];
   if (trace > 0) {
@@ -80,8 +74,6 @@ export function fromBasis(x: Vec, y: Vec, z: Vec): Quat {
   return [(z[0] + x[2]) / s, (z[1] + y[2]) / s, 0.25 * s, (x[1] - y[0]) / s];
 }
 
-// xorshift32: integer steps, then one exact division into [0, 1). The
-// typed array keeps the state an unsigned 32-bit integer.
 export function generator(seed: number): () => number {
   const state = Uint32Array.of(seed);
   if (state[0] === 0) state[0] = 2_654_435_769;
@@ -93,7 +85,6 @@ export function generator(seed: number): () => number {
   };
 }
 
-// A uniformly random rotation, by rejection inside the unit 4-ball.
 export function randomRotation(random: () => number): Quat {
   for (;;) {
     const q: Quat = [random() * 2 - 1, random() * 2 - 1, random() * 2 - 1, random() * 2 - 1];

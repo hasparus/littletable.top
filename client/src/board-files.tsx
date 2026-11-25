@@ -15,7 +15,6 @@ import { fill } from "./copy";
 import { downloadTldr, handleFiles } from "./file-flows";
 import { useBoardUi } from "./ui";
 
-// Wires the board's images and .tldr files into tldraw while the editor is active.
 export function BoardFileHandlers() {
   const { copy, files } = useBoardUi();
   const editor = useEditor();
@@ -38,7 +37,9 @@ function importStage(copy: Copy, progress: ImportProgress): string {
     case "reading":
       return copy.boardFileReading;
     case "uploading":
-      return fill(copy.boardFileUploading, { count: progress.count, done: progress.done });
+      return progress.waiting
+        ? copy.boardFileWaiting
+        : fill(copy.boardFileUploading, { count: progress.count, done: progress.done });
   }
 }
 
@@ -50,7 +51,7 @@ export function BoardStatus({ offline }: { offline: boolean }) {
   const percent = uploads.total === 0 ? 0 : Math.round((uploads.loaded / uploads.total) * 100);
   const pill = "w-fit rounded-full bg-ink px-4 py-2 text-center text-white shadow-toast";
   return (
-    <div className="pointer-events-none fixed inset-x-4 top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex max-w-sm flex-col items-center gap-2 text-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
+    <div className="pointer-events-none fixed right-(--board-toolbar-right) left-(--board-left) top-[calc(var(--board-top)+var(--board-top-control-size)+0.5rem)] z-30 mx-auto flex flex-col items-center gap-2 text-sm sm:inset-x-4 sm:max-w-sm [body:has([data-dice-toast=below])_&]:top-[calc(env(safe-area-inset-top)+6.25rem)]">
       {offline && (
         <p className={pill} role="status">
           {copy.connectionLost}
@@ -80,36 +81,37 @@ function ImportStatus({
   const label = importStage(copy, progress);
   const percent = "percent" in progress ? progress.percent : undefined;
   return (
-    <div className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 shadow-board-control">
-      <p className="truncate font-semibold">{fill(copy.boardFileImporting, { name })}</p>
-      <div
-        className="mt-1 flex items-baseline justify-between gap-2 text-foreground-secondary"
-        role="status"
-      >
-        <span>{label}</span>
+    <div
+      className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 sm:max-w-xs"
+      data-board-import
+    >
+      <div className="flex items-baseline justify-between gap-3 font-medium">
+        <p className="truncate">{fill(copy.boardFileImporting, { name })}</p>
         {percent !== undefined && (
-          <span aria-hidden="true" className="tabular-nums">
+          <span aria-hidden="true" className="shrink-0 tabular-nums">
             {percent}%
           </span>
         )}
       </div>
-      <progress
+      <div
         aria-label={label}
-        className="mt-2 block h-1 w-full accent-primary"
-        max={100}
-        value={percent}
-      />
-      {progress.kind === "uploading" && progress.waiting && (
-        <p className="mt-2 text-foreground-secondary" role="status">
-          {copy.boardFileWaiting}
-        </p>
-      )}
+        aria-valuenow={percent}
+        className="mt-[3px] h-1.5 overflow-hidden rounded-full bg-border"
+        data-board-import-track
+        role="progressbar"
+      >
+        <div
+          className={`h-full rounded-full ${progress.kind === "uploading" && progress.waiting ? "bg-warning" : "bg-primary"}`}
+          style={{ width: percent === undefined ? "30%" : `${percent}%` }}
+        />
+      </div>
+      <p className="mt-[5px] text-xs text-foreground-secondary" role="status">
+        {label}
+      </p>
     </div>
   );
 }
 
-// The main menu's way to take the whole board away as a .tldr file and to
-// bring one in.
 export function BoardFileMenuItems() {
   const editor = useEditor();
   const toasts = useToasts();

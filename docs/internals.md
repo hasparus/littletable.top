@@ -6,10 +6,9 @@ and why the security choices were made. Limits are in `src/limits.ts`.
 ## Secret layer
 
 On a standalone account board, **Secret layer** switches the owner to an
-editable overlay. The shared board is a read-only snapshot taken when the
-owner enters the layer. The canvas starts on the same page and at the same
-zoom and position. Switch back to see live shared edits, or switch back and
-enter the layer again to refresh the snapshot.
+editable overlay above the live shared canvas. The overlay opens at the
+same page, zoom and position, and the selected tool follows the owner
+between layers. Shared edits from other participants remain visible.
 
 The standalone bootstrap issues a separate signed `secretPass` only when
 the account owns the board. The pass is tied to the issuing account session.
@@ -19,13 +18,19 @@ readings use `/rooms/<board>/secret` with that pass. Its signed room ID and
 Durable Object name are `<board>/secret`, and the images and readings live
 under `boards/<board>/secret/`. Private image and reading responses use
 `Cache-Control: no-store`. Shared passes, including the owner's ordinary
-pass, open only the shared room. The backdrop's local store contains only
-shared document records. It has no socket and sends no cursor or camera
-activity to the shared room.
+pass, open only the shared room. While the owner edits the overlay, the
+shared editor receives document updates and suppresses outgoing presence.
 
 Resetting the share link revokes previous passes for both rooms and keeps
 both documents. Deleting the board closes both rooms and removes their
 records and files. The public board and hosted boards have no secret layer.
+
+## Sharing a page
+
+**Share** copies the collaborative board link or exports the current shared
+page as a PNG. Standalone owners can also publish that PNG at a read-only
+link. Publishing again updates the image at the same URL. Unpublishing
+revokes the link. Export and publication read only the shared editor.
 
 ## Images
 
@@ -267,7 +272,7 @@ note outside the shared document.
   SameSite=Lax, 30 days. Only a SHA-256 of its token is stored.
 - Every state-changing route needs `Origin` equal to the tabletop's own and
   a JSON body, which no other origin sends without a preflight. Owner
-  actions and sign-out also need `X-CSRF-Token`, from `GET /api/me`.
+  actions and sign-out also need `X-CSRF-Token`, from `GET /api/boards` or `GET /api/me`.
 - A guest's id and name live in `__Host-tabletop-guest`, signed under its
   own audience. The public board assigns guests a name immediately and keeps
   it in `__Host-tabletop-public-guest`. Share links still ask new guests for
@@ -279,23 +284,37 @@ note outside the shared document.
 
 ### Routes
 
-| Route                                     | Does                                                                           |
-| ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /`                                   | Opens the shared public whiteboard                                             |
-| `GET /boards`                             | Sign-in and the account's boards                                               |
-| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                           |
-| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out              |
-| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out     |
-| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                     |
-| `GET /api/boards`                         | `{"owned", "visited"}`; a visited board's `shareCode` is null after a reset    |
-| `POST /api/boards`                        | `{"title"}`: makes a board (201)                                               |
-| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                        |
-| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only |
-| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                         |
-| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                          |
-| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                             |
+| Route                                     | Does                                                                                           |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /`                                   | Opens the shared public whiteboard                                                             |
+| `GET /boards`                             | Sign-in and the account's boards                                                               |
+| `GET /auth/sign-in`, `GET /auth/callback` | The redirect sign-in                                                                           |
+| `POST /auth/sign-out`                     | Ends the session; answers `{"redirect"}`, the provider's sign-out                              |
+| `GET /api/me`                             | `{"account": {"id", "name", "avatar"}, "csrf"}`; both null when signed out                     |
+| `GET /api/avatars/<sha256>`               | The signed-in account's own picture; 404 for anyone else's                                     |
+| `GET /api/boards`                         | `{"account", "csrf", "owned", "visited"}`; a visited board's `shareCode` is null after a reset |
+| `POST /api/boards`                        | `{"title"}`: makes a board (201)                                                               |
+| `POST /api/boards/<id>/rename`            | `{"title"}`, owner only                                                                        |
+| `POST /api/boards/<id>/reset`             | New share code and link version; puts out everyone on the old link. Owner only                 |
+| `POST /api/boards/<id>/delete`            | Forgets the board and wipes its room (204). Owner only                                         |
+| `GET /b/<share code>/preview.png`         | Branded link image with the shared board thumbnail when available                              |
+| `POST /api/b/<share code>/bootstrap`      | The pass request of the host contract                                                          |
+| `POST /api/public-board/bootstrap`        | Issues a member or guest pass for the public board                                             |
 
 Board creation also accepts `"language": "pl"` to start with a Polish page name.
+
+### Link previews
+
+The current share link automatically includes the shared thumbnail when one
+exists. The image route looks up the current share code on every request.
+Old links and deleted boards get the generic image. Apps that fetch previews
+can keep their own copies of earlier cards.
+
+The Worker uses the same Photon library as thumbnail validation to composite
+the branding and transparent drawing onto the light version of the board's
+saved background. The color comes from the board room's drawing settings.
+The Worker reuses the rendered card while the artwork, thumbnail, and color match.
+Missing thumbnails or a failed render get the generic card.
 
 ### The sign-in provider
 

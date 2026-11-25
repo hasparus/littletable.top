@@ -1,7 +1,3 @@
-// Standalone mode is its own issuer: one RSA key signs its passes and the
-// short-lived cookies of a sign-in in progress, and its public half verifies
-// them through the same code path as a host's passes.
-
 import { exportJWK, importJWK, importPKCS8, type JWTPayload, jwtVerify, SignJWT } from "jose";
 
 import type { Pass, Verifier } from "../pass";
@@ -57,9 +53,7 @@ export function signPass(
     .sign(keys.private);
 }
 
-// Small signed values the Worker hands the browser to keep (a guest's id and
-// name, a sign-in's state), each under an audience of its own so none can
-// stand in for another or for a pass.
+/** Signs a browser value under its own audience so it cannot be used as another token or a pass. */
 export function seal(
   keys: Keys,
   audience: string,

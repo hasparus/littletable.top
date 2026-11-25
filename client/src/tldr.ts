@@ -17,11 +17,10 @@ import {
 
 import type { BoardDocument, ImportReply } from "./tldr-worker";
 
-// tldraw's own file format, a .tldr: the whole document as JSON, with each
-// image embedded as a data: URL so the file opens anywhere tldraw does.
-
-// Embedded images grow by a third as base64; a board's whole quota of
-// images (src/limits.ts) fits with room to spare.
+/**
+ * Embedded images grow by a third as base64; a board's whole quota of
+ * images (src/limits.ts) fits with room to spare.
+ */
 export const MAX_TLDR_BYTES = 400 * 1024 * 1024;
 
 const TLDR_TYPE = "application/vnd.tldraw+json";
@@ -63,10 +62,12 @@ export class ImportRefused extends Error {
 export const isTldrFile = (file: File) =>
   file.name.toLowerCase().endsWith(TLDRAW_FILE_EXTENSION) || file.type === TLDR_TYPE;
 
-// The board as one .tldr. tldraw fetches each image the document points at
-// (through the asset store's resolve, which keeps the files cookie fresh)
-// and embeds it; one it could not fetch would stay a bare address, which
-// opens nowhere else, so the export fails instead.
+/**
+ * The board as one .tldr. tldraw fetches each image the document points at
+ * (through the asset store's resolve, which keeps the files cookie fresh)
+ * and embeds it; one it could not fetch would stay a bare address, which
+ * opens nowhere else, so the export fails instead.
+ */
 export async function exportTldr(editor: Editor): Promise<Blob> {
   const json = await serializeTldrawJson(editor);
   const { records } = JSON.parse(json) as { records: TLRecord[] };
@@ -138,7 +139,14 @@ async function uploadEmbedded(
   let next = 0;
   const progress = () => {
     const percent = Math.min(done === count ? 100 : 99, Math.round((transferred / count) * 100));
-    report({ count, done, kind: "uploading", percent, waiting: waiting.size > 0 });
+    const active = Math.min(UPLOADS_AT_ONCE, count - done);
+    report({
+      count,
+      done,
+      kind: "uploading",
+      percent,
+      waiting: active > 0 && waiting.size === active,
+    });
   };
   progress();
   const lane = async () => {
@@ -173,9 +181,7 @@ async function uploadEmbedded(
   return uploaded;
 }
 
-// Gives every record the file brings an id of its own on this board: its
-// own where it is free, a new one where the board already has it, with
-// parents, bindings and images following the new ids.
+// WARNING: When replacing a clashing record ID, update its parents, bindings and asset references too.
 function planIds(editor: Editor, plan: Plan, replacing: TLPage | null): Plan {
   const taken = (id: string) => editor.store.has(id as TLRecord["id"]) && id !== replacing?.id;
   const ids = new Map<string, string>();
@@ -211,7 +217,6 @@ function planIds(editor: Editor, plan: Plan, replacing: TLPage | null): Plan {
   };
 }
 
-// A board nobody has drawn on yet: one page and no shapes.
 const isUntouched = (editor: Editor) =>
   editor.getPages().length === 1 &&
   !editor.store.allRecords().some((record) => record.typeName === "shape");
@@ -224,8 +229,10 @@ function replacementPage(editor: Editor, pages: TLPage[], keepFirstPage: boolean
   return replacing;
 }
 
-// Adds pages after the board's own, or in place of an untouched board's empty
-// page. Embedded images are uploaded before the document points at them.
+/**
+ * Adds pages after the board's own, or in place of an untouched board's empty
+ * page. Embedded images are uploaded before the document points at them.
+ */
 export async function importTldr(
   editor: Editor,
   file: File,
@@ -237,14 +244,18 @@ export async function importTldr(
   }: { keepFirstPage: boolean; report: ReportProgress; signal: AbortSignal; upload: Upload },
 ): Promise<void> {
   if (file.size > MAX_TLDR_BYTES) throw new ImportRefused("too-large");
-  const { assets, bindings, embedded, pages, shapes } = await readBoard(file, report, signal);
+  const { assets, backgroundColor, bindings, embedded, pages, shapes } = await readBoard(
+    file,
+    report,
+    signal,
+  );
   signal.throwIfAborted();
   if (pages.length === 0) throw new ImportRefused("damaged");
   pages.sort(sortByIndex);
   replacementPage(editor, pages, keepFirstPage);
   const uploaded = await uploadEmbedded(embedded, upload, report, signal);
   signal.throwIfAborted();
-  // Someone may have drawn or added pages while the images were uploading.
+  // WARNING: The board may have changed during uploads. Recheck before replacing its empty page.
   const replacing = replacementPage(editor, pages, keepFirstPage);
   report({ kind: "adding" });
 
@@ -265,8 +276,12 @@ export async function importTldr(
   editor.markHistoryStoppingPoint("import .tldr");
   editor.run(() => {
     editor.store.put([...plan.assets, ...plan.pages, ...plan.shapes, ...plan.bindings]);
-    if (replacing !== null && !plan.pages.some((page) => page.id === replacing.id)) {
-      editor.deletePage(replacing.id);
+    if (replacing !== null) {
+      if (backgroundColor !== undefined) {
+        const settings = editor.getDocumentSettings();
+        editor.store.put([{ ...settings, meta: { ...settings.meta, backgroundColor } }]);
+      }
+      if (!plan.pages.some((page) => page.id === replacing.id)) editor.deletePage(replacing.id);
     }
     editor.setCurrentPage(plan.pages[0]!.id);
   });

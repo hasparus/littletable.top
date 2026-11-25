@@ -1,8 +1,3 @@
-// Standalone mode's own routes: sign-in through the provider, the account's
-// session, its boards, and the pass endpoint, which answers exactly as a
-// host's does (docs/hosting.md, "The host contract") so the client cannot tell the
-// two apart. Passes are signed with the Worker's own key.
-
 import { animals, colors, uniqueNamesGenerator } from "unique-names-generator";
 
 import type { StandaloneConfig } from "../config";
@@ -11,31 +6,36 @@ import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
 import { type BoardRoom, PUBLIC_BOARD } from "../board-room";
+import { isThumbnailType, thumbnailByteLimit } from "../board-thumbnail";
+import { publicationKey, readCapped, sniff } from "../file-store";
 import { serveStored } from "../files";
+import { imageDimensions } from "../image-size";
 import { addressKey } from "../limiter";
 import {
   MAX_BOARDS_PER_ACCOUNT,
   MAX_BOARDS_PER_HOUR,
+  MAX_FILE_BYTES,
   MAX_NAME_LENGTH,
   MAX_PASSES_PER_MINUTE,
   MAX_SIGN_INS_PER_MINUTE,
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
 import { secretLayerOf } from "../secret-layer";
+import { isThumbnail, thumbnailKey } from "../thumbnail-store";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
 import { workOs } from "./workos";
 
 export type StandaloneEnv = {
+  BOARD_DATA_SCOPE?: string;
   BoardRoom: DurableObjectNamespace<BoardRoom>;
   DB: D1Database;
   Files: R2Bucket;
   Limiter: DurableObjectNamespace<Limiter>;
 };
 
-// NOTE: __Host- cookies are Secure, host-only and on path /, so neither a
-// sibling subdomain nor a plain-HTTP page can set or read them.
+// WARNING: Keep the __Host- prefix so sibling subdomains and insecure pages cannot set the session cookie.
 const SESSION_COOKIE = "__Host-tabletop-session";
 const SIGN_IN_COOKIE = "__Host-tabletop-sign-in";
 const GUEST_COOKIE = "__Host-tabletop-guest";
@@ -52,7 +52,7 @@ const PUBLIC_GUEST_ANIMALS = animals.filter((word) => word.length < MAX_NAME_LEN
 
 const ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-// Rejection sampling keeps every character equally likely.
+// WARNING: Taking a random byte modulo the alphabet size would bias share codes.
 function randomCode(length: number): string {
   let code = "";
   const byte = new Uint8Array(1);
@@ -101,23 +101,25 @@ function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
 }
 
+function accountSummary({ account, csrf }: Session) {
+  const avatar = account.avatar === null ? null : `/api/avatars/${account.avatar}`;
+  return { account: { avatar, id: account.id, name: account.name }, csrf };
+}
+
 const json = (status: number, body: object, headers: HeadersInit = {}) =>
   Response.json(body, { headers: { "Cache-Control": "no-store", ...headers }, status });
 
 const refuse = (status: number, error: string) => json(status, { error });
 
-// A same-origin page's request, never a form or a page elsewhere: the
-// browser names the origin on every POST, and a JSON body needs a
-// preflight no other origin passes.
-function sameOrigin(request: Request): boolean {
+// WARNING: Require same-origin JSON so cross-origin forms cannot submit an authenticated action.
+function sameOrigin(request: Request, contentType = "application/json"): boolean {
   return (
     request.headers.get("Origin") === new URL(request.url).origin &&
-    request.headers.get("Content-Type")?.split(";")[0] === "application/json"
+    request.headers.get("Content-Type")?.split(";")[0] === contentType
   );
 }
 
-// A return address on this origin only, so sign-in cannot be made to
-// redirect elsewhere.
+// WARNING: Accept only a local path so sign-in cannot redirect to another origin.
 function returnPath(value: string | null): string {
   return value !== null && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")
     ? value
@@ -134,10 +136,9 @@ export class Standalone {
     private readonly keys: Keys,
   ) {
     this.provider = workOs(config.workOs);
-    this.store = new Store(env.DB);
+    this.store = new Store(env.DB, env.BOARD_DATA_SCOPE);
   }
 
-  // The routes this mode adds, or null for any other path.
   route(request: Request): Promise<Response> | null {
     const { pathname } = new URL(request.url);
     const { method } = request;
@@ -148,6 +149,20 @@ export class Standalone {
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
     if (picture !== null && (method === "GET" || method === "HEAD")) {
       return this.avatar(request, picture[1]!);
+    }
+    const publication = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/publish$/u.exec(pathname);
+    if (publication !== null && (method === "POST" || method === "DELETE")) {
+      return this.publish(request, publication[1]!);
+    }
+    const published = /^\/p\/([A-Za-z0-9]{1,64})\/([a-f0-9-]{36})$/u.exec(pathname);
+    if (published !== null && (method === "GET" || method === "HEAD")) {
+      return this.published(request, published[1]!, published[2]!);
+    }
+    const thumbnail = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/thumbnail$/u.exec(pathname);
+    if (thumbnail !== null) {
+      const id = thumbnail[1]!;
+      if (method === "GET" || method === "HEAD") return this.thumbnail(request, id);
+      if (method === "PUT") return this.updateThumbnail(request, id);
     }
     if (pathname === "/api/boards" && method === "GET") return this.list(request);
     if (pathname === "/api/boards" && method === "POST") return this.create(request);
@@ -177,10 +192,9 @@ export class Standalone {
     return session === null ? null : { hash, session };
   }
 
-  // A signed-in person's state-changing request: same origin, and the
-  // session's CSRF token echoed in a header.
-  private async member(request: Request) {
-    if (!sameOrigin(request)) return { refusal: refuse(403, "forbidden-origin") } as const;
+  private async member(request: Request, contentType?: string) {
+    if (!sameOrigin(request, contentType))
+      return { refusal: refuse(403, "forbidden-origin") } as const;
     const found = await this.session(request);
     if (found === null) return { refusal: refuse(401, "signed-out") } as const;
     if (request.headers.get("X-CSRF-Token") !== found.session.csrf) {
@@ -269,13 +283,16 @@ export class Standalone {
     return new Response(null, { headers, status: 302 });
   }
 
-  // The account's picture after this sign-in: the copy it has while the
-  // provider's address stays the same, else a fresh copy, else none. A
-  // failed copy is tried again at the next sign-in.
+  // WARNING: Retry failed avatar copies at the next sign-in even if the provider URL has not changed.
   private async accountAvatar(identity: { avatarUrl: string | null; subject: string }) {
     if (identity.avatarUrl === null) return null;
     const kept = await this.store.avatarOf(identity.subject);
-    if (kept.avatarUrl === identity.avatarUrl && kept.avatar !== null) return kept.avatar;
+    if (
+      kept.avatarUrl === identity.avatarUrl &&
+      kept.avatar !== null &&
+      (await this.env.Files.head(avatarKey(kept.avatar))) !== null
+    )
+      return kept.avatar;
     const copy = await copyAvatar({
       bucket: this.env.Files,
       rule: providerRule(this.config.workOs.apiBase),
@@ -285,7 +302,6 @@ export class Standalone {
     return "hash" in copy ? copy.hash : null;
   }
 
-  // The signed-in person's own picture, for the front page; nobody else's.
   private async avatar(request: Request, hash: string): Promise<Response> {
     const found = await this.session(request);
     if (found === null || found.session.account.avatar !== hash) {
@@ -323,15 +339,100 @@ export class Standalone {
   private async me(request: Request): Promise<Response> {
     const found = await this.session(request);
     if (found === null) return json(200, { account: null, csrf: null });
-    const { account, csrf } = found.session;
-    const avatar = account.avatar === null ? null : `/api/avatars/${account.avatar}`;
-    return json(200, { account: { avatar, id: account.id, name: account.name }, csrf });
+    return json(200, accountSummary(found.session));
+  }
+
+  async boardPage(request: Request) {
+    const found = await this.session(request);
+    if (found === null) return "signed-out" as const;
+    const lists = await this.store.list(found.session.account.id);
+    return { ...accountSummary(found.session), ...lists };
   }
 
   private async list(request: Request): Promise<Response> {
+    const page = await this.boardPage(request);
+    return page === "signed-out" ? refuse(401, "signed-out") : json(200, page);
+  }
+
+  private async thumbnail(request: Request, id: string): Promise<Response> {
     const found = await this.session(request);
-    if (found === null) return refuse(401, "signed-out");
-    return json(200, await this.store.list(found.session.account.id));
+    if (found === null) return refuse(404, "not-found");
+    const access = await this.store.thumbnailAccess(id, found.session.account.id);
+    if (access?.hasThumbnail !== true) return refuse(404, "not-found");
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: thumbnailKey(id),
+      name: id,
+      secret: true,
+    });
+  }
+
+  private async published(request: Request, id: string, code: string) {
+    if (!(await this.store.exists(id))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    if ((await room.publicationCode()) !== code) return refuse(404, "not-found");
+    return serveStored(request, {
+      bucket: this.env.Files,
+      config: this.config,
+      key: publicationKey(id, code),
+      name: "page",
+      secret: true,
+    });
+  }
+
+  private async publish(request: Request, id: string) {
+    const remove = request.method === "DELETE";
+    const found = await this.member(request, remove ? "application/json" : "image/png");
+    if ("refusal" in found) return found.refusal;
+    if (!(await this.store.owned(id, found.session.account.id))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    if (remove) {
+      await room.setPublication(id, null);
+      return new Response(null, { status: 204 });
+    }
+    const image = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: MAX_FILE_BYTES,
+    });
+    if (image === "too-large") return refuse(413, "too-large");
+    const bytes = new Uint8Array(image);
+    if (sniff(bytes) !== "image/png" || imageDimensions(bytes) === null) {
+      return refuse(415, "invalid-image");
+    }
+    const code = await room.setPublication(id, image);
+    return code === null ? refuse(404, "not-found") : json(200, { url: `/p/${id}/${code}` });
+  }
+
+  private async updateThumbnail(request: Request, id: string): Promise<Response> {
+    const type = request.headers.get("Content-Type");
+    if (!isThumbnailType(type)) return refuse(415, "invalid-thumbnail");
+    const found = await this.member(request, type);
+    if ("refusal" in found) return found.refusal;
+    const access = await this.store.thumbnailAccess(id, found.session.account.id);
+    if (access === null || request.headers.get("X-Board-Link") !== String(access.link)) {
+      return refuse(404, "not-found");
+    }
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length") ?? "0"),
+      max: thumbnailByteLimit(type),
+    });
+    if (body === "too-large") return refuse(413, "too-large");
+    if (!isThumbnail(body, type)) return refuse(415, "invalid-thumbnail");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+    const result = await room.storeThumbnail(id, access.link, body, type);
+    if (result === "forbidden") return refuse(404, "not-found");
+    if (typeof result === "object") {
+      return json(
+        429,
+        { error: "too-fast" },
+        {
+          "Retry-After": String(Math.max(1, Math.ceil((result.retryAt - Date.now()) / 1000))),
+        },
+      );
+    }
+    if (!access.hasThumbnail) await this.store.markThumbnail(id, access.link);
+    return new Response(null, { headers: { "Cache-Control": "no-store" }, status: 204 });
   }
 
   private async create(request: Request): Promise<Response> {
@@ -352,7 +453,7 @@ export class Standalone {
     }
     const id = randomCode(12);
     if (body?.language === "pl") {
-      // Seed the drawing before the share code can be used to enter the room.
+      // WARNING: A room opened before seeding gets the default page name instead of the localized one.
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
       await room.initializeDrawing("Strona 1");
     }
@@ -367,8 +468,7 @@ export class Standalone {
     return json(201, { id: board.id, shareCode: board.shareCode, title: board.title });
   }
 
-  // Owner-only: a board that is not this account's answers as if it did
-  // not exist, and nothing changes.
+  // WARNING: A different account’s board must return the same response as a nonexistent board.
   private async act(request: Request, id: string, action: string): Promise<Response> {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
@@ -399,11 +499,12 @@ export class Standalone {
     if (!(await this.store.delete(id, owner))) return refuse(404, "not-found");
     const secret = secretLayerOf(id);
     await this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret);
-    await room.destroy(id);
+    await room.retire(id);
+    await this.env.Files.delete(thumbnailKey(id));
     return new Response(null, { status: 204 });
   }
 
-  // The host contract's pass endpoint, answered by the Worker itself.
+  // WARNING: Keep this response compatible with the hosted pass endpoint so the client can use either mode.
   private async bootstrap(request: Request, code: string | null): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
     if (!(await this.allowed(request, "pass", MAX_PASSES_PER_MINUTE))) {
@@ -447,7 +548,7 @@ export class Standalone {
       headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
-      const owner = saved?.ownerId === account.id;
+      const owner = (saved?.ownerId ?? this.config.publicBoardOwnerId) === account.id;
       person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
       if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
     }
@@ -459,14 +560,17 @@ export class Standalone {
       owner: person.owner,
       sub: person.id,
     };
-    const [pass, secretPass] = await Promise.all([
+    const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
-      person.owner && found !== null
+      person.owner && saved !== null && found !== null
         ? signPass(this.keys, {
             ...claims,
             board: secretLayerOf(board.id),
             sessionHash: found.hash,
           })
+        : null,
+      person.owner && saved !== null
+        ? this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board.id)).publicationCode()
         : null,
     ]);
     log("pass.issued", {
@@ -481,7 +585,24 @@ export class Standalone {
         home: { name: this.config.displayName, url: "/" },
         pass,
         person: { id: person.id, name: person.name, owner: person.owner },
-        ...(secretPass === null ? {} : { secretPass }),
+        ...(secretPass !== null && found !== null
+          ? {
+              secretPass,
+              publication: {
+                csrf: found.session.csrf,
+                url: published === null ? null : `/p/${board.id}/${published}`,
+              },
+            }
+          : {}),
+        ...(saved === null || found === null
+          ? {}
+          : {
+              thumbnail: {
+                csrf: found.session.csrf,
+                link: saved.linkVersion,
+                needed: !saved.hasThumbnail,
+              },
+            }),
         title: board.title,
       },
       { headers, status: 200 },

@@ -10,8 +10,7 @@ function rememberArrow(editor: Editor, id: TLShapeId): void {
   const info = getArrowInfo(editor, arrow);
   if (info === undefined) return;
 
-  // Store the editor's resolved endpoints while their targets still exist.
-  // They are in the arrow's own coordinates and survive reparenting.
+  // WARNING: Capture resolved endpoints before their targets disappear. Arrow-local coordinates survive reparenting.
   const meta = saveArrowEndpoints(arrow, {
     end: bindings.some(({ props }) => props.terminal === "end") ? info.end.point : undefined,
     start: bindings.some(({ props }) => props.terminal === "start") ? info.start.point : undefined,
@@ -32,8 +31,7 @@ export function rememberExistingArrows(editor: Editor): void {
   );
 }
 
-// Keep the snapshot current through the same binding events that tldraw uses
-// to recompute arrow geometry, including changes to ancestors.
+/** Keeps public arrow endpoint snapshots current on tldraw binding events, including changes to ancestors. */
 export class PublicArrowBindingUtil extends ArrowBindingUtil {
   override onAfterCreate(options: Parameters<ArrowBindingUtil["onAfterCreate"]>[0]): void {
     super.onAfterCreate(options);

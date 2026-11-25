@@ -26,12 +26,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Env } from "../src/index";
 
+import { avatarKey } from "../src/avatars";
 import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_DEMO_ASSET, PUBLIC_DEMO_SHAPE } from "../src/public-board-demo-ids";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
-import { Browser, openSocket, roomCall, standaloneEnv } from "./standalone-support";
+import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
 
 type Answer = { board: string; pass: string; person: { id: string; name: string; owner: boolean } };
@@ -39,6 +40,33 @@ type Answer = { board: string; pass: string; person: { id: string; name: string;
 const hostedEnv = env as unknown as Env;
 
 describe("the public board", () => {
+  it("assigns public-board ownership only to the configured WorkOS account", async () => {
+    const owner = new Browser();
+    const guest = new Browser();
+    const other = new Browser();
+    await owner.signIn("Same name");
+    await other.signIn("Same name");
+    const { account } = await (await owner.fetch("/api/me")).json<{ account: { id: string } }>();
+    const workerEnv = { ...standaloneEnv, PUBLIC_BOARD_OWNER_ID: account.id };
+    const bootstrap = (browser: Browser, environment: typeof standaloneEnv = workerEnv) =>
+      browser.fetch(
+        "/api/public-board/bootstrap",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: ORIGIN },
+          body: "{}",
+        },
+        environment,
+      );
+    const assigned = await (await bootstrap(owner)).json<Answer>();
+    expect(assigned.person).toMatchObject({ id: `a:${account.id}`, owner: true });
+    expect(assigned).not.toHaveProperty("secretPass");
+    for (const browser of [guest, other]) {
+      expect((await (await bootstrap(browser)).json<Answer>()).person.owner).toBe(false);
+    }
+    expect((await (await bootstrap(owner, standaloneEnv)).json<Answer>()).person.owner).toBe(false);
+  });
+
   it("keeps a guest's generated name and lets guests and members share chat", async () => {
     const guest = new Browser();
     const member = new Browser();
@@ -373,6 +401,42 @@ describe("the public board", () => {
   });
 });
 
+it("isolates board lists, links, and mutations between previews sharing D1", async () => {
+  const person = new Browser();
+  await person.signIn("Ada");
+  const first = { ...standaloneEnv, BOARD_DATA_SCOPE: "pr-71" };
+  const second = { ...standaloneEnv, BOARD_DATA_SCOPE: "pr-72" };
+  const post = (path: string, worker: Env, body = {}) =>
+    person.fetch(
+      path,
+      {
+        body: JSON.stringify(body),
+        headers: {
+          "Content-Type": "application/json",
+          Origin: ORIGIN,
+          "X-CSRF-Token": person.csrf!,
+        },
+        method: "POST",
+      },
+      worker,
+    );
+  const made = await post("/api/boards", first, { title: "Preview map" });
+  expect(made.status).toBe(201);
+  const board: { id: string; shareCode: string } = await made.json();
+  const bootstrap = `/api/b/${board.shareCode}/bootstrap`;
+
+  expect((await post(bootstrap, second)).status).toBe(404);
+  expect((await post(`/api/boards/${board.id}/delete`, second)).status).toBe(404);
+  expect(await (await person.fetch("/api/boards", {}, second)).json()).toMatchObject({
+    owned: [],
+    visited: [],
+  });
+  expect((await post(bootstrap, first)).status).toBe(200);
+  expect(await (await person.fetch("/api/boards", {}, first)).json()).toMatchObject({
+    owned: [{ id: board.id }],
+  });
+});
+
 describe("signing in", () => {
   it("makes an account and a session from the provider's answer", async () => {
     const ada = new Browser();
@@ -389,6 +453,20 @@ describe("signing in", () => {
       csrf: expect.any(String),
     });
     expect([...ada.cookies.keys()]).toEqual(["__Host-tabletop-session"]);
+  });
+
+  it("copies an unchanged avatar again when the current bucket lacks it", async () => {
+    const person = new Browser();
+    await person.signIn("Ada");
+    const { account }: { account: { avatar: string } } = await (
+      await person.fetch("/api/me")
+    ).json();
+    const hash = account.avatar.split("/").at(-1)!;
+
+    await standaloneEnv.Files.delete(avatarKey(hash));
+    expect((await person.fetch(account.avatar)).status).toBe(404);
+    await person.signIn("Ada");
+    expect((await person.fetch(account.avatar)).status).toBe(200);
   });
 
   it("sets a session cookie scripts cannot read and other sites do not get", async () => {
@@ -473,6 +551,8 @@ describe("an owner's boards", () => {
     await ada.bootstrap(hers.shareCode);
 
     expect(await ada.list()).toEqual({
+      account: { avatar: expect.any(String), id: expect.any(String), name: "Ada" },
+      csrf: ada.csrf,
       owned: [{ createdAt: expect.any(Number), ...mine }],
       visited: [
         {

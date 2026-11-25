@@ -19,7 +19,7 @@ export function parseLaunch(value: unknown): DiceLaunch | null {
   return fraction(vx) && fraction(vz) && fraction(x) && fraction(z) ? { vx, vz, x, z } : null;
 }
 
-// Rejection sampling: a plain modulo would favour the low faces.
+// WARNING: A plain modulo would bias rolls toward the low faces.
 export function rollDie(sides: number): number {
   const limit = 2 ** 32 - (2 ** 32 % sides);
   const draw = new Uint32Array(1);
@@ -28,8 +28,7 @@ export function rollDie(sides: number): number {
   return (draw[0]! % sides) + 1;
 }
 
-// An unsigned 32-bit seed for the shared throw, drawn on its own so it says
-// nothing about the values.
+/** Draws an animation seed independently of the dice values. */
 export function drawSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]!;
 }

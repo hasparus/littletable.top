@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
 
 import type { Language } from "../settings";
 import type { Action, Editing, Lists, Owned } from "./front-board-list";
@@ -11,16 +10,12 @@ import { FeedbackProvider, useFeedback } from "./feedback";
 import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
-import { Icon } from "./icons";
+import { boardShell } from "./front-skeleton";
+import { Icon, TableMark } from "./icons";
 
-// The standalone tabletop's account page: sign in, then the account's boards
-// (made here, or joined by someone else's link) with what an owner can do
-// to them. The Worker's API: docs/internals.md, "Standalone mode".
-
-// avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
 
-type Me = { account: Account | null; csrf: string | null };
+type BoardPage = Lists & { account: Account; csrf: string };
 
 function useApi(csrf: string | null) {
   return useCallback(
@@ -48,7 +43,7 @@ function SignedOut({ copy, failed, name }: { copy: FrontCopy; failed: boolean; n
         {copy.signIn}
       </a>
       <a className="underline underline-offset-2" href="/">
-        {copy.publicBoard}
+        {copy.publicBoardLink}
       </a>
     </div>
   );
@@ -59,26 +54,18 @@ function SignedIn({
   locale,
   me,
   name,
+  reload,
 }: {
   copy: FrontCopy;
   locale: Language;
-  me: Me & { account: Account };
+  me: BoardPage;
   name: string;
+  reload: () => Promise<void>;
 }) {
-  const [lists, setLists] = useState<Lists | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const post = useApi(me.csrf);
   const feedback = useFeedback();
-
-  const load = useCallback(async () => {
-    const response = await fetch("/api/boards");
-    if (response.ok) setLists((await response.json()) as Lists);
-    else setError(copy.actionFailed);
-  }, [copy]);
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const create = async () => {
     setError(null);
@@ -102,7 +89,7 @@ function SignedIn({
     );
     if (!response.ok) setError(copy.actionFailed);
     setEditing(null);
-    await load();
+    await reload();
   };
 
   const signOut = async () => {
@@ -119,7 +106,7 @@ function SignedIn({
       <header className="border-b border-border pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-2 px-4 sm:min-h-16 sm:px-6 lg:px-10">
           <div className="flex min-w-0 items-center gap-1.5 font-[748] tracking-tight lowercase">
-            <img alt="" className="size-5 shrink-0 sm:size-6" src="/favicon.svg" />
+            <TableMark className="size-5 shrink-0 sm:size-6" />
             <span className="wrap-anywhere">{name}</span>
           </div>
           <div className="ml-auto flex items-center gap-0.5">
@@ -127,7 +114,7 @@ function SignedIn({
               className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
               href="/"
             >
-              {copy.publicBoard}
+              {copy.publicBoardLink}
               <Icon className="hidden size-3.5 sm:block" name="ArrowUpRight" />
             </a>
             <FrontMenu
@@ -157,7 +144,9 @@ function SignedIn({
             {feedback !== null && (
               <button
                 className="btn btn-secondary min-h-11"
-                onClick={() => feedback.open({ role: "member", screen: "boards" })}
+                onClick={(event) =>
+                  feedback.open({ role: "member", screen: "boards" }, event.currentTarget)
+                }
                 type="button"
               >
                 {feedback.label}
@@ -178,60 +167,69 @@ function SignedIn({
             {error}
           </p>
         )}
-        {lists === null ? (
-          error === null && (
-            <p className="mt-6 text-foreground-muted" role="status">
-              {copy.loading}
-            </p>
-          )
-        ) : (
-          <BoardList
-            copy={copy}
-            editing={editing}
-            lists={lists}
-            locale={locale}
-            onAction={act}
-            setEditing={setEditing}
-          />
-        )}
+        <BoardList
+          copy={copy}
+          editing={editing}
+          lists={me}
+          locale={locale}
+          onAction={act}
+          setEditing={setEditing}
+        />
       </main>
     </>
   );
 }
 
-function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
-  const [me, setMe] = useState<Me | null>(null);
-  const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
-  useEffect(() => {
-    void fetch("/api/me")
-      .then(async (response) =>
-        response.ok ? ((await response.json()) as Me) : { account: null, csrf: null },
-      )
-      .catch(() => ({ account: null, csrf: null }))
-      .then(setMe);
+type FrontProps = {
+  copy: FrontCopy;
+  failed?: boolean;
+  initialPage?: "signed-out" | BoardPage;
+  locale: Language;
+  name: string;
+};
+
+export function Front({ copy, failed, initialPage, locale, name }: FrontProps) {
+  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(initialPage ?? null);
+  const reload = useCallback(async () => {
+    try {
+      const response = await fetch("/api/boards");
+      if (response.status === 401) setPage("signed-out");
+      else if (response.ok) setPage((await response.json()) as BoardPage);
+      else setPage("failed");
+    } catch {
+      setPage("failed");
+    }
   }, []);
-  if (me === null) {
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- The fallback load updates state when the fetch settles.
+    if (initialPage === undefined) void reload();
+  }, [initialPage, reload]);
+  if (page === "failed") {
     return (
-      <p className="p-6 text-foreground-muted" role="status">
-        {copy.loading}
+      <p className="p-6 text-danger-text" role="alert">
+        {copy.actionFailed}
       </p>
     );
   }
-  return me.account === null ? (
-    <SignedOut copy={copy} failed={failed} name={name} />
+  if (page === null) {
+    return (
+      <div role="status">
+        <span className="sr-only">{copy.loading}</span>
+        <div dangerouslySetInnerHTML={{ __html: boardShell }} />
+      </div>
+    );
+  }
+  return page === "signed-out" ? (
+    <SignedOut copy={copy} failed={failed === true} name={name} />
   ) : (
-    <SignedIn copy={copy} locale={locale} me={{ ...me, account: me.account }} name={name} />
+    <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} />
   );
 }
 
-export function mountFront(
-  element: HTMLElement,
-  props: { copy: FrontCopy; locale: Language; name: string },
-) {
-  element.classList.add("overflow-y-auto", "bg-background");
-  createRoot(element).render(
+export function BoardsApp(props: FrontProps) {
+  return (
     <FeedbackProvider enabled language={props.locale}>
       <Front {...props} />
-    </FeedbackProvider>,
+    </FeedbackProvider>
   );
 }

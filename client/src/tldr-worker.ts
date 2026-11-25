@@ -12,10 +12,12 @@ import {
 
 import type { ImportProblem } from "./tldr";
 
+import { type BoardColor, isBoardColor } from "../../src/board-palette";
 import { fileFromDataUrl } from "./data-url-file";
 
 export type BoardDocument = {
   assets: TLAsset[];
+  backgroundColor?: BoardColor;
   bindings: TLBinding[];
   embedded: Map<TLAsset["id"], File>;
   pages: TLPage[];
@@ -31,11 +33,10 @@ export type ImportReply =
 const scope = globalThis as unknown as DedicatedWorkerGlobalScope;
 const reply = (message: ImportReply) => scope.postMessage(message);
 
-// The board uses tldraw's default record schema, including on the public
-// board where we override arrow behaviour and leave its schema in place.
+// WARNING: The public editor customizes shape behaviour but retains tldraw's default record schema.
 const schema = createTLSchema();
 
-// The parser can report a generic migration error for a newer shape.
+// WARNING: The parser can report a generic migration error for a newer shape.
 function usesNewerSchema(json: string): boolean {
   let file: unknown;
   try {
@@ -94,6 +95,9 @@ function parse(json: string): void {
     shapes: [],
   };
   for (const record of parsed.value.allRecords()) {
+    if (record.typeName === "document" && isBoardColor(record.meta.backgroundColor)) {
+      document.backgroundColor = record.meta.backgroundColor;
+    }
     if (record.typeName === "page") document.pages.push(record);
     if (record.typeName === "shape") document.shapes.push(record);
     if (record.typeName === "binding") document.bindings.push(record);
@@ -110,8 +114,6 @@ function parse(json: string): void {
       document.assets.push(record);
     }
   }
-  // Blobs can be shared with the main thread without copying the base64
-  // strings from the file or decoding its images on the canvas thread.
   reply({ document, kind: "loaded" });
 }
 

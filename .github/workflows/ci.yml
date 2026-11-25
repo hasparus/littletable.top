@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   check:
+    name: CI / check
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -37,6 +38,7 @@ jobs:
         run: bun run doctor --scope changed --base "$BASE_COMMIT" --blocking warning
 
   test:
+    name: CI / test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -81,3 +83,14 @@ jobs:
           echo "$RUNNER_TEMP/bun/bin" >> "$GITHUB_PATH"
       - run: bun install --frozen-lockfile
       - run: bun run e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }} --workers=2
+
+  e2e-result:
+    name: CI / e2e
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every browser shard to pass
+        env:
+          RESULT: ${{ needs.e2e.result }}
+        run: test "$RESULT" = success

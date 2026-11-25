@@ -2,9 +2,6 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-// What the board's images and .tldr files are checked against: the
-// fixtures (e2e/fixtures/make-fixtures.ts) and what a browser downloads.
-
 export const fixture = (name: string) => new URL(`../fixtures/${name}`, import.meta.url).pathname;
 
 export const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -30,9 +27,11 @@ export type Document = {
 const byId = (a: FileRecord, b: FileRecord) => a.id.localeCompare(b.id);
 const byIndex = (a: FileRecord, b: FileRecord) => (a.index! < b.index! ? -1 : 1);
 
-// The document a .tldr holds, without what belongs to one person's
-// session (camera, selection, pointer) or to the file (its document
-// record). Each embedded image stands as the SHA-256 of its bytes.
+/**
+ * The document a .tldr holds, without what belongs to one person's
+ * session (camera, selection, pointer) or to the file (its document
+ * record). Each embedded image stands as the SHA-256 of its bytes.
+ */
 export function documentOf(json: string): Document {
   const { records } = JSON.parse(json) as { records: FileRecord[] };
   const of = (typeName: string) => records.filter((record) => record.typeName === typeName);
@@ -53,8 +52,6 @@ export function documentOf(json: string): Document {
 
 export const documentOfFile = (name: string) => documentOf(readFileSync(fixture(name), "utf8"));
 
-// Every reference inside the document leads to a record in it, on the
-// same page.
 export function expectWhole(document: Document): void {
   const pages = new Set(document.pages.map((page) => page.id));
   const shapes = new Map(document.shapes.map((shape) => [shape.id, shape]));
@@ -103,7 +100,6 @@ export async function uploadImage(page: Page, name: string): Promise<void> {
   await picker.setFiles(fixture(name));
 }
 
-// Drops a file onto the board as a person dragging it from their desktop.
 export async function dropFile(page: Page, name: string, type: string): Promise<void> {
   const content = readFileSync(fixture(name)).toString("base64");
   const transfer = await page.evaluateHandle(
@@ -118,8 +114,10 @@ export async function dropFile(page: Page, name: string, type: string): Promise<
   await page.getByTestId("canvas").dispatchEvent("drop", { dataTransfer: transfer });
 }
 
-// The board's images that have actually loaded, as the addresses they came
-// from: an <img> that failed or is still waiting does not count.
+/**
+ * The board's images that have actually loaded, as the addresses they came
+ * from: an <img> that failed or is still waiting does not count.
+ */
 export const loadedImages = (page: Page): Promise<string[]> =>
   page
     .getByTestId("canvas")

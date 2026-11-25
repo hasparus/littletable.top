@@ -22,12 +22,126 @@ import {
   sheet,
 } from "./helpers";
 
-// Standalone mode: the tabletop is its own host. The owner signs
-// in through e2e/fake-workos.ts (the hosted AuthKit page's stand-in),
-// makes a board on the front page, and a guest joins by its link with only
-// a name. Nothing leaves the machine.
-
 const ON_BOARD = boardAt(STANDALONE);
+
+test("board sections collapse on phones only when both lists have three boards", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`${STANDALONE}/boards?lang=en`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  const account = crypto.randomUUID().slice(0, 12);
+  await page.getByLabel("Name").fill(`Board lists ${account}`);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL(`${STANDALONE}/boards`);
+
+  const start = await request.get(`${STANDALONE}/auth/sign-in?return=/boards`, { maxRedirects: 0 });
+  const authorize = new URL(start.headers().location!);
+  authorize.searchParams.set("fake_user", `Board host ${account}`);
+  const signedIn = await request.get(authorize.href);
+  expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
+  const member = page.request;
+  const headersFor = async (client: typeof member) => {
+    const response = await client.get(`${STANDALONE}/api/me`);
+    const me = await response.json();
+    return { Origin: STANDALONE, "X-CSRF-Token": me.csrf };
+  };
+  const memberHeaders = await headersFor(member);
+  const hostHeaders = await headersFor(request);
+  const shared: { id: string; shareCode: string }[] = [];
+  for (let index = 0; index < 3; index++) {
+    const own = await member.post(`${STANDALONE}/api/boards`, {
+      data: { title: `Created ${index}` },
+      headers: memberHeaders,
+    });
+    expect(own.status()).toBe(201);
+    const board = await request.post(`${STANDALONE}/api/boards`, {
+      data: { title: `Joined ${index}` },
+      headers: hostHeaders,
+    });
+    expect(board.status()).toBe(201);
+    shared.push(await board.json());
+  }
+  const visit = async (index: number) => {
+    const response = await member.post(
+      `${STANDALONE}/api/b/${shared[index]!.shareCode}/bootstrap`,
+      { data: {}, headers: memberHeaders },
+    );
+    expect(response.ok()).toBe(true);
+  };
+  await visit(0);
+  await visit(1);
+  await page.reload();
+  const created = page.getByRole("button", { exact: true, name: "Boards created" });
+  const joined = page.getByRole("button", { exact: true, name: "Boards joined" });
+  const row = page.getByRole("link", { exact: true, name: "Joined 0" });
+  await expect(row).toBeVisible();
+  await expect(created.or(joined)).toHaveCount(0);
+
+  await visit(2);
+  await page.reload();
+  await expect(created).toHaveAttribute("aria-expanded", "true");
+  await expect(joined).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("main h2")).toHaveText(["Boards created", "Boards joined"]);
+  await joined.press("Enter");
+  await expect(joined).toHaveAttribute("aria-expanded", "false");
+  await expect(row).toBeHidden();
+  await expect(created).toHaveAttribute("aria-expanded", "true");
+  await reviewShot(page, "boards-collapsible-phone");
+  await joined.press("Space");
+  await expect(row).toBeVisible();
+
+  await page.setViewportSize({ height: 900, width: 1200 });
+  await expect(created.or(joined)).toHaveCount(0);
+  await expect(row).toBeVisible();
+
+  for (const board of shared) {
+    const removed = await request.post(`${STANDALONE}/api/boards/${board.id}/delete`, {
+      data: {},
+      headers: hostHeaders,
+    });
+    expect(removed.status()).toBe(204);
+  }
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(page.getByRole("link", { exact: true, name: "Created 0" })).toBeVisible();
+  await expect(created.or(joined)).toHaveCount(0);
+});
+
+test("landing header controls fit narrow phones before and after sign-in", async ({ browser }) => {
+  const landing = await phone(browser, `${STANDALONE}/`);
+  const github = landing.getByRole("link", { name: "Source code on GitHub" });
+  const pageMenu = landing.getByTestId("page-menu.button");
+  const menu = landing.locator(".tlui-menu-zone");
+  const chat = landing.getByRole("button", { name: "Chat" });
+
+  const expectHeader = async (account: "Sign in" | "My boards", state: string) => {
+    await expect(github).toHaveAttribute("href", "https://github.com/hasparus/littletable.top");
+    await expect(pageMenu).toHaveAccessibleName("Landing Page");
+    for (const width of [320, 360]) {
+      await landing.setViewportSize({ height: 800, width });
+      const menuBox = (await menu.boundingBox())!;
+      const chatBox = (await chat.boundingBox())!;
+      expect(chatBox.x).toBeGreaterThan(menuBox.x + menuBox.width);
+      await expect(github).toBeInViewport({ ratio: 1 });
+      await expect(landing.getByRole("link", { name: account })).toBeInViewport({ ratio: 1 });
+      await reviewShot(landing, `landing-github-${state}-${width}`);
+    }
+  };
+
+  try {
+    await expectHeader("Sign in", "guest");
+    await landing.getByRole("link", { name: "Sign in" }).click();
+    await landing.getByLabel("Name").fill("Landing header member");
+    await landing.getByRole("button", { name: "Continue" }).click();
+    await landing.waitForURL(`${STANDALONE}/boards`);
+    await landing.goto(`${STANDALONE}/`);
+    await expectHeader("My boards", "member");
+  } finally {
+    await landing.context().close();
+  }
+});
 
 test("the board menu and right-hand controls share guides on public and private boards", async ({
   browser,
@@ -88,6 +202,70 @@ test("the board menu and right-hand controls share guides on public and private 
 
   await guest.context().close();
   await landing.context().close();
+});
+
+test("the landing introduction keeps its typography and position when the board opens", async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE.viewport);
+  const release = Promise.withResolvers<null>();
+  await page.route("**/api/public-board/bootstrap", async (route) => {
+    await release.promise;
+    await route.continue();
+  });
+  const font = Promise.withResolvers<null>();
+  await page.route("**/Shantell_Sans-Informal_Regular-*.woff2", async (route) => {
+    await font.promise;
+    await route.continue();
+  });
+
+  const documentResponse = await page.goto(STANDALONE, { waitUntil: "commit" });
+  expect(await documentResponse?.text()).toContain("<section data-landing-preview");
+  const preview = page.locator("[data-landing-preview]");
+  try {
+    await expect(page.getByRole("status")).toBeAttached();
+    await expect(preview).toBeHidden();
+    font.resolve(null);
+    await expect(preview).toBeVisible();
+    const session = await page.context().newCDPSession(page);
+    await session.send("DOM.enable");
+    await session.send("CSS.enable");
+    const { root } = await session.send("DOM.getDocument");
+    async function expectHandwriting(selector: string) {
+      const { nodeId } = await session.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      const { fonts } = await session.send("CSS.getPlatformFontsForNode", { nodeId });
+      expect(fonts).toHaveLength(1);
+      expect(fonts[0]?.familyName).toMatch(/Shantell/i);
+      expect(fonts[0]?.isCustomFont).toBe(true);
+    }
+    await expectHandwriting("[data-landing-preview] p");
+    await expect(preview).toBeInViewport();
+    const box = await preview.boundingBox();
+    release.resolve(null);
+    const live = page.locator("[data-public-board-note]");
+    await expect(live).toBeInViewport();
+    await page.evaluate(() => document.fonts.ready.then(() => null));
+    await expectHandwriting("[data-public-board-note] p");
+    expect(await live.boundingBox()).toEqual(box);
+    await expect(preview).toHaveCount(0);
+  } finally {
+    release.resolve(null);
+    font.resolve(null);
+  }
+});
+
+test("the prerendered landing intro uses dark mode before JavaScript runs", async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: "dark", javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(STANDALONE);
+    const intro = page.locator("[data-landing-preview]");
+    await expect(intro).toBeVisible();
+    await expect(intro).toHaveCSS("color", "rgb(250, 250, 250)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(10, 10, 10)");
+  } finally {
+    await context.close();
+  }
 });
 
 test("the home page is one editable public board for anonymous visitors", async ({
@@ -280,6 +458,28 @@ test("two guests can chat live and see their messages after reloading", async ({
   }
 });
 
+test("a public shape can acquire a pattern fill after the editor mounts", async ({ page }) => {
+  await page.goto(STANDALONE);
+  await page.locator("[data-public-board-note]").waitFor();
+  await reachEditor(page);
+  const id = String(createShapeId());
+  try {
+    await page.evaluate((id) => {
+      const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+      editor.createShape({ id: id as TLShapeId, type: "geo" });
+      editor.updateShape({ id: id as TLShapeId, props: { fill: "pattern" }, type: "geo" });
+    }, id);
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+    await page.reload();
+    await expect(page.getByTestId("ready-pattern-fill-defs")).toBeAttached();
+  } finally {
+    await reachEditor(page);
+    await page.evaluate((id) => {
+      (globalThis as unknown as { __editor: Editor }).__editor.deleteShape(id as TLShapeId);
+    }, id);
+  }
+});
+
 test("a public arrow saves its moved endpoint for the expiry sweep", async ({ page }) => {
   await page.goto(`${STANDALONE}/`);
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
@@ -322,7 +522,7 @@ test("a board created in Polish opens with Strona 1 for its first guest in Engli
   await page.getByLabel("Name").fill("Ada");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Stop the creator's navigation from loading the canvas so the guest opens the room first.
+  // WARNING: Intercept the creator’s first navigation so the guest initializes the room.
   await page.route(`${STANDALONE}/b/*`, (route) => route.fulfill({ body: "" }), { times: 1 });
   await page.getByRole("button", { name: "Nowa tablica" }).click();
   await expect(page).toHaveURL(ON_BOARD);
@@ -372,7 +572,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
   await expectOwnPolicy(page, `'self' ${socketOf(STANDALONE)};`);
 
-  // The guest, on a phone, has no account and needs none.
   const guest = await phone(browser, boardUrl);
   await joinAs(guest, "Bea");
 
@@ -380,8 +579,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(onBoard(guest, "Hello table")).toBeVisible();
   await rollTwoD6(guest, page, "Bea");
 
-  // The owner makes a place of a note off the guest's small screen; the
-  // guest jumps to it.
   await putNote(page, { at: { x: 1100, y: 250 }, text: "The map" });
   const places = await openSheet(page, "Search");
   await places.getByRole("button", { name: "Add to places" }).click();
@@ -396,16 +593,20 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(sheet(guest, "Search")).toBeHidden();
   await expect(farNote).toBeInViewport();
 
-  // From the front page the owner renames the board and resets its link;
-  // the guest, who has only the old link, is put out.
   const front = await page.context().newPage();
   await collectCspViolations(front);
   await front.goto(`${STANDALONE}/boards`);
   const row = front.getByRole("listitem").filter({ hasText: "Board" });
+  const original = row.getByRole("link");
+  const position = (await original.boundingBox())!;
   await row.getByLabel(/^Manage /u).click();
   await row.getByRole("button", { name: "Rename" }).click();
-  await row.getByLabel("Board name").fill("Mörk Borg night");
-  await row.getByRole("button", { name: "Save" }).click();
+  const field = front.getByRole("textbox", { name: "Board name" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveCSS("border-top-style", "dashed");
+  expect((await field.boundingBox())!.x).toBeCloseTo(position.x);
+  await field.fill("Mörk Borg night");
+  await field.press("Enter");
   const renamed = front.getByRole("listitem").filter({ hasText: "Mörk Borg night" });
   await renamed.getByLabel("Manage Mörk Borg night", { exact: true }).click();
   await renamed.getByRole("button", { name: "Reset link" }).click();
@@ -414,7 +615,6 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
     guest.getByText("The board's link was reset. Ask its creator for the new one."),
   ).toBeVisible();
   const link = front.getByRole("link", { name: "Mörk Borg night" });
-  // NOTE: the list shows the new link once the reset's answer is in.
   await expect(link).not.toHaveAttribute("href", new URL(boardUrl).pathname);
   const newLink = await link.getAttribute("href");
 
@@ -433,4 +633,37 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expectNoCspViolations(front);
   await expectNoCspViolations(guest);
   await guest.context().close();
+});
+
+test("an owner can rename a board from its secret layer", async ({ browser, page }) => {
+  await page.goto(`${STANDALONE}/boards`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Keeper");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_BOARD);
+
+  const guest = await phone(browser, page.url());
+  try {
+    await joinAs(guest, "Player");
+    await guest.getByRole("button", { exact: true, name: "Menu" }).click();
+    await expect(guest.getByRole("menuitem", { name: "Rename board" })).toHaveCount(0);
+
+    const layer = page.getByRole("button", { name: "Secret layer" });
+    await layer.click();
+    await expect(layer).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { exact: true, name: "Menu" }).click();
+    await page.getByRole("menuitem", { name: "Rename board" }).click();
+    await page.getByLabel("Board name", { exact: true }).fill("Midnight at the keep");
+    await page.getByRole("button", { exact: true, name: "Save" }).click();
+    await expect(page).toHaveTitle("Midnight at the keep");
+    await expect(layer).toHaveAttribute("aria-pressed", "true");
+
+    await guest.reload();
+    await expect(guest).toHaveTitle("Midnight at the keep");
+    await page.goto(`${STANDALONE}/boards`);
+    await expect(page.getByRole("link", { name: "Midnight at the keep" })).toBeVisible();
+  } finally {
+    await guest.context().close();
+  }
 });

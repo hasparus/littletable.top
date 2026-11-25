@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type { Roll } from "./bootstrap";
 import type { RollRefusal } from "./rolls";
@@ -13,10 +13,12 @@ import {
 } from "../../src/dice-notation";
 import { DIE_SIDES, MAX_DICE } from "../../src/limits";
 import { type Copy, dieLabel, fill } from "./copy";
+import { useDialogBackdrop } from "./dialog";
 import { modifierLabel, notationLabel, poolLabel } from "./dice-labels";
 import { DieShape } from "./die-shape";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
+import { enterSurface } from "./surface-entry";
 import { useBoardUi } from "./ui";
 
 const DIE_BUTTON =
@@ -26,9 +28,9 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
   const { kept, notation, total } = rollResult(roll);
   const modifier = notation?.modifier ?? null;
   return (
-    <li className="flex items-start gap-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <p className="flex items-baseline gap-2 text-sm">
+    <li className="flex items-center gap-2 py-1.5">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <p className="flex min-w-0 max-w-full items-baseline gap-1.5 text-sm">
           <span className="truncate font-semibold">{roll.name}</span>
           <span className="min-w-0 wrap-break-word text-foreground-muted">
             {notation === null
@@ -39,14 +41,14 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
               : notationLabel(copy, notation)}
           </span>
         </p>
-        <p className="mt-1 flex flex-wrap gap-1">
+        <p className="flex min-w-0 max-w-full flex-wrap gap-0.5">
           {roll.dice.map((die, index) => (
             <DieShape
               copy={copy}
               dropped={!kept[index]}
               key={index}
               sides={die.sides}
-              size="sm"
+              size="xs"
               tone="quiet"
               value={die.value}
             />
@@ -54,18 +56,76 @@ function LogEntry({ copy, locale, roll }: { copy: Copy; locale: string; roll: Ro
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-xl leading-tight font-bold tabular-nums">
+        <p className="text-base/5 font-bold tabular-nums">
           {modifier !== null && (
             <span className="mr-1 text-sm font-normal">{modifierLabel(modifier)} =</span>
           )}
           <span className="sr-only">{copy.total}: </span>
           {total}
         </p>
-        <p className="text-xs text-foreground-muted tabular-nums">
+        <p className="text-xs/3 text-foreground-muted tabular-nums">
           {new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(roll.at)}
         </p>
       </div>
     </li>
+  );
+}
+
+function RollLog() {
+  const { copy, locale, rolls } = useBoardUi();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const heading = useId();
+  useDialogBackdrop(dialog);
+
+  return (
+    <>
+      <div className="mt-4 border-t border-border pt-1">
+        <button
+          aria-haspopup="dialog"
+          className="min-h-11 w-full rounded-lg px-2 text-left text-sm font-semibold text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+          onClick={(event) => {
+            const surface = dialog.current;
+            if (surface === null) return;
+            event.currentTarget.focus({ preventScroll: true });
+            surface.showModal();
+            surface.scrollTop = 0;
+            enterSurface(surface, event.currentTarget);
+          }}
+          type="button"
+        >
+          {copy.rollLog}
+        </button>
+      </div>
+      <dialog
+        aria-labelledby={heading}
+        className="fixed inset-0 m-auto max-h-[min(36rem,calc(100dvh-2rem))] w-[calc(100%-2rem)] max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-bg-secondary text-foreground shadow-sheet backdrop:bg-ink/30"
+        data-roll-log
+        ref={dialog}
+      >
+        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg-secondary pr-1 pl-3">
+          <h2 className="flex-1 text-base font-semibold" id={heading}>
+            {copy.rollLog}
+          </h2>
+          <button
+            aria-label={copy.close}
+            className="grid size-11 place-items-center rounded-full text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+            onClick={() => dialog.current?.close()}
+            type="button"
+          >
+            <Icon name="Close" />
+          </button>
+        </header>
+        {rolls.log.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-foreground-muted">{copy.noRollsYet}</p>
+        ) : (
+          <ol className="divide-y divide-border px-3 pb-1">
+            {rolls.log.toReversed().map((entry) => (
+              <LogEntry copy={copy} key={entry.id} locale={locale} roll={entry} />
+            ))}
+          </ol>
+        )}
+      </dialog>
+    </>
   );
 }
 
@@ -86,8 +146,9 @@ function notationMessage(copy: Copy, error: NotationError, example: string): str
   }
 }
 
+/** Keep the primary roll control focused while the dice are in motion. */
 export function DiceSheet() {
-  const { close, copy, locale, person, rollDraft, rolls, setRollDraft } = useBoardUi();
+  const { close, copy, person, rollDraft, rolls, setRollDraft } = useBoardUi();
   const { expression, pool } = rollDraft;
   const expressionId = useId();
   const [busy, setBusy] = useState(false);
@@ -106,7 +167,6 @@ export function DiceSheet() {
         ? ""
         : notationLabel(copy, notation);
   const example = `3${dieLabel(copy, 6)}kh2 + 3`;
-  const newestFirst = useMemo(() => rolls.log.toReversed(), [rolls.log]);
 
   const roll = async (request: RollRequest) => {
     setBusy(true);
@@ -211,7 +271,6 @@ export function DiceSheet() {
             {notationMessage(copy, notationError, example)}
           </p>
         )}
-        {/* NOTE: focus stays on the primary action during a roll. */}
         <button
           aria-disabled={busy}
           className="btn btn-primary mt-3 min-h-12 w-full gap-2 aria-disabled:opacity-70"
@@ -237,20 +296,7 @@ export function DiceSheet() {
         </p>
       )}
 
-      <details className="mt-4 border-t border-border">
-        <summary className="cursor-pointer rounded-sm py-2 text-sm font-semibold text-foreground-muted focus-visible:outline-2 focus-visible:outline-border-focus">
-          {copy.rollLog}
-        </summary>
-        {newestFirst.length === 0 ? (
-          <p className="pb-1 text-sm text-foreground-muted">{copy.noRollsYet}</p>
-        ) : (
-          <ol className="divide-y divide-border">
-            {newestFirst.map((entry) => (
-              <LogEntry copy={copy} key={entry.id} locale={locale} roll={entry} />
-            ))}
-          </ol>
-        )}
-      </details>
+      <RollLog />
     </Sheet>
   );
 }

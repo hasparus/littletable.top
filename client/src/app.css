@@ -1,9 +1,35 @@
-/* The tabletop's Tailwind entry: its tokens, font and buttons (theme/). */
 @import "tailwindcss" source(none);
 @import "./theme/theme.css";
 @import "./theme/buttons.css";
 
 @source "./";
+
+@theme {
+  --animate-collapsible-down: collapsible-down 200ms ease-out;
+  --animate-collapsible-up: collapsible-up 200ms ease-out;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+      overflow: clip;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      overflow: clip;
+    }
+  }
+
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      overflow: clip;
+    }
+    to {
+      height: 0;
+      overflow: clip;
+    }
+  }
+}
 
 :where(*) {
   -webkit-tap-highlight-color: transparent;
@@ -19,7 +45,109 @@ body {
   text-size-adjust: 100%;
 }
 
+@font-face {
+  font-family: "Landing handwriting";
+  font-display: block;
+  src: url("@tldraw/assets/fonts/Shantell_Sans-Informal_Regular.woff2") format("woff2");
+}
+
+.loading-handwriting :is([data-landing-preview], [data-public-board-note]) {
+  visibility: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:has([data-landing-preview][data-prerendered]) {
+    color-scheme: dark;
+    --color-background: var(--dark-board-background);
+    --color-foreground: var(--dark-board-foreground);
+    --color-foreground-muted: var(--dark-board-muted);
+  }
+}
+
+body:has([data-landing-preview]) {
+  background-color: var(--color-background);
+}
+
+[data-landing-preview] {
+  --gutter: 12px;
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  top: calc(max(var(--gutter), env(safe-area-inset-top)) + 52px);
+  left: max(var(--gutter), env(safe-area-inset-left));
+  right: max(var(--gutter), env(safe-area-inset-right));
+  max-width: 502px;
+}
+
+:is([data-landing-preview], [data-public-board-note]) {
+  font-family: "Landing handwriting", sans-serif;
+  color: var(--color-foreground);
+  padding-inline: 2px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+@media (width < 640px) {
+  [data-landing-preview] {
+    --gutter: 4px;
+  }
+}
+
+:is([data-landing-preview], [data-public-board-note]) p + p {
+  margin-top: 12px;
+}
+:is([data-landing-preview], [data-public-board-note]) footer {
+  margin-top: 16px;
+  color: var(--color-foreground-muted);
+}
+
 [data-feedback-dialog]::backdrop {
   background: rgb(0 0 0 / 12%);
-  backdrop-filter: blur(2px);
+}
+
+:root {
+  --surface-ease: cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes surface-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-front-menu][open] > div,
+  [data-board-confirmation] {
+    /* Each opens below a right-aligned, 44px-wide summary. */
+    transform-origin: calc(100% - 22px) top;
+    animation: surface-enter 150ms var(--surface-ease);
+  }
+
+  [data-board-shell] [role="dialog"][data-entering] {
+    transform-origin: center bottom;
+    animation: surface-enter 180ms var(--surface-ease);
+  }
+
+  [data-feedback-dialog][data-entering] {
+    animation: surface-enter 200ms var(--surface-ease);
+  }
+
+  [data-sheet-scrim],
+  [data-feedback-dialog][open]::backdrop {
+    animation: surface-fade 150ms ease-out;
+  }
 }

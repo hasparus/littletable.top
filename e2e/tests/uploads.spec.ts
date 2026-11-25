@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 import { png } from "../fixtures/png";
 import { boardAt, HOST, HOSTED, STANDALONE } from "../ports";
-import { collectCspViolations, expectNoCspViolations, joinAs, phone } from "./helpers";
+import { collectCspViolations, expectNoCspViolations, joinAs, phone, reviewShot } from "./helpers";
 import {
   documentOf,
   documentOfFile,
@@ -19,17 +19,11 @@ import {
   zoomToFit,
 } from "./tldr";
 
-// Images and .tldr files, end to end: what one browser brings onto a board,
-// another sees, from the Worker's R2 bucket. The artifacts are the .tldr
-// files the browsers download, written to test-results/, which the
-// assertions compare with the fixtures.
-
 const ON_TABLETOP = boardAt(HOSTED);
 const ON_BOARD = boardAt(STANDALONE);
 
 const MAP = readFileSync(fixture("map.png"));
 const PORTRAIT = readFileSync(fixture("portrait.png"));
-// Where the Worker keeps an image: under the board's id and its SHA-256.
 const imageAt = (bytes: Buffer) =>
   new RegExp(String.raw`^/rooms/[\w-]+/files/${sha256(bytes)}$`, "u");
 const stored = imageAt(MAP);
@@ -48,10 +42,7 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   await uploadImage(page, "map.png");
 
   await expect.poll(() => loadedImages(page)).toEqual([expect.stringMatching(stored)]);
-  // The image lands where the uploader looks; the guest's small screen
-  // zooms to everything on the board.
-  // NOTE: again on each look: a zoom that comes before the image's shape
-  // has synced fits an empty board and leaves the image off screen.
+  // WARNING: Zoom again on each poll. A zoom before the image syncs fits an empty board and leaves the image off-screen.
   const seenByGuest = async () => {
     await zoomToFit(guest);
     return loadedImages(guest);
@@ -60,7 +51,6 @@ test("an image one person uploads loads for a guest, and again after a reload", 
   await guest.reload();
   await expect.poll(seenByGuest).toEqual([expect.stringMatching(stored)]);
 
-  // The address opens nothing without the board's pass.
   const [address] = await loadedImages(guest);
   const stranger = await browser.newContext();
   const refused = await stranger.request.get(`${HOSTED}${address}`);
@@ -119,7 +109,6 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   await openTldr(page, "table.tldr");
   await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
 
-  // The guest lands on the file's first page and sees its map, from R2.
   await expect.poll(() => loadedImages(guest)).toEqual([expect.stringMatching(stored)]);
   const seen = await downloadTldr(guest);
   writeFileSync(testInfo.outputPath("seen-by-the-guest.tldr"), seen);
@@ -128,7 +117,6 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   const assets = documentOf(seen).assets.map((asset) => asset.props!.src);
   expect(assets).toEqual([`sha256:${sha256(MAP)}`, `sha256:${sha256(PORTRAIT)}`]);
 
-  // What came out opens on a fresh board as the same document again.
   await page.goto(`${STANDALONE}/boards`);
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_BOARD);
@@ -142,8 +130,6 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   writeFileSync(testInfo.outputPath("round-trip.tldr"), again);
   expect(documentOf(again)).toEqual(original);
 
-  // Opened again onto a board that has it already, the file's pages come
-  // after the board's own, under new ids that still hold together.
   const added = toast(page, "The file's pages were added to the board.");
   await expect(added).toBeHidden();
   await openTldr(page, "table.tldr");
@@ -200,6 +186,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 test("a large import shows progress, explains a failed upload and can be retried", async ({
   page,
 }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
   await collectCspViolations(page);
   await page.goto(`${HOST}/sign-in?name=Sid`);
   await page.getByRole("button", { name: "New board" }).click();
@@ -224,9 +211,26 @@ test("a large import shows progress, explains a failed upload and can be retried
   });
   try {
     await chooseImport();
-    await expect(page.getByText("Importing large.tldr")).toBeInViewport();
-    await expect(page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" })).toBeVisible();
+    const progress = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
+    const card = page.locator("[data-board-import]");
+    await expect(card).toContainText("Importing large.tldr");
+    await expect(progress).toBeVisible();
+    const bounds = (await card.boundingBox())!;
+    const menu = (await page.locator(".tlui-menu-zone").boundingBox())!;
+    const actions = (await page.locator("[data-board-toolbar-actions]").boundingBox())!;
+    expect(bounds.x).toBeCloseTo(menu.x, 0);
+    expect(bounds.x + bounds.width).toBeCloseTo(actions.x + actions.width, 0);
+    expect(bounds.height).toBeLessThan(120);
+    const watermark = page.locator("[data-testid^='tl-watermark']");
+    await expect(watermark).toBeVisible();
+    await watermark.click({ trial: true });
+    await expect(page.getByTestId("page-menu.button")).toBeVisible();
+    await reviewShot(page, "import-phone-progress");
+
+    await page.setViewportSize({ height: 900, width: 1200 });
+    await expect(progress).toBeVisible();
     await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
+    await reviewShot(page, "import-desktop-progress");
   } finally {
     response.resolve(null);
   }
@@ -247,10 +251,48 @@ test("a large import shows progress, explains a failed upload and can be retried
   await expectNoCspViolations(page);
 });
 
-// An image's address on another board opens only with that board's files
-// cookie, which a person holds while they are on it. Pasted from another
-// board's tab, or in a .tldr that points at one, the image is copied to
-// this board; what this person cannot read is left out, and they are told.
+test("the import card keeps its height when all uploads pause", async ({ page }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`${HOST}/sign-in?name=Iris`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  const permits = [Promise.withResolvers<null>(), Promise.withResolvers<null>()];
+  let uploads = 0;
+  await page.route("**/files", async (route) => {
+    const permit = permits[uploads++];
+    await permit?.promise;
+    await route.fulfill({ json: { error: "too-fast" }, status: 429 });
+  });
+
+  const card = page.locator("[data-board-import]");
+  const count = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
+  const waiting = page.getByRole("progressbar", { name: "Upload limit reached. Retrying…" });
+  try {
+    await openTldr(page, "table.tldr");
+    await expect(count).toBeVisible();
+    const before = await card.boundingBox();
+    await reviewShot(page, "import-uploading-phone");
+
+    const first = page.waitForResponse(
+      (response) => response.url().endsWith("/files") && response.status() === 429,
+    );
+    permits[0]!.resolve(null);
+    await first;
+    await expect(count).toBeVisible();
+
+    permits[1]!.resolve(null);
+    await expect(waiting).toBeVisible();
+    const after = await card.boundingBox();
+    expect(after?.height).toBe(before?.height);
+    await reviewShot(page, "import-waiting-phone");
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await expect(waiting).toBeVisible();
+    await reviewShot(page, "import-waiting-desktop");
+  } finally {
+    for (const permit of permits) permit.resolve(null);
+  }
+});
+
 test("an image from another board is copied over, or left out with a reason", async ({
   browser,
 }) => {
@@ -274,14 +316,11 @@ test("an image from another board is copied over, or left out with a reason", as
   const guest = await phone(browser, second.url());
   await joinAs(guest, "Noor");
 
-  // Copied on the first board and pasted on the second: tldraw embeds the
-  // image in what it copies, and the second board stores its own copy,
-  // which its guest, who was never on the first, sees.
   await first.bringToFront();
   await first.getByTestId("canvas").focus();
   await first.keyboard.press("ControlOrMeta+a");
   await first.keyboard.press("ControlOrMeta+c");
-  // NOTE: tldraw writes the clipboard once it has embedded the images.
+  // WARNING: Wait for tldraw to embed the images before reading its clipboard payload.
   let html = "";
   await expect
     .poll(async () => {
@@ -296,8 +335,7 @@ test("an image from another board is copied over, or left out with a reason", as
     .toContain("data:image/png");
   await second.bringToFront();
   await second.getByTestId("canvas").focus();
-  // NOTE: a headless browser does not paste from its clipboard on Ctrl+V;
-  // the event carries what tldraw copied.
+  // WARNING: Headless Chromium does not paste from its clipboard on Ctrl+V. Dispatch the paste event with tldraw’s clipboard payload.
   await second.evaluate((content) => {
     const data = new DataTransfer();
     data.setData("text/html", content);
@@ -314,8 +352,6 @@ test("an image from another board is copied over, or left out with a reason", as
     })
     .toEqual([onSecond]);
 
-  // A .tldr whose map points at the first board: the guest cannot read
-  // it, so the map is left out with a reason; the portrait comes in.
   const file = JSON.parse(readFileSync(fixture("table.tldr"), "utf8")) as {
     records: { id: string; props?: { src?: string } }[];
   };
@@ -334,7 +370,6 @@ test("an image from another board is copied over, or left out with a reason", as
       "An image from another board could not be brought over. Open that board, then paste again.",
     ),
   ).toBeVisible();
-  // The pasted map stays; the file's own map is gone.
   const left = documentOf(await downloadTldr(guest));
   expect(left.assets.map((asset) => [asset.id, asset.props!.src])).toEqual([
     [expect.not.stringMatching(/^asset:map$/u), `sha256:${sha256(MAP)}`],
@@ -342,8 +377,6 @@ test("an image from another board is copied over, or left out with a reason", as
   ]);
   expectWhole(left);
 
-  // The same file opened by the first board's owner, who is on it: its
-  // map is copied over.
   const opened = second.waitForEvent("filechooser");
   await second.getByTestId("main-menu.button").click();
   await second.getByRole("menuitem", { name: "Import a .tldr file…" }).click();

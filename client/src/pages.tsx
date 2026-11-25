@@ -3,9 +3,11 @@ import { type Editor, react, type TLPageId, useEditor, useToasts, useValue } fro
 
 import { type Copy, fill } from "./copy";
 
-// Pages are tldraw's own records, so the page menu, sync and undo are
-// tldraw's; the board only says where each page's places and people are,
-// and only once there is more than one page to tell apart.
+/**
+ * Pages are tldraw's own records, so the page menu, sync and undo are
+ * tldraw's; the board only says where each page's places and people are,
+ * and only once there is more than one page to tell apart.
+ */
 export function usePageNames(editor: Editor | null): Map<TLPageId, string> | null {
   return useValue(
     "page names",
@@ -17,9 +19,7 @@ export function usePageNames(editor: Editor | null): Map<TLPageId, string> | nul
   );
 }
 
-// The page a tab was on comes back with a reload (a phone reloads a tab it
-// put away), without going into the board's link, which is an invitation:
-// everyone who opens it should start on the first page.
+// WARNING: Keep the current page in the tab's storage, because a new visitor following the same share link should start on the first page.
 function rememberPage(editor: Editor, board: string): () => void {
   const key = `board:${board}:page`;
   try {
@@ -28,20 +28,18 @@ function rememberPage(editor: Editor, board: string): () => void {
       editor.setCurrentPage(kept);
     }
   } catch {
-    // NOTE: storage can be off; the tab then opens on the first page.
+    // WARNING: A browser can block sessionStorage. Keep the editor on its initial page when the read fails.
   }
   return react("remember page", () => {
     const page = editor.getCurrentPageId();
     try {
       sessionStorage.setItem(key, page);
     } catch {
-      // NOTE: storage can be off; see above.
+      // WARNING: A browser can block sessionStorage. A failed write must not interrupt navigation.
     }
   });
 }
 
-// tldraw moves a person off a page someone else deleted; this says why the
-// board changed under them.
 function noticeDeletedPage(editor: Editor, say: (gone: string, page: string) => void): () => void {
   let gone: string | null = null;
   const before = editor.sideEffects.registerBeforeDeleteHandler("page", (page, source) => {
