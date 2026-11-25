@@ -9,6 +9,12 @@ import {
 } from "react";
 
 import { ChatResize, type ChatSize, useChatMove } from "./chat-resize";
+import {
+  BOARD_DIALOG,
+  BOARD_DIALOG_CLOSE,
+  BOARD_DIALOG_HEADER,
+  BOARD_DIALOG_TITLE,
+} from "./dialog";
 import { Icon } from "./icons";
 import { enterSurface } from "./surface-entry";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
@@ -129,7 +135,7 @@ export function Sheet({
       <section
         aria-label={hasField ? title : undefined}
         aria-labelledby={hasField ? undefined : heading}
-        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--sheet-keyboard-bottom,var(--board-sheet-bottom)) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-(--sheet-keyboard-bottom,5rem) sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
+        className={`${BOARD_DIALOG} z-50 flex flex-col ${isChat ? "" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
         data-chat-size={isChat ? (height === undefined ? "natural" : "fixed") : undefined}
         id={PANEL_ID[panel]}
         ref={sheet}
@@ -139,21 +145,16 @@ export function Sheet({
       >
         {chatResize && <ChatResize sheet={sheet} {...chatResize} />}
         <header
-          className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"} ${isChat ? "shrink-0 border-b border-border" : ""}`}
+          className={`${BOARD_DIALOG_HEADER} ${hasField ? "" : "py-1 pr-1 pl-4"} ${isChat ? "shrink-0 border-b border-border" : ""}`}
         >
           {field ?? (
-            <h2
-              className="flex-1 text-lg font-semibold outline-none"
-              id={heading}
-              tabIndex={-1}
-              {...move}
-            >
+            <h2 className={BOARD_DIALOG_TITLE} id={heading} tabIndex={-1} {...move}>
               {title}
             </h2>
           )}
           <button
             aria-label={copy.close}
-            className="grid size-11 place-items-center rounded-full text-foreground-secondary hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+            className={BOARD_DIALOG_CLOSE}
             onClick={() => open(null)}
             type="button"
           >

@@ -62,7 +62,7 @@
   --color-white: #ffffff;
   --color-ink: #252220;
 
-  --color-background: #f7f6f3;
+  --color-background: var(--light-board-background);
   --color-border: #e3e0d9;
   /* The hover shade: the coral itself is under 3:1 on the page's grey. */
   --color-border-focus: var(--brand-primary-hover);
@@ -92,6 +92,7 @@
 
 :root {
   color-scheme: light;
+  --light-board-background: #f7f6f3;
   --dark-board-background: #0a0a0a;
   --dark-board-foreground: #fafafa;
   --dark-board-muted: #8c8c8c;
