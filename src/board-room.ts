@@ -8,22 +8,22 @@ import {
   TLSyncErrorCloseEventCode,
   TLSyncErrorCloseEventReason,
 } from "@tldraw/sync-core";
-import { isShape } from "@tldraw/tlschema";
+import { isShape, TLDOCUMENT_ID } from "@tldraw/tlschema";
 import { sortByIndex } from "@tldraw/utils";
 import { DurableObject } from "cloudflare:workers";
 
+import type { ThumbnailType } from "./board-thumbnail";
 import type { DiceLaunch, Roll } from "./dice-notation";
 import type { Pass } from "./pass";
 import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
+import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
-import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
+import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
-import { seedPublicDemo } from "./public-board-demo";
-import { isPublicDemo, PUBLIC_BOARD } from "./public-board-demo-ids";
 import {
   expirePublicShapes,
   preservesPublicShapeAge,
@@ -42,36 +42,27 @@ import {
   type TextListing,
   type TextRefusal,
 } from "./text-store";
+import { type ThumbnailWrite, writeThumbnail } from "./thumbnail-store";
 
-type Env = {
-  ASSETS: Fetcher;
-  BoardRoom: DurableObjectNamespace<BoardRoom>;
-  DB?: D1Database;
-  Files: R2Bucket;
-};
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
-// NOTE: the tldraw client reads close code 4099 as final and hands the
-// reason to useSync as a TLRemoteSyncError, instead of retrying.
+// WARNING: tldraw retries ordinary closes. Code 4099 passes the final reason to useSync.
 const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
   full: TLSyncErrorCloseEventReason.ROOM_FULL,
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
-export { PUBLIC_BOARD } from "./public-board-demo-ids";
-
+/** Account board IDs are alphanumeric, so they cannot collide with this room name. */
+export const PUBLIC_BOARD = "public-lobby";
 const PUBLIC_EXPIRY_ENABLED = "publicExpiryEnabled";
 const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
 const RETIRED = "retired";
 
 export const PASS_HEADER = "X-Board-Pass";
-// The person's picture as personAvatar settled it, beside the pass.
 export const AVATAR_HEADER = "X-Board-Avatar";
 
-// Where a pass's picture comes from: in hosted mode a URL on the host's
-// origin, which the room copies; in standalone mode the hash of the copy
-// the Worker made at sign-in.
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
 type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
@@ -90,12 +81,12 @@ function kind(sub: string): "guest" | "member" {
 export class BoardRoom extends DurableObject<Env> {
   private drawingRoom?: DrawingRoom;
   private publicExpiryEnabled = false;
-  private publicDemo?: Promise<void>;
   private retired = false;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
   private readonly textUploads = new Map<string, number>();
+  private thumbnailPending = false;
   private readonly pendingUploads = new Set<Promise<unknown>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -103,8 +94,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.open();
   }
 
-  // NOTE: deleteAll drops the tables and leaves the old room holding rows
-  // that no longer exist, so deleting starts over from here.
+  // WARNING: After deleteAll, the cached room still refers to rows whose tables were dropped.
   private open() {
     const { sql } = this.ctx.storage;
     sql.exec(
@@ -114,9 +104,6 @@ export class BoardRoom extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, sub TEXT NOT NULL, name TEXT NOT NULL, dice TEXT NOT NULL, seed INTEGER, expression TEXT)",
     );
     addRollColumns(sql);
-    // Everyone who has been on the board with a picture, so the board shows
-    // those pictures and no others: source is what their pass named,
-    // avatar the hash of the copy (null if it could not be copied).
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
@@ -124,7 +111,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.retired = this.ctx.storage.kv.get(RETIRED) === true;
     this.drawingRoom = undefined;
     this.lastRollAt = new Map();
-    // NOTE: the texts table first: the images' ledger counts it in the quota.
+    // WARNING: The image ledger queries the texts table for its quota, so initialize that table first.
     this.texts = new TextLedger(sql, this.env.Files);
     this.files = new FileLedger(sql, this.env.Files);
   }
@@ -137,7 +124,7 @@ export class BoardRoom extends DurableObject<Env> {
     return this.openDrawing().room;
   }
 
-  // The first access can supply a page name. An existing snapshot is opened as saved.
+  // WARNING: Applying the seed name to existing drawings would overwrite a saved page name.
   private openDrawing(firstPageName?: string): DrawingRoom {
     if (this.drawingRoom !== undefined) return this.drawingRoom;
     const sql = new DurableObjectSqliteSyncWrapper(this.ctx.storage, { tablePrefix: "tldraw_" });
@@ -155,21 +142,14 @@ export class BoardRoom extends DurableObject<Env> {
     const drawing = new SQLiteSyncStorage<TLRecord>({ snapshot, sql });
     const room = new TLSocketRoom<TLRecord, Person>({
       authorizeRecord: {
-        asset: (write) => {
-          const record = write.type === "delete" ? write.prev : write.next;
-          return this.publicExpiryEnabled && isPublicDemo(record.id) ? null : record;
-        },
         shape: (write) => {
-          const shape = write.type === "delete" ? write.prev : write.next;
-          if (!this.publicExpiryEnabled) return shape;
-          if (isPublicDemo(shape.id)) return null;
           if (write.type === "delete") return write.prev;
+          if (!this.publicExpiryEnabled) return write.next;
           if (write.type === "create") return stampPublicShape(write.next, Date.now());
           return preservesPublicShapeAge(write.prev, write.next) ? write.next : null;
         },
       },
-      // NOTE: tldraw leaves the parsed message out of this hook's public
-      // type; it is the object the room then applies.
+      // WARNING: The hook type omits the parsed message that tldraw applies to room state.
       onAfterReceiveMessage: (received) => {
         stampPresence((received as { message?: unknown }).message, received.meta);
       },
@@ -188,8 +168,7 @@ export class BoardRoom extends DurableObject<Env> {
     return row === undefined ? 0 : (row.link as number);
   }
 
-  // A newer pass also moves the room forward if the host has yet to
-  // notify it of the reset.
+  // WARNING: A fresh pass can arrive before the host notifies the room of a link reset.
   private admit(pass: Pass): "link-reset" | null {
     if (this.retired) return "link-reset";
     const current = this.link();
@@ -198,9 +177,7 @@ export class BoardRoom extends DurableObject<Env> {
     return null;
   }
 
-  // Moves the board to a newer link version and puts out everyone who came
-  // in by an older one. The host's reset request, a newer pass or the
-  // standalone owner's reset can all advance it.
+  /** Advances the link version and evicts sessions still using an older one. */
   moveLink(board: string, link: number): void {
     if (this.retired || link <= this.link()) return;
     this.ctx.storage.sql.exec(
@@ -215,13 +192,12 @@ export class BoardRoom extends DurableObject<Env> {
     log("board.link_reset", { board, link });
   }
 
-  // NOTE: a socket cannot cross an RPC call, so the Worker forwards the
-  // upgrade as a request and names the verified pass in PASS_HEADER.
+  // WARNING: WebSockets cannot cross Durable Object RPC. Forward the upgrade request with the verified pass.
   override fetch(request: Request): Promise<Response> | Response {
     const pass: Pass = JSON.parse(request.headers.get(PASS_HEADER)!);
     if (!isSecretLayer(pass.board)) return this.connectRoom(request, pass);
 
-    // Serialize the secret socket's final session check with disconnection.
+    // WARNING: Disconnection can miss a secret socket opened after its final session check unless both are serialized.
     return this.ctx.blockConcurrencyWhile(async () => {
       if (!(await hasActiveSession(this.env.DB, pass.sessionHash))) {
         return new Response("Forbidden", { status: 403 });
@@ -367,11 +343,10 @@ export class BoardRoom extends DurableObject<Env> {
     return message;
   }
 
-  // The picture the board shows for this pass's person: the hash of its
-  // copy in R2, or null. A host's picture is copied the first time a pass
-  // names it, again when the pass names another, and, after a failure,
-  // no sooner than AVATAR_RETRY_MS later; only a host-signed pass can make
-  // the room fetch, and only from the host's origin.
+  /**
+   * Returns the stored avatar hash. A host-signed pass can request a fresh copy
+   * from its own origin when the URL changes or the failure cooldown elapses.
+   */
   async personAvatar(pass: Pass, source: AvatarSource): Promise<string | null> {
     if (this.admit(pass) !== null) return null;
     const { sql } = this.ctx.storage;
@@ -408,20 +383,67 @@ export class BoardRoom extends DurableObject<Env> {
     return avatar;
   }
 
-  // Whether someone on this board has this picture.
   hasAvatar(hash: string): boolean {
     return (
       this.ctx.storage.sql.exec("SELECT 1 FROM people WHERE avatar = ?", hash).toArray().length > 0
     );
   }
 
-  // Whether this pass may read the board's images.
   fileAccess(pass: Pass): "link-reset" | null {
     return this.admit(pass);
   }
 
   async storeFile(pass: Pass, body: ArrayBuffer): Promise<"link-reset" | FileRefusal | StoredFile> {
     return this.admit(pass) ?? this.trackUpload(this.files.store(pass.board, pass.sub, body));
+  }
+
+  backgroundForSharePreview(link: number): BoardColor | null {
+    if (this.retired || link < this.link()) return null;
+    return this.drawing.transaction((store) => {
+      const background = store.get(TLDOCUMENT_ID)?.meta.backgroundColor;
+      return isBoardColor(background) ? background : "default";
+    }).result;
+  }
+
+  publicationCode() {
+    return this.ctx.storage.kv.get<string>("publicationCode") ?? null;
+  }
+
+  async setPublication(board: string, image: ArrayBuffer | null) {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      if (this.retired) return null;
+      const current = this.publicationCode();
+      if (image === null) {
+        if (current !== null) await this.env.Files.delete(publicationKey(board, current));
+        this.ctx.storage.kv.delete("publicationCode");
+        return null;
+      }
+      const code = current ?? crypto.randomUUID();
+      await this.env.Files.put(publicationKey(board, code), image, {
+        httpMetadata: { contentType: "image/png" },
+      });
+      this.ctx.storage.kv.put("publicationCode", code);
+      return code;
+    });
+  }
+
+  async storeThumbnail(
+    board: string,
+    link: number,
+    body: ArrayBuffer,
+    type: ThumbnailType,
+  ): Promise<ThumbnailWrite> {
+    if (this.retired || link < this.link()) return "forbidden";
+    if (this.thumbnailPending) return { retryAt: Date.now() + 5000 };
+    if (link > this.link()) this.moveLink(board, link);
+    this.thumbnailPending = true;
+    try {
+      return await this.trackUpload(
+        writeThumbnail(this.ctx.storage.sql, this.env.Files, board, body, type, Date.now()),
+      );
+    } finally {
+      this.thumbnailPending = false;
+    }
   }
 
   private async trackUpload<T>(upload: Promise<T>): Promise<T> {
@@ -433,9 +455,6 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  // Tells everyone on the board how the reading of an image moved on, as
-  // a sync custom message like a roll: "stored" for a result to fetch,
-  // "reading" and "idle" for what is under way.
   private announceText(readings: Reading[], state: "idle" | "reading" | "stored"): void {
     if (readings.length === 0) return;
     for (const session of this.room.getSessions()) {
@@ -513,10 +532,10 @@ export class BoardRoom extends DurableObject<Env> {
   async schedulePublicExpiry(): Promise<void> {
     this.namePublicLandingPage();
     if (!this.publicExpiryEnabled) {
-      // Give existing shapes a starting age when this board first adopts expiry.
+      // WARNING: Stamp existing shapes when enabling expiry so drawings without a timestamp can expire.
       const now = Date.now();
       this.drawing.transaction((store) => {
-        // Snapshot the records before rewriting them in the same SQLite table.
+        // WARNING: Materialize these SQLite rows before updating the table they came from.
         const records = [...store.values()];
         for (const record of records) {
           if (isShape(record)) store.set(record.id, stampPublicShape(record, now));
@@ -525,20 +544,6 @@ export class BoardRoom extends DurableObject<Env> {
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
       this.publicExpiryEnabled = true;
     }
-    this.publicDemo ??= seedPublicDemo(
-      this.drawing,
-      this.env.ASSETS,
-      { files: this.files, texts: this.texts },
-      PUBLIC_BOARD,
-    )
-      .then((reading) => {
-        if (reading !== null) this.announceText([reading], "stored");
-      })
-      .catch((error: unknown) => log("public_board.demo_failed", { error: String(error) }))
-      .finally(() => {
-        this.publicDemo = undefined;
-      });
-    await this.publicDemo;
     if ((await this.ctx.storage.getAlarm()) === null) {
       const next = (Math.floor(Date.now() / PUBLIC_SWEEP_MS) + 1) * PUBLIC_SWEEP_MS;
       await this.ctx.storage.setAlarm(next);
@@ -570,7 +575,7 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   async retire(board: string): Promise<void> {
-    // SAFETY: a pass issued before deletion cannot reopen a private room.
+    // WARNING: Without the retired marker, a still-valid pass could reopen the deleted private room.
     this.retired = true;
     this.ctx.storage.kv.put(RETIRED, true);
     await this.destroy(board);
@@ -581,7 +586,7 @@ export class BoardRoom extends DurableObject<Env> {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }
     this.room.close();
-    // Leave the document intact if deleting its files fails.
+    // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {
       if (this.retired) await Promise.allSettled(this.pendingUploads);
