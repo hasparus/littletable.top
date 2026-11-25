@@ -20,7 +20,8 @@ import { fitPublicBoardIntro } from "./landing-preview";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
 import { PublicArrowBindingUtil, rememberExistingArrows } from "./public-arrow-bindings";
-import { PublicBoardIntro, publicLandingPage, PublicPageDeleteGuard } from "./public-landing";
+import { PublicBoardIntro, PublicPageDeleteGuard } from "./public-landing";
+import { publicLandingPage } from "./public-landing-page";
 import { useBoardUi } from "./ui";
 
 // WARNING: Keep tldraw fonts, icons, and translations local because the Content-Security-Policy blocks other hosts.
