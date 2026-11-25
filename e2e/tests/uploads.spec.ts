@@ -278,8 +278,7 @@ test("the import card keeps its height when all uploads pause", async ({ page })
     await route.fulfill({ json: { error: "too-fast" }, status: 429 });
   });
 
-  const title = page.getByText("Importing table.tldr", { exact: true });
-  const card = title.locator("..");
+  const card = page.locator("[data-board-import]");
   const count = page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" });
   const waiting = page.getByRole("progressbar", { name: "Upload limit reached. Retrying…" });
   try {
