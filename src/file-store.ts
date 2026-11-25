@@ -1,4 +1,5 @@
 import { MAX_BOARD_FILE_BYTES, MAX_FILE_BYTES, MAX_UPLOADS_PER_MINUTE } from "./limits";
+import { spendRoomAllowance } from "./room-allowance";
 
 export const IMAGE_TYPES = [
   "image/png",
@@ -97,11 +98,7 @@ export type FileRefusal = "empty" | "over-quota" | "too-fast" | "too-large" | "u
 
 export type StoredFile = { bytes: number; duplicate: boolean; hash: string; type: ImageType };
 
-const MINUTE_MS = 60_000;
-
 export class FileLedger {
-  // WARNING: An evicted room forgets the upload rate window, allowing at most one extra window of uploads.
-  private readonly recent = new Map<string, number[]>();
   private readonly writing = new Map<string, Promise<unknown>>();
   private readonly removing = new Map<string, Promise<unknown>>();
 
@@ -126,14 +123,6 @@ export class FileLedger {
     }
   }
 
-  private spend(sub: string, at: number): boolean {
-    const recent = (this.recent.get(sub) ?? []).filter((time) => at - time < MINUTE_MS);
-    if (recent.length >= MAX_UPLOADS_PER_MINUTE) return false;
-    recent.push(at);
-    this.recent.set(sub, recent);
-    return true;
-  }
-
   storedBytes(): number {
     const [row] = this.sql
       .exec(
@@ -145,7 +134,7 @@ export class FileLedger {
 
   async store(board: string, sub: string, body: ArrayBuffer): Promise<FileRefusal | StoredFile> {
     const at = Date.now();
-    if (!this.spend(sub, at)) return "too-fast";
+    if (!spendRoomAllowance(this.sql, "upload", sub, at, MAX_UPLOADS_PER_MINUTE)) return "too-fast";
     if (body.byteLength === 0) return "empty";
     if (body.byteLength > MAX_FILE_BYTES) return "too-large";
     const type = sniff(new Uint8Array(body));

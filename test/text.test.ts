@@ -1,4 +1,4 @@
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { Env } from "../src/index";
@@ -177,6 +177,8 @@ describe("storing what was read off an image", () => {
     for (let sent = 0; sent < MAX_TEXT_WRITES_PER_MINUTE; sent++) {
       expect((await put("flood", token, hash, TESSERACT, wrong)).status).toBe(422);
     }
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName("flood"));
+    await evictDurableObject(room);
     expect((await put("flood", token, hash, TESSERACT, result(hash, TESSERACT))).status).toBe(429);
     const other = await pass({ board: "flood", sub: "u:2" });
     expect((await put("flood", other, hash, TESSERACT, result(hash, TESSERACT))).status).toBe(201);
@@ -234,6 +236,26 @@ describe("handing out images to read", () => {
     expect(response.status).toBe(200);
     return response.json();
   };
+
+  it("keeps a reader's claim when the room hibernates", async () => {
+    const board = "sleeping-reader";
+    const ada = await pass({ board });
+    const bea = await pass({ board, sub: "u:2" });
+    const hash = await upload(board, ada, PNG);
+    const request = { candidates: [hash], engines: [TESSERACT] };
+    const held = await claim(board, ada, request);
+    expect(held).toMatchObject({ hash });
+
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+    await evictDurableObject(room);
+    expect(await claim(board, bea, request)).toBeNull();
+    expect((await post(board, ada, "renew", { lease: held!.lease })).status).toBe(204);
+    expect(await listing(board, bea)).toMatchObject({ reading: [{ engine: TESSERACT, hash }] });
+    expect((await post(board, ada, "release", { failed: [], lease: held!.lease })).status).toBe(
+      204,
+    );
+    expect(await claim(board, bea, request)).toMatchObject({ hash });
+  });
 
   it("gives two browsers two different images, the one asked for first", async () => {
     const ada = await pass({ board: "two" });

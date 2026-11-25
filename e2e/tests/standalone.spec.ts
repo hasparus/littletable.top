@@ -24,6 +24,24 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+test("explains a server failure when the landing board cannot open", async ({ page }) => {
+  const bootstrap = "**/api/public-board/bootstrap";
+  await page.route(bootstrap, (route) => route.fulfill({ status: 500 }));
+  await page.route(
+    bootstrap,
+    (route) => route.fulfill({ json: { error: "daily-server-limit" }, status: 503 }),
+    { times: 1 },
+  );
+
+  await page.goto(STANDALONE);
+  const notice = page.getByRole("alert");
+  await expect(notice).toHaveText(
+    "Little Table reached its daily server limit. Try again after 00:00 UTC.",
+  );
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(notice).toHaveText("The board server is unavailable. Try again in a moment.");
+});
+
 declare global {
   var __editor: Editor;
 }

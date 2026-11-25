@@ -7,6 +7,7 @@ import {
   MAX_TEXT_WRITES_PER_MINUTE,
   TEXT_LEASE_MS,
 } from "./limits";
+import { spendRoomAllowance } from "./room-allowance";
 import { type EngineKey, isEngineKey, validateTextResult } from "./text-result";
 
 export type Reading = { engine: EngineKey; hash: string };
@@ -26,11 +27,8 @@ export type TextRefusal = "invalid" | "over-quota" | "too-fast" | "unknown-image
 
 export type StoredText = { body: string; duplicate: boolean; words: number };
 
-const MINUTE_MS = 60_000;
 const HASH = /^[0-9a-f]{64}$/u;
 const MAX_CANDIDATES = 2000;
-
-type Lease = Reading & { lease: string; sub: string; until: number };
 
 const pairOf = (hash: string, engine: string) => `${hash} ${engine}`;
 
@@ -45,25 +43,7 @@ export function parseClaim(body: unknown): ClaimRequest | null {
   return { candidates, engines: [...new Set(engines)], prefer };
 }
 
-class Allowance {
-  // WARNING: Eviction clears this in-memory allowance, so it can let one extra window through.
-  private readonly recent = new Map<string, number[]>();
-
-  constructor(private readonly perMinute: number) {}
-
-  spend(sub: string, at: number): boolean {
-    const recent = (this.recent.get(sub) ?? []).filter((time) => at - time < MINUTE_MS);
-    if (recent.length >= this.perMinute) return false;
-    recent.push(at);
-    this.recent.set(sub, recent);
-    return true;
-  }
-}
-
 export class TextLedger {
-  private readonly leases = new Map<string, Lease>();
-  private readonly writes = new Allowance(MAX_TEXT_WRITES_PER_MINUTE);
-  private readonly claims = new Allowance(MAX_TEXT_CLAIMS_PER_MINUTE);
   private readonly writing = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -76,13 +56,12 @@ export class TextLedger {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS text_failures (hash TEXT NOT NULL, engine TEXT NOT NULL, failures INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (hash, engine))",
     );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS text_leases (hash TEXT NOT NULL, engine TEXT NOT NULL, lease TEXT NOT NULL, sub TEXT NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (hash, engine))",
+    );
   }
 
-  private expire(at: number): void {
-    for (const [pair, lease] of this.leases) if (lease.until <= at) this.leases.delete(pair);
-  }
-
-  private readings(query: string, ...bindings: number[]): Reading[] {
+  private readings(query: string, ...bindings: (string | number)[]): Reading[] {
     return this.sql
       .exec(query, ...bindings)
       .toArray()
@@ -90,13 +69,12 @@ export class TextLedger {
   }
 
   listing(at = Date.now()): TextListing {
-    this.expire(at);
     return {
       failed: this.readings(
         "SELECT hash, engine FROM text_failures WHERE failures >= ?",
         MAX_TEXT_FAILURES,
       ),
-      reading: [...this.leases.values()].map(({ engine, hash }) => ({ engine, hash })),
+      reading: this.readings("SELECT hash, engine FROM text_leases WHERE until > ?", at),
       stored: this.readings("SELECT hash, engine FROM texts"),
     };
   }
@@ -108,11 +86,14 @@ export class TextLedger {
     );
   }
 
-  private failures(hash: string, engine: EngineKey): number {
-    const [row] = this.sql
-      .exec("SELECT failures FROM text_failures WHERE hash = ? AND engine = ?", hash, engine)
-      .toArray();
-    return row === undefined ? 0 : (row.failures as number);
+  private needsReading(hash: string, engine: EngineKey) {
+    const blocked = this.sql.exec(
+      "SELECT 1 FROM text_leases WHERE hash = ?1 AND engine = ?2 UNION ALL SELECT 1 FROM texts WHERE hash = ?1 AND engine = ?2 UNION ALL SELECT 1 FROM text_failures WHERE hash = ?1 AND engine = ?2 AND failures >= ?3 LIMIT 1",
+      hash,
+      engine,
+      MAX_TEXT_FAILURES,
+    );
+    return blocked.toArray().length === 0;
   }
 
   private readable(hash: string): boolean {
@@ -121,44 +102,53 @@ export class TextLedger {
   }
 
   claim(sub: string, request: ClaimRequest, at = Date.now()): "too-fast" | Claim | null {
-    if (!this.claims.spend(sub, at)) return "too-fast";
-    this.expire(at);
+    if (!spendRoomAllowance(this.sql, "text-claim", sub, at, MAX_TEXT_CLAIMS_PER_MINUTE)) {
+      return "too-fast";
+    }
+    this.sql.exec("DELETE FROM text_leases WHERE until <= ?", at);
     const order =
       request.prefer === null ? request.candidates : [request.prefer, ...request.candidates];
     for (const hash of new Set(order)) {
       if (!this.readable(hash)) continue;
-      const engines = request.engines.filter(
-        (engine) =>
-          !this.leases.has(pairOf(hash, engine)) &&
-          !this.has(hash, engine) &&
-          this.failures(hash, engine) < MAX_TEXT_FAILURES,
-      );
+      const engines = request.engines.filter((engine) => this.needsReading(hash, engine));
       if (engines.length === 0) continue;
       const lease = crypto.randomUUID();
       const until = at + TEXT_LEASE_MS;
       for (const engine of engines) {
-        this.leases.set(pairOf(hash, engine), { engine, hash, lease, sub, until });
+        this.sql.exec(
+          "INSERT INTO text_leases (hash, engine, lease, sub, until) VALUES (?, ?, ?, ?, ?)",
+          hash,
+          engine,
+          lease,
+          sub,
+          until,
+        );
       }
       return { engines, hash, lease, until };
     }
     return null;
   }
 
-  private held(sub: string, lease: string): Lease[] {
-    return [...this.leases.values()].filter((held) => held.lease === lease && held.sub === sub);
-  }
-
   renew(sub: string, lease: string, at = Date.now()): boolean {
-    this.expire(at);
-    const held = this.held(sub, lease);
-    for (const pair of held) pair.until = at + TEXT_LEASE_MS;
-    return held.length > 0;
+    return (
+      this.sql.exec(
+        "UPDATE text_leases SET until = ? WHERE lease = ? AND sub = ? AND until > ?",
+        at + TEXT_LEASE_MS,
+        lease,
+        sub,
+        at,
+      ).rowsWritten > 0
+    );
   }
 
   release(sub: string, lease: string, failed: readonly EngineKey[], at = Date.now()): Reading[] {
-    const held = this.held(sub, lease);
+    const held = this.readings(
+      "DELETE FROM text_leases WHERE lease = ? AND sub = ? AND until > ? RETURNING hash, engine",
+      lease,
+      sub,
+      at,
+    );
     for (const pair of held) {
-      this.leases.delete(pairOf(pair.hash, pair.engine));
       if (!failed.includes(pair.engine)) continue;
       this.sql.exec(
         "INSERT INTO text_failures (hash, engine, failures, at) VALUES (?, ?, 1, ?) ON CONFLICT (hash, engine) DO UPDATE SET failures = failures + 1, at = excluded.at",
@@ -167,7 +157,7 @@ export class TextLedger {
         at,
       );
     }
-    return held.map(({ engine, hash }) => ({ engine, hash }));
+    return held;
   }
 
   private async dimensions(board: string, hash: string): Promise<Shown | null> {
@@ -211,7 +201,9 @@ export class TextLedger {
   ): Promise<
     Exclude<TextRefusal, "invalid"> | StoredText | { problem: string; refusal: "invalid" }
   > {
-    if (!this.writes.spend(sub, at)) return "too-fast";
+    if (!spendRoomAllowance(this.sql, "text-write", sub, at, MAX_TEXT_WRITES_PER_MINUTE)) {
+      return "too-fast";
+    }
     if (this.sql.exec("SELECT 1 FROM files WHERE hash = ?", hash).toArray().length === 0) {
       return "unknown-image";
     }
@@ -259,7 +251,7 @@ export class TextLedger {
     } finally {
       this.writing.delete(pair);
     }
-    this.leases.delete(pair);
+    this.sql.exec("DELETE FROM text_leases WHERE hash = ? AND engine = ?", hash, engine);
     return { body, duplicate: false, words };
   }
 }

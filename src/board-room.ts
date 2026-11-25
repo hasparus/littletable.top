@@ -3,6 +3,7 @@ import type { TLPageId, TLRecord } from "@tldraw/tlschema";
 import {
   DEFAULT_INITIAL_SNAPSHOT,
   DurableObjectSqliteSyncWrapper,
+  type SessionStateSnapshot,
   SQLiteSyncStorage,
   TLSocketRoom,
   TLSyncErrorCloseEventCode,
@@ -51,6 +52,7 @@ import {
   placePublicSignature,
   PUBLIC_SIGNATURE_GROUP,
 } from "./public-signature";
+import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
 import { isSecretLayer } from "./secret-layer";
 import { AssistantGrants } from "./standalone/assistant-grants";
@@ -88,6 +90,8 @@ const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
 const PUBLIC_ORDER_NORMALIZED = "publicOrderNormalized";
 const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
+const CONNECT_TIMEOUT_MS = 10_000;
+const SOCKET_SNAPSHOT_PREFIX = "socketSnapshot:";
 
 export const PASS_HEADER = "X-Board-Pass";
 export const AVATAR_HEADER = "X-Board-Avatar";
@@ -96,6 +100,19 @@ export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "sta
 
 type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
   avatar: string | null;
+};
+type SocketAttachment = {
+  sessionId: string;
+  person: Person;
+} & (
+  | { snapshot?: SessionStateSnapshot; stored?: never }
+  | { snapshot: SessionStateSnapshot; stored: true }
+);
+type RoomSocket = {
+  socket: WebSocket;
+  connectTimer?: ReturnType<typeof setTimeout>;
+  snapshot?: SessionStateSnapshot;
+  stored?: boolean;
 };
 type RollCompletion =
   | { refusal: Refusal }
@@ -117,6 +134,7 @@ export class BoardRoom extends DurableObject<Env> {
   private assistantGrantEpoch = 0;
   private document!: RoomDocument;
   private drawingRoom?: DrawingRoom;
+  private readonly sockets = new Map<string, RoomSocket>();
   private publicExpiryEnabled = false;
   private publicSignaturePage?: TLPageId;
   private retired = false;
@@ -130,6 +148,10 @@ export class BoardRoom extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.open();
+    ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'),
+    );
+    this.restoreSockets();
   }
 
   // WARNING: After deleteAll, the cached room still refers to rows whose tables were dropped.
@@ -143,6 +165,7 @@ export class BoardRoom extends DurableObject<Env> {
     );
     addRollColumns(sql);
     this.ctx.storage.transactionSync(() => openChat(sql));
+    openRoomAllowances(sql);
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
@@ -190,6 +213,8 @@ export class BoardRoom extends DurableObject<Env> {
       kv.put(PUBLIC_ORDER_NORMALIZED, true);
     }
     const room = new TLSocketRoom<TLRecord, Person>({
+      // WARNING: tldraw's periodic idle polling keeps the object awake even with no sockets.
+      clientTimeout: Infinity,
       authorizeRecord: {
         shape: (write) => {
           const record = write.type === "delete" ? write.prev : write.next;
@@ -299,29 +324,46 @@ export class BoardRoom extends DurableObject<Env> {
     const sessionId = new URL(request.url).searchParams.get("sessionId")!;
     const refusal =
       this.admit(pass) ?? (this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null);
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server);
     if (refusal !== null) {
       log("board.refused", { board: pass.board, person: kind(pass.sub), reason: refusal });
-      const { 0: client, 1: server } = new WebSocketPair();
-      server.accept();
       server.close(
         TLSyncErrorCloseEventCode,
         this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[refusal],
       );
       return new Response(null, { status: 101, webSocket: client });
     }
-    const { 0: client, 1: server } = new WebSocketPair();
-    server.accept();
-    this.room.handleSocketConnect({
-      meta: {
-        avatar,
-        link: pass.link,
-        name: pass.name,
-        owner: pass.owner,
-        sessionHash: pass.sessionHash,
-        sub: pass.sub,
-      },
-      sessionId,
+    const person: Person = {
+      avatar,
+      link: pass.link,
+      name: pass.name,
+      owner: pass.owner,
+      sessionHash: pass.sessionHash,
+      sub: pass.sub,
+    };
+    const previous = this.sockets.get(sessionId);
+    if (previous !== undefined) {
+      clearTimeout(previous.connectTimer);
+      if (previous.stored === true) this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + sessionId);
+      previous.socket.close(1012, "Session replaced");
+    }
+    server.serializeAttachment({ sessionId, person } satisfies SocketAttachment);
+    this.sockets.set(sessionId, {
       socket: server,
+      connectTimer: setTimeout(() => this.room.closeSession(sessionId), CONNECT_TIMEOUT_MS),
+    });
+    this.room.handleSocketConnect({
+      meta: person,
+      sessionId,
+      // WARNING: Hibernatable WebSockets deliver events to the object, not socket listeners.
+      socket: {
+        get readyState() {
+          return server.readyState;
+        },
+        close: (code, reason) => server.close(code, reason),
+        send: (message) => server.send(message),
+      },
     });
     log("board.connected", {
       board: pass.board,
@@ -329,6 +371,118 @@ export class BoardRoom extends DurableObject<Env> {
       person: kind(pass.sub),
     });
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private restoreSockets() {
+    const sockets = this.ctx.getWebSockets();
+    const { kv } = this.ctx.storage;
+    const unused = new Map(kv.list<SessionStateSnapshot>({ prefix: SOCKET_SNAPSHOT_PREFIX }));
+    const link = sockets.length === 0 ? 0 : this.link();
+    for (const socket of sockets) {
+      if (socket.readyState !== WebSocket.OPEN) continue;
+      const saved = socket.deserializeAttachment() as SocketAttachment | null;
+      if (saved === null) continue;
+      if (this.retired || saved.person.link < link) {
+        socket.close(
+          TLSyncErrorCloseEventCode,
+          this.retired
+            ? TLSyncErrorCloseEventReason.NOT_FOUND
+            : TLSyncErrorCloseEventReason.FORBIDDEN,
+        );
+      } else {
+        const key = SOCKET_SNAPSHOT_PREFIX + saved.sessionId;
+        const inStorage = saved.stored === true;
+        const snapshot = inStorage ? unused.get(key) : saved.snapshot;
+        if (snapshot === undefined) {
+          socket.close(1012, "Reconnecting");
+          continue;
+        }
+        if (inStorage) unused.delete(key);
+        this.sockets.set(saved.sessionId, { socket, snapshot, stored: inStorage });
+        this.room.handleSocketResume({
+          sessionId: saved.sessionId,
+          socket,
+          meta: saved.person,
+          snapshot,
+        });
+      }
+    }
+    for (const key of unused.keys()) kv.delete(key);
+  }
+
+  override webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
+    const saved = socket.deserializeAttachment() as SocketAttachment | null;
+    if (saved === null) return;
+    const connection = this.sockets.get(saved.sessionId);
+    if (connection?.socket !== socket) return;
+    this.room.handleSocketMessage(saved.sessionId, message);
+    const compact = this.room.getSessionSnapshot(saved.sessionId);
+    if (compact === null) return;
+    clearTimeout(connection.connectTimer);
+    connection.connectTimer = undefined;
+    // WARNING: Peers already have the full presence record and the next client patch is relative to it.
+    const snapshot = { ...compact };
+    if (compact.presenceId !== null) {
+      const room = this.room as TLSocketRoom<TLRecord, Person> & {
+        getPresenceRecords(): Record<string, TLRecord>;
+      };
+      snapshot.presenceRecord = room.getPresenceRecords()[compact.presenceId] ?? null;
+    }
+    const previous = connection.snapshot;
+    if (
+      previous?.serializedSchema === snapshot.serializedSchema &&
+      previous.presenceRecord === snapshot.presenceRecord
+    )
+      return;
+    const { person, sessionId } = saved;
+    const key = SOCKET_SNAPSHOT_PREFIX + sessionId;
+    const { kv } = this.ctx.storage;
+    try {
+      socket.serializeAttachment({ person, sessionId, snapshot } satisfies SocketAttachment);
+      if (connection.stored === true) {
+        kv.delete(key);
+        connection.stored = false;
+      }
+    } catch {
+      try {
+        kv.put(key, snapshot);
+        connection.stored = true;
+        socket.serializeAttachment({
+          person,
+          sessionId,
+          snapshot: compact,
+          stored: true,
+        } satisfies SocketAttachment);
+      } catch {
+        this.room.closeSession(sessionId, TLSyncErrorCloseEventReason.UNKNOWN_ERROR);
+        return;
+      }
+    }
+    connection.snapshot = snapshot;
+  }
+
+  override webSocketClose(socket: WebSocket) {
+    const saved = socket.deserializeAttachment() as SocketAttachment | null;
+    if (saved === null) return;
+    const { person, sessionId, snapshot } = saved;
+    const connection = this.sockets.get(sessionId);
+    if (connection === undefined) {
+      // WARNING: A disconnect can wake the room after getWebSockets has already dropped that socket.
+      if (snapshot?.presenceRecord == null) return;
+      this.room.handleSocketResume({ sessionId, socket, meta: person, snapshot });
+    } else {
+      if (connection.socket !== socket) return;
+      clearTimeout(connection.connectTimer);
+      if (connection.stored === true) {
+        this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + sessionId);
+      }
+      this.sockets.delete(sessionId);
+    }
+    this.room.handleSocketClose(sessionId);
+  }
+
+  override webSocketError(socket: WebSocket) {
+    this.webSocketClose(socket);
   }
 
   roll(pass: Pass, request: RollRequest) {
@@ -806,6 +960,8 @@ export class BoardRoom extends DurableObject<Env> {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }
     this.room.close();
+    for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
+    this.sockets.clear();
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {

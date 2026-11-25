@@ -27,7 +27,7 @@ export type Bootstrap = {
 
 export type Answer =
   | { bootstrap: Bootstrap; kind: "ready" }
-  | { kind: "failed" | "gone" | "link-reset" | "throttled" }
+  | { kind: "daily-server-limit" | "failed" | "gone" | "link-reset" | "throttled" | "unavailable" }
   | { kind: "name-invalid" | "name-required" };
 
 export type Door = { bootstrapUrl: string; credentials: RequestCredentials };
@@ -55,6 +55,15 @@ export async function knock(door: Door, name?: string): Promise<Answer> {
   if (response.status === 429) return { kind: "throttled" };
   const body: unknown = await response.json().catch(() => null);
   const refusal = body as { error?: string } | null;
+  if (response.status >= 500) {
+    console.error("board: bootstrap unavailable", response.status);
+    return {
+      kind:
+        response.status === 503 && refusal?.error === "daily-server-limit"
+          ? "daily-server-limit"
+          : "unavailable",
+    };
+  }
   if (response.status === 403 && refusal?.error === "link-reset") return { kind: "link-reset" };
   if (
     response.status === 422 &&
