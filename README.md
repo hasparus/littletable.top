@@ -1,24 +1,16 @@
 # Little Table
 
-Little Table is a shared whiteboard with dice for tabletop RPGs. Drop a map on
-the board and ask the party where they cross the river. A player can circle the
-ford and roll for the crossing where everyone can see the result.
+A shared whiteboard with dice for tabletop RPGs. Sketch the road to Briarwatch,
+mark where the party makes camp, and roll a d20 to see what finds them there.
 
-[Open the public board](https://littletable.top/) to draw alongside other
-visitors. You get a guest name automatically. Drawings fade after a day and
-disappear after two.
+<img src="scripts/open-graph-map.png" width="600" alt="Briarwatch Pass on the board. A red X marks a campsite along the old road. A d20 beside the road shows 12." />
 
-[Start a board for your group](https://littletable.top/boards). Sign in, choose
-**New board**, then send the board URL to your players. Anyone with the link
-can join with just a name. As the owner, you can keep your notes on the secret
-layer while the group draws on the map.
+[Try the public board](https://littletable.top/). You can draw straight away.
+Anyone can join, and drawings disappear after two days.
 
-![A hand-drawn river crossing and an uploaded handout on a Little Table board, with a two-die result](docs/screenshots/board.webp)
-
-<p>
-  <img width="360" src="docs/screenshots/search.webp" alt="Mobile board search finding SALTPEARL in the uploaded tollhouse ledger" />
-  <img width="360" src="docs/screenshots/chat.webp" alt="Two guests talking about where to meet in the public board’s chat on a phone" />
-</p>
+[Make a board for your game](https://littletable.top/boards). Sign in, choose
+**New board**, and send the URL to your players. Anyone with the link can join
+with just a name. Use the **Secret layer** to mark an ambush only you can see.
 
 ## Development
 
