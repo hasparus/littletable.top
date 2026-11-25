@@ -8,6 +8,7 @@ import type { PublicLanding } from "./public-landing";
 import { BoardLoading } from "./board-loading";
 import { BoardNameProvider } from "./board-name";
 import { BoardShare } from "./board-share";
+import { useBoardViewport } from "./board-viewport";
 import {
   type Answer,
   type Bootstrap,
@@ -58,6 +59,7 @@ function ReadyBoard({
   exit: Exit;
   keeper: PassKeeper;
 }) {
+  useBoardViewport();
   const [shared, setShared] = useState<Editor | null>(null);
   const [secret, setSecret] = useState<PassKeeper>();
   const [privateEditor, setPrivateEditor] = useState<Editor | null>(null);
