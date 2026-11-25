@@ -20,14 +20,14 @@
     <main id="report">
       <div class="opening">
         <div>
-          <p class="kicker">Gizmos · Design recommendation</p>
-          <h1>Give the GM a workbench.</h1>
+          <p class="kicker">Gizmos · Design alternatives</p>
+          <h1>What can a GM make?</h1>
           <p class="intro">
-            I’d start with one tool a GM can change between scenes. Give them a spotlight tracker,
-            let them ask an agent for a house-rule variation, and let them play a turn on a copy
-            before adopting it.
+            At one table, changing a tracker means ticking a box. At another, it means teaching a
+            clock a house rule. At a third, it means inventing a prop nobody has seen before. Each
+            calls for a different kind of workbench.
           </p>
-          <a class="cta" href="#decision">What I’d build first ↓</a>
+          <a class="cta" href="#decision">Compare three approaches ↓</a>
         </div>
         <figure class="model">
           <div class="sheet-label">At tonight’s table</div>
@@ -42,47 +42,81 @@
         </figure>
       </div>
       <nav class="contents" aria-label="In this report">
-        <a href="#decision">First build</a><a href="#security">Security concerns</a
+        <a href="#decision">Alternatives</a><a href="#security">Security concerns</a
         ><a href="#experiments">Workbench</a><a href="#field-notes">Field notes</a
         ><a href="#precedents">Plugin models</a><a href="#agent-workshop">Agent workspaces</a>
       </nav>
       <section class="chapter" id="decision">
         <header>
-          <p class="kicker">Product bet</p>
-          <h2>The first thing worth building</h2>
+          <p class="kicker">Open design question</p>
+          <h2>Three ways to build the ferryman’s clock</h2>
         </header>
         <div class="prose">
           <p class="lead">
-            My preference is a forkable Gizmo with a small, host-rendered vocabulary and an agent
-            that edits its recipe. I’d spend the first engineering week on the round trip from a
-            working tool to a house rule and back to play.
+            Suppose the ferryman wakes after two character moments. Only the GM can mark a moment,
+            but everyone can see the water rise. What should the GM be able to change when the next
+            session takes a different turn?
+          </p>
+          <h3>A. Configure a tool during play</h3>
+          <p>
+            The GM picks a first-party clock, sets its length to two, and chooses who can tick it.
+            On a phone this could take three taps. The team owns rendering, accessibility and
+            upgrades. A request to draw a different kind of prop becomes product work.
           </p>
           <p>
-            The duet trial is the reason: changing four seats to two, restricting who can mark a
-            moment, and filling a clock in two marks took one recipe file. A general-purpose runtime
-            would add operating cost and a new trust boundary without improving that scene. The
-            trade-off is real: this vocabulary can express queues and counters; it cannot express a
-            hand-drawn relationship map with novel gestures.
+            <strong>Security cost.</strong> Fixed controls keep the permission surface small. The
+            room still needs to reject unauthorized ticks, and reconnections must preserve the
+            correct count. <strong>First experiment.</strong> Give a GM a two-segment dial midway
+            through a scene. Watch whether they can configure it without interrupting the
+            conversation. The case for this path is strongest if several tables want the same tool
+            with different settings.
           </p>
-          <h3>First playable cut</h3>
+          <h3>B. Fork a recipe and teach it a house rule</h3>
           <p>
-            Put <strong>Make a copy</strong> on the spotlight tracker. Give the GM a scratch table
-            with two sample players. Let them ask, “Only I can move the spotlight, and it takes two
-            turns to wake the ferryman.” Show two things before installation: the changed player
-            permission and the clock filling after two owner clicks. Keep the old revision available
-            for the rest of the session. A player who reconnects should see the same queue as the
-            GM.
+            The GM copies a tracker and links two existing actions: mark a character moment and
+            advance the clock. An agent can edit the recipe and rehearse it with sample players. The
+            validated catalog supplies the controls. Inventing a new gesture or drawing surface
+            would require a catalog extension.
           </p>
           <p>
-            For the first playtest, hand three GMs the working tracker and ask each to change one
-            rule for tonight. My threshold to continue: at least two can make a change, correctly
-            predict its effect from a player seat, and choose to use it in play without a developer
-            stepping in. If they all ask for the same extra option, add that option to the tracker.
-            If they repeatedly want different behaviors outside the catalog, take those actual
-            examples into the isolated-runtime experiment.
+            <strong>Security cost.</strong> A valid recipe can still request an unwanted privilege.
+            Show the owner exactly which player actions change, pin the reviewed revision, and
+            authorize each action in the room. <strong>First experiment.</strong> Try the duet
+            recipe, then ask three GMs for one variation each. Count how many they can express with
+            existing actions and how often they correctly predict the player experience.
+            <a href="#experiments">Try the recipe workbench</a>
+          </p>
+          <h3>C. Let an agent build a little application</h3>
+          <p>
+            The GM sketches a tide chart on which players place lanterns. A coding agent could build
+            the gesture, artwork and rules in a disposable workspace. A reusable blueprint lets
+            another GM take the code into their own game with fresh state. This gives unusual table
+            rituals room to become genuinely new software. It also makes Little Table responsible
+            for hosting, compatibility, recovery and resource costs.
+          </p>
+          <p>
+            <strong>Security cost.</strong> Generated code introduces an execution boundary. Give
+            the draft synthetic data and narrow bindings, meter computation and outbound access, and
+            keep a host-controlled pause and rollback path.
+            <strong>First experiment.</strong> Commission one prop that the catalog cannot express.
+            Measure authoring time, startup latency and recovery after a stalled rule before
+            offering it to a second table.
+            <a href="#agent-workshop">Cloudflare OS and coding environments</a> ·
+            <a href="#execution">Local runtime results</a>
+          </p>
+          <h3>Where I lean, and what would change it</h3>
+          <p>
+            I’d personally prototype B first
+            <em>if the question is whether owners enjoy remixing tools</em>. The duet took one
+            recipe file and yielded an observable change from both seats. That trial establishes
+            feasibility for one brief; it tells us little about demand. If the goal is helping a GM
+            keep a scene moving tonight, A has the shorter path to a useful test. If the ambition is
+            to let tables invent entirely new interfaces, C directly tests that ambition. I’d bring
+            one real house rule from your table to the next conversation and see which approach
+            gives it enough room.
           </p>
           <details>
-            <summary>Implementation notes and release gates</summary>
+            <summary>Possible implementation for the recipe approach</summary>
             <h3>Install and undo</h3>
             <p>
               On install, show the panel preview, author, definition version and actions that guests
