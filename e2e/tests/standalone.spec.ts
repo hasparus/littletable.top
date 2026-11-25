@@ -184,7 +184,8 @@ test("the landing introduction keeps its typography and position when the board 
     await route.continue();
   });
 
-  await page.goto(STANDALONE, { waitUntil: "commit" });
+  const documentResponse = await page.goto(STANDALONE, { waitUntil: "commit" });
+  expect(await documentResponse?.text()).toContain("<section data-landing-preview");
   const preview = page.locator("[data-landing-preview]");
   try {
     await expect(page.getByRole("status")).toBeAttached();
