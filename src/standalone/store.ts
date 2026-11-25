@@ -162,6 +162,11 @@ export class Store {
     return row === null ? null : board(row);
   }
 
+  async exists(id: string) {
+    const row = await this.db.prepare("SELECT 1 FROM boards WHERE id = ?").bind(id).first();
+    return row !== null;
+  }
+
   async owned(id: string, ownerId: string): Promise<Board | null> {
     const row = await this.db
       .prepare("SELECT * FROM boards WHERE id = ? AND owner_id = ?")

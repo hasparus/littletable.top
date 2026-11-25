@@ -21,7 +21,7 @@ import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { CHAT_HISTORY_LENGTH, type ChatMessage } from "./chat";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
-import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
+import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import {
@@ -403,6 +403,28 @@ export class BoardRoom extends DurableObject<Env> {
       const background = store.get(TLDOCUMENT_ID)?.meta.backgroundColor;
       return isBoardColor(background) ? background : "default";
     }).result;
+  }
+
+  publicationCode() {
+    return this.ctx.storage.kv.get<string>("publicationCode") ?? null;
+  }
+
+  async setPublication(board: string, image: ArrayBuffer | null) {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      if (this.retired) return null;
+      const current = this.publicationCode();
+      if (image === null) {
+        if (current !== null) await this.env.Files.delete(publicationKey(board, current));
+        this.ctx.storage.kv.delete("publicationCode");
+        return null;
+      }
+      const code = current ?? crypto.randomUUID();
+      await this.env.Files.put(publicationKey(board, code), image, {
+        httpMetadata: { contentType: "image/png" },
+      });
+      this.ctx.storage.kv.put("publicationCode", code);
+      return code;
+    });
   }
 
   async storeThumbnail(

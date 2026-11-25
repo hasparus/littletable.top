@@ -87,6 +87,8 @@ export async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 
 // WARNING: Keep board objects under this prefix so deletion also finds files missing from the ledger.
 export const boardPrefix = (board: string) => `boards/${board}/`;
+export const publicationKey = (board: string, code: string) =>
+  `${boardPrefix(board)}published/${code}.png`;
 export const fileKey = (board: string, hash: string) => `${boardPrefix(board)}${hash}`;
 export const textKey = (board: string, hash: string, engine: string) =>
   `${fileKey(board, hash)}.ocr.${engine}.json`;
