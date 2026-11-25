@@ -249,7 +249,8 @@
   padding-inline: 14px;
 }
 
-[data-public-board-chat] {
+[data-public-board-chat],
+[data-secret-layer-toggle] {
   width: var(--board-top-control-size);
 }
 
@@ -269,7 +270,7 @@
   position: fixed;
   z-index: 20;
   inset: var(--board-top) var(--board-right) auto auto;
-  padding-inline: 14px;
+  place-items: center;
   cursor: pointer;
 }
 

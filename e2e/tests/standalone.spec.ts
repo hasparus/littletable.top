@@ -56,6 +56,7 @@ test("the board menu and right-hand controls share guides on public and private 
   expect(ownerMenu.x).toBeCloseTo(ownerTools.x, 0);
   expect(ownerMenu.y).toBe(ownerToggle.y);
   expect(ownerMenu.height).toBe(ownerToggle.height);
+  expect(ownerToggle.width).toBe(ownerToggle.height);
 
   const guest = await phone(browser, page.url());
   await joinAs(guest, "Layout guest");
