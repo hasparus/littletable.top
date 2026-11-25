@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { Language } from "../settings";
+import type { Action, Editing, Lists, Owned } from "./front-board-list";
+
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 import { fill } from "./copy";
+import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
+import { FrontMenu, MENU_BUTTON } from "./front-menu";
+import { Icon } from "./icons";
 
 // The standalone tabletop's account page: sign in, then the account's boards
 // (made here, or joined by someone else's link) with what an owner can do
@@ -12,13 +18,8 @@ import { type FrontCopy } from "./front-copy";
 
 // avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
-type Owned = { createdAt: number; id: string; shareCode: string; title: string };
-type Visited = { id: string; shareCode: string | null; title: string; visitedAt: number };
-type Lists = { owned: Owned[]; visited: Visited[] };
 
 type Me = { account: Account | null; csrf: string | null };
-
-const boardUrl = (shareCode: string) => `${location.origin}/b/${shareCode}`;
 
 function useApi(csrf: string | null) {
   return useCallback(
@@ -52,152 +53,16 @@ function SignedOut({ copy, failed, name }: { copy: FrontCopy; failed: boolean; n
   );
 }
 
-type Editing = { id: string; kind: "delete" | "rename" | "reset" } | null;
-
-function OwnedRow({
-  board,
-  copy,
-  editing,
-  locale,
-  onAction,
-  setEditing,
-}: {
-  board: Owned;
-  copy: FrontCopy;
-  editing: Editing;
-  locale: string;
-  onAction: (board: Owned, action: "delete" | "rename" | "reset", title?: string) => Promise<void>;
-  setEditing: (editing: Editing) => void;
-}) {
-  const [title, setTitle] = useState(board.title);
-  const [copied, setCopied] = useState(false);
-  const mode = editing?.id === board.id ? editing.kind : null;
-  return (
-    <li className="py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <a
-          className="min-w-0 flex-1 truncate text-lg font-medium underline-offset-2 hover:underline"
-          href={`/b/${board.shareCode}`}
-        >
-          {board.title}
-        </a>
-        <span className="text-sm text-foreground-muted">
-          {new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(board.createdAt * 1000)}
-        </span>
-      </div>
-      {mode === null && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            className="btn btn-secondary min-h-10"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(boardUrl(board.shareCode))
-                .then(() => setCopied(true));
-            }}
-            type="button"
-          >
-            {copied ? copy.linkCopied : copy.copyLink}
-          </button>
-          <button
-            className="btn btn-secondary min-h-10"
-            onClick={() => setEditing({ id: board.id, kind: "rename" })}
-            type="button"
-          >
-            {copy.rename}
-          </button>
-          <button
-            className="btn btn-secondary min-h-10"
-            onClick={() => setEditing({ id: board.id, kind: "reset" })}
-            type="button"
-          >
-            {copy.resetLink}
-          </button>
-          <button
-            className="btn btn-secondary min-h-10"
-            onClick={() => setEditing({ id: board.id, kind: "delete" })}
-            type="button"
-          >
-            {copy.delete}
-          </button>
-        </div>
-      )}
-      {mode === "rename" && (
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onAction(board, "rename", title);
-          }}
-        >
-          <label
-            className="flex min-w-0 flex-1 flex-col gap-1 text-sm"
-            htmlFor={`title-${board.id}`}
-          >
-            {copy.boardName}
-            <input
-              autoFocus
-              className="h-11 rounded-lg border border-border bg-bg-secondary px-3 text-base focus:border-primary focus:outline-none"
-              id={`title-${board.id}`}
-              maxLength={80}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              value={title}
-            />
-          </label>
-          <button className="btn btn-primary min-h-11" type="submit">
-            {copy.save}
-          </button>
-          <button
-            className="btn btn-secondary min-h-11"
-            onClick={() => setEditing(null)}
-            type="button"
-          >
-            {copy.cancel}
-          </button>
-        </form>
-      )}
-      {(mode === "reset" || mode === "delete") && (
-        <div
-          aria-labelledby={`confirm-${board.id}`}
-          className="mt-2 rounded-xl bg-bg-tertiary p-3"
-          role="alertdialog"
-        >
-          <p id={`confirm-${board.id}`}>
-            {mode === "reset"
-              ? copy.resetConfirm
-              : fill(copy.deleteConfirm, { title: board.title })}
-          </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              autoFocus
-              className="btn btn-primary min-h-11"
-              onClick={() => void onAction(board, mode)}
-              type="button"
-            >
-              {mode === "reset" ? copy.resetLink : copy.delete}
-            </button>
-            <button
-              className="btn btn-secondary min-h-11"
-              onClick={() => setEditing(null)}
-              type="button"
-            >
-              {copy.cancel}
-            </button>
-          </div>
-        </div>
-      )}
-    </li>
-  );
-}
-
 function SignedIn({
   copy,
   locale,
   me,
+  name,
 }: {
   copy: FrontCopy;
-  locale: string;
+  locale: Language;
   me: Me & { account: Account };
+  name: string;
 }) {
   const [lists, setLists] = useState<Lists | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -227,7 +92,7 @@ function SignedIn({
     else setError(copy.actionFailed);
   };
 
-  const act = async (board: Owned, action: "delete" | "rename" | "reset", title?: string) => {
+  const act = async (board: Owned, action: Action, title?: string) => {
     setError(null);
     const response = await post(
       `/api/boards/${board.id}/${action}`,
@@ -246,91 +111,82 @@ function SignedIn({
     location.assign(redirect);
   };
 
+  const accountLabel = fill(copy.signedInAs, { name: me.account.name });
   return (
-    <div className="mx-auto max-w-2xl px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-16">
-      <header className="flex flex-wrap items-center gap-3">
-        {/* NOTE: `a:<id>` is the person's id on a board, so the ring is their cursor's colour there. */}
-        <Avatar
-          color={colorFor(`a:${me.account.id}`)}
-          name={me.account.name}
-          size="md"
-          src={me.account.avatar}
-        />
-        <p className="min-w-0 flex-1 text-sm text-foreground-secondary">
-          {fill(copy.signedInAs, { name: me.account.name })}
-        </p>
-        <button className="btn btn-secondary min-h-10" onClick={() => void signOut()} type="button">
-          {copy.signOut}
-        </button>
-      </header>
-      <a className="mt-4 inline-block underline underline-offset-2" href="/">
-        {copy.publicBoard}
-      </a>
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <h1 className="flex-1 text-2xl font-semibold">{copy.yourBoards}</h1>
-        <button className="btn btn-primary min-h-12" onClick={() => void create()} type="button">
-          {copy.newBoard}
-        </button>
-      </div>
-      {error !== null && (
-        <p className="mt-3 text-danger-text" role="alert">
-          {error}
-        </p>
-      )}
-      {lists === null ? (
-        <p className="mt-6 text-foreground-muted" role="status">
-          {copy.loading}
-        </p>
-      ) : (
-        <>
-          {lists.owned.length === 0 ? (
-            <p className="mt-6 text-foreground-muted">{copy.noBoardsYet}</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-border">
-              {lists.owned.map((board) => (
-                <OwnedRow
-                  board={board}
-                  copy={copy}
-                  editing={editing}
-                  key={board.id}
-                  locale={locale}
-                  onAction={act}
-                  setEditing={setEditing}
+    <>
+      <header className="border-b border-border pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-2 px-4 sm:min-h-16 sm:px-6 lg:px-10">
+          <div className="flex min-w-0 items-center gap-1.5 font-[748] tracking-tight lowercase">
+            <img alt="" className="size-5 shrink-0 sm:size-6" src="/favicon.svg" />
+            <span className="wrap-anywhere">{name}</span>
+          </div>
+          <div className="ml-auto flex items-center gap-0.5">
+            <a
+              className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-border-focus"
+              href="/"
+            >
+              {copy.publicBoard}
+              <Icon className="hidden size-3.5 sm:block" name="ArrowUpRight" />
+            </a>
+            <FrontMenu
+              label={accountLabel}
+              trigger={
+                <Avatar
+                  color={colorFor(`a:${me.account.id}`)}
+                  name={me.account.name}
+                  src={me.account.avatar}
                 />
-              ))}
-            </ul>
-          )}
-          {lists.visited.length > 0 && (
-            <section className="mt-10">
-              <h2 className="text-lg font-semibold">{copy.visited}</h2>
-              <ul className="mt-2 divide-y divide-border">
-                {lists.visited.map((board) => (
-                  <li className="flex items-center gap-3 py-3" key={board.id}>
-                    {board.shareCode === null ? (
-                      <>
-                        <span className="min-w-0 flex-1 truncate">{board.title}</span>
-                        <span className="text-sm text-foreground-muted">{copy.linkWasReset}</span>
-                      </>
-                    ) : (
-                      <a
-                        className="min-w-0 flex-1 truncate underline-offset-2 hover:underline"
-                        href={`/b/${board.shareCode}`}
-                      >
-                        {board.title}
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
-      )}
-    </div>
+              }
+            >
+              <p className="px-3 py-2 text-sm wrap-anywhere text-foreground-muted">
+                {accountLabel}
+              </p>
+              <button className={MENU_BUTTON} onClick={() => void signOut()} type="button">
+                {copy.signOut}
+              </button>
+            </FrontMenu>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl px-4 pt-5 pb-16 sm:px-6 sm:pt-6 lg:px-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.yourBoards}</h1>
+          <button
+            className="btn btn-primary min-h-11 font-semibold"
+            onClick={() => void create()}
+            type="button"
+          >
+            {copy.newBoard}
+            <Icon className="size-4 stroke-current stroke-1" name="Plus" />
+          </button>
+        </div>
+        {error !== null && (
+          <p className="mt-3 text-danger-text" role="alert">
+            {error}
+          </p>
+        )}
+        {lists === null ? (
+          error === null && (
+            <p className="mt-6 text-foreground-muted" role="status">
+              {copy.loading}
+            </p>
+          )
+        ) : (
+          <BoardList
+            copy={copy}
+            editing={editing}
+            lists={lists}
+            locale={locale}
+            onAction={act}
+            setEditing={setEditing}
+          />
+        )}
+      </main>
+    </>
   );
 }
 
-function Front({ copy, locale, name }: { copy: FrontCopy; locale: string; name: string }) {
+function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
   const [me, setMe] = useState<Me | null>(null);
   const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
   useEffect(() => {
@@ -351,13 +207,13 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: string; name: 
   return me.account === null ? (
     <SignedOut copy={copy} failed={failed} name={name} />
   ) : (
-    <SignedIn copy={copy} locale={locale} me={{ ...me, account: me.account }} />
+    <SignedIn copy={copy} locale={locale} me={{ ...me, account: me.account }} name={name} />
   );
 }
 
 export function mountFront(
   element: HTMLElement,
-  props: { copy: FrontCopy; locale: string; name: string },
+  props: { copy: FrontCopy; locale: Language; name: string },
 ) {
   element.classList.add("overflow-y-auto", "bg-background");
   createRoot(element).render(<Front {...props} />);
