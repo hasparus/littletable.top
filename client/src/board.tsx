@@ -3,6 +3,7 @@ import type { Editor } from "tldraw";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { Language } from "../settings";
 import type { PublicLanding } from "./public-landing";
 
 import {
@@ -15,6 +16,7 @@ import {
 } from "./bootstrap";
 import { BoardCanvas } from "./canvas";
 import { type Copy, fill } from "./copy";
+import { FeedbackProvider } from "./feedback";
 import { Icon } from "./icons";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
@@ -36,11 +38,12 @@ type Layer =
 type Mount = {
   copy: Copy;
   door: Door;
+  feedback: boolean;
   // Where a person goes before the host has said whose board this is.
   fallbackExit: Exit;
   first: Promise<Answer>;
   landing?: PublicLanding;
-  language: string;
+  language: Language;
   licenseKey: string;
 };
 
@@ -221,5 +224,9 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
 }
 
 export function mountBoard(element: HTMLElement, mount: Mount): void {
-  createRoot(element).render(<Board {...mount} />);
+  createRoot(element).render(
+    <FeedbackProvider enabled={mount.feedback} language={mount.language}>
+      <Board {...mount} />
+    </FeedbackProvider>,
+  );
 }

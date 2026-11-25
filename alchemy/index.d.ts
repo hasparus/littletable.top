@@ -54,6 +54,12 @@ export type HostedProps = Shared & {
 };
 
 export type StandaloneProps = Shared & {
+  feedback?: {
+    projectToken: Redacted.Redacted<string> | string;
+    questionId: string;
+    region: string;
+    surveyId: string;
+  };
   mode: "standalone";
   // The private key (PKCS#8 PEM) the Worker signs its own passes with. The
   // committed dev key is refused.
