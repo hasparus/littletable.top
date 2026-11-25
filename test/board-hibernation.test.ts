@@ -1,4 +1,10 @@
-import { evictDurableObject } from "cloudflare:test";
+import {
+  createShapeId,
+  createUserId,
+  InstancePresenceRecordType,
+  PageRecordType,
+} from "@tldraw/tlschema";
+import { evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { expect, it } from "vitest";
 
@@ -51,3 +57,51 @@ it("restores connected board sessions after eviction and delivers rolls and link
     expect(await guest.closure).toEqual({ code: 4099, reason: "FORBIDDEN" });
   }
 });
+
+it.each([1, 1000])(
+  "broadcasts a deselection after sleep with %i selected shapes",
+  async (count) => {
+    const board = `hibernated-presence-${count}`;
+    const writer = await seat(board, await pass({ board }));
+    const peer = await seat(board, await pass({ board, sub: "u:2" }));
+    const { BoardRoom } = env as unknown as Env;
+    const room = BoardRoom.get(BoardRoom.idFromName(board));
+    const selected = Array.from({ length: count }, (_, index) =>
+      createShapeId(`selected-board-record-${index}`),
+    );
+
+    writer.send({
+      clientClock: 1,
+      presence: [
+        "put",
+        InstancePresenceRecordType.create({
+          currentPageId: PageRecordType.createId("page"),
+          id: InstancePresenceRecordType.createId(),
+          selectedShapeIds: selected,
+          userId: createUserId("u:1"),
+          userName: "Ania",
+        }),
+      ],
+      type: "push",
+    });
+    await until(() => JSON.stringify(peer.received).includes(selected.at(-1)!));
+    const stored = () =>
+      runInDurableObject(
+        room,
+        (_room, { storage }) => [...storage.kv.list({ prefix: "socketSnapshot:" })].length,
+      );
+    expect(await stored()).toBe(count === 1 ? 0 : 1);
+
+    await evictDurableObject(room, { webSockets: "hibernate" });
+    const start = peer.received.length;
+    writer.send({
+      clientClock: 2,
+      presence: ["patch", { selectedShapeIds: ["put", []] }],
+      type: "push",
+    });
+    await until(() =>
+      JSON.stringify(peer.received.slice(start)).includes('"selectedShapeIds":["put",[]]'),
+    );
+    expect(await stored()).toBe(0);
+  },
+);

@@ -51,6 +51,7 @@ import {
   placePublicSignature,
   PUBLIC_SIGNATURE_GROUP,
 } from "./public-signature";
+import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
 import { isSecretLayer } from "./secret-layer";
 import { AssistantGrants } from "./standalone/assistant-grants";
@@ -88,6 +89,7 @@ const PUBLIC_LANDING_PAGE_NAMED = "publicLandingPageNamed";
 const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
 const CONNECT_TIMEOUT_MS = 10_000;
+const SOCKET_SNAPSHOT_PREFIX = "socketSnapshot:";
 
 export const PASS_HEADER = "X-Board-Pass";
 export const AVATAR_HEADER = "X-Board-Avatar";
@@ -97,8 +99,17 @@ export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "sta
 type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
   avatar: string | null;
 };
-type SocketAttachment = { sessionId: string; person: Person; snapshot?: SessionStateSnapshot };
-type RoomSocket = { socket: WebSocket; connectTimer?: ReturnType<typeof setTimeout> };
+type SocketAttachment = {
+  sessionId: string;
+  person: Person;
+  snapshot?: SessionStateSnapshot | "stored";
+};
+type RoomSocket = {
+  socket: WebSocket;
+  connectTimer?: ReturnType<typeof setTimeout>;
+  snapshot?: SessionStateSnapshot;
+  stored?: boolean;
+};
 type RollCompletion =
   | { refusal: Refusal }
   | { error: ExpressionError }
@@ -149,6 +160,7 @@ export class BoardRoom extends DurableObject<Env> {
     );
     addRollColumns(sql);
     this.ctx.storage.transactionSync(() => openChat(sql));
+    openRoomAllowances(sql);
     sql.exec(
       "CREATE TABLE IF NOT EXISTS people (sub TEXT PRIMARY KEY, source TEXT, avatar TEXT, checked_at INTEGER NOT NULL)",
     );
@@ -303,6 +315,7 @@ export class BoardRoom extends DurableObject<Env> {
     const previous = this.sockets.get(sessionId);
     if (previous !== undefined) {
       clearTimeout(previous.connectTimer);
+      if (previous.stored === true) this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + sessionId);
       previous.socket.close(1012, "Session replaced");
     }
     server.serializeAttachment({ sessionId, person } satisfies SocketAttachment);
@@ -332,8 +345,9 @@ export class BoardRoom extends DurableObject<Env> {
 
   private restoreSockets() {
     const sockets = this.ctx.getWebSockets();
-    if (sockets.length === 0) return;
-    const link = this.link();
+    const { kv } = this.ctx.storage;
+    const unused = new Map(kv.list<SessionStateSnapshot>({ prefix: SOCKET_SNAPSHOT_PREFIX }));
+    const link = sockets.length === 0 ? 0 : this.link();
     for (const socket of sockets) {
       const saved = socket.deserializeAttachment() as SocketAttachment | null;
       if (saved === null) continue;
@@ -344,18 +358,26 @@ export class BoardRoom extends DurableObject<Env> {
             ? TLSyncErrorCloseEventReason.NOT_FOUND
             : TLSyncErrorCloseEventReason.FORBIDDEN,
         );
-      } else if (saved.snapshot === undefined) {
-        socket.close(1012, "Reconnecting");
       } else {
-        this.sockets.set(saved.sessionId, { socket });
+        const key = SOCKET_SNAPSHOT_PREFIX + saved.sessionId;
+        const { snapshot: attachment } = saved;
+        const inStorage = attachment === "stored";
+        const snapshot = inStorage ? unused.get(key) : attachment;
+        if (snapshot === undefined) {
+          socket.close(1012, "Reconnecting");
+          continue;
+        }
+        if (inStorage) unused.delete(key);
+        this.sockets.set(saved.sessionId, { socket, snapshot, stored: inStorage });
         this.room.handleSocketResume({
           sessionId: saved.sessionId,
           socket,
           meta: saved.person,
-          snapshot: saved.snapshot,
+          snapshot,
         });
       }
     }
+    for (const key of unused.keys()) kv.delete(key);
   }
 
   override webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
@@ -368,11 +390,38 @@ export class BoardRoom extends DurableObject<Env> {
     if (snapshot === null) return;
     clearTimeout(connection.connectTimer);
     connection.connectTimer = undefined;
+    // WARNING: Peers already have the full presence record and the next client patch is relative to it.
+    if (snapshot.presenceId !== null) {
+      const room = this.room as TLSocketRoom<TLRecord, Person> & {
+        getPresenceRecords(): Record<string, TLRecord>;
+      };
+      snapshot.presenceRecord = room.getPresenceRecords()[snapshot.presenceId] ?? null;
+    }
+    const previous = connection.snapshot;
+    if (
+      previous?.serializedSchema === snapshot.serializedSchema &&
+      previous.presenceRecord === snapshot.presenceRecord
+    )
+      return;
+    const key = SOCKET_SNAPSHOT_PREFIX + saved.sessionId;
+    const { kv } = this.ctx.storage;
     try {
       socket.serializeAttachment({ ...saved, snapshot });
+      if (connection.stored === true) {
+        kv.delete(key);
+        connection.stored = false;
+      }
     } catch {
-      this.room.closeSession(saved.sessionId, TLSyncErrorCloseEventReason.UNKNOWN_ERROR);
+      try {
+        kv.put(key, snapshot);
+        connection.stored = true;
+        socket.serializeAttachment({ ...saved, snapshot: "stored" });
+      } catch {
+        this.room.closeSession(saved.sessionId, TLSyncErrorCloseEventReason.UNKNOWN_ERROR);
+        return;
+      }
     }
+    connection.snapshot = snapshot;
   }
 
   override webSocketClose(socket: WebSocket) {
@@ -381,6 +430,9 @@ export class BoardRoom extends DurableObject<Env> {
     const connection = this.sockets.get(saved.sessionId);
     if (connection?.socket !== socket) return;
     clearTimeout(connection.connectTimer);
+    if (connection.stored === true) {
+      this.ctx.storage.kv.delete(SOCKET_SNAPSHOT_PREFIX + saved.sessionId);
+    }
     this.sockets.delete(saved.sessionId);
     this.room.handleSocketClose(saved.sessionId);
   }
