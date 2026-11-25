@@ -30,7 +30,10 @@ try {
       after.push(combined);
     }
   }
-  for (const [label, samples] of [["sequential", before], ["combined", after]] as const) {
+  for (const [label, samples] of [
+    ["sequential", before],
+    ["combined", after],
+  ] as const) {
     samples.sort((a, b) => a - b);
     console.log(label, "median ms", ((samples[9]! + samples[10]!) / 2).toFixed(1));
   }

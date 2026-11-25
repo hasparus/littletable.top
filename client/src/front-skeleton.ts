@@ -1,9 +1,13 @@
 // Static, account-independent markup shared by the HTTP shell and React.
 export const boardRows = `<div aria-hidden="true" class="mt-6">
-  ${["w-36", "w-48", "w-28"].map((width) => `<div class="flex min-h-15 items-center gap-3 border-t border-border">
+  ${["w-36", "w-48", "w-28"]
+    .map(
+      (width) => `<div class="flex min-h-15 items-center gap-3 border-t border-border">
     <span class="size-10 shrink-0 rounded-md bg-bg-secondary"></span>
     <span class="h-3 max-w-[55%] rounded bg-bg-tertiary ${width}"></span>
-  </div>`).join("")}
+  </div>`,
+    )
+    .join("")}
 </div>`;
 
 const container = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-10";

@@ -7,7 +7,6 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig, normalizePath, type Plugin } from "vite";
 
-import { boardShell } from "./client/src/front-skeleton";
 import {
   BRAND_PROPERTIES,
   type Brand,
@@ -15,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   THEME_COLOR,
 } from "./client/settings";
+import { boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
 // serves (wrangler.json "assets"). `bun run dev` serves it here with hot

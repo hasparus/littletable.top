@@ -59,14 +59,14 @@ function SignedIn({
   copy,
   locale,
   me,
-  reload,
   name,
+  reload,
 }: {
   copy: FrontCopy;
   locale: Language;
   me: BoardPage;
-  reload: () => Promise<void>;
   name: string;
+  reload: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
@@ -185,7 +185,7 @@ function SignedIn({
 }
 
 function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
-  const [page, setPage] = useState<BoardPage | "signed-out" | "failed" | null>(null);
+  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(null);
   const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
   const reload = useCallback(async () => {
     try {
