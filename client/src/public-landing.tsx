@@ -1,8 +1,8 @@
 import { useEditor, useValue } from "tldraw";
 
-import type { FrontCopy } from "./front-copy";
+import type { LandingCopy } from "./front-copy";
 
-export type PublicLanding = { copy: FrontCopy };
+export type PublicLanding = { copy: LandingCopy };
 
 // The note is rendered in canvas coordinates, outside the shared document.
 export function PublicBoardIntro({ copy }: PublicLanding) {

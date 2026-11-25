@@ -21,6 +21,7 @@ import { rollSentence } from "./dice-labels";
 import { makeHighlight } from "./highlight";
 import { Icon } from "./icons";
 import { ImageText } from "./image-text";
+import { LandingPlaceholder } from "./landing-placeholder";
 import { Notice } from "./notice";
 import { PeopleSheet } from "./people";
 import { useRolls } from "./rolls";
@@ -256,6 +257,7 @@ export function BoardCanvas({
           secret={keeper.secret}
           store={store}
         />
+        {landing && editor === null && <LandingPlaceholder copy={landing.copy} />}
         {landing !== undefined && (
           <div className="absolute z-10 flex gap-1" data-public-board-controls>
             <button

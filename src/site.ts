@@ -123,6 +123,12 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     url: new URL(url.pathname.replace(/\/$/u, "") || "/", url).href,
   };
   return new HTMLRewriter()
+    .on("template[data-board-preloads]", {
+      element: (template) => {
+        if (url.pathname === "/") template.removeAndKeepContent();
+        else template.remove();
+      },
+    })
     .on("head", {
       element: (head) => {
         const tags = Object.entries(graph).map(

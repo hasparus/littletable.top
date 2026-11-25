@@ -89,6 +89,42 @@ test("the board menu and right-hand controls share guides on public and private 
   await landing.context().close();
 });
 
+test("the landing introduction keeps its typography and position when the board opens", async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE.viewport);
+  const release = Promise.withResolvers<void>();
+  await page.route("**/api/public-board/bootstrap", async (route) => {
+    await release.promise;
+    await route.continue();
+  });
+  const font = Promise.withResolvers<void>();
+  await page.route("**/Shantell_Sans-Informal_Regular-*.woff2", async (route) => {
+    await font.promise;
+    await route.continue();
+  });
+
+  await page.goto(STANDALONE, { waitUntil: "commit" });
+  const preview = page.locator("[data-landing-preview]");
+  try {
+    await expect(page.getByRole("status")).toBeAttached();
+    await expect(preview).toBeInViewport();
+    const box = await preview.boundingBox();
+    const family = await preview.evaluate((note) => getComputedStyle(note).fontFamily);
+    release.resolve();
+    font.resolve();
+    const live = page.locator("[data-public-board-note]");
+    await expect(live).toBeInViewport();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await expect(live).toHaveCSS("font-family", family);
+    expect(await live.boundingBox()).toEqual(box);
+    await expect(preview).toHaveCount(0);
+  } finally {
+    release.resolve();
+    font.resolve();
+  }
+});
+
 test("the home page is one editable public board for anonymous visitors", async ({
   browser,
   page,
