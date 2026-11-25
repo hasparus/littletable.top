@@ -45,8 +45,6 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
     >
       <button
         className="pointer-events-auto mb-2 inline-flex min-h-11 cursor-pointer items-center gap-2 underline-offset-4 hover:underline focus-visible:underline"
-        type="button"
-        onPointerDown={(event) => event.stopPropagation()}
         onClick={() => {
           const features = featuresRef.current;
           if (features === null) return;
@@ -54,30 +52,32 @@ export function PublicBoardIntro({ copy }: PublicLanding) {
           const { x, y } = editor.screenToPage({ x: rect.left, y: rect.top });
           const zoom = editor.getZoomLevel();
           goToBounds(editor, editor.getCurrentPageId(), {
+            h: rect.height / zoom,
+            w: rect.width / zoom,
             x,
             y,
-            w: rect.width / zoom,
-            h: rect.height / zoom,
           });
           features.focus({ preventScroll: true });
         }}
+        onPointerDown={(event) => event.stopPropagation()}
+        type="button"
       >
         {copy.publicSeeFeatures}
         <svg
           aria-hidden="true"
-          width="28"
-          height="24"
-          viewBox="0 0 28 24"
           fill="none"
+          height="24"
           stroke="currentColor"
-          strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          strokeWidth="1.5"
+          viewBox="0 0 28 24"
+          width="28"
         >
           <path d="M3 4c13-2 18 5 17 15m-5-5 5 5 5-5" />
         </svg>
       </button>
-      <div ref={featuresRef} className="mb-4" tabIndex={-1}>
+      <div className="mb-4" ref={featuresRef} tabIndex={-1}>
         {hasDemo && (
           <>
             <p>{copy.publicDemo}</p>
