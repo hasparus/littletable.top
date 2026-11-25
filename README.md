@@ -1,7 +1,11 @@
 # Little Table
 
-A shared whiteboard with dice for tabletop RPGs. You can search the text in
-character sheets and rulebook screenshots.
+Filling out forms in Roll20 felt like paperwork. My friends and I had more fun
+with a whiteboard. We'd drop in screenshots from our PDFs and draw on them
+just like on a real table.
+
+Little Table is the whiteboard I wanted for those games. It rolls dice, finds
+text in screenshots, and gives the GM a secret layer for notes.
 
 [Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
 
