@@ -27,7 +27,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/index";
 
 import { avatarKey } from "../src/avatars";
-import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
+import { type ChatMessage, MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
@@ -812,4 +812,27 @@ describe("the two modes' passes", () => {
     const response = await guest.fetch("/", {}, { ...standaloneEnv, ...overrides });
     expect(response.status).toBe(500);
   });
+});
+
+it("shares the posting allowance between chat rolls and text", async () => {
+  const guest = new Browser();
+  const { board, pass } = await (await guest.post("/api/public-board/bootstrap")).json<Answer>();
+  const chat = "/rooms/" + board + "/chat";
+  const send = (body: string) =>
+    guest.fetch(chat, {
+      body,
+      headers: { Authorization: "Bearer " + pass },
+      method: "POST",
+    });
+  const first = await send("/roll 1d1");
+  expect(first.status).toBe(200);
+  expect(await first.json()).toMatchObject({ diceTotal: 1, text: "1d1" });
+  for (let index = 1; index < MAX_CHAT_MESSAGES_PER_MINUTE; index++) {
+    expect((await send("Message " + index)).status).toBe(200);
+  }
+  const before = await (await roomCall(chat, pass)).json<ChatMessage[]>();
+  expect((await send("/r 2d1")).status).toBe(429);
+  const history = await (await roomCall(chat, pass)).json<ChatMessage[]>();
+  expect(history).toEqual(before);
+  expect(history.at(-MAX_CHAT_MESSAGES_PER_MINUTE)).toMatchObject({ diceTotal: 1, text: "1d1" });
 });

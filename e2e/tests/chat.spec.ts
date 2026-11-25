@@ -56,3 +56,39 @@ test("phone chat follows the latest message across keyboard resizes while at the
     await context.close();
   }
 });
+
+for (const command of ["/r", "/roll"]) {
+  test(command + " posts an evaluated dice expression to chat", async ({ page }) => {
+    await page.goto(STANDALONE);
+    const chat = await openSheet(page, "Chat");
+    const input = chat.getByRole("textbox", { name: "Message" });
+    const count = command === "/r" ? "2" : "3";
+    const expression = count + "d1count1+";
+    await input.fill(command + " " + expression);
+    await input.press("Enter");
+    const result = chat
+      .getByRole("log")
+      .getByRole("article")
+      .filter({ hasText: expression })
+      .last();
+    await expect(result.locator("strong")).toHaveText(count);
+
+    await page.reload();
+    const reopened = await openSheet(page, "Chat");
+    await expect(
+      reopened.getByRole("log").getByText(expression, { exact: true }).last(),
+    ).toBeVisible();
+  });
+}
+
+test("the static dice reference includes commands and their origins", async ({ page }) => {
+  const response = await page.goto(STANDALONE + "/docs");
+  expect(response?.ok()).toBe(true);
+  await expect(page.getByRole("heading", { name: "Dice notation" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Origin" })).toBeVisible();
+  await expect(page.getByText("/roll 2d20kl1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Roll20", exact: true }).first()).toHaveAttribute(
+    "href",
+    /^https:\/\/help\.roll20\.net\//u,
+  );
+});

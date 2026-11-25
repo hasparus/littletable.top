@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Dice expressions and chat commands supported by Little Table."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/docs.css" />
+    <title>Dice notation · %TABLETOP_NAME%</title>
+  </head>
+  <body>
+    <main>
+      <a href="/">%TABLETOP_NAME%</a>
+      <header>
+        <h1 id="dice">Dice notation</h1>
+        <p>
+          In board chat, type <code>/r 2d20kl1</code> or <code>/roll 2d20kl1</code>. You can also
+          enter the expression in the dice panel.
+        </p>
+        <p>
+          Roll20 rules apply by default. Prefix an expression with <code>foundry:</code>,
+          <code>avrae:</code>, <code>rpg:</code>, <code>maiden:</code>, or
+          <code>rolisteam:</code> to use a different meaning shown below.
+        </p>
+      </header>
+      <table aria-labelledby="dice">
+        <thead>
+          <tr>
+            <th scope="col">Expression</th>
+            <th scope="col">What it does</th>
+            <th scope="col">Origin</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="section">
+            <th scope="rowgroup" colspan="3">Dice and arithmetic</th>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>d20</code><br /><code data-roll>3d6</code><br /><code data-roll
+                >d7</code
+              ><br /><code data-roll>0d6</code>
+            </th>
+            <td>Roll dice with the given number of sides. Zero dice return zero.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>3k6</code></th>
+            <td>Polish spelling of <code>3d6</code>.</td>
+            <td>Little Table</td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4dF</code></th>
+            <td>Fate dice roll −1, 0, or +1.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4dF.1</code></th>
+            <td>Roll Fate dice with one minus face, four blanks, and one plus face.</td>
+            <td>
+              <a href="https://dice-roller.github.io/documentation/guide/notation/dice.html"
+                >RPG Dice Roller</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>d%</code></th>
+            <td>Roll a value from 1 to 100.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+              ·
+              <a href="https://dice-roller.github.io/documentation/guide/notation/dice.html"
+                >RPG Dice Roller</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>avrae:d%</code></th>
+            <td>Roll a tens digit from 0 to 90.</td>
+            <td><a href="https://github.com/avrae/d20/releases/tag/v1.1.0">Avrae</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>(1+2)d6</code><br /><code data-roll>2d(4+2)</code></th>
+            <td>Calculate the number of dice or sides. The count rounds to the nearest integer.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>d20 + 5</code><br /><code data-roll>2 * (d6 − d4)</code><br /><code
+                data-roll
+                >2**3 + 7%4</code
+              >
+            </th>
+            <td>
+              Add, subtract, multiply, divide, use a remainder, or raise to a power. Parentheses
+              control order.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>floor(d20 / 2)</code><br /><code data-roll>round(3.5)</code
+              ><br /><code data-roll>ceil(2.1)</code><br /><code data-roll>abs(-5)</code>
+            </th>
+            <td>Round down, to the nearest integer, up, or take the absolute value.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>d20[Attack] + 5</code><br /><code data-roll>d6 Fire damage</code
+              ><br /><code data-roll>[[d20+5]]</code>
+            </th>
+            <td>Add a label or a trailing comment, or paste an inline-roll expression.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+        </tbody>
+        <tbody>
+          <tr class="section">
+            <th scope="rowgroup" colspan="3">Keep, drop, and group</th>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>2d20kh1</code><br /><code data-roll>2d20kl1</code></th>
+            <td>Take the higher or lower d20. Useful for advantage and disadvantage.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+              · <a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>4d6k3</code><br /><code data-roll>4d6d1</code><br /><code data-roll
+                >4d6dh1</code
+              ><br /><code data-roll>4d6dl1</code>
+            </th>
+            <td>
+              Keep high, drop low, drop high, or drop low. <code>k</code> and <code>d</code> are
+              shorthands.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>2d20kh</code></th>
+            <td>Omit the count to keep one die.</td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6ph1</code><br /><code data-roll>4d6pl1</code></th>
+            <td>Drop the highest or lowest die.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>5d6km3</code></th>
+            <td>Keep the middle three dice.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>{4d6+3d8}k4</code><br /><code data-roll>{d8!,d6!}kh1</code>
+            </th>
+            <td>
+              One brace expression pools the dice. With commas, keep or drop whole subroll totals.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>(d8,d6)kh1</code></th>
+            <td>Use parentheses to keep the higher of two subroll totals.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>avrae:4d6k3</code><br /><code data-roll>avrae:4d6p&gt;4</code>
+            </th>
+            <td>Keep dice showing exactly 3, or drop dice showing more than 4.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6f[!=6]</code></th>
+            <td>Filter dice by a bracketed condition. This keeps values other than 6.</td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6min2</code><br /><code data-roll>4d6max5</code></th>
+            <td>Clamp each die to a minimum or maximum result.</td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6mi2</code><br /><code data-roll>4d6ma5</code></th>
+            <td>Alternate spellings for the same clamps.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+        </tbody>
+        <tbody>
+          <tr class="section">
+            <th scope="rowgroup" colspan="3">Count and mark</th>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>6d6&gt;5</code><br /><code data-roll>6d6&lt;2</code><br /><code
+                data-roll
+                >6d6=6</code
+              >
+            </th>
+            <td>
+              Count matching dice. Roll20’s single <code>&gt;</code> and <code>&lt;</code> include
+              the boundary.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>6d6&gt;5f1</code><br /><code data-roll>{3d20+5}&gt;21</code>
+            </th>
+            <td>Deduct one per 1, or add 5 to each d20 before counting hits.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>6d6count5+</code></th>
+            <td>Count dice showing 5 or higher.</td>
+            <td>Little Table</td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>6d6t5</code><br /><code data-roll>6d6tl2</code></th>
+            <td>
+              Count results of 5 or higher with <code>t5</code>, or 2 or lower with
+              <code>tl2</code>.
+            </td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>6d6c[&gt;=5]</code></th>
+            <td>Count dice that match a bracketed comparison.</td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>6d6even</code><br /><code data-roll>6d6odd</code><br /><code data-roll
+                >6d10cs&gt;=8df1</code
+              ><br /><code data-roll>3d6sf&lt;3</code><br /><code data-roll>3d6ms10</code>
+            </th>
+            <td>
+              Count evens or odds. <code>df</code> deducts failures, <code>sf</code> subtracts
+              failed faces, and <code>ms</code> subtracts a target.
+            </td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6cs=6</code><br /><code data-roll>4d6cf=1</code></th>
+            <td>Highlight 6s as critical successes or 1s as critical failures.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>foundry:4d6cs=6</code></th>
+            <td>Count matching faces in the total.</td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>6d6m</code><br /><code data-roll>6d6mt3&gt;4</code></th>
+            <td>
+              Mark matching faces, or tally distinct matching faces of 4 or higher with at least
+              three occurrences.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>maiden:5d10t7ds10</code></th>
+            <td>Count 7 and higher as successes and give 10s two successes.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>8d6sa</code><br /><code data-roll>8d6sd</code></th>
+            <td>Sort faces ascending or descending.</td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>rolisteam:8d6s</code></th>
+            <td>Sort faces descending with a bare <code>s</code>.</td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>rpg:6d6&gt;5</code></th>
+            <td>Use a strict per-die comparison, counting only 6s.</td>
+            <td>
+              <a href="https://dice-roller.github.io/documentation/guide/notation/modifiers.html"
+                >RPG Dice Roller</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>avrae:6d6&gt;5</code></th>
+            <td>Compare the total with 5 and return 0 or 1.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+        </tbody>
+        <tbody>
+          <tr class="section">
+            <th scope="rowgroup" colspan="3">Reroll and explode</th>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>4d6r1</code><br /><code data-roll>4d6r1r2</code><br /><code data-roll
+                >4d6ro&lt;2</code
+              >
+            </th>
+            <td>
+              Reroll matching faces. <code>r</code> repeats and <code>ro</code> replaces a face at
+              most once.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>foundry:4d6r2</code><br /><code data-roll>4d6rr2</code>
+            </th>
+            <td>Reroll 2s once with the Foundry prefix, or repeatedly with <code>rr</code>.</td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>maiden:4d6r2</code></th>
+            <td>Reroll each value of 2 or lower once.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6ir2</code><br /><code data-roll>4d6irx2</code></th>
+            <td>Reroll repeatedly on 2 or lower, or on exactly 2.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>rolisteam:4d6R[&lt;3]</code></th>
+            <td>Reroll repeatedly while the bracketed condition matches.</td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>4d6!</code><br /><code data-roll>4d6!!</code><br /><code data-roll
+                >4d6!p</code
+              ><br /><code data-roll>4d6!&gt;5</code>
+            </th>
+            <td>
+              On matching faces, roll again. <code>!!</code> treats each chain as one result.
+              <code>!p</code> subtracts 1 from each bonus die.
+            </td>
+            <td>
+              <a href="https://help.roll20.net/hc/en-us/articles/360037773133-Dice-Reference"
+                >Roll20</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>5d10x&gt;=9</code><br /><code data-roll>5d10xo10</code><br /><code
+                data-roll
+                >5d10x2=10</code
+              >
+            </th>
+            <td>
+              Explode recursively, once per matching die, or up to a specified number of extra dice
+              per chain.
+            </td>
+            <td><a href="https://foundryvtt.com/article/dice-modifiers/">Foundry</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>avrae:4d6e6</code></th>
+            <td>Explode into separate dice recursively.</td>
+            <td><a href="https://d20.readthedocs.io/en/latest/start.html#dice-syntax">Avrae</a></td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>maiden:4d6e6</code></th>
+            <td>Add one bonus die per 6.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>rolisteam:4d6e6</code></th>
+            <td>Explode recursively and compound each chain.</td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code data-roll>rolisteam:4d6e(2)[=6]</code><br /><code data-roll
+                >rolisteam:4d6K3</code
+              >
+            </th>
+            <td>
+              Cap a compound chain at two extra dice, or compound on maximum faces and keep the
+              three highest chains.
+            </td>
+            <td>
+              <a href="https://github.com/Rolisteam/DiceParser/blob/master/HelpMe.md">Rolisteam</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6adv1</code><br /><code data-roll>4d6dis1</code></th>
+            <td>Draw one extra die and drop low or high before explosions.</td>
+            <td>
+              <a href="https://github.com/Humblemonk/dicemaiden-rs/blob/main/roll_syntax.md"
+                >Dice Maiden</a
+              >
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code data-roll>4d6u</code><br /><code data-roll>4d6uo</code></th>
+            <td>Reroll duplicates recursively or once.</td>
+            <td>
+              <a href="https://dice-roller.github.io/documentation/guide/notation/modifiers.html"
+                >RPG Dice Roller</a
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <footer>
+        <p>
+          Expressions can start with up to 20 dice and make up to 100 draws, including extra dice
+          and rerolls. Standard dice can have up to 1,000,000 sides. Expressions are limited to 256
+          characters.
+        </p>
+        <p>
+          Prefixes cover the differences listed here. Character-sheet references, macros, and
+          private-roll commands are outside the expression grammar.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>
