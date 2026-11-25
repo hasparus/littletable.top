@@ -147,6 +147,23 @@ describe("the built files", () => {
   });
 });
 
+describe("standalone board list HTML", () => {
+  it("renders private links for their owner and sign-in for visitors", async () => {
+    const owner = new Browser();
+    await owner.signIn("List owner");
+    const board = await owner.createBoard("A <private> table");
+    const response = await owner.fetch("/boards");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const html = await response.text();
+    expect(html).toContain(`href="/b/${board.shareCode}"`);
+    expect(html).toContain("A &lt;private&gt; table");
+    expect(html).not.toContain("A <private> table");
+    const guest = await (await new Browser().fetch("/boards")).text();
+    expect(guest).toContain('href="/auth/sign-in?return=/boards"');
+    expect(guest).not.toContain(board.shareCode);
+  });
+});
+
 describe("standalone link previews", () => {
   const config = { ...standaloneEnv, DISPLAY_NAME: "Little Table" };
 

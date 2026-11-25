@@ -29,6 +29,13 @@ const DATE_FORMATS = {
   en: new Intl.DateTimeFormat("en", { dateStyle: "medium" }),
   pl: new Intl.DateTimeFormat("pl", { dateStyle: "medium" }),
 };
+const UTC_DATE_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }),
+  pl: new Intl.DateTimeFormat("pl", { dateStyle: "medium", timeZone: "UTC" }),
+};
+const subscribeToDateFormats = () => () => null;
+const browserDateFormats = () => DATE_FORMATS;
+const serverDateFormats = () => UTC_DATE_FORMATS;
 const ACTIONS = ["rename", "reset", "delete"] as const;
 export type Action = (typeof ACTIONS)[number];
 export type Editing = { id: string; kind: Action } | null;
@@ -227,9 +234,10 @@ function OwnedRow({
 }
 
 // WARNING: Keep this aligned with Tailwind's sm breakpoint so DOM order follows the visible layout.
-const phoneViewport = matchMedia("(width < 640px)");
-const isPhone = () => phoneViewport.matches;
+const phoneQuery = "(width < 640px)";
+const isPhone = () => matchMedia(phoneQuery).matches;
 function subscribeToPhone(listener: () => void) {
+  const phoneViewport = matchMedia(phoneQuery);
   phoneViewport.addEventListener("change", listener);
   return () => phoneViewport.removeEventListener("change", listener);
 }
@@ -295,8 +303,12 @@ export function BoardList({
   onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
   setEditing: (editing: Editing) => void;
 }) {
-  const format = DATE_FORMATS[locale];
-  const phone = useSyncExternalStore(subscribeToPhone, isPhone);
+  const format = useSyncExternalStore(
+    subscribeToDateFormats,
+    browserDateFormats,
+    serverDateFormats,
+  )[locale];
+  const phone = useSyncExternalStore(subscribeToPhone, isPhone, () => false);
   const hasVisited = lists.visited.length > 0;
   const collapsible = phone && lists.owned.length > 2 && lists.visited.length > 2;
   const joined = hasVisited ? (

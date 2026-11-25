@@ -326,11 +326,16 @@ export class Standalone {
     return json(200, accountSummary(found.session));
   }
 
-  private async list(request: Request): Promise<Response> {
+  async boardPage(request: Request) {
     const found = await this.session(request);
-    if (found === null) return refuse(401, "signed-out");
+    if (found === null) return "signed-out" as const;
     const lists = await this.store.list(found.session.account.id);
-    return json(200, { ...accountSummary(found.session), ...lists });
+    return { ...accountSummary(found.session), ...lists };
+  }
+
+  private async list(request: Request): Promise<Response> {
+    const page = await this.boardPage(request);
+    return page === "signed-out" ? refuse(401, "signed-out") : json(200, page);
   }
 
   private async thumbnail(request: Request, id: string): Promise<Response> {

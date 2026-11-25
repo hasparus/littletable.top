@@ -54,7 +54,7 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) {
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
 async function mount(): Promise<void> {
   if (settings.hosted === null && location.pathname === "/boards") {
-    const { mountFront } = await import("./front");
+    const { mountFront } = await import("./mount-front");
     mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
     return;
   }

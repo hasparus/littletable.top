@@ -23,7 +23,7 @@ import {
   verifyPass,
 } from "./pass";
 import { isSecretLayer, secretLayerOf } from "./secret-layer";
-import { aliasRedirect, serveSite } from "./site";
+import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
@@ -257,8 +257,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       { BoardRoom: env.BoardRoom, DB: env.DB, Files: env.Files, Limiter: env.Limiter },
       config,
       verifiers.keys!,
-    ).route(request);
-    if (own !== null) return own;
+    );
+    if (pathname === "/boards" && (request.method === "GET" || request.method === "HEAD")) {
+      return serveBoards(request, env.ASSETS, config, own);
+    }
+    const route = own.route(request);
+    if (route !== null) return route;
   }
   return serveSite(request, env, config);
 }

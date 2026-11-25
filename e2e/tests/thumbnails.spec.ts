@@ -132,6 +132,9 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
   authorize.searchParams.set("fake_user", "Page Thumbnail Tester");
   const signedIn = await request.get(authorize.toString());
   expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
+  await page.route(`${STANDALONE}/boards`, async (route) => {
+    await route.fulfill({ response: await request.get(route.request().url()) });
+  });
   await page.route(`${STANDALONE}/api/**`, async (route) => {
     const outgoing = route.request();
     // WARNING: WebKit does not expose the intercepted Blob body. Forward the encoded bytes passed to fetch.
