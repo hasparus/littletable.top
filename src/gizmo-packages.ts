@@ -84,6 +84,9 @@ const dimension = T.integer.check((size) => {
 const art = T.string.check((path) => {
   if (!isPackageAssetPath(path)) throw new Error("Invalid package art path");
 });
+export const trackerLayout = T.literalEnum("rail", "sliders", "initiative");
+export type TrackerLayout = T.TypeOf<typeof trackerLayout>;
+
 function manifestSchema(art: T.Validator<string>) {
   const card = T.object({
     id: T.string.check((id) => {
@@ -112,7 +115,17 @@ function manifestSchema(art: T.Validator<string>) {
   });
   return T.union("kind", {
     deck,
-    tracker: T.object({ ...common, kind: T.literal("tracker") }),
+    tracker: T.object({
+      ...common,
+      kind: T.literal("tracker"),
+      layout: trackerLayout.optional(),
+      token: art.optional(),
+      portraits: T.arrayOf(art)
+        .check((images) => {
+          if (images.length > 24) throw new Error("Too many portraits");
+        })
+        .optional(),
+    }),
     button: T.object({
       ...common,
       kind: T.literal("button"),
@@ -137,6 +150,13 @@ export function normalizeManifest(
 ) {
   const manifest = packageSchema.validate(value);
   const preview = resolveAsset(manifest.preview);
+  if (manifest.kind === "tracker")
+    return {
+      ...manifest,
+      preview,
+      ...(manifest.token && { token: resolveAsset(manifest.token) }),
+      ...(manifest.portraits && { portraits: manifest.portraits.map(resolveAsset) }),
+    };
   if (manifest.kind === "button" && manifest.burst)
     return { ...manifest, preview, burst: resolveAsset(manifest.burst) };
   if (manifest.kind !== "deck") return { ...manifest, preview };

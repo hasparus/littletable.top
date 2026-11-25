@@ -31,10 +31,12 @@ function PracticeTable({
   locale,
   licenseKey,
   pieces: initialPieces,
+  focused,
 }: {
   locale: Language;
   licenseKey: string;
   pieces: InstalledGizmo[];
+  focused: boolean;
 }) {
   const [pieces, setPieces] = useState(initialPieces);
   const copy = COPY[locale];
@@ -43,7 +45,7 @@ function PracticeTable({
   const [open, setOpen] = useState(
     () =>
       initialPieces.length === 0 ||
-      matchMedia("(min-width: 760px) and (min-height: 600px)").matches,
+      (!focused && matchMedia("(min-width: 760px) and (min-height: 600px)").matches),
   );
   const trigger = useRef<HTMLButtonElement>(null);
   const title = locale === "pl" ? "Stół próbny" : "Practice table";
@@ -68,12 +70,18 @@ function PracticeTable({
       const piece = pieces.find(({ manifest }) => manifest.kind === kind);
       if (!piece) continue;
       const point = mounted.screenToPage(
-        kind === "tracker"
-          ? { x: centerX, y: bottom }
-          : { x: centerX + (kind === "deck" ? -spread : spread), y: top },
+        focused
+          ? { x: centerX, y: centerY }
+          : kind === "tracker"
+            ? { x: centerX, y: bottom }
+            : { x: centerX + (kind === "deck" ? -spread : spread), y: top },
       );
       if (kind === "deck") void deck.place(mounted, point, piece);
       else placeGizmoGeo(mounted, point, piece, seats, locale);
+    }
+    if (focused) {
+      const bounds = mounted.getCurrentPageBounds();
+      if (bounds) mounted.zoomToBounds(bounds, { inset: 56, targetZoom: 1.65, immediate: true });
     }
     mounted.selectNone();
   }
@@ -141,13 +149,21 @@ export function mountGizmoPlayground(root: HTMLElement, locale: Language, licens
   const copy = COPY[locale];
   function load() {
     view.render(<BoardLoading text={copy.loading} />);
-    void Promise.all(
-      (new URLSearchParams(location.search).has("empty") ? [] : registry).map((entry) =>
-        loadPracticeGizmo(entry.url),
-      ),
-    ).then(
+    const query = new URLSearchParams(location.search);
+    const focus = registry.find((entry) =>
+      entry.url.endsWith("/gizmos/" + query.get("gizmo") + "/gizmo.json"),
+    );
+    const shelf = query.has("empty") ? [] : focus ? [focus] : registry;
+    void Promise.all(shelf.map((entry) => loadPracticeGizmo(entry.url))).then(
       (pieces) =>
-        view.render(<PracticeTable locale={locale} licenseKey={licenseKey} pieces={pieces} />),
+        view.render(
+          <PracticeTable
+            locale={locale}
+            licenseKey={licenseKey}
+            pieces={pieces}
+            focused={!!focus}
+          />,
+        ),
       () =>
         view.render(
           <div data-practice-status="" role="alert">

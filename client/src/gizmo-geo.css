@@ -89,3 +89,7 @@
   height: 500%;
   max-width: none;
 }
+
+[data-table-tracker] :is(button, input, select, [data-portrait], [data-tracker-scroll]) {
+  pointer-events: auto;
+}

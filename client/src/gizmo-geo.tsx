@@ -14,13 +14,25 @@ import {
   useValue,
 } from "tldraw";
 
-import { type InstalledGizmo, isGizmoAssetUrl } from "../../src/gizmo-packages";
+import {
+  type InstalledGizmo,
+  isGizmoAssetUrl,
+  trackerLayout,
+  type TrackerLayout,
+} from "../../src/gizmo-packages";
 import { fill } from "./copy";
 import { playGizmoBurst } from "./gizmo-burst";
 import { playGizmoCue, springGizmo } from "./gizmo-feedback";
 import { useInstalledGizmo } from "./gizmo-installed";
 import { useGizmoUi } from "./gizmo-ui";
+import { InitiativeRail } from "./initiative-rail";
+import { SpotlightRail } from "./spotlight-rail";
+import { SpotlightSliders } from "./spotlight-sliders";
+import { MAX_TRACKER_SEATS, type TrackerControls } from "./tracker-controls";
+import { exportTracker } from "./tracker-export";
 import "./gizmo-geo.css";
+
+const trackerViews = { rail: SpotlightRail, sliders: SpotlightSliders, initiative: InitiativeRail };
 
 const palette = {
   edge: "#322c20",
@@ -39,7 +51,6 @@ const palette = {
 };
 const WIDTH = 260;
 const ROW = 42;
-const MAX_SEATS = 24;
 
 const common = {
   version: T.literal(1),
@@ -50,6 +61,10 @@ const common = {
 const tracker = T.object({
   ...common,
   kind: T.literal("tracker"),
+  layout: trackerLayout.optional(),
+  active: T.integer.optional(),
+  token: T.string.optional(),
+  portraits: T.arrayOf(T.string).optional(),
   seats: T.arrayOf(T.object({ id: T.integer, name: T.string, marks: T.integer })),
 });
 const button = T.object({ ...common, kind: T.literal("button"), hits: T.integer });
@@ -58,13 +73,23 @@ type Actuator = T.TypeOf<typeof button>;
 
 const heightFor = (count: number) => Math.max(116, count * ROW + 32);
 
+function trackerSize(layout: TrackerLayout | undefined, count: number) {
+  if (layout === "rail") return { w: 220, h: 60 + 42 * count };
+  if (layout === "sliders") return { w: 58 + 64 * Math.min(count, 8), h: 202 };
+  if (layout === "initiative") return { w: 88 + 72 * Math.min(count, 8), h: 116 };
+  return { w: WIDTH, h: heightFor(count) };
+}
+
 function readPiece(shape: TLGeoShape) {
   const value = shape.meta.gizmo;
   if (button.isValid(value) && isGizmoAssetUrl(value.preview)) return value;
   if (
     tracker.isValid(value) &&
+    (!value.token || isGizmoAssetUrl(value.token)) &&
+    (!value.portraits ||
+      (value.portraits.length <= 24 && value.portraits.every(isGizmoAssetUrl))) &&
     value.seats.length > 0 &&
-    value.seats.length <= MAX_SEATS &&
+    value.seats.length <= MAX_TRACKER_SEATS &&
     isGizmoAssetUrl(value.preview)
   )
     return value;
@@ -80,19 +105,34 @@ export function placeGizmoGeo(
 ) {
   const { kind, name, preview, width, height } = piece.manifest;
   if (editor.getIsReadonly() || kind === "deck" || !isGizmoAssetUrl(preview)) return false;
-  const seats = names.slice(0, MAX_SEATS).map((name, id) => ({ id, name, marks: 0 }));
+  const seats = names.slice(0, MAX_TRACKER_SEATS).map((name, id) => ({ id, name, marks: 0 }));
   if (seats.length === 0)
     seats.push({ id: 0, name: locale === "pl" ? "Gracz" : "Player", marks: 0 });
+  const layout = piece.manifest.kind === "tracker" ? piece.manifest.layout : undefined;
   const initial =
     kind === "tracker"
-      ? { version: 1, kind, name, preview, url: piece.url, seats }
+      ? {
+          version: 1,
+          kind,
+          name,
+          preview,
+          url: piece.url,
+          seats,
+          ...(piece.manifest.kind === "tracker" &&
+            layout && {
+              layout,
+              active: 0,
+              ...(piece.manifest.token && { token: piece.manifest.token }),
+              ...(piece.manifest.portraits && { portraits: piece.manifest.portraits }),
+            }),
+        }
       : { version: 1, kind, name, preview, url: piece.url, hits: 0 };
   const id = createShapeId();
-  const w = width / editor.getZoomLevel();
-  const h =
-    kind === "tracker"
-      ? ((height / editor.getZoomLevel()) * heightFor(seats.length)) / heightFor(2)
-      : height / editor.getZoomLevel();
+  const base = trackerSize(layout, 2);
+  const size = trackerSize(layout, seats.length);
+  const zoom = editor.getZoomLevel();
+  const w = (width / zoom) * (kind === "tracker" ? size.w / base.w : 1);
+  const h = (height / zoom) * (kind === "tracker" ? size.h / base.h : 1);
   editor.markHistoryStoppingPoint();
   editor.createShape({
     id,
@@ -110,6 +150,7 @@ function updateSeats(
   editor: Editor,
   id: TLShapeId,
   update: (seats: Tracker["seats"]) => Tracker["seats"],
+  selectId?: number,
 ) {
   const shape = editor.getShape(id);
   if (
@@ -122,13 +163,24 @@ function updateSeats(
   const current = readPiece(shape);
   if (current?.kind !== "tracker") return;
   const seats = update(current.seats);
-  if (seats === current.seats) return;
+  if (seats.length === 0 || seats.length > MAX_TRACKER_SEATS) return;
+  const active = seats.some((s) => s.id === (selectId ?? current.active))
+    ? (selectId ?? current.active)
+    : seats[
+        Math.max(
+          0,
+          current.seats.findIndex((s) => s.id === current.active),
+        ) % seats.length
+      ]!.id;
+  if (seats === current.seats && (selectId === undefined || active === current.active)) return;
+  const previous = trackerSize(current.layout, current.seats.length);
+  const next = trackerSize(current.layout, seats.length);
   editor.markHistoryStoppingPoint();
   editor.updateShape<TLGeoShape>({
     id,
     type: "geo",
-    meta: { ...shape.meta, gizmo: { ...current, seats } },
-    props: { h: (shape.props.h * heightFor(seats.length)) / heightFor(current.seats.length) },
+    meta: { ...shape.meta, gizmo: { ...current, seats, ...(current.layout && { active }) } },
+    props: { w: (shape.props.w * next.w) / previous.w, h: (shape.props.h * next.h) / previous.h },
   });
   return true;
 }
@@ -144,7 +196,7 @@ function markSeat(editor: Editor, id: TLShapeId, seatId: number) {
 
 function joinTracker(editor: Editor, id: TLShapeId, name: string) {
   updateSeats(editor, id, (seats) => {
-    if (seats.length >= MAX_SEATS || seats.some((seat) => seat.name === name)) return seats;
+    if (seats.length >= MAX_TRACKER_SEATS || seats.some((seat) => seat.name === name)) return seats;
     const nextId = Math.max(...seats.map((seat) => seat.id)) + 1;
     return [...seats, { id: nextId, name, marks: 0 }];
   });
@@ -297,7 +349,7 @@ function TrackerPiece({
         />
       ))}
       {!readonly &&
-        seats.length < MAX_SEATS &&
+        seats.length < MAX_TRACKER_SEATS &&
         !seats.some((seat) => seat.name === person.name) && (
           <button
             data-tracker-join=""
@@ -311,6 +363,102 @@ function TrackerPiece({
             +
           </button>
         )}
+    </HTMLContainer>
+  );
+}
+
+function TableTracker({
+  editor,
+  shape,
+  state,
+  manifest,
+}: {
+  editor: Editor;
+  shape: TLGeoShape;
+  state: Tracker;
+  manifest: Extract<InstalledGizmo["manifest"], { kind: "tracker" }>;
+}) {
+  const { locale } = useGizmoUi();
+  const readonly = useValue(
+    "tracker access",
+    () => editor.getIsReadonly() || editor.isShapeOrAncestorLocked(shape),
+    [editor, shape],
+  );
+  const View = trackerViews[state.layout!];
+  const controls: TrackerControls = {
+    seats: state.seats,
+    active: state.active ?? state.seats[0]!.id,
+    readonly,
+    locale,
+    preview: manifest.preview,
+    token: manifest.token,
+    portraits: manifest.portraits,
+    select: (id) => {
+      if (updateSeats(editor, shape.id, (seats) => seats, id)) playGizmoCue("pass");
+    },
+    rename: (id, name) => {
+      const cleaned = name.trim().slice(0, 60);
+      if (cleaned)
+        updateSeats(editor, shape.id, (seats) =>
+          seats.map((s) => (s.id === id ? { ...s, name: cleaned } : s)),
+        );
+    },
+    add: () =>
+      updateSeats(editor, shape.id, (seats) => [
+        ...seats,
+        {
+          id: Math.max(...seats.map((s) => s.id)) + 1,
+          name: (locale === "pl" ? "Postać " : "Character ") + (seats.length + 1),
+          marks: 0,
+        },
+      ]),
+    remove: (id) => updateSeats(editor, shape.id, (seats) => seats.filter((s) => s.id !== id)),
+    setValue: (id, value) => {
+      const changed = updateSeats(editor, shape.id, (seats) =>
+        seats.map((s) =>
+          s.id === id ? { ...s, marks: Math.max(0, Math.min(100, Math.round(value))) } : s,
+        ),
+      );
+      if (changed) playGizmoCue("place");
+    },
+    reorder: (from, to) =>
+      updateSeats(editor, shape.id, (seats) => {
+        const oldIndex = seats.findIndex((s) => s.id === from),
+          newIndex = seats.findIndex((s) => s.id === to);
+        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return seats;
+        const ordered = [...seats];
+        ordered.splice(newIndex, 0, ...ordered.splice(oldIndex, 1));
+        return ordered;
+      }),
+  };
+  const size = trackerSize(state.layout, state.seats.length);
+  return (
+    <HTMLContainer style={{ width: shape.props.w, height: shape.props.h }}>
+      <div
+        data-table-tracker={state.layout}
+        style={{
+          width: size.w,
+          height: size.h,
+          transformOrigin: "0 0",
+          transform: `scale(${shape.props.w / size.w},${shape.props.h / size.h})`,
+        }}
+        onPointerDown={(e) => {
+          if (
+            e.target instanceof Element &&
+            e.target.closest("button,input,select,[data-portrait]")
+          )
+            editor.markEventAsHandled(e);
+        }}
+        onPointerUp={(e) => {
+          if (
+            e.target instanceof Element &&
+            e.target.closest("button,input,select,[data-portrait]")
+          )
+            editor.markEventAsHandled(e);
+        }}
+      >
+        <View {...controls} />
+      </div>
     </HTMLContainer>
   );
 }
@@ -420,8 +568,17 @@ function InstalledPiece({
     manifest.name.en === state.name.en &&
     manifest.name.pl === state.name.pl
   ) {
-    if (state.kind === "tracker" && manifest.kind === "tracker")
+    if (
+      state.kind === "tracker" &&
+      manifest.kind === "tracker" &&
+      state.layout === manifest.layout
+    ) {
+      if (state.layout)
+        return (
+          <TableTracker editor={util.editor} shape={shape} state={state} manifest={manifest} />
+        );
       return <TrackerPiece editor={util.editor} shape={shape} state={state} />;
+    }
     if (state.kind === "button" && manifest.kind === "button")
       return (
         <Pressable
@@ -461,6 +618,15 @@ export class GizmoGeoUtil extends GeoShapeUtil {
     const state = readPiece(shape);
     if (!state) return super.toSvg(shape, ctx);
     const exportId = `gizmo-art-${shape.id.replaceAll(/[^a-z0-9_-]/gi, "_")}`;
+    if (state.kind === "tracker" && state.layout)
+      return exportTracker(
+        ctx,
+        exportId,
+        state.layout,
+        state,
+        trackerSize(state.layout, state.seats.length),
+        shape.props,
+      );
     const { w, h } = shape.props;
     const isTracker = state.kind === "tracker";
     ctx.addExportDef({
