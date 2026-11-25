@@ -5,6 +5,7 @@ import type { Config, Hosts, StandaloneConfig } from "./config";
 import type { PreviewBindings } from "./share-preview";
 import type { Board } from "./standalone/store";
 
+import { boardShell } from "../client/src/front-skeleton";
 import { composeBoardPreview } from "./share-preview";
 import { Store } from "./standalone/store";
 
@@ -176,8 +177,17 @@ export async function serveSite(
     }
     return withOpenGraph(await shell(request, assets, config), url, config);
   }
-  if (url.pathname === "/boards" && config.mode === "standalone")
-    return shell(request, assets, config);
+  if (url.pathname === "/boards" && config.mode === "standalone") {
+    const page = await shell(request, assets, config);
+    if (!page.ok || page.body === null) return page;
+    return new HTMLRewriter()
+      .on("[data-board-root]", {
+        element: (root) => {
+          root.setInnerContent(boardShell, { html: true });
+        },
+      })
+      .transform(page);
+  }
   const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
   if (imageCode !== undefined && config.mode === "standalone") {
     const board = database === undefined ? null : await new Store(database).byShareCode(imageCode);

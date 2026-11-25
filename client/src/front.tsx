@@ -11,6 +11,7 @@ import { FeedbackProvider, useFeedback } from "./feedback";
 import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
+import { boardShell } from "./front-skeleton";
 import { Icon, TableMark } from "./icons";
 
 // The standalone tabletop's account page: sign in, then the account's boards
@@ -20,7 +21,7 @@ import { Icon, TableMark } from "./icons";
 // avatar is the address of the account's own picture on this origin.
 type Account = { avatar: string | null; id: string; name: string };
 
-type Me = { account: Account | null; csrf: string | null };
+type BoardPage = Lists & { account: Account; csrf: string };
 
 function useApi(csrf: string | null) {
   return useCallback(
@@ -59,26 +60,18 @@ function SignedIn({
   locale,
   me,
   name,
+  reload,
 }: {
   copy: FrontCopy;
   locale: Language;
-  me: Me & { account: Account };
+  me: BoardPage;
   name: string;
+  reload: () => Promise<void>;
 }) {
-  const [lists, setLists] = useState<Lists | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const post = useApi(me.csrf);
   const feedback = useFeedback();
-
-  const load = useCallback(async () => {
-    const response = await fetch("/api/boards");
-    if (response.ok) setLists((await response.json()) as Lists);
-    else setError(copy.actionFailed);
-  }, [copy]);
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const create = async () => {
     setError(null);
@@ -102,7 +95,7 @@ function SignedIn({
     );
     if (!response.ok) setError(copy.actionFailed);
     setEditing(null);
-    await load();
+    await reload();
   };
 
   const signOut = async () => {
@@ -178,49 +171,54 @@ function SignedIn({
             {error}
           </p>
         )}
-        {lists === null ? (
-          error === null && (
-            <p className="mt-6 text-foreground-muted" role="status">
-              {copy.loading}
-            </p>
-          )
-        ) : (
-          <BoardList
-            copy={copy}
-            editing={editing}
-            lists={lists}
-            locale={locale}
-            onAction={act}
-            setEditing={setEditing}
-          />
-        )}
+        <BoardList
+          copy={copy}
+          editing={editing}
+          lists={me}
+          locale={locale}
+          onAction={act}
+          setEditing={setEditing}
+        />
       </main>
     </>
   );
 }
 
 function Front({ copy, locale, name }: { copy: FrontCopy; locale: Language; name: string }) {
-  const [me, setMe] = useState<Me | null>(null);
+  const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(null);
   const failed = new URL(location.href).searchParams.get("sign-in") === "failed";
-  useEffect(() => {
-    void fetch("/api/me")
-      .then(async (response) =>
-        response.ok ? ((await response.json()) as Me) : { account: null, csrf: null },
-      )
-      .catch(() => ({ account: null, csrf: null }))
-      .then(setMe);
+  const reload = useCallback(async () => {
+    try {
+      const response = await fetch("/api/boards");
+      if (response.status === 401) setPage("signed-out");
+      else if (response.ok) setPage((await response.json()) as BoardPage);
+      else setPage("failed");
+    } catch {
+      setPage("failed");
+    }
   }, []);
-  if (me === null) {
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  if (page === "failed") {
     return (
-      <p className="p-6 text-foreground-muted" role="status">
-        {copy.loading}
+      <p className="p-6 text-danger-text" role="alert">
+        {copy.actionFailed}
       </p>
     );
   }
-  return me.account === null ? (
+  if (page === null) {
+    return (
+      <div role="status">
+        <span className="sr-only">{copy.loading}</span>
+        <div dangerouslySetInnerHTML={{ __html: boardShell }} />
+      </div>
+    );
+  }
+  return page === "signed-out" ? (
     <SignedOut copy={copy} failed={failed} name={name} />
   ) : (
-    <SignedIn copy={copy} locale={locale} me={{ ...me, account: me.account }} name={name} />
+    <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} />
   );
 }
 

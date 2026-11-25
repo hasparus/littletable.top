@@ -45,7 +45,11 @@ test("board sections collapse on phones only when both lists have three boards",
   }));
   let lists = { owned, visited: visited.slice(0, 2) };
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.route("**/api/boards", (route) => route.fulfill({ json: lists }));
+  await page.route("**/api/boards", async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) return route.fulfill({ response });
+    await route.fulfill({ json: { ...(await response.json()), ...lists }, response });
+  });
   await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Board Lists");

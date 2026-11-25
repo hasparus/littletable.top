@@ -435,6 +435,8 @@ describe("an owner's boards", () => {
     await ada.bootstrap(hers.shareCode);
 
     expect(await ada.list()).toEqual({
+      account: { avatar: expect.any(String), id: expect.any(String), name: "Ada" },
+      csrf: ada.csrf,
       owned: [{ createdAt: expect.any(Number), ...mine }],
       visited: [
         {

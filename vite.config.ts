@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   THEME_COLOR,
 } from "./client/settings";
+import { boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
 // serves (wrangler.json "assets"). `bun run dev` serves it here with hot
@@ -126,7 +127,10 @@ function tabletop(): Plugin {
     resolveId(id) {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
-    transformIndexHtml(html, { bundle }) {
+    transformIndexHtml(html, { bundle, originalUrl }) {
+      if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
+        html = html.replace("<!-- boards-shell -->", boardShell);
+      }
       if (settings.mode === "standalone" && bundle) {
         const board = Object.values(bundle).find(
           (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",
