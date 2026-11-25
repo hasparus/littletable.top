@@ -288,6 +288,16 @@
   width: var(--board-top-control-size);
 }
 
+[data-board-shell]:has(> [data-public-board-controls]) .tlui-page-menu__trigger {
+  /* Leave room for the main menu, Chat, GitHub, and the wider My boards link. */
+  max-inline-size: max(
+    var(--board-top-control-size),
+    calc(
+      100dvw - var(--board-left) - var(--board-right) - 3 * var(--board-top-control-size) - 116px
+    )
+  );
+}
+
 [data-public-board-controls] > :is(a, button):hover,
 [data-board-sharing] > button:hover,
 [data-public-board-chat][aria-expanded="true"] {
