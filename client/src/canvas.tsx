@@ -291,6 +291,14 @@ export function BoardCanvas({
                 />
               )}
             </button>
+            <a
+              aria-label="Source code on GitHub"
+              data-public-board-github
+              href="https://github.com/hasparus/littletable.top"
+              title="Source code on GitHub"
+            >
+              <Icon name="GitHub" />
+            </a>
             <a data-public-board-account href={exit.href}>
               {exit.label}
             </a>
