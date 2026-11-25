@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createUserId, type Editor, type TLPageId, useValue } from "tldraw";
 
 import { Avatar } from "./avatar";
+import { fill } from "./copy";
 import { usePageNames } from "./pages";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
@@ -44,6 +45,8 @@ export function usePresent(editor: Editor | null): Present[] {
 }
 
 const isGuest = (id: string) => id.startsWith("g:");
+const personAction =
+  "min-h-9 shrink-0 rounded-md px-2 text-sm text-foreground-secondary hover:bg-bg-tertiary hover:text-foreground focus-visible:outline-2 focus-visible:outline-border-focus disabled:opacity-40";
 
 function Who({ page, who }: { page: string | undefined; who: Person }) {
   const { copy, files, person } = useBoardUi();
@@ -55,21 +58,49 @@ function Who({ page, who }: { page: string | undefined; who: Person }) {
       <Avatar color={who.color} name={who.name} src={src} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate">{who.name}</span>
+          <span className="truncate text-sm font-medium">{who.name}</span>
           {who.id === person.id && (
             <span className="shrink-0 text-sm text-foreground-muted">({copy.you})</span>
           )}
           {isGuest(who.id) && (
-            <span className="shrink-0 rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-foreground-secondary ring-1 ring-border">
-              {copy.guest}
-            </span>
+            <span className="shrink-0 text-xs text-foreground-muted">{copy.guest}</span>
           )}
         </span>
         {page !== undefined && (
-          <span className="truncate text-sm text-foreground-muted">{page}</span>
+          <span className="truncate text-xs text-foreground-muted">{page}</span>
         )}
       </span>
     </>
+  );
+}
+
+function SummonButton({ target }: { target: Present }) {
+  const { copy, summon } = useBoardUi();
+  const [status, setStatus] = useState<"idle" | "pending" | "failed">("idle");
+  if (summon === undefined) return null;
+
+  return (
+    <div className="shrink-0 text-right">
+      <button
+        aria-busy={status === "pending"}
+        aria-label={fill(copy.summonPerson, { name: target.name })}
+        className={personAction}
+        disabled={status === "pending"}
+        onClick={async () => {
+          setStatus("pending");
+          setStatus((await summon(target.id)) ? "idle" : "failed");
+        }}
+        type="button"
+      >
+        {copy.summon}
+      </button>
+      <p
+        className="max-w-24 px-1 pb-1 text-xs text-foreground-secondary empty:sr-only"
+        role="status"
+      >
+        {status === "failed" ? copy.summonFailed : ""}
+      </p>
+    </div>
   );
 }
 
@@ -92,7 +123,7 @@ export function PeopleSheet() {
 
   return (
     <Sheet panel="people" title={copy.people}>
-      <ul className="divide-y divide-border">
+      <ul className="divide-y divide-border/60">
         <li className="flex min-h-12 items-center gap-3">
           <Who
             page={pageOf(here)}
@@ -107,26 +138,31 @@ export function PeopleSheet() {
         {others.map((present) => {
           const userId = createUserId(present.id);
           const followed = following === userId;
+          const action = followed ? copy.stopFollowing : copy.follow;
           return (
-            <li key={present.id}>
-              <button
-                className="flex min-h-12 w-full items-center gap-3 rounded-lg py-1 text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
-                onClick={() => {
-                  if (editor === null) return;
-                  if (followed) {
-                    editor.stopFollowingUser();
-                    return;
-                  }
-                  open(null);
-                  editor.startFollowingUser(userId);
-                }}
-                type="button"
-              >
+            <li className="flex min-h-12 items-center gap-1" key={present.id}>
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <Who page={pageOf(present.page)} who={present} />
-                <span className="shrink-0 pr-2 text-sm font-medium text-primary-strong">
-                  {followed ? copy.stopFollowing : copy.follow}
-                </span>
-              </button>
+              </div>
+              <div className="flex shrink-0 items-start gap-1 py-0.5">
+                <button
+                  aria-label={`${present.name} ${action}`}
+                  className={personAction}
+                  onClick={() => {
+                    if (editor === null) return;
+                    if (followed) {
+                      editor.stopFollowingUser();
+                      return;
+                    }
+                    open(null);
+                    editor.startFollowingUser(userId);
+                  }}
+                  type="button"
+                >
+                  {action}
+                </button>
+                <SummonButton target={present} />
+              </div>
             </li>
           );
         })}
