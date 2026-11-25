@@ -1,0 +1,26 @@
+[
+  {
+    "name": {
+      "en": "Tarot deck",
+      "pl": "Talia tarota"
+    },
+    "thumbnail": "/gizmos/thumbnails/tarot.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/835c5f9290a7288d69a5c9f95d8709ee0876d2b7/gizmos/tarot/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Spotlight tracker",
+      "pl": "Znacznik reflektora"
+    },
+    "thumbnail": "/gizmos/thumbnails/spotlight.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/835c5f9290a7288d69a5c9f95d8709ee0876d2b7/gizmos/spotlight/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Explosion button",
+      "pl": "Przycisk wybuchu"
+    },
+    "thumbnail": "/gizmos/thumbnails/explosion.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/835c5f9290a7288d69a5c9f95d8709ee0876d2b7/gizmos/explosion/gizmo.json"
+  }
+]
