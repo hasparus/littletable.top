@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "tracker",
+  "layout": "rail",
+  "name": { "en": "Spotlight rail", "pl": "Szyna reflektora" },
+  "preview": "preview.webp",
+  "token": "token.webp",
+  "width": 220,
+  "height": 152
+}

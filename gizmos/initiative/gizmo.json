@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "tracker",
+  "layout": "initiative",
+  "name": { "en": "Initiative tracker", "pl": "Szyna inicjatywy" },
+  "preview": "preview.webp",
+  "portraits": [
+    "cups-11.webp",
+    "pentacles-14.webp",
+    "wands-13.webp",
+    "swords-14.webp",
+    "cups-13.webp",
+    "pentacles-13.webp",
+    "wands-14.webp",
+    "swords-13.webp"
+  ],
+  "width": 232,
+  "height": 116
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "tracker",
+  "layout": "sliders",
+  "name": { "en": "Spotlight sliders", "pl": "Suwaki reflektora" },
+  "preview": "preview.webp",
+  "token": "cap.webp",
+  "width": 186,
+  "height": 202
+}
