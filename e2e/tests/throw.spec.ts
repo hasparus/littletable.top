@@ -138,6 +138,43 @@ test("a roll lands the same on two screens and leaves with its toast", async ({
   await guest.context().close();
 });
 
+test("a standard roll restores the tray after a Fate roll", async ({ browser, page }) => {
+  await page.route("**/assets/dice-scene-*.js", (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      body: [
+        "export function createDiceThrow(host) {",
+        "  host.dataset.diceTier = 'test';",
+        "  const control = document.createElement('button');",
+        "  control.dataset.dieObject = '';",
+        "  control.textContent = 'Roll this die again';",
+        "  return { roll() { host.append(control); }, dispose() { control.remove(); } };",
+        "}",
+      ].join("\n"),
+    }),
+  );
+  const board = await startBoard(page);
+  const guest = await guestOn(browser, board);
+  try {
+    await roll(page, [6]);
+    const control = tray(page).locator("[data-die-object]");
+    await expect(control).toBeVisible();
+
+    const dice = await openSheet(guest, "Dice");
+    const notation = dice.getByRole("textbox", { name: "Dice notation" });
+    await notation.fill("dF");
+    await notation.press("Enter");
+    await expect(dice).toBeHidden();
+    await expect(toast(page).getByRole("img", { name: /^dF:/u })).toBeVisible();
+    await expect(tray(page)).toHaveCount(0);
+
+    await roll(page, [6]);
+    await expect(control).toBeVisible();
+  } finally {
+    await guest.context().close();
+  }
+});
+
 test("a settled die can be dragged and thrown with the pointer", async ({ page }) => {
   await startBoard(page);
   await roll(page, [6]);

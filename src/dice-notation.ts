@@ -1,3 +1,5 @@
+import type { Die, Outcome } from "./dice-evaluation";
+
 import { DIE_SIDES, MAX_DICE } from "./limits";
 
 export const MAX_EXPRESSION_LENGTH = 256;
@@ -8,7 +10,9 @@ export type DiceLaunch = { vx: number; vz: number; x: number; z: number };
 
 export type Roll = {
   at: number;
-  dice: { sides: number; value: number }[];
+  chat?: true;
+  dice: Die[];
+  outcome?: Outcome;
   expression?: string;
   id: number;
   /** The live throw's release state. It is omitted from history. */
@@ -76,12 +80,18 @@ export function notationPool(notation: Notation): number[] {
   return notation.groups.flatMap(({ count, sides }) => Array.from({ length: count }, () => sides));
 }
 
+export function legacyNotation(expression: string) {
+  const parsed = parseNotation(expression);
+  return typeof parsed === "string" ? null : parsed;
+}
+
 export function rollResult(roll: {
   dice: readonly { value: number }[];
   expression?: string;
+  outcome?: Outcome;
 }): RollResult {
-  const parsed = roll.expression === undefined ? null : parseNotation(roll.expression);
-  const notation = typeof parsed === "string" ? null : parsed;
+  const notation = roll.expression === undefined ? null : legacyNotation(roll.expression);
+  if (roll.outcome !== undefined) return { ...roll.outcome, notation };
   const kept = roll.dice.map(() => true);
   let offset = 0;
   for (const { count, rule } of notation?.groups ?? []) {

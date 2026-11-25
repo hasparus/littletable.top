@@ -287,7 +287,7 @@ jobs:
             mcp_origin="https://$STAGE.$MCP_DOMAIN"
             curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 \
               "$mcp_origin/.well-known/oauth-protected-resource/mcp" |
-              jq -e --arg resource "$mcp_origin/mcp" --arg issuer "$MCP_AUTHKIT_ORIGIN" \
+              jq -e --arg resource "$mcp_origin/mcp" --arg issuer "${MCP_AUTHKIT_ORIGIN%/}" \
                 '.resource == $resource and .authorization_servers == [$issuer]' >/dev/null
           fi
 

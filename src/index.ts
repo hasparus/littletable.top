@@ -1,3 +1,7 @@
+import type { ChatMessage } from "./chat";
+import type { ExpressionError } from "./dice-expression";
+import type { Roll } from "./dice-notation";
+
 import {
   AVATAR_HEADER,
   type AvatarSource,
@@ -9,7 +13,6 @@ import {
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parseLaunch, parsePool } from "./dice";
-import { notationPool, parseNotation } from "./dice-notation";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
@@ -47,6 +50,13 @@ function answer(result: Refusal | object): Response {
   return typeof result === "string"
     ? new Response(result, { status: REFUSAL_STATUS[result] })
     : Response.json(result, { headers: { "Cache-Control": "no-store" } });
+}
+
+function answerRoll(result: Refusal | ChatMessage | Roll | { error: ExpressionError }) {
+  if (typeof result !== "string" && "error" in result) {
+    return Response.json(result, { status: 400 });
+  }
+  return answer(result);
 }
 
 type Verifiers = {
@@ -218,7 +228,7 @@ async function rooms(
     if (body === "too-large") return new Response(null, { status: 413 });
     const text = new TextDecoder().decode(body).trim();
     if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
-    return answer(await room.sendChat(pass, text));
+    return answerRoll(await room.sendChat(pass, text));
   }
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
@@ -236,11 +246,7 @@ async function rooms(
     const body = await request.json().catch(() => null);
     if (typeof body === "object" && body !== null && "expression" in body) {
       if (typeof body.expression !== "string") return new Response("Bad request", { status: 400 });
-      const notation = parseNotation(body.expression);
-      if (typeof notation === "string") {
-        return Response.json({ error: notation }, { status: 400 });
-      }
-      return answer(await room.roll(pass, notationPool(notation), body.expression.trim()));
+      return answerRoll(await room.roll(pass, { expression: body.expression }));
     }
     const pool = parsePool(body);
     if (pool === null) return new Response("Bad request", { status: 400 });
@@ -249,7 +255,7 @@ async function rooms(
     if (launch === null || (launch !== undefined && pool.length !== 1)) {
       return new Response("Bad request", { status: 400 });
     }
-    return answer(await room.roll(pass, pool, undefined, launch));
+    return answerRoll(await room.roll(pass, { dice: pool, launch }));
   }
   return new Response("Not found", { status: 404 });
 }
