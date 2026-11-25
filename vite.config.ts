@@ -123,7 +123,44 @@ function tabletop(): Plugin {
     resolveId(id) {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
-    transformIndexHtml(html) {
+    transformIndexHtml(html, { bundle }) {
+      if (settings.mode === "standalone" && bundle) {
+        const board = Object.values(bundle).find(
+          (chunk) => chunk.type === "chunk" && chunk.facadeModuleId === clientSource + "board.tsx",
+        );
+        if (board?.type !== "chunk") throw new Error("Missing board entry chunk");
+        const modules = new Set<string>();
+        const styles = new Set<string>();
+        function visit(file: string) {
+          const chunk = bundle?.[file];
+          if (chunk?.type !== "chunk" || modules.has(file)) return;
+          modules.add(file);
+          for (const css of chunk.viteMetadata?.importedCss ?? []) styles.add(css);
+          for (const imported of chunk.imports) visit(imported);
+        }
+        visit(board.fileName);
+        const handwriting = Object.values(bundle).find(
+          (file) =>
+            file.type === "asset" && file.names.includes("Shantell_Sans-Informal_Regular.woff2"),
+        );
+        if (!handwriting) throw new Error("Missing landing handwriting font");
+        const hints = [
+          `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${escapeHtml(handwriting.fileName)}">`,
+          ...Array.from(
+            modules,
+            (file) => `<link rel="modulepreload" crossorigin href="/${escapeHtml(file)}">`,
+          ),
+          ...Array.from(
+            styles,
+            (file) => `<link rel="preload" as="style" crossorigin href="/${escapeHtml(file)}">`,
+          ),
+        ];
+        // The Worker unwraps these inert hints only for the standalone public board.
+        html = html.replace(
+          "</head>",
+          `<template data-board-preloads>${hints.join("")}</template></head>`,
+        );
+      }
       return html
         .replaceAll("%TABLETOP_NAME%", escapeHtml(settings.name))
         .replaceAll("%TABLETOP_SHORT_NAME%", escapeHtml(settings.shortName))

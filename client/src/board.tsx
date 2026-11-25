@@ -18,6 +18,7 @@ import { BoardCanvas } from "./canvas";
 import { type Copy, fill } from "./copy";
 import { FeedbackProvider } from "./feedback";
 import { Icon } from "./icons";
+import { LandingPlaceholder } from "./landing-placeholder";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
 import { captureSharedView, type SharedView } from "./secret-backdrop";
@@ -194,7 +195,16 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
         />
       );
     case "loading":
-      return <Notice busy text={copy.loading} />;
+      return landing ? (
+        <>
+          <LandingPlaceholder copy={landing.copy} />
+          <span className="sr-only" role="status">
+            {copy.loading}
+          </span>
+        </>
+      ) : (
+        <Notice busy text={copy.loading} />
+      );
     case "name":
       return (
         <NameForm

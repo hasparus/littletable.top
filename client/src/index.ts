@@ -4,7 +4,8 @@ import type { ClientSettings, Language } from "../settings";
 
 import { type Door, knock } from "./bootstrap";
 import { COPY, fill } from "./copy";
-import { FRONT_COPY } from "./front-copy";
+import { FRONT_COPY, LANDING_COPY } from "./front-copy";
+import { landingPreview } from "./landing-preview";
 
 // NOTE: the build writes it (vite.config.ts, client/settings.ts).
 declare const __TABLETOP__: ClientSettings;
@@ -43,7 +44,9 @@ function pickLanguage(): Language {
   return settings.language;
 }
 
-const language = pickLanguage();
+const isPublic = settings.hosted === null && location.pathname === "/";
+const preferredLanguage = pickLanguage();
+const language = isPublic ? "en" : preferredLanguage;
 const copy = COPY[language];
 document.documentElement.lang = language;
 // NOTE: a host keeps a chosen theme in its own origin's storage, out of
@@ -60,8 +63,7 @@ async function mount(): Promise<void> {
     mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
     return;
   }
-  const isPublic = settings.hosted === null && location.pathname === "/";
-  const landing = isPublic ? { copy: FRONT_COPY[language] } : undefined;
+  const landing = isPublic ? { copy: LANDING_COPY } : undefined;
   const shareCode = encodeURIComponent(location.pathname.split("/")[2] ?? "");
   // Hosted, the host signs passes across origins with its own cookie;
   // standalone, this Worker does, on its own origin.
@@ -83,6 +85,14 @@ async function mount(): Promise<void> {
   // The bootstrap request and tldraw's download run side by side: on a
   // phone the canvas then opens one round trip sooner.
   const first = knock(door);
+  if (landing) {
+    // Reveal the intro with the same face throughout, even on a slow first visit.
+    const classes = document.documentElement.classList;
+    const reveal = () => classes.remove("loading-handwriting");
+    classes.add("loading-handwriting");
+    void document.fonts.load('15px "Landing handwriting"').then(reveal, reveal);
+    root.replaceChildren(landingPreview(landing.copy));
+  }
   const { mountBoard } = await import("./board");
   mountBoard(root, {
     copy,

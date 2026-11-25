@@ -20,13 +20,6 @@ const EN = {
   newBoardTitle: "Board %(date)s",
   noBoardsYet: "No boards yet. Make one, then send its link to your players.",
   publicBoard: "Public whiteboard",
-  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
-  publicStory: [
-    "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
-    "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
-    "We started playing with Miro, Excalidraw and tldraw. It was way better, but a few small features were missing. My ideal app didn't exist... yet.",
-    "Little Table is this app. Just a whiteboard with dice rolls, search over text in images and secret layers. A virtual tabletop without bloat.",
-  ],
   rename: "Rename",
   resetConfirm: "Everyone who has the old link will be put out. Reset the link?",
   resetLink: "Reset link",
@@ -64,13 +57,6 @@ const PL: FrontCopy = {
   newBoardTitle: "Tablica %(date)s",
   noBoardsYet: "Nie ma jeszcze tablic. Załóż jedną i wyślij link osobom, z którymi grasz.",
   publicBoard: "Tablica publiczna",
-  publicExpiry: "Każdy może tu rysować. Rysunki bledną po dniu i znikają po dwóch.",
-  publicStory: [
-    "Gdy znajomi zapraszali mnie do gry na Roll20 albo innym wirtualnym stole, zawsze było na co ponarzekać. Na telefonie było niewygodnie, funkcji było za dużo, a nawet karta postaci wymagała wypełniania formularzy.",
-    "Po co to wszystko, skoro można wrzucić zrzuty z PDF-ów na tablicę i po nich rysować, tak jak przy prawdziwym stole?",
-    "Spróbowaliśmy Miro, Excalidraw i tldraw. Było dużo lepiej, ale nadal brakowało mi kilku drobiazgów. Aplikacji, której szukałem, jeszcze nie było.",
-    "Tak powstało Little Table. To tablica, na której można rzucać kośćmi i wyszukiwać tekst na obrazach. Chcę jeszcze dodać ukryte warstwy. Wirtualny stół bez zbędnych dodatków.",
-  ],
   rename: "Zmień nazwę",
   resetConfirm: "Wszystkie osoby ze starym linkiem stracą dostęp. Zmienić link?",
   resetLink: "Zmień link",
@@ -88,3 +74,17 @@ const PL: FrontCopy = {
 };
 
 export const FRONT_COPY: Record<Language, FrontCopy> = { en: EN, pl: PL };
+
+export const LANDING_COPY = {
+  publicBoard: EN.publicBoard,
+  publicExpiry: "Anyone can draw here. Drawings fade after a day and disappear after two.",
+  publicStory: [
+    "I complained whenever my friends invited me to use Roll20 or another virtual tabletop. It was awkward on phones, it had too many features, and filling out forms felt like paperwork.",
+    "Why bother, when we could use a whiteboard app, upload screenshots of PDFs, and draw on them just like on a real table?",
+    "We started playing with Miro, Excalidraw and tldraw. It was way better, but a few small features were missing. My ideal app didn't exist... yet.",
+    "Little Table is this app. Just a whiteboard with dice rolls, search over text in images and secret layers. A virtual tabletop without bloat.",
+  ],
+  signIn: EN.signIn,
+};
+
+export type LandingCopy = typeof LANDING_COPY;

@@ -89,6 +89,55 @@ test("the board menu and right-hand controls share guides on public and private 
   await landing.context().close();
 });
 
+test("the landing introduction keeps its typography and position when the board opens", async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE.viewport);
+  const release = Promise.withResolvers<null>();
+  await page.route("**/api/public-board/bootstrap", async (route) => {
+    await release.promise;
+    await route.continue();
+  });
+  const font = Promise.withResolvers<null>();
+  await page.route("**/Shantell_Sans-Informal_Regular-*.woff2", async (route) => {
+    await font.promise;
+    await route.continue();
+  });
+
+  await page.goto(STANDALONE, { waitUntil: "commit" });
+  const preview = page.locator("[data-landing-preview]");
+  try {
+    await expect(page.getByRole("status")).toBeAttached();
+    await expect(preview).toBeHidden();
+    font.resolve(null);
+    await expect(preview).toBeVisible();
+    const session = await page.context().newCDPSession(page);
+    await session.send("DOM.enable");
+    await session.send("CSS.enable");
+    const { root } = await session.send("DOM.getDocument");
+    async function expectHandwriting(selector: string) {
+      const { nodeId } = await session.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      const { fonts } = await session.send("CSS.getPlatformFontsForNode", { nodeId });
+      expect(fonts).toHaveLength(1);
+      expect(fonts[0]?.familyName).toMatch(/Shantell/i);
+      expect(fonts[0]?.isCustomFont).toBe(true);
+    }
+    await expectHandwriting("[data-landing-preview] p");
+    await expect(preview).toBeInViewport();
+    const box = await preview.boundingBox();
+    release.resolve(null);
+    const live = page.locator("[data-public-board-note]");
+    await expect(live).toBeInViewport();
+    await page.evaluate(() => document.fonts.ready.then(() => null));
+    await expectHandwriting("[data-public-board-note] p");
+    expect(await live.boundingBox()).toEqual(box);
+    await expect(preview).toHaveCount(0);
+  } finally {
+    release.resolve(null);
+    font.resolve(null);
+  }
+});
+
 test("the home page is one editable public board for anonymous visitors", async ({
   browser,
   page,

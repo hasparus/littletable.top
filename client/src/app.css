@@ -19,6 +19,53 @@ body {
   text-size-adjust: 100%;
 }
 
+@font-face {
+  font-family: "Landing handwriting";
+  font-display: block;
+  src: url("@tldraw/assets/fonts/Shantell_Sans-Informal_Regular.woff2") format("woff2");
+}
+
+.loading-handwriting :is([data-landing-preview], [data-public-board-note]) {
+  visibility: hidden;
+}
+
+body:has([data-landing-preview]) {
+  background-color: var(--color-background);
+}
+
+[data-landing-preview] {
+  --gutter: 12px;
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  top: calc(max(var(--gutter), env(safe-area-inset-top)) + 52px);
+  left: max(var(--gutter), env(safe-area-inset-left));
+  right: max(var(--gutter), env(safe-area-inset-right));
+  max-width: 502px;
+}
+
+:is([data-landing-preview], [data-public-board-note]) {
+  font-family: "Landing handwriting", sans-serif;
+  color: var(--color-foreground);
+  padding-inline: 2px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+@media (width < 640px) {
+  [data-landing-preview] {
+    --gutter: 4px;
+  }
+}
+
+:is([data-landing-preview], [data-public-board-note]) p + p {
+  margin-top: 12px;
+}
+:is([data-landing-preview], [data-public-board-note]) footer {
+  margin-top: 16px;
+  color: var(--color-foreground-muted);
+}
+
 [data-feedback-dialog]::backdrop {
   background: rgb(0 0 0 / 12%);
   backdrop-filter: blur(2px);
