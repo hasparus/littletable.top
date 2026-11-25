@@ -276,7 +276,8 @@ async function rooms(
   }
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
-    if (url.searchParams.get("sessionId") === null) {
+    const sessionId = url.searchParams.get("sessionId");
+    if (sessionId === null || sessionId.length > 128) {
       return new Response("Bad request", { status: 400 });
     }
     const avatar = await room.personAvatar(pass, avatarSource(config));
@@ -315,7 +316,7 @@ async function rooms(
   return new Response("Not found", { status: 404 });
 }
 
-export async function handle(request: Request, env: Env): Promise<Response> {
+async function routeRequest(request: Request, env: Env): Promise<Response> {
   let config: Config;
   let verifiers: Verifiers;
   try {
@@ -356,6 +357,31 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (route !== null) return route;
   }
   return serveSite(request, env, config);
+}
+
+export async function handle(request: Request, env: Env) {
+  try {
+    return await routeRequest(request, env);
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      error.message !== "Exceeded allowed duration in Durable Objects free tier."
+    ) {
+      throw error;
+    }
+    const path = new URL(request.url).pathname;
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const retry = Math.ceil((day - (now % day)) / 1000);
+    const headers = { "Cache-Control": "no-store", "Retry-After": String(retry) };
+    console.error(JSON.stringify({ event: "tabletop.daily-server-limit", path }));
+    return path.startsWith("/auth/")
+      ? new Response("Little Table reached its daily server limit. Try again after 00:00 UTC.", {
+          headers,
+          status: 503,
+        })
+      : Response.json({ error: "daily-server-limit" }, { headers, status: 503 });
+  }
 }
 
 export default { fetch: handle } satisfies ExportedHandler<Env>;
