@@ -5,22 +5,28 @@ import { isShape } from "@tldraw/tlschema";
 import { getIndexBelow, sortByIndex } from "@tldraw/utils";
 
 import type { FileLedger } from "./file-store";
+import type { Reading, TextLedger } from "./text-store";
 
 import { PUBLIC_DEMO_ASSET, PUBLIC_DEMO_SHAPE } from "./public-board-demo-ids";
+import handoutReading from "./public-board-demo-ocr.json";
 
 const PATH = "/landing-north-gate.png";
 
-const WIDTH = 640;
-const HEIGHT = 216;
+// Captured from the app's Tesseract worker reading the bundled PNG. Use the
+// original pixel geometry and hash so the normal search can highlight the clue.
+const ENGINE = "tesseract-6.0.1";
+const { height: HEIGHT, sha256: HASH, width: WIDTH } = handoutReading.image;
+const SYSTEM = "system:public-demo";
 
 // The handout uses the same file store and OCR pipeline as guest images.
 // Its fixed ids give existing rooms the same handout on their next visit.
 export async function seedPublicDemo(
   drawing: TLSyncStorage<TLRecord>,
   assets: Fetcher,
-  files: FileLedger,
+  { files, texts }: { files: FileLedger; texts: TextLedger },
   board: string,
-): Promise<void> {
+): Promise<Reading | null> {
+  const src = `/rooms/${board}/files/${HASH}`;
   const { asset, placed } = drawing.transaction((store) => {
     const shape = store.get(PUBLIC_DEMO_SHAPE);
     return {
@@ -28,14 +34,18 @@ export async function seedPublicDemo(
       placed: shape?.typeName === "shape" && store.get(shape.parentId)?.typeName === "page",
     };
   }).result;
-  if (asset?.typeName === "asset" && placed) return;
+  const current = asset?.typeName === "asset" && asset.type === "image" && asset.props.src === src;
+  const hasReading = texts.has(HASH, ENGINE);
+  if (current && placed && hasReading) return null;
 
   let image = asset;
-  if (image?.typeName !== "asset") {
+  if (!current || image === undefined) {
     const png = await assets.fetch(new URL(PATH, "https://tabletop.invalid"));
     if (!png.ok) throw new Error(`Handout asset returned ${png.status}`);
-    const stored = await files.store(board, "system:public-demo", await png.arrayBuffer());
+    const stored = await files.store(board, SYSTEM, await png.arrayBuffer());
     if (typeof stored === "string") throw new TypeError(`Handout upload refused (${stored})`);
+    if (stored.hash !== HASH)
+      throw new Error("Handout image and OCR reading have different hashes");
     const record = {
       id: PUBLIC_DEMO_ASSET,
       meta: {},
@@ -45,7 +55,7 @@ export async function seedPublicDemo(
         isAnimated: false,
         mimeType: stored.type,
         name: "North Gate note",
-        src: `/rooms/${board}/files/${stored.hash}`,
+        src,
         w: WIDTH,
       },
       type: "image",
@@ -54,7 +64,24 @@ export async function seedPublicDemo(
     image = record;
   }
 
+  let reading: Reading | null = null;
+  if (!hasReading) {
+    const stored = await texts.store(
+      { board, engine: ENGINE, hash: HASH, sub: SYSTEM },
+      new TextEncoder().encode(JSON.stringify(handoutReading)).buffer,
+      { bytesNow: () => files.storedBytes() },
+    );
+    if (typeof stored === "string") throw new TypeError(`Handout reading refused (${stored})`);
+    if ("problem" in stored) throw new Error(`Handout reading refused (${stored.problem})`);
+    if (!stored.duplicate) reading = { engine: ENGINE, hash: HASH };
+  }
+
   drawing.transaction((store) => {
+    if (image !== asset) store.set(image.id, image);
+    const existing = store.get(PUBLIC_DEMO_SHAPE);
+    if (existing?.typeName === "shape" && store.get(existing.parentId)?.typeName === "page") {
+      return;
+    }
     const records = [...store.values()];
     const page = records.filter((record) => record.typeName === "page").sort(sortByIndex)[0];
     if (page === undefined) return;
@@ -86,7 +113,7 @@ export async function seedPublicDemo(
       x: 6,
       y: 56,
     } satisfies TLImageShape;
-    store.set(image.id, image);
     store.set(shape.id, shape);
   });
+  return reading;
 }

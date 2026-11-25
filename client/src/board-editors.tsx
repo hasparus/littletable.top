@@ -12,6 +12,7 @@ import {
 
 import type { PublicLanding } from "./public-landing";
 
+import { PUBLIC_DEMO_SHAPE } from "../../src/public-board-demo-ids";
 import { BoardFileHandlers } from "./board-files";
 import { BoardMainMenu, components } from "./chrome";
 import { MEDIA_PROPS } from "./file-flows";
@@ -139,7 +140,13 @@ export function BoardEditors({
             // NOTE: tldraw's own menus (the page menu's among them) take
             // their language from the person's preferences, not this prop.
             mounted.user.updateUserPreferences({ locale: language });
-            if (landing !== undefined) rememberExistingArrows(mounted);
+            if (landing !== undefined) {
+              const demoPage = mounted.getAncestorPageId(PUBLIC_DEMO_SHAPE);
+              if (demoPage !== undefined && mounted.getPage(demoPage) !== undefined) {
+                mounted.setCurrentPage(demoPage);
+              }
+              rememberExistingArrows(mounted);
+            }
             onEditor(mounted);
             return () => onEditor(null);
           }}

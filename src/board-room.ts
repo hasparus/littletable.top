@@ -525,7 +525,15 @@ export class BoardRoom extends DurableObject<Env> {
       this.ctx.storage.kv.put(PUBLIC_EXPIRY_ENABLED, true);
       this.publicExpiryEnabled = true;
     }
-    this.publicDemo ??= seedPublicDemo(this.drawing, this.env.ASSETS, this.files, PUBLIC_BOARD)
+    this.publicDemo ??= seedPublicDemo(
+      this.drawing,
+      this.env.ASSETS,
+      { files: this.files, texts: this.texts },
+      PUBLIC_BOARD,
+    )
+      .then((reading) => {
+        if (reading !== null) this.announceText([reading], "stored");
+      })
       .catch((error: unknown) => log("public_board.demo_failed", { error: String(error) }))
       .finally(() => {
         this.publicDemo = undefined;

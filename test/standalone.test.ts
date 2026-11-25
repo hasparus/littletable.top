@@ -157,6 +157,13 @@ describe("the public board", () => {
         }).result,
     );
     expect(demoHash).toMatch(/^[a-f0-9]{64}$/u);
+    const listing = await roomCall(`/rooms/${board}/files/text`, pass);
+    expect(await listing.json()).toMatchObject({
+      stored: [{ engine: "tesseract-6.0.1", hash: demoHash }],
+    });
+    const demoText = await roomCall(`/rooms/${board}/files/${demoHash}/text/tesseract-6.0.1`, pass);
+    expect(demoText.status).toBe(200);
+    expect(await demoText.text()).toContain("MOONBELL");
     const group = (name: string, overrides: Partial<TLGroupShape> = {}): TLGroupShape => ({
       id: createShapeId(name),
       index: ZERO_INDEX_KEY,
@@ -348,7 +355,12 @@ describe("the public board", () => {
           .toArray()
           .map(({ hash }) => hash),
       ).toEqual([demoHash, hashes.shared].sort());
-      expect(sql.exec("SELECT hash FROM texts").toArray()).toEqual([{ hash: hashes.shared }]);
+      expect(
+        sql
+          .exec("SELECT hash FROM texts ORDER BY hash")
+          .toArray()
+          .map(({ hash }) => hash),
+      ).toEqual([demoHash, hashes.shared].sort());
       drawing(state).transaction((store) => {
         expect(store.get(orphan.id)).toBeUndefined();
         expect(store.get(held.id)).toBeDefined();

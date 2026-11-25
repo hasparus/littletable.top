@@ -1,7 +1,8 @@
-import type { Editor, TLArrowShape, TLShapeId } from "tldraw";
+import type { Editor, IndexKey, TLArrowShape, TLPageId, TLShapeId } from "tldraw";
 
 import { expect, test } from "@playwright/test";
-import { createShapeId } from "@tldraw/tlschema";
+import { createShapeId, PageRecordType } from "@tldraw/tlschema";
+import { getIndexBelow } from "@tldraw/utils";
 
 import { boardAt, socketOf, STANDALONE } from "../ports";
 import {
@@ -125,8 +126,26 @@ test("the home page is one editable public board for anonymous visitors", async 
   await guest.context().close();
 });
 
-test("the public handout is searchable and the prompt rolls a d20", async ({ page }) => {
-  test.setTimeout(180_000);
+test("the public handout is searchable with data saver and the prompt rolls a d20", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const { connection } = navigator as Navigator & { connection: EventTarget };
+    Object.defineProperty(connection, "saveData", { value: true });
+  });
+  const engineRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/text/claim") || /\/assets\/(ocr\/|ort-wasm|text-worker)/u.test(path)) {
+      engineRequests.push(path);
+    }
+  });
+  let readingLoaded = false;
+  page.on("response", (response) => {
+    if (response.request().method() === "GET" && response.url().endsWith("/text/tesseract-6.0.1")) {
+      readingLoaded = response.ok();
+    }
+  });
   await page.goto(`${STANDALONE}/?lang=en`);
   await expect(page.getByText(/choose North Gate under Places/u)).toBeInViewport();
   const handout = page
@@ -158,9 +177,9 @@ test("the public handout is searchable and the prompt rolls a d20", async ({ pag
   const search = await openSheet(page, "Search");
   await search.getByRole("combobox", { name: "Search the board" }).fill("MOONBELL");
   const result = search.getByRole("option").filter({ hasText: "In image" });
-  await expect(result, "the real OCR result contains the password").toContainText(/MOONBELL/iu, {
-    timeout: 90_000,
-  });
+  await expect(result, "the stored OCR result contains the password").toContainText(/MOONBELL/iu);
+  expect(readingLoaded).toBe(true);
+  expect(engineRequests).toEqual([]);
   await result.click();
   await expect(page.getByRole("img", { name: /Found:.*MOONBELL/iu })).toBeVisible();
 
@@ -172,6 +191,52 @@ test("the public handout is searchable and the prompt rolls a d20", async ({ pag
   await dice.getByRole("button", { name: /^Roll/u }).click();
   const rolled = await request;
   expect(rolled.postDataJSON()).toMatchObject({ expression: "1d20" });
+});
+
+test("new public visits open the handout page after reordering", async ({ browser, page }) => {
+  const url = `${STANDALONE}/?lang=en`;
+  await page.goto(url);
+  await expect(page.getByTestId("page-menu.button")).toHaveText("Landing Page");
+  await reachEditor(page);
+  const index = await page.evaluate(
+    () => (globalThis as unknown as { __editor: Editor }).__editor.getCurrentPage().index,
+  );
+  const id: string = PageRecordType.createId("public-landing-scratch");
+  const firstIndex: string = getIndexBelow(index);
+  const observer = await browser.newPage();
+  const visitor = await browser.newPage();
+  try {
+    await observer.goto(url);
+    await expect(observer.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await reachEditor(observer);
+    await page.evaluate(
+      ({ id, index, name }) => {
+        const editor = (globalThis as unknown as { __editor: Editor }).__editor;
+        editor.createPage({ id: id as TLPageId, name });
+        editor.updatePage({ id: id as TLPageId, index: index as IndexKey });
+      },
+      { id, index: firstIndex, name: "Scratch" },
+    );
+    // Wait for a different browser to see the new page order before opening a fresh session.
+    await expect
+      .poll(() =>
+        observer.evaluate(
+          () => (globalThis as unknown as { __editor: Editor }).__editor.getPages()[0]?.name,
+        ),
+      )
+      .toBe("Scratch");
+
+    await visitor.goto(url);
+    await expect(visitor.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await expect(visitor.getByText(/choose North Gate under Places/u)).toBeInViewport();
+    await expect(visitor.getByRole("button", { name: "see the features" })).toBeVisible();
+  } finally {
+    await page.evaluate((scratchId) => {
+      (globalThis as unknown as { __editor: Editor }).__editor.deletePage(scratchId as TLPageId);
+    }, id);
+    await visitor.close();
+    await observer.close();
+  }
 });
 
 test("two guests can chat live and see their messages after reloading", async ({
