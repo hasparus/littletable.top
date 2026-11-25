@@ -17,10 +17,11 @@ type Transport = (
 ) => Promise<DeckResponse>;
 
 type Deal = Extract<DeckCommand, { action: "draw" }>;
-export type DeckDrop = { at: number; card: Deal["deck"] };
+type CardGrip = { lift: number; tilt: number; x: number; y: number };
+export type DeckDrop = { at: number; card: Deal["deck"]; grip: CardGrip };
 type DealOptions = {
   grid?: Deal["grid"];
-  release?: { at: number; track: (drop: DeckDrop) => void };
+  release?: { at: number; grip: CardGrip; track: (drop: DeckDrop) => void };
 };
 
 function useDeckActions(send: Transport) {
@@ -75,7 +76,11 @@ function useDeckActions(send: Transport) {
       const id = previousDraws.current.get(deck) ?? crypto.randomUUID();
       previousDraws.current.set(deck, id);
       if (options.release) {
-        const drop = { at: options.release.at, card: dealtCardId(deck, id) };
+        const drop = {
+          at: options.release.at,
+          grip: options.release.grip,
+          card: dealtCardId(deck, id),
+        };
         lastDrop.current = drop;
         options.release.track(drop);
       }

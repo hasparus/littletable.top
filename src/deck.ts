@@ -132,6 +132,7 @@ function addImage(
     name,
     page,
     point,
+    rotation = 0,
     src,
     width,
   }: {
@@ -142,6 +143,7 @@ function addImage(
     name: string;
     page: TLPageId;
     point: T.TypeOf<typeof deckPoint>;
+    rotation?: number;
     src: string;
     width: number;
   },
@@ -170,11 +172,11 @@ function addImage(
       url: "",
       w,
     },
-    rotation: 0,
+    rotation,
     type: "image",
     typeName: "shape",
-    x: point.x - w / 2,
-    y: point.y - height / 2,
+    x: point.x - (w * Math.cos(rotation) - height * Math.sin(rotation)) / 2,
+    y: point.y - (w * Math.sin(rotation) + height * Math.cos(rotation)) / 2,
   };
   drawing.set(asset.id, asset);
   drawing.set(image.id, image);
@@ -321,11 +323,12 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     stack?.typeName !== "shape" ||
     stack.type !== "image" ||
     !deckStack.isValid(stack.meta) ||
-    stack.meta.deckId !== stack.id ||
-    pagePlacement(drawing, stack, page) === null
+    stack.meta.deckId !== stack.id
   )
     return null;
 
+  const placement = pagePlacement(drawing, stack, page);
+  if (!placement) return null;
   const found = resolve(state.install);
   if (found?.manifest.kind !== "deck") return null;
   const { manifest } = found;
@@ -357,6 +360,7 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     name,
     page,
     point: destination,
+    rotation: command.precise ? placement.rotation : 0,
     src: card.src,
     width: card.width,
   });

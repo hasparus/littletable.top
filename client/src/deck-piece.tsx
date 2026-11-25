@@ -3,6 +3,7 @@
 import {
   type PointerEvent,
   type ReactNode,
+  type RefObject,
   useContext,
   useEffect,
   useId,
@@ -20,14 +21,17 @@ import {
 
 import { dealtDeckCard, deckStack } from "../../src/deck-records";
 import { DeckContext, type DeckDrop } from "./deck";
+import { usePreloadDeckArt } from "./deck-art";
 import { suggestDeckGrid } from "./deck-grid";
 import { revealDeckCard, turnHeldBack } from "./deck-motion";
-import { playGizmoCue, springGizmo } from "./gizmo-feedback";
+import { playGizmoCue } from "./gizmo-feedback";
 import { useGizmoUi } from "./gizmo-ui";
+import { landPaper, liftPaper, paperLift } from "./paper-landing";
 import "./deck-piece.css";
 
 const RECENT_REVEAL_MS = 5000;
 const DRAG_THRESHOLD = 8;
+const HOLD_MS = 300;
 
 function DealtPaper({
   id,
@@ -41,6 +45,8 @@ function DealtPaper({
   const editor = useEditor();
   const paper = useRef<HTMLDivElement>(null);
   const tilt = useRef(0);
+  const lift = useRef(0);
+  const lastDrop = useContext(DeckContext)?.lastDrop;
   const moving = useValue(
     "picked up card",
     () => editor.isIn("select.translating") && editor.getSelectedShapeIds().includes(id),
@@ -48,21 +54,27 @@ function DealtPaper({
   );
   useLayoutEffect(() => {
     const target = paper.current;
-    if (!target || (!moving && tilt.current === 0)) return;
-    const angle = tilt.current;
-    if (!moving) {
-      tilt.current = 0;
-      target.style.transform = "";
-      return springGizmo(target, (t) => `rotate(${angle * t}deg)`);
+    if (!target) return;
+    if (moving) {
+      const pivot = editor.getPointInShapeSpace(id, editor.inputs.getCurrentPagePoint());
+      tilt.current = pivot.x <= width / 2 ? 5 : -5;
+      target.style.transformOrigin = `${pivot.x}px ${pivot.y}px`;
+      const clear = liftPaper(target, tilt.current);
+      return () => {
+        lift.current = paperLift(target);
+        clear?.();
+      };
     }
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const pivot = editor.getPointInShapeSpace(id, editor.inputs.getOriginPagePoint());
-    const lift = pivot.x <= width / 2 ? 5 : -5;
-    tilt.current = lift;
-    target.style.transformOrigin = `${pivot.x}px ${pivot.y}px`;
-    target.style.transform = `rotate(${lift}deg)`;
-    return springGizmo(target, (t) => `rotate(${lift * (1 - t)}deg)`);
-  }, [editor, id, moving, width]);
+    if (tilt.current !== 0) {
+      const angle = tilt.current;
+      tilt.current = 0;
+      return landPaper(target, angle, lift.current);
+    }
+    const drop = lastDrop?.current;
+    if (drop?.card !== id) return;
+    target.style.transformOrigin = `${100 * drop.grip.x}% ${100 * drop.grip.y}%`;
+    return landPaper(target, drop.grip.tilt, drop.grip.lift, drop.at);
+  }, [editor, id, lastDrop, moving, width]);
   return <div ref={paper}>{children}</div>;
 }
 
@@ -72,7 +84,6 @@ function DeckRevealEffect({
   back,
   dealtAt,
   height,
-  src,
   travelX,
   travelY,
   width,
@@ -82,34 +93,33 @@ function DeckRevealEffect({
   back: string;
   dealtAt: number;
   height: number;
-  src: string;
   travelX: number;
   travelY: number;
   width: number;
 }) {
   const card = useRef<HTMLDivElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
+  const sheen = useRef<HTMLSpanElement>(null);
   const lastDrop = useContext(DeckContext)?.lastDrop;
   useLayoutEffect(() => {
     const paper = card.current;
-    const target = canvas.current;
+    const target = sheen.current;
     if (!paper || !target || Date.now() - dealtAt > RECENT_REVEAL_MS) return;
     const drop = lastDrop?.current;
-    return revealDeckCard(
-      paper,
-      target,
-      src,
-      travelX,
-      travelY,
-      drop?.card === id ? drop.at : undefined,
-    );
-  }, [dealtAt, id, lastDrop, src, travelX, travelY]);
+    return revealDeckCard(paper, target, travelX, travelY, drop?.card === id ? drop.at : undefined);
+  }, [dealtAt, id, lastDrop, travelX, travelY]);
   return (
     <DealtPaper id={id} width={width}>
       <div data-deck-card ref={card} style={{ height, width }}>
-        <div data-deck-front>
+        <div
+          data-deck-front
+          style={{ backgroundImage: `url("${back}")`, backgroundSize: "100% 100%" }}
+          onLoadCapture={(event) => {
+            if (event.target instanceof HTMLImageElement)
+              event.currentTarget.style.backgroundImage = "none";
+          }}
+        >
           {art}
-          <canvas aria-hidden="true" data-deck-reveal ref={canvas} />
+          <span aria-hidden="true" data-deck-reveal ref={sheen} />
         </div>
         <img alt="" data-deck-turn src={back} />
       </div>
@@ -120,6 +130,7 @@ function DeckRevealEffect({
 type Point = { x: number; y: number };
 type Grip = {
   pointer: number;
+  pressed: number;
   start: Point;
   center: Point;
   width: number;
@@ -132,30 +143,33 @@ type Held = Point & {
   angle: number;
   pivot: Point;
   tilt: number;
-  released?: number;
+  released?: { at: number; lift: number };
   card?: BoardImage["id"];
 };
 
-function HeldPaper({ held, back }: { held: Held; back: string }) {
-  const grip = useRef<HTMLDivElement>(null);
+function HeldPaper({
+  held,
+  back,
+  grip,
+}: {
+  held: Held;
+  back: string;
+  grip: RefObject<HTMLDivElement | null>;
+}) {
   const paper = useRef<HTMLImageElement>(null);
   const { tilt, released } = held;
   useLayoutEffect(() => {
     const target = grip.current;
     const face = paper.current;
     if (!target || !face || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    if (released === undefined) {
-      target.style.transform = `rotate(${tilt}deg)`;
-      return springGizmo(target, (t) => `rotate(${tilt * (1 - t)}deg)`);
-    }
-    target.style.transform = "";
-    const relax = springGizmo(target, (t) => `rotate(${tilt * t}deg)`);
-    const turn = turnHeldBack(face, released);
+    if (released === undefined) return liftPaper(target, tilt);
+    const relax = landPaper(target, tilt, released.lift, released.at);
+    const turn = turnHeldBack(face, released.at);
     return () => {
-      relax();
+      relax?.();
       turn.cancel();
     };
-  }, [released, tilt]);
+  }, [grip, released, tilt]);
   return createPortal(
     <div
       aria-hidden="true"
@@ -206,6 +220,11 @@ function heldAt(grip: Grip, x: number, y: number) {
   };
 }
 
+function DeckArtPreload({ back }: { back: string }) {
+  const marker = usePreloadDeckArt(back);
+  return <span aria-hidden="true" hidden ref={marker} />;
+}
+
 function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
   const actions = useContext(DeckContext);
   const hintId = useId();
@@ -217,6 +236,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     [editor, id],
   );
   const grip = useRef<Grip | null>(null);
+  const heldPaper = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
   const [held, setHeld] = useState<Held | null>(null);
   const cardId = held?.card;
@@ -247,6 +267,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     moved.current = false;
     grip.current = {
       pointer: event.pointerId,
+      pressed: event.timeStamp,
       start: { x: event.clientX, y: event.clientY },
       center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
       width: target.offsetWidth * zoom,
@@ -280,29 +301,37 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     if (start?.pointer !== event.pointerId) return;
     event.stopPropagation();
     grip.current = null;
+    if (!moved.current && event.timeStamp - start.pressed >= HOLD_MS) moved.current = true;
     if (!moved.current || !actions) {
       setHeld(null);
       return;
     }
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (
-      target?.closest<HTMLElement>("[data-deck-stack]")?.dataset.deckStack === id ||
-      !target?.closest(".tl-canvas") ||
-      !editor.getContainer().contains(target)
-    ) {
+    if (!target?.closest(".tl-canvas") || !editor.getContainer().contains(target)) {
       setHeld(null);
       return;
     }
     const land = heldAt(start, event.clientX, event.clientY);
     const point = editor.screenToPage(land);
     const at = performance.now();
-    setHeld({ ...land, released: at });
+    const lift = paperLift(heldPaper.current);
+    setHeld({ ...land, released: { at, lift } });
     function track(drop: DeckDrop) {
-      setHeld((current) => (current?.released === at ? { ...current, card: drop.card } : current));
+      setHeld((current) =>
+        current?.released?.at === at ? { ...current, card: drop.card } : current,
+      );
     }
-    void actions.draw(editor, id, point, point, { release: { at, track } }).then((ok) => {
-      if (!ok) setHeld((current) => (current?.released === at ? null : current));
-    });
+    const gripPoint = {
+      lift,
+      tilt: land.tilt,
+      x: land.pivot.x / land.width,
+      y: land.pivot.y / land.height,
+    };
+    void actions
+      .draw(editor, id, point, point, { release: { at, track, grip: gripPoint } })
+      .then((ok) => {
+        if (!ok) setHeld((current) => (current?.released?.at === at ? null : current));
+      });
   }
 
   return (
@@ -344,7 +373,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
           {copy.deckDrawFailed}
         </span>
       )}
-      {held && !landed && <HeldPaper held={held} back={back} />}
+      {held && !landed && <HeldPaper held={held} back={back} grip={heldPaper} />}
     </>
   );
 }
@@ -371,6 +400,7 @@ export class DeckImageUtil extends ImageUtil {
             {meta.deckRemaining}
             <i />
           </span>
+          <DeckArtPreload back={meta.deckBack} />
           <DeckDraw back={meta.deckBack} id={image.id} />
         </div>
       );
@@ -383,7 +413,6 @@ export class DeckImageUtil extends ImageUtil {
           back={meta.deckBack}
           dealtAt={meta.deckDealtAt}
           height={image.props.h}
-          src={meta.deckFace}
           travelX={meta.deckTravelX}
           travelY={meta.deckTravelY}
           width={image.props.w}

@@ -151,6 +151,23 @@ describe("installable physical decks", () => {
     ]);
   });
 
+  it("sets a hand-dropped card flat at its release point with the deck's orientation", () => {
+    const { command, records } = table();
+    const deck = placed(command(place));
+    const stack = records.get(deck);
+    if (stack?.typeName !== "shape") throw new Error("Stack is missing");
+    records.set(deck, { ...stack, rotation: Math.PI / 2 });
+    const id = crypto.randomUUID();
+    const point = { x: 160, y: 130 };
+    revealed(command({ ...draw(deck), id, point, precise: true }));
+    const card = records.get(dealtCardId(deck, id));
+    if (card?.typeName !== "shape" || card.type !== "image") throw new Error("Card is missing");
+    expect(card.rotation).toBe(Math.PI / 2);
+    expect(card.x - card.props.h / 2).toBeCloseTo(point.x);
+    expect(card.y + card.props.w / 2).toBeCloseTo(point.y);
+    expect(card.index > stack.index).toBe(true);
+  });
+
   it("places and draws a package pinned on the board with current owner access", async () => {
     const board = "deck-admission";
     const guest = await pass({ board });
