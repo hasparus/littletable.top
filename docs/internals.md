@@ -172,18 +172,19 @@ SHA-256 of the vendored files:
 ## .tldr files
 
 The board's menu downloads the whole board as a tldraw file, images
-embedded as `data:` URLs, so it opens in any tldraw app. Opening one:
+embedded as `data:` URLs, so it opens in any tldraw app. Importing one:
 
 - A board holds at most 40 pages. A file that would pass that is refused
   whole, before any image is uploaded.
-- The file's pages are added after the board's own; on an untouched board
-  (one empty page) they replace it.
+- The file's pages are added after the board's own. On an untouched board
+  they replace the empty page. The public board keeps its Landing Page.
 - An id the board already uses gets a new one, with parents, bindings and
   image references following, so opening a file twice gives two copies.
-- Embedded images are uploaded first, with their exact bytes. If one fails,
-  nothing is added.
-- An older schema is migrated; a newer one is refused. The file's document
-  record, camera and selection are not taken.
+- The board reports file reading, validation and image upload progress.
+  Embedded images are uploaded before the pages are added. If an upload fails,
+  the board shows its reason and adds no pages.
+- The importer migrates older schemas and refuses newer ones. The editor fits the
+  first imported page to the viewport and keeps its own document and session records.
 
 ## Dice
 

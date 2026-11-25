@@ -83,7 +83,7 @@ const menu = async (page: Page, item: string) => {
 
 export async function openTldr(page: Page, name: string): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
-  await menu(page, "Open a .tldr file…");
+  await menu(page, "Import a .tldr file…");
   const picker = await chooser;
   await picker.setFiles(fixture(name));
 }

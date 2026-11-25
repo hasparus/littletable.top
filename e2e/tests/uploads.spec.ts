@@ -134,7 +134,7 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
   await expect(page).toHaveURL(ON_BOARD);
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("main-menu.button").click();
-  await page.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  await page.getByRole("menuitem", { name: "Import a .tldr file…" }).click();
   const picker = await chooser;
   await picker.setFiles({ buffer: Buffer.from(seen), mimeType: "", name: "seen.tldr" });
   await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
@@ -144,8 +144,10 @@ test("a .tldr file opened on one screen reaches the other whole, and comes back 
 
   // Opened again onto a board that has it already, the file's pages come
   // after the board's own, under new ids that still hold together.
+  const added = toast(page, "The file's pages were added to the board.");
+  await expect(added).toBeHidden();
   await openTldr(page, "table.tldr");
-  await expect(toast(page, "The file's pages were added to the board.").first()).toBeVisible();
+  await expect(added).toBeVisible();
   const doubled = documentOf(await downloadTldr(page));
   expect(doubled.pages.map((one) => one.name)).toEqual([
     "The map",
@@ -177,7 +179,7 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
 
   await openTldr(page, "table-newer.tldr");
   await expect(
-    toast(page, "This file is from a newer version of tldraw. The board cannot open it yet."),
+    toast(page, "This file is from a newer version of tldraw. This board cannot import it yet."),
   ).toBeVisible();
 
   await dropFile(page, "table-older.tldr", "");
@@ -192,6 +194,56 @@ test("an older .tldr dropped on the board migrates; a newer one is refused with 
   );
   expectWhole(opened);
 
+  await expectNoCspViolations(page);
+});
+
+test("a large import shows progress, explains a failed upload and can be retried", async ({
+  page,
+}) => {
+  await collectCspViolations(page);
+  await page.goto(`${HOST}/sign-in?name=Sid`);
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page).toHaveURL(ON_TABLETOP);
+  const file = {
+    buffer: Buffer.concat([readFileSync(fixture("table.tldr")), Buffer.alloc(5_000_000, " ")]),
+    mimeType: "application/vnd.tldraw+json",
+    name: "large.tldr",
+  };
+  const chooseImport = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTestId("main-menu.button").click();
+    await page.getByRole("menuitem", { name: "Import a .tldr file…" }).click();
+    const picker = await chooser;
+    await picker.setFiles(file);
+  };
+
+  const response = Promise.withResolvers<null>();
+  await page.route("**/files", async (route) => {
+    await response.promise;
+    await route.fulfill({ json: { error: "over-quota" }, status: 507 });
+  });
+  try {
+    await chooseImport();
+    await expect(page.getByText("Importing large.tldr")).toBeInViewport();
+    await expect(page.getByRole("progressbar", { name: "Images uploaded: 0 of 2" })).toBeVisible();
+    await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
+  } finally {
+    response.resolve(null);
+  }
+  const failure = page
+    .locator(".tlui-toast__container")
+    .filter({ hasText: "Could not import “large.tldr”" });
+  await expect(failure).toBeVisible();
+  await expect(failure.locator(".tlui-toast__description")).toContainText(
+    "This board has no room for more images.",
+  );
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  await expect(page.getByTestId("page-menu.button")).toHaveText("Page 1");
+
+  await page.unroute("**/files");
+  await chooseImport();
+  await expect(toast(page, "The file's pages were added to the board.")).toBeVisible();
+  await expect(page.getByTestId("page-menu.button")).toHaveText("The map");
   await expectNoCspViolations(page);
 });
 
@@ -273,7 +325,7 @@ test("an image from another board is copied over, or left out with a reason", as
   const pointing = { buffer: Buffer.from(JSON.stringify(file)), mimeType: "", name: "linked.tldr" };
   const chooser = guest.waitForEvent("filechooser");
   await guest.getByTestId("main-menu.button").click();
-  await guest.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  await guest.getByRole("menuitem", { name: "Import a .tldr file…" }).click();
   const picker = await chooser;
   await picker.setFiles(pointing);
   await expect(
@@ -294,7 +346,7 @@ test("an image from another board is copied over, or left out with a reason", as
   // map is copied over.
   const opened = second.waitForEvent("filechooser");
   await second.getByTestId("main-menu.button").click();
-  await second.getByRole("menuitem", { name: "Open a .tldr file…" }).click();
+  await second.getByRole("menuitem", { name: "Import a .tldr file…" }).click();
   const again = await opened;
   await again.setFiles(pointing);
   await expect(toast(second, "The file's pages were added to the board.").first()).toBeVisible();

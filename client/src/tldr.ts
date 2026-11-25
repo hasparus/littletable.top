@@ -4,21 +4,18 @@ import {
   createShapeId,
   type Editor,
   getIndicesAbove,
-  MigrationFailureReason,
   PageRecordType,
-  parseTldrawJsonFile,
   serializeTldrawJson,
   sortByIndex,
   type TLAsset,
   type TLBinding,
   TLDRAW_FILE_EXTENSION,
-  type TldrawFileParseError,
-  type TLImageAsset,
   type TLPage,
   type TLRecord,
   type TLShape,
-  type TLVideoAsset,
 } from "tldraw";
+
+import type { BoardDocument, ImportReply } from "./tldr-worker";
 
 // tldraw's own file format, a .tldr: the whole document as JSON, with each
 // image embedded as a data: URL so the file opens anywhere tldraw does.
@@ -31,33 +28,40 @@ const TLDR_TYPE = "application/vnd.tldraw+json";
 
 export type ImportProblem =
   | "damaged"
+  | "damaged-image"
+  | "failed"
   | "images"
+  | "legacy"
   | "not-tldraw"
+  | "readonly"
   | "too-large"
   | "too-many-pages"
-  | "too-new";
+  | "too-new"
+  | "unreadable";
+
+export type ImportProgress =
+  | { count: number; done: number; kind: "uploading"; percent: number; waiting: boolean }
+  | { kind: "adding" }
+  | { kind: "preparing" }
+  | { kind: "reading"; percent: number };
 
 export class ImportRefused extends Error {
   override name = "ImportRefused";
-  // How many more pages the board had room for, for "too-many-pages".
+  readonly image: string | undefined;
   readonly room: number;
 
   constructor(
     readonly problem: ImportProblem,
-    options?: ErrorOptions & { room?: number },
+    options?: ErrorOptions & { image?: string; room?: number },
   ) {
     super(`board: .tldr import refused (${problem})`, options);
+    this.image = options?.image;
     this.room = options?.room ?? 0;
   }
 }
 
 export const isTldrFile = (file: File) =>
   file.name.toLowerCase().endsWith(TLDRAW_FILE_EXTENSION) || file.type === TLDR_TYPE;
-
-const isEmbedded = (asset: TLAsset): asset is TLImageAsset | TLVideoAsset =>
-  (asset.type === "image" || asset.type === "video") &&
-  typeof asset.props.src === "string" &&
-  asset.props.src.startsWith("data:");
 
 // The board as one .tldr. tldraw fetches each image the document points at
 // (through the asset store's resolve, which keeps the files cookie fresh)
@@ -78,56 +82,96 @@ export async function exportTldr(editor: Editor): Promise<Blob> {
   return new Blob([json], { type: TLDR_TYPE });
 }
 
-// NOTE: tldraw answers a file from a newer schema with a plain migration
-// error ("Incompatible schema?"), so the versions are compared here.
-function isNewer(json: string, schema: Editor["store"]["schema"]): boolean {
-  const ours = schema.serialize().sequences;
-  const theirs = (JSON.parse(json) as { schema?: { sequences?: unknown } }).schema?.sequences;
-  if (typeof theirs !== "object" || theirs === null) return false;
-  return Object.entries(theirs).some(
-    ([sequence, version]) => sequence in ours && Number(version) > ours[sequence]!,
-  );
-}
-
-function problemOf(error: TldrawFileParseError, newer: () => boolean): ImportProblem {
-  switch (error.type) {
-    case "fileFormatVersionTooNew":
-      return "too-new";
-    case "invalidRecords":
-      return "damaged";
-    case "migrationFailed":
-      return error.reason === MigrationFailureReason.TargetVersionTooNew || newer()
-        ? "too-new"
-        : "damaged";
-    case "notATldrawFile":
-    case "v1File":
-      return "not-tldraw";
-  }
-}
-
-export function fileFromDataUrl(url: string, name: string): File {
-  const comma = url.indexOf(",");
-  const header = url.slice(5, comma);
-  const type = header.split(";")[0] || "application/octet-stream";
-  const data = url.slice(comma + 1);
-  const bytes = header.endsWith(";base64")
-    ? Uint8Array.from(atob(data), (char) => char.codePointAt(0)!)
-    : new TextEncoder().encode(decodeURIComponent(data));
-  return new File([bytes], name || "image", { type });
-}
-
-// Runs at most `limit` of the tasks at a time; the first failure fails all.
-async function inTurns<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
-  let next = 0;
-  const lane = async () => {
-    while (next < items.length) await task(items[next++]!);
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
-}
-
 const UPLOADS_AT_ONCE = 4;
-
 type Plan = { assets: TLAsset[]; bindings: TLBinding[]; pages: TLPage[]; shapes: TLShape[] };
+type ReportProgress = (progress: ImportProgress) => void;
+
+function readBoard(
+  file: File,
+  report: ReportProgress,
+  signal: AbortSignal,
+): Promise<BoardDocument> {
+  signal.throwIfAborted();
+  const worker = new Worker(new URL("tldr-worker.ts", import.meta.url), { type: "module" });
+  let onAbort: () => void;
+  return new Promise<BoardDocument>((resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    worker.addEventListener("error", () => reject(new ImportRefused("failed")));
+    worker.addEventListener("messageerror", () => reject(new ImportRefused("failed")));
+    worker.addEventListener("message", ({ data }: MessageEvent<ImportReply>) => {
+      if (data.kind === "loaded") resolve(data.document);
+      else if (data.kind === "failed")
+        reject(new ImportRefused(data.problem, { image: data.image }));
+      else report(data);
+    });
+    worker.postMessage(file);
+  }).finally(() => {
+    signal.removeEventListener("abort", onAbort);
+    worker.terminate();
+  });
+}
+
+type Upload = (
+  file: File,
+  signal: AbortSignal,
+  callbacks: { onProgress: (fraction: number) => void; onThrottle: (waiting: boolean) => void },
+) => Promise<string>;
+
+async function uploadEmbedded(
+  embedded: BoardDocument["embedded"],
+  upload: Upload,
+  report: ReportProgress,
+  signal: AbortSignal,
+) {
+  const images = [...embedded];
+  const uploaded = new Map<TLAsset["id"], string>();
+  if (images.length === 0) return uploaded;
+
+  const batch = new AbortController();
+  const pending = AbortSignal.any([signal, batch.signal]);
+  const fractions = new Float64Array(images.length);
+  const waiting = new Set<number>();
+  const count = images.length;
+  let transferred = 0;
+  let done = 0;
+  let next = 0;
+  const progress = () => {
+    const percent = Math.min(done === count ? 100 : 99, Math.round((transferred / count) * 100));
+    report({ count, done, kind: "uploading", percent, waiting: waiting.size > 0 });
+  };
+  progress();
+  const lane = async () => {
+    while (!pending.aborted && next < count) {
+      const index = next++;
+      const [id, image] = images[index]!;
+      const moved = (fraction: number) => {
+        transferred += fraction - fractions[index]!;
+        fractions[index] = fraction;
+        progress();
+      };
+      try {
+        const src = await upload(image, pending, {
+          onProgress: moved,
+          onThrottle: (paused) => {
+            if (paused) waiting.add(index);
+            else waiting.delete(index);
+            progress();
+          },
+        });
+        uploaded.set(id, src);
+        done++;
+        moved(1);
+      } catch (error) {
+        if (!pending.aborted)
+          batch.abort(new ImportRefused("images", { cause: error, image: image.name }));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(UPLOADS_AT_ONCE, count) }, lane));
+  pending.throwIfAborted();
+  return uploaded;
+}
 
 // Gives every record the file brings an id of its own on this board: its
 // own where it is free, a new one where the board already has it, with
@@ -172,43 +216,37 @@ const isUntouched = (editor: Editor) =>
   editor.getPages().length === 1 &&
   !editor.store.allRecords().some((record) => record.typeName === "shape");
 
-// Adds the file's pages to the board, after its own, never in place of
-// them. On a board nobody has drawn on, the file's pages take the empty
-// page's place, so the board then reads exactly as the file. Images the
-// file embeds are uploaded first, and the document only ever points at
-// them; if any upload fails, nothing is added.
+function replacementPage(editor: Editor, pages: TLPage[], keepFirstPage: boolean): TLPage | null {
+  if (editor.getIsReadonly()) throw new ImportRefused("readonly");
+  const replacing = !keepFirstPage && isUntouched(editor) ? editor.getPages()[0]! : null;
+  const room = editor.options.maxPages - editor.getPages().length + (replacing === null ? 0 : 1);
+  if (pages.length > room) throw new ImportRefused("too-many-pages", { room });
+  return replacing;
+}
+
+// Adds pages after the board's own, or in place of an untouched board's empty
+// page. Embedded images are uploaded before the document points at them.
 export async function importTldr(
   editor: Editor,
   file: File,
-  upload: (file: File) => Promise<string>,
-): Promise<{ pages: number }> {
+  {
+    keepFirstPage,
+    report,
+    signal,
+    upload,
+  }: { keepFirstPage: boolean; report: ReportProgress; signal: AbortSignal; upload: Upload },
+): Promise<void> {
   if (file.size > MAX_TLDR_BYTES) throw new ImportRefused("too-large");
-  const json = await file.text();
-  const { schema } = editor.store;
-  const parsed = parseTldrawJsonFile({ json, schema });
-  if (!parsed.ok) throw new ImportRefused(problemOf(parsed.error, () => isNewer(json, schema)));
-  const records = parsed.value.allRecords();
-  const pages = records
-    .filter((record): record is TLPage => record.typeName === "page")
-    .sort(sortByIndex);
+  const { assets, bindings, embedded, pages, shapes } = await readBoard(file, report, signal);
+  signal.throwIfAborted();
   if (pages.length === 0) throw new ImportRefused("damaged");
-  // NOTE: tldraw's own page cap holds for pages made in its menu; a file
-  // that would pass it is refused whole, before any image is uploaded,
-  // rather than added in part.
-  const replacing = isUntouched(editor) ? editor.getPages()[0]! : null;
-  const room = editor.options.maxPages - editor.getPages().length + (replacing === null ? 0 : 1);
-  if (pages.length > room) throw new ImportRefused("too-many-pages", { room });
-  const assets = records.filter((record): record is TLAsset => record.typeName === "asset");
-
-  const uploaded = new Map<string, string>();
-  try {
-    await inTurns(assets.filter(isEmbedded), UPLOADS_AT_ONCE, async (asset) => {
-      const embedded = fileFromDataUrl(asset.props.src as string, asset.props.name);
-      uploaded.set(asset.id, await upload(embedded));
-    });
-  } catch (error) {
-    throw new ImportRefused("images", { cause: error });
-  }
+  pages.sort(sortByIndex);
+  replacementPage(editor, pages, keepFirstPage);
+  const uploaded = await uploadEmbedded(embedded, upload, report, signal);
+  signal.throwIfAborted();
+  // Someone may have drawn or added pages while the images were uploading.
+  const replacing = replacementPage(editor, pages, keepFirstPage);
+  report({ kind: "adding" });
 
   const plan = planIds(
     editor,
@@ -218,9 +256,9 @@ export async function importTldr(
           ? ({ ...asset, props: { ...asset.props, src: uploaded.get(asset.id)! } } as TLAsset)
           : asset,
       ),
-      bindings: records.filter((record): record is TLBinding => record.typeName === "binding"),
+      bindings,
       pages,
-      shapes: records.filter((record): record is TLShape => record.typeName === "shape"),
+      shapes,
     },
     replacing,
   );
@@ -232,5 +270,5 @@ export async function importTldr(
     }
     editor.setCurrentPage(plan.pages[0]!.id);
   });
-  return { pages: plan.pages.length };
+  editor.zoomToFit({ immediate: true });
 }
