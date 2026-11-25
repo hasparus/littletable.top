@@ -2,6 +2,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 
 import { Tabletop } from "./alchemy/index.js";
 
@@ -17,9 +18,22 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const domain = yield* Config.String("TABLETOP_DOMAIN").pipe(Config.withDefault(""));
     const primary = { prod: domain, staging: `staging.${domain}` }[stage];
+    const projectToken = yield* Config.Redacted("POSTHOG_PROJECT_TOKEN").pipe(
+      Config.withDefault(Redacted.make("")),
+    );
+    const feedback =
+      (stage === "prod" || stage === "staging") && Redacted.value(projectToken) !== ""
+        ? {
+            projectToken,
+            region: yield* Config.String("POSTHOG_REGION"),
+            surveyId: yield* Config.String("POSTHOG_FEEDBACK_SURVEY_ID"),
+            questionId: yield* Config.String("POSTHOG_FEEDBACK_QUESTION_ID"),
+          }
+        : undefined;
     const tabletop = yield* Tabletop("Tabletop", {
       displayName: "Little Table",
       domain: primary === undefined || domain === "" ? undefined : { primary },
+      feedback,
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
       signingKey: yield* Config.Redacted("TABLETOP_SIGNING_KEY"),

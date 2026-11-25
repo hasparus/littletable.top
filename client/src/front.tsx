@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { Language } from "../settings";
+
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 import { fill } from "./copy";
+import { FeedbackProvider, useFeedback } from "./feedback";
 import { type FrontCopy } from "./front-copy";
 
 // The standalone tabletop's account page: sign in, then the account's boards
@@ -203,6 +206,7 @@ function SignedIn({
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const post = useApi(me.csrf);
+  const feedback = useFeedback();
 
   const load = useCallback(async () => {
     const response = await fetch("/api/boards");
@@ -263,9 +267,20 @@ function SignedIn({
           {copy.signOut}
         </button>
       </header>
-      <a className="mt-4 inline-block underline underline-offset-2" href="/">
-        {copy.publicBoard}
-      </a>
+      <div className="mt-4 flex flex-wrap items-center gap-x-4">
+        <a className="inline-flex min-h-11 items-center underline underline-offset-2" href="/">
+          {copy.publicBoard}
+        </a>
+        {feedback !== null && (
+          <button
+            className="min-h-11 cursor-pointer underline underline-offset-2"
+            onClick={() => feedback.open({ role: "member", screen: "boards" })}
+            type="button"
+          >
+            {feedback.label}
+          </button>
+        )}
+      </div>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <h1 className="flex-1 text-2xl font-semibold">{copy.yourBoards}</h1>
         <button className="btn btn-primary min-h-12" onClick={() => void create()} type="button">
@@ -357,8 +372,12 @@ function Front({ copy, locale, name }: { copy: FrontCopy; locale: string; name: 
 
 export function mountFront(
   element: HTMLElement,
-  props: { copy: FrontCopy; locale: string; name: string },
+  props: { copy: FrontCopy; locale: Language; name: string },
 ) {
   element.classList.add("overflow-y-auto", "bg-background");
-  createRoot(element).render(<Front {...props} />);
+  createRoot(element).render(
+    <FeedbackProvider enabled language={props.locale}>
+      <Front {...props} />
+    </FeedbackProvider>,
+  );
 }

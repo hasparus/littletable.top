@@ -157,6 +157,29 @@ cover the account's workers.dev subdomain, for example `*.hasparus.workers.dev`.
 tldraw supports wildcard subdomains in
 [licence keys](https://tldraw.dev/sdk-features/license-key#domain-validation).
 
+### Product feedback
+
+In PostHog, create and launch an [API survey](https://posthog.com/docs/surveys/implementing-custom-surveys)
+with one open-text question for the report description. Enable repeat responses
+and leave the response cap unset. In the corresponding GitHub Environment
+(`production` or `staging`), add the project token as the
+`POSTHOG_PROJECT_TOKEN` secret and set these variables:
+
+- `POSTHOG_REGION` is `eu` or `us`, matching the project's cloud region.
+- `POSTHOG_FEEDBACK_SURVEY_ID` is the survey UUID.
+- `POSTHOG_FEEDBACK_QUESTION_ID` is the open-text question's UUID. Read it from
+  the survey's API response under `questions[0].id`.
+
+After deploying, send a sample report and verify it appears under the survey's
+responses. The `survey sent` event also carries `category` (`bug` or
+`improvement`), `screen` (`board` or `boards`), and `role` (`guest` or
+`member`) for filtering. The Worker sends the form directly to PostHog and
+uses an anonymous ID per submission. Browser URLs, board contents, account
+IDs, autocapture, and session replay are outside this integration.
+
+Feedback is available when the standalone Worker has all four settings.
+Hosted instances and PR preview deployments leave it off.
+
 ### Cloudflare API token
 
 My Profile, API Tokens, Create Custom Token, for the account the tabletop
