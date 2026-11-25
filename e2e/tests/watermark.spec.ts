@@ -2,6 +2,7 @@ import { devices, expect, type Locator, type Page, test } from "@playwright/test
 import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
 
 // tldraw's licence asks that its "made with tldraw" mark stays visible,
@@ -12,7 +13,7 @@ import { closeSheet, collectCspViolations, openSheet, PHONE } from "./helpers";
 // NOTE: without a licence key on localhost tldraw draws the same element in
 // the same place, with "Get a license for production" on wide screens.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
+const SHOTS = SCREENSHOT_DIR;
 
 const watermark = (page: Page): Locator => page.locator("[data-testid^='tl-watermark']");
 

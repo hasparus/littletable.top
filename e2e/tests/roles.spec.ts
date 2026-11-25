@@ -2,13 +2,14 @@ import { type Browser, expect, type Page, test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 import { boardAt, STANDALONE } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import { PHONE } from "./helpers";
 
 // Standalone mode: a board's owner opens its people on the front page and
 // makes one of them a shaman. On a phone, since that is where boards are
 // run from. The artifacts are the screenshots in SCREENSHOTS.
 
-const SCREENSHOTS = process.env.ROLES_SCREENSHOTS ?? "/home/user/ludamus/screenshots/board";
+const SCREENSHOTS = process.env.ROLES_SCREENSHOTS ?? SCREENSHOT_DIR;
 const ON_BOARD = boardAt(STANDALONE);
 
 async function signedIn(browser: Browser, name: string, locale = "en-GB"): Promise<Page> {

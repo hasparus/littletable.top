@@ -1,5 +1,5 @@
 # The toolchain: Node and aube, the package manager (`aube install`,
-# `aube run <script>`). CI installs the same versions through mise-action.
+# `aube run <script>`). GitHub Actions installs the same versions through setup-aube.
 [tools]
 node = "26.13.1"
 "npm:@endevco/aube" = { version = "2.10.0", npm_args = "--ignore-scripts=false" }

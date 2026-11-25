@@ -2,6 +2,7 @@ import { type Browser, devices, expect, type Locator, type Page, test } from "@p
 import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import {
   closeSheet,
   collectCspViolations,
@@ -291,7 +292,7 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
   await expectNoCspViolations(page);
 });
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
+const SHOTS = SCREENSHOT_DIR;
 
 // tldraw's page menu shares the top row with the main menu; the strip steps
 // the whole row down, so neither hides under it or leaves the screen.

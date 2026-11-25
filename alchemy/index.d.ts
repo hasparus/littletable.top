@@ -65,6 +65,8 @@ export type StandaloneProps = Shared & {
   // The WorkOS application people sign in through: its client id and API
   // key. Its redirect URI is https://<domain.primary>/auth/callback.
   workOs: { apiKey: Redacted.Redacted<string> | string; clientId: string };
+  // The AuthKit issuer origin and the MCP Worker's own HTTPS hostname.
+  mcp?: { authorizationServer: string; domain: string; workerName?: string };
 };
 
 export type TabletopProps = HostedProps | StandaloneProps;

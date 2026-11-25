@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import type { Step } from "./corpus";
 
 import { computeOps } from "../../src/mcp/board";
+import { SCREENSHOT_DIR } from "../screenshots";
 
 // The same batches of ops, run twice from the same records: by tldraw's
 // engine on a real Editor in a browser, and by the same engine on our
@@ -16,7 +17,7 @@ import { computeOps } from "../../src/mcp/board";
 //
 // The artifacts are test/mcp/fixtures/fidelity.json and the screenshots.
 
-const SCREENSHOTS = process.env.OPS_SCREENSHOTS ?? "/home/user/ludamus/screenshots/board";
+const SCREENSHOTS = process.env.OPS_SCREENSHOTS ?? SCREENSHOT_DIR;
 const REPORT = new URL("../../test/mcp/fixtures/fidelity.json", import.meta.url);
 
 type Harness = {

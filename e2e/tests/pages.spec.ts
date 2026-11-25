@@ -2,6 +2,7 @@ import { type Browser, devices, expect, type Locator, type Page, test } from "@p
 import { mkdirSync, readFileSync } from "node:fs";
 
 import { HOST } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import {
   closeSheet,
   collectCspViolations,
@@ -19,7 +20,7 @@ import { documentOf, downloadTldr, fixture, openTldr, toast } from "./tldr";
 // each other's places and each other across pages, and survive a page being
 // deleted under them. The artifacts are the assertions and the screenshots.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
+const SHOTS = SCREENSHOT_DIR;
 
 const DESKTOP = { ...devices["Desktop Chrome"], deviceScaleFactor: 2 };
 const phoneAt = (width: number) => ({

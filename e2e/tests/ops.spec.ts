@@ -4,6 +4,7 @@ import { importPKCS8, SignJWT } from "jose";
 import { mkdirSync, readFileSync } from "node:fs";
 
 import { HOST, HOSTED, socketOf } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import { onBoard } from "./helpers";
 
 // An assistant edits a board through the tabletop's MCP endpoint while a
@@ -12,7 +13,7 @@ import { onBoard } from "./helpers";
 // The artifacts are the screenshots in SCREENSHOTS and the assertions.
 
 const TABLETOP = HOSTED;
-const SCREENSHOTS = process.env.OPS_SCREENSHOTS ?? "/home/user/ludamus/screenshots/board";
+const SCREENSHOTS = process.env.OPS_SCREENSHOTS ?? SCREENSHOT_DIR;
 
 const key = importPKCS8(
   readFileSync(new URL("../../dev/dev-signing-key.pem", import.meta.url), "utf8"),

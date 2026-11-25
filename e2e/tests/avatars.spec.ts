@@ -2,6 +2,7 @@ import { type Browser, expect, type Locator, type Page, test } from "@playwright
 import { mkdirSync } from "node:fs";
 
 import { boardAt, HOST, HOSTED, STANDALONE, WORKOS } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import { collectCspViolations, expectNoCspViolations, joinAs, openSheet, PHONE } from "./helpers";
 
 // People's pictures, in both modes: a member's shows in someone else's
@@ -9,7 +10,7 @@ import { collectCspViolations, expectNoCspViolations, joinAs, openSheet, PHONE }
 // host or the sign-in provider; a guest shows an initial. The artifacts
 // are the assertions and the screenshots.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
+const SHOTS = SCREENSHOT_DIR;
 
 // A person's row in the people list. The avatar is decoration beside the
 // name, so the row is found by the name it says.

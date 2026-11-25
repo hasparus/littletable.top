@@ -7,6 +7,7 @@
 // stack's own TypeScript but leaves everything under node_modules to Node.
 
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { createPrivateKey, createPublicKey } from "node:crypto";
@@ -103,6 +104,7 @@ function configure(props) {
       TABLETOP_MODE: "standalone",
       WORKOS_API_KEY: secret(props.workOs.apiKey),
       WORKOS_CLIENT_ID: props.workOs.clientId,
+      ...(props.mcp === undefined ? {} : { MCP_RESOURCE: `https://${props.mcp.domain}/mcp` }),
     },
   };
 }
@@ -188,8 +190,9 @@ export const Tabletop = (id, props) =>
     // fonts) in a Worker of its own, so the board Worker stays small. It
     // reaches boards through the board Worker's BoardRoom class.
     const mcp =
-      props.mode === "hosted" && props.mcp !== undefined
-        ? yield* Cloudflare.Worker(`${id}Mcp`, {
+      props.mcp === undefined
+        ? undefined
+        : yield* Cloudflare.Worker(`${id}Mcp`, {
             compatibility: {
               date: testedRuntime.compatibility_date,
               flags: ["legacy_module_registry"],
@@ -197,15 +200,25 @@ export const Tabletop = (id, props) =>
             domain: props.mcp.domain === undefined ? undefined : { name: props.mcp.domain },
             env: {
               BoardRoom: Cloudflare.DurableObject("BoardRoom", { scriptName: worker.workerName }),
-              ISSUER: props.issuer,
-              ISSUER_PUBLIC_KEY: props.issuerPublicKey,
-              MCP_AUDIENCE: props.mcp.audience ?? "tabletop-mcp",
               MCP_AUTHORIZATION_SERVER: props.mcp.authorizationServer,
+              ...(props.mode === "hosted"
+                ? {
+                    ISSUER: props.issuer,
+                    ISSUER_PUBLIC_KEY: props.issuerPublicKey,
+                    MCP_AUDIENCE: props.mcp.audience ?? "tabletop-mcp",
+                  }
+                : {
+                    DB: standalone.DB,
+                    MCP_BOARD_ORIGIN:
+                      props.domain === undefined
+                        ? worker.url.pipe(Output.map((url) => (url ? new URL(url).origin : "")))
+                        : `https://${props.domain.primary}`,
+                    MCP_RESOURCE: `https://${props.mcp.domain}/mcp`,
+                  }),
             },
             main: packageFile("src/mcp/worker.ts"),
             name: props.mcp.workerName,
             observability,
-          })
-        : undefined;
+          });
     return { files, mcp, url: worker.url, worker };
   });

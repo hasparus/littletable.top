@@ -24,8 +24,9 @@ import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import { RoomDocument } from "./room-document";
+import { AssistantGrants } from "./standalone/assistant-grants";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -57,6 +58,7 @@ function kind(sub: string): "guest" | "member" {
 
 export class BoardRoom extends DurableObject<Env> {
   private room!: TLSocketRoom<TLRecord, Person>;
+  private assistantGrantEpoch = 0;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private document!: RoomDocument;
@@ -120,6 +122,7 @@ export class BoardRoom extends DurableObject<Env> {
   // link; a host's newer pass does the same on arrival.
   moveLink(board: string, link: number): void {
     if (link <= this.link()) return;
+    this.assistantGrantsChanged();
     this.ctx.storage.sql.exec(
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
@@ -274,16 +277,23 @@ export class BoardRoom extends DurableObject<Env> {
     );
   }
 
-  // As with links: a grant older than the board's grant version was revoked;
-  // a newer one moves the board on.
-  private admitGrant(grant: BoardGrant): "revoked" | null {
+  private async withDocumentGrant<T>(grant: BoardGrant, apply: () => T): Promise<"revoked" | T> {
+    if (grant.standalone !== undefined) {
+      const epoch = this.assistantGrantEpoch;
+      if (!this.env.DB || !(await new AssistantGrants(this.env.DB).admits(grant))) return "revoked";
+      // Grant changes, link resets and deletion can interleave with the D1 check.
+      // Use the document in the same turn as the final epoch check.
+      return this.assistantGrantEpoch === epoch ? apply() : "revoked";
+    }
+    // A hosted grant older than the board's grant version was revoked.
+    // A newer one moves the board on.
     const current = this.grantVersion();
     // NOTE: the caller verified the token; the rule is checked here too, so
     // no Worker bound to the room can act for someone who is not a shaman.
     if (grant.role !== "shaman" && grant.role !== "owner") return "revoked";
     if (grant.grant < current) return "revoked";
     if (grant.grant > current) this.setGrantVersion(grant.grant);
-    return null;
+    return apply();
   }
 
   // The host revokes every assistant grant on this board signed before
@@ -294,10 +304,15 @@ export class BoardRoom extends DurableObject<Env> {
     log("board.mcp_revoked", { board, version });
   }
 
+  assistantGrantsChanged(): void {
+    this.assistantGrantEpoch++;
+  }
+
   // Ends every assistant connected to this board at once (a shaman was
   // demoted, or the owner wants them gone). Returns the grant version that
   // later tokens must carry.
   endAssistants(board: string): number {
+    this.assistantGrantsChanged();
     const version = this.grantVersion() + 1;
     this.revokeMcpGrants(board, version);
     return version;
@@ -308,26 +323,30 @@ export class BoardRoom extends DurableObject<Env> {
   readDocument(
     grant: BoardGrant,
     request: { runId?: string; scope: DocumentScope },
-  ): "revoked" | DocumentSnapshot {
-    return this.admitGrant(grant) ?? this.document.read(request.scope, request.runId);
+  ): Promise<"revoked" | DocumentSnapshot> {
+    return this.withDocumentGrant(grant, () => this.document.read(request.scope, request.runId));
   }
 
-  commitDocument(grant: BoardGrant, diff: DocumentDiff): "read-only" | "revoked" | CommitOutcome {
-    const refusal = this.admitGrant(grant);
-    if (refusal !== null) return refusal;
-    if (grant.access !== "write") return "read-only";
-    const outcome = this.document.commit(diff);
-    log("board.document_commit", {
-      board: grant.board,
-      outcome: outcome.kind,
-      people: this.room.getNumActiveSessions(),
-      puts: diff.puts.length,
-      removes: diff.removes.length,
+  commitDocument(
+    grant: BoardGrant,
+    diff: DocumentDiff,
+  ): Promise<"read-only" | "revoked" | CommitOutcome> {
+    return this.withDocumentGrant(grant, () => {
+      if (grant.access !== "write") return "read-only";
+      const outcome = this.document.commit(diff);
+      log("board.document_commit", {
+        board: grant.board,
+        outcome: outcome.kind,
+        people: this.room.getNumActiveSessions(),
+        puts: diff.puts.length,
+        removes: diff.removes.length,
+      });
+      return outcome;
     });
-    return outcome;
   }
 
   async destroy(board: string) {
+    this.assistantGrantsChanged();
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }

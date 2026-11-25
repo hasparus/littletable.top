@@ -18,6 +18,8 @@ export type BoardGrant = {
   role: "owner" | "shaman";
   /** The board's title, as the host knows it. */
   title: string | null;
+  /** A standalone grant is rechecked in the room against current D1 access. */
+  standalone?: { account: string; client: string; revision: number };
 };
 
 export type DocumentScope = "document" | { page: string };
