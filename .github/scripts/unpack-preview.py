@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 
 archive_file, destination = map(Path, sys.argv[1:])
 destination.mkdir()
-roots = {"client", "worker", "migrations"}
+roots = {"client", "worker"}
 total_size = 0
 
 with tarfile.open(archive_file, "r:gz") as archive:
@@ -38,8 +38,6 @@ with tarfile.open(archive_file, "r:gz") as archive:
 for required in ("client/index.html", "worker/index.js", "wrangler.json"):
     if not (destination / required).is_file():
         raise ValueError(f"Missing preview file: {required}")
-if not (destination / "migrations").is_dir():
-    raise ValueError("Missing preview migrations")
 metadata = json.loads((destination / "wrangler.json").read_text())
 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", metadata.get("compatibility_date", "")):
     raise ValueError("Invalid preview Worker compatibility date")

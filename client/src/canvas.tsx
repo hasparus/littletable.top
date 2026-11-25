@@ -351,6 +351,7 @@ function searchFromKeyboard(open: BoardUi["open"]): () => void {
   const find = (event: KeyboardEvent) => {
     const mod = /Mac|iPhone|iPad/u.test(navigator.platform) ? event.metaKey : event.ctrlKey;
     if (!mod || event.altKey || event.shiftKey || event.key.toLowerCase() !== "f") return;
+    if (document.querySelector("dialog:modal")) return;
     event.preventDefault();
     event.stopPropagation();
     const field = document.getElementById(SEARCH_FIELD_ID);

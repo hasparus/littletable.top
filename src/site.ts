@@ -197,7 +197,7 @@ export async function serveBoards(
     .transform(page);
 }
 
-type SiteBindings = PreviewBindings & { DB?: D1Database };
+type SiteBindings = PreviewBindings & { BOARD_DATA_SCOPE?: string; DB?: D1Database };
 
 export async function serveSite(
   request: Request,
@@ -218,7 +218,10 @@ export async function serveSite(
   }
   const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
   if (imageCode !== undefined && config.mode === "standalone") {
-    const board = database === undefined ? null : await new Store(database).byShareCode(imageCode);
+    const board =
+      database === undefined
+        ? null
+        : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(imageCode);
     let preview: Response | null = null;
     if (board?.hasThumbnail === true) {
       preview =
@@ -237,7 +240,10 @@ export async function serveSite(
   if (shareCode !== undefined) {
     const page = await shell(request, assets, config);
     if (config.mode === "hosted" || !page.ok || page.body === null) return page;
-    const board = database === undefined ? null : await new Store(database).byShareCode(shareCode);
+    const board =
+      database === undefined
+        ? null
+        : await new Store(database, env.BOARD_DATA_SCOPE).byShareCode(shareCode);
     return withOpenGraph(page, url, config, board ?? undefined);
   }
   const assetRequest =

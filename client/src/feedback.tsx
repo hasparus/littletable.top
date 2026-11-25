@@ -11,6 +11,7 @@ import {
 
 import type { Language } from "../settings";
 
+import { useDialogBackdrop } from "./dialog";
 import { enterSurface } from "./surface-entry";
 
 const COPY = {
@@ -132,28 +133,7 @@ function FeedbackDialog({
     surface.showModal();
     enterSurface(surface, trigger);
   }, [trigger]);
-  useEffect(() => {
-    const element = dialog.current;
-    if (element === null || sending) return;
-    const events = new AbortController();
-    let pressedBackdrop = false;
-    element.addEventListener(
-      "pointerdown",
-      (event) => {
-        pressedBackdrop = hitBackdrop(element, event);
-      },
-      { signal: events.signal },
-    );
-    element.addEventListener(
-      "click",
-      (event) => {
-        if (pressedBackdrop && hitBackdrop(element, event)) element.close();
-        pressedBackdrop = false;
-      },
-      { signal: events.signal },
-    );
-    return () => events.abort();
-  }, [sending]);
+  useDialogBackdrop(dialog, !sending);
   useEffect(() => {
     if (status === "sent") done.current?.focus();
   }, [status]);
@@ -257,11 +237,4 @@ function FeedbackDialog({
       )}
     </dialog>
   );
-}
-
-function hitBackdrop(dialog: HTMLDialogElement, event: MouseEvent): boolean {
-  if (event.target !== dialog) return false;
-  const { bottom, left, right, top } = dialog.getBoundingClientRect();
-  const { clientX, clientY } = event;
-  return clientX < left || clientX >= right || clientY < top || clientY >= bottom;
 }
