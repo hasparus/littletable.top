@@ -2,6 +2,7 @@ import { type Browser, devices, expect, type Page, test } from "@playwright/test
 import { mkdirSync } from "node:fs";
 
 import { HOST } from "../ports";
+import { SCREENSHOT_DIR } from "../screenshots";
 import {
   closeSheet,
   collectCspViolations,
@@ -22,7 +23,7 @@ import {
 // above the on-screen keyboard and leave tldraw's mark alone. The
 // artifacts are the assertions and the screenshots.
 
-const SHOTS = "/home/user/ludamus/screenshots/board";
+const SHOTS = SCREENSHOT_DIR;
 
 async function shot(page: Page, name: string): Promise<void> {
   mkdirSync(SHOTS, { recursive: true });
