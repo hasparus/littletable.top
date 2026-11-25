@@ -12,10 +12,12 @@ import {
 
 import type { ImportProblem } from "./tldr";
 
+import { type BoardColor, isBoardColor } from "./board-palette";
 import { fileFromDataUrl } from "./data-url-file";
 
 export type BoardDocument = {
   assets: TLAsset[];
+  backgroundColor?: BoardColor;
   bindings: TLBinding[];
   embedded: Map<TLAsset["id"], File>;
   pages: TLPage[];
@@ -94,6 +96,9 @@ function parse(json: string): void {
     shapes: [],
   };
   for (const record of parsed.value.allRecords()) {
+    if (record.typeName === "document" && isBoardColor(record.meta.backgroundColor)) {
+      document.backgroundColor = record.meta.backgroundColor;
+    }
     if (record.typeName === "page") document.pages.push(record);
     if (record.typeName === "shape") document.shapes.push(record);
     if (record.typeName === "binding") document.bindings.push(record);

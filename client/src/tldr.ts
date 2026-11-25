@@ -237,7 +237,11 @@ export async function importTldr(
   }: { keepFirstPage: boolean; report: ReportProgress; signal: AbortSignal; upload: Upload },
 ): Promise<void> {
   if (file.size > MAX_TLDR_BYTES) throw new ImportRefused("too-large");
-  const { assets, bindings, embedded, pages, shapes } = await readBoard(file, report, signal);
+  const { assets, backgroundColor, bindings, embedded, pages, shapes } = await readBoard(
+    file,
+    report,
+    signal,
+  );
   signal.throwIfAborted();
   if (pages.length === 0) throw new ImportRefused("damaged");
   pages.sort(sortByIndex);
@@ -265,8 +269,12 @@ export async function importTldr(
   editor.markHistoryStoppingPoint("import .tldr");
   editor.run(() => {
     editor.store.put([...plan.assets, ...plan.pages, ...plan.shapes, ...plan.bindings]);
-    if (replacing !== null && !plan.pages.some((page) => page.id === replacing.id)) {
-      editor.deletePage(replacing.id);
+    if (replacing !== null) {
+      if (backgroundColor !== undefined) {
+        const settings = editor.getDocumentSettings();
+        editor.store.put([{ ...settings, meta: { ...settings.meta, backgroundColor } }]);
+      }
+      if (!plan.pages.some((page) => page.id === replacing.id)) editor.deletePage(replacing.id);
     }
     editor.setCurrentPage(plan.pages[0]!.id);
   });

@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import {
   type Editor,
+  react,
   TldrawUiButtonIcon,
   TldrawUiDropdownMenuCheckboxItem,
   TldrawUiMenuGroup,
@@ -9,34 +11,37 @@ import {
   useValue,
 } from "tldraw";
 
-import type { Copy } from "./copy";
-
 import { isSecretLayer } from "../../src/secret-layer";
+import { isBoardColor, PALETTE } from "./board-palette";
 import { useBoardUi } from "./ui";
 
-const PALETTE = {
-  default: {
-    dark: "var(--tl-color-background)",
-    label: "boardBackgroundDefault",
-    light: "var(--tl-color-background)",
-  },
-  lilac: { dark: "#33283d", label: "boardBackgroundLilac", light: "#f0e9f7" },
-  sage: { dark: "#2c2f2a", label: "boardBackgroundSage", light: "#ebede7" },
-  sand: { dark: "#342c20", label: "boardBackgroundSand", light: "#f6eedc" },
-  sky: { dark: "#222d3d", label: "boardBackgroundSky", light: "#e6eff9" },
-} as const satisfies Record<string, { dark: string; label: keyof Copy; light: string }>;
-
-function boardColor(editor: Editor): keyof typeof PALETTE {
+function boardColor(editor: Editor) {
   const color = editor.getDocumentSettings().meta.backgroundColor;
-  return typeof color === "string" && Object.hasOwn(PALETTE, color)
-    ? (color as keyof typeof PALETTE)
-    : "default";
+  return isBoardColor(color) ? color : "default";
 }
 
 export function BoardBackground() {
   const mode = useColorMode();
   const editor = useEditor();
   const color = useValue("board background", () => boardColor(editor), [editor]);
+  useEffect(() => {
+    // Image exports use the editor theme instead of the canvas component.
+    const theme = editor.getCurrentTheme();
+    return react("export background", () => {
+      const selected = boardColor(editor);
+      const { dark, light } = theme.colors;
+      editor.updateTheme({
+        ...theme,
+        colors:
+          selected === "default"
+            ? theme.colors
+            : {
+                dark: { ...dark, background: PALETTE[selected].dark },
+                light: { ...light, background: PALETTE[selected].light },
+              },
+      });
+    });
+  }, [editor]);
   return (
     <div
       className="size-full"

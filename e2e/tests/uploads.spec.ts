@@ -235,6 +235,9 @@ test("a large import shows progress, explains a failed upload and can be retried
     expect(bounds.x).toBeCloseTo(menu.x, 0);
     expect(bounds.x + bounds.width).toBeCloseTo(actions.x + actions.width, 0);
     expect(bounds.height).toBeLessThan(120);
+    const watermark = page.locator("[data-testid^='tl-watermark']");
+    await expect(watermark).toBeVisible();
+    await watermark.click({ trial: true });
     await expect(page.getByTestId("page-menu.button")).toBeVisible();
     await reviewShot(page, "import-phone-progress");
 
