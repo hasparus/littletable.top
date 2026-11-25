@@ -27,6 +27,7 @@ export type ConfigEnv = {
   WORKOS_API_BASE?: string;
   WORKOS_API_KEY?: string;
   WORKOS_CLIENT_ID?: string;
+  PUBLIC_BOARD_OWNER_ID?: string;
   /**
    * The host the tabletop answers on, and the hosts that 308 to it, comma
    * separated. Without a primary host nothing redirects.
@@ -57,6 +58,7 @@ export type StandaloneConfig = {
   displayName: string;
   hosts: Hosts;
   mode: "standalone";
+  publicBoardOwnerId?: string;
   signingKey: string;
   workOs: { apiBase: string; apiKey: string; clientId: string };
 };
@@ -117,6 +119,7 @@ function hosted(env: ConfigEnv): HostedConfig {
     "DISPLAY_NAME",
     "WORKOS_API_KEY",
     "WORKOS_CLIENT_ID",
+    "PUBLIC_BOARD_OWNER_ID",
     "WORKOS_API_BASE",
   ]);
   const passAudience = present(env.PASS_AUDIENCE) ? env.PASS_AUDIENCE : "board";
@@ -165,6 +168,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
     hosts: hostsOf(env),
     mode: "standalone",
+    publicBoardOwnerId: env.PUBLIC_BOARD_OWNER_ID?.trim() || undefined,
     signingKey: pem(env.SIGNING_KEY!),
     workOs: {
       apiBase: present(env.WORKOS_API_BASE)
