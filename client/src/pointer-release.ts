@@ -15,7 +15,7 @@ const SLIDE_TIME_PER_SPEED = 2 / CONTACT_DECELERATION_PX_PER_MS2;
 const STOP_TIME_PER_SPEED = AIR_TIME_PER_SPEED + SLIDE_TIME_PER_SPEED;
 
 type Offset = { x: number; y: number };
-export type CardFlight = Offset & { duration: number };
+export type CardFlight = Offset & { duration: number; rotation: number };
 
 /** Integrate the slide velocity, which falls with the square of the remaining time. */
 export function cardTravel(speed: number, time: number) {
@@ -31,7 +31,7 @@ export function cardTravel(speed: number, time: number) {
  * velocity until contact, then kinetic friction slows it to rest. */
 export function animateCardFlight(
   element: HTMLElement,
-  offset: Offset,
+  offset: Offset & { rotation?: number },
   duration: number,
   elapsed = 0,
 ) {
@@ -46,6 +46,7 @@ export function animateCardFlight(
     return {
       offset: t / duration,
       translate: `${offset.x * remaining}px ${offset.y * remaining}px`,
+      rotate: `${-(offset.rotation ?? 0) * remaining}rad`,
       scale: String(1 + height / CAMERA_DISTANCE_PX),
     };
   };
@@ -104,7 +105,9 @@ export function trackRelease(start: Sample) {
     const speed = Math.min(MAX_LAUNCH_PX_PER_MS, RELEASE_TRANSFER * handSpeed);
     const duration = STOP_TIME_PER_SPEED * speed;
     const reach = cardTravel(speed, duration) / displacement;
-    return { x: dx * reach, y: dy * reach, duration } satisfies CardFlight;
+    const direction = Math.sign(Math.abs(dx) >= Math.abs(dy) ? dx : dy);
+    const rotation = (direction * (1 + speed / MAX_LAUNCH_PX_PER_MS) * Math.PI) / 180;
+    return { x: dx * reach, y: dy * reach, duration, rotation } satisfies CardFlight;
   }
 
   return { move, throwAt };

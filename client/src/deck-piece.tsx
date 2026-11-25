@@ -30,7 +30,7 @@ import {
 } from "./card-glide";
 import { DeckContext, type DeckDrop, type DeckPickup } from "./deck";
 import { suggestDeckGrid } from "./deck-grid";
-import { revealDeckCard } from "./deck-motion";
+import { revealDeckCard, turnFlyingBack } from "./deck-motion";
 import { playGizmoCue } from "./gizmo-feedback";
 import { useGizmoUi } from "./gizmo-ui";
 import { landPaper, liftPaper, paperLift } from "./paper-landing";
@@ -87,7 +87,14 @@ function DealtPaper({
   return <div ref={paper}>{children}</div>;
 }
 
-type CardFace = { src: string; at: number; travelX: number; travelY: number; flight?: number };
+type CardFace = {
+  src: string;
+  at: number;
+  travelX: number;
+  travelY: number;
+  flight?: number;
+  rotation?: number;
+};
 
 function LooseCard({
   id,
@@ -335,26 +342,29 @@ function DeckRevealEffect({
   const sheen = useRef<HTMLSpanElement>(null);
   const coast = useRef<HTMLDivElement>(null);
   const lastDrop = useContext(DeckContext)?.lastDrop;
-  const { src, at, travelX, travelY, flight } = face;
-  useLayoutEffect(() => {
-    if (!coast.current || flight === undefined || Math.abs(Date.now() - at) > RECENT_FLIGHT_MS)
-      return;
-    const local = lastDrop?.current;
-    const elapsed = local?.card === id ? Math.max(0, performance.now() - local.at) : 0;
-    return animateCardFlight(coast.current, { x: travelX, y: travelY }, flight, elapsed);
-  }, [at, flight, id, lastDrop, travelX, travelY]);
+  const { src, at, travelX, travelY, flight, rotation } = face;
   useLayoutEffect(() => {
     const paper = card.current,
       native = front.current;
-    if (!paper || !native || !sheen.current) return;
+    if (!paper || !native || !sheen.current || !coast.current) return;
+    const local = lastDrop?.current;
+    const age = Date.now() - at;
+    const recent = Math.abs(age) <= (flight === undefined ? RECENT_REVEAL_MS : RECENT_FLIGHT_MS);
+    const elapsed = Math.max(0, local?.card === id ? performance.now() - local.at : age);
+    const stopSlide =
+      flight !== undefined && recent
+        ? animateCardFlight(coast.current, { x: travelX, y: travelY, rotation }, flight, elapsed)
+        : undefined;
     const stop = revealDeckCard(
       paper,
       native,
       sheen.current,
       src,
-      Math.abs(Date.now() - at) <= (flight === undefined ? RECENT_REVEAL_MS : RECENT_FLIGHT_MS),
+      recent,
       flight === undefined ? travelX : 0,
       flight === undefined ? travelY : 0,
+      undefined,
+      flight === undefined ? undefined : { duration: flight, elapsed },
     );
     return () => {
       if (paper.dataset.deckWaiting === undefined) {
@@ -366,8 +376,9 @@ function DeckRevealEffect({
         );
       }
       stop();
+      stopSlide?.();
     };
-  }, [src, at, flight, travelX, travelY, rememberFace]);
+  }, [src, at, flight, id, lastDrop, rotation, travelX, travelY, rememberFace]);
   return (
     <div data-deck-flight ref={coast}>
       <div data-deck-card data-deck-waiting="" ref={card}>
@@ -413,17 +424,24 @@ function HeldPaper({
   grip: RefObject<HTMLDivElement | null>;
 }) {
   const ghost = useRef<HTMLDivElement>(null);
+  const backFace = useRef<HTMLImageElement>(null);
   const { tilt, released } = held;
   const flight = released?.flight;
   useLayoutEffect(() => {
     if (!ghost.current || !released?.flight) return;
-    const { x, y, duration } = released.flight;
-    return animateCardFlight(
+    const { x, y, duration, rotation } = released.flight;
+    const elapsed = Math.max(0, performance.now() - released.at);
+    const stopSlide = animateCardFlight(
       ghost.current,
-      { x: -x, y: -y },
+      { x: -x, y: -y, rotation },
       duration,
-      performance.now() - released.at,
+      elapsed,
     );
+    const stopTurn = backFace.current && turnFlyingBack(backFace.current, duration, elapsed);
+    return () => {
+      stopSlide?.();
+      stopTurn?.();
+    };
   }, [released]);
   useLayoutEffect(() => {
     const target = grip.current;
@@ -439,9 +457,9 @@ function HeldPaper({
       style={{
         width: held.width,
         height: held.height,
-        left: held.x + (flight?.x ?? 0),
-        top: held.y + (flight?.y ?? 0),
-        transform: `translate(-50%, -50%) rotate(${held.angle}rad)`,
+        left: held.x + (flight?.x ?? 0) - held.width / 2,
+        top: held.y + (flight?.y ?? 0) - held.height / 2,
+        transform: `rotate(${held.angle + (flight?.rotation ?? 0)}rad)`,
       }}
     >
       <div
@@ -454,6 +472,7 @@ function HeldPaper({
       >
         <img
           data-deck-paper
+          ref={backFace}
           alt=""
           draggable={false}
           src={back}
@@ -616,7 +635,7 @@ function DeckDraw({ id, back }: { id: BoardImage["id"]; back: string }) {
     void actions
       .draw(editor, id, point, origin, {
         pickup: start.pickup,
-        flight: flight ? { duration: flight.duration } : undefined,
+        flight: flight ? { duration: flight.duration, rotation: flight.rotation } : undefined,
         faceDown: !flight,
         release: { at, track, grip: gripPoint },
       })
@@ -740,6 +759,7 @@ export class DeckImageUtil extends ImageUtil {
             at: meta.deckTurnedAt ?? meta.deckDealtAt,
             travelX: meta.deckTurnedAt === undefined ? meta.deckTravelX : 0,
             travelY: meta.deckTurnedAt === undefined ? meta.deckTravelY : 0,
+            rotation: meta.deckFlightRotation,
             flight: meta.deckTurnedAt === undefined ? meta.deckFlightDuration : undefined,
           }}
         />

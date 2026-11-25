@@ -8,6 +8,7 @@ import type { DeckManifest, InstalledGizmo } from "./gizmo-packages";
 
 import {
   cardFlightDuration,
+  cardFlightRotation,
   dealtDeckCard,
   type DeckDropResult,
   type DeckReveal,
@@ -89,7 +90,10 @@ const deckDeal = T.object({
   action: T.literal("draw"),
   deck: imageId,
   faceDown: T.boolean.optional(),
-  flight: T.object({ duration: cardFlightDuration }).optional(),
+  flight: T.object({
+    duration: cardFlightDuration,
+    rotation: cardFlightRotation.optional(),
+  }).optional(),
   grid: deckGrid.optional(),
   id: requestId,
   language,
@@ -602,6 +606,7 @@ function flipDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     deckTravelX: _x,
     deckTravelY: _y,
     deckFlightDuration: _flight,
+    deckFlightRotation: _spin,
     ...previous
   } = image.meta;
   drawing.set(asset.id, asset);
@@ -662,7 +667,7 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     : (state.grids?.[page] ?? establishGrid(command, stackHeight, widest));
   const height = grid?.height ?? stackHeight;
   const destination = grid === undefined ? command.point : dealPoint(drawing, page, grid);
-  const rotation = command.precise ? placement.rotation : 0;
+  const rotation = command.precise ? placement.rotation + (flight?.rotation ?? 0) : 0;
   const dx = command.precise && !flight ? 0 : command.origin.x - destination.x;
   const dy = command.precise && !flight ? 0 : command.origin.y - destination.y;
   const travelX = dx * Math.cos(rotation) + dy * Math.sin(rotation);
@@ -684,7 +689,10 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
           deckFaceId: card.id,
           deckTravelX: travelX,
           deckTravelY: travelY,
-          ...(flight && { deckFlightDuration: flight.duration }),
+          ...(flight && {
+            deckFlightDuration: flight.duration,
+            deckFlightRotation: flight.rotation ?? 0,
+          }),
         },
     name,
     page,

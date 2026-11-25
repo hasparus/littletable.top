@@ -185,20 +185,26 @@ describe("installable physical decks", () => {
       origin,
       point,
       precise: true,
-      flight: { duration: 489 },
+      flight: { duration: 489, rotation: Math.PI / 90 },
     };
     expect(command({ ...drawn, precise: false })).toBeNull();
     expect(command({ ...drawn, faceDown: true })).toBeNull();
     expect(() => command({ ...drawn, flight: { duration: 501 } })).toThrow();
+    expect(() => command({ ...drawn, flight: { duration: 489, rotation: 1 } })).toThrow();
     const result = revealed(command(drawn));
     const card = dealtCardId(deck, id);
     const landed = records.get(card);
     if (landed?.typeName !== "shape" || landed.type !== "image") throw new Error("Card is missing");
-    expect(landed.x - landed.props.h / 2).toBeCloseTo(point.x);
-    expect(landed.y + landed.props.w / 2).toBeCloseTo(point.y);
+    expect(landed.rotation).toBeCloseTo(Math.PI / 2 + drawn.flight.rotation);
+    const cos = Math.cos(landed.rotation);
+    const sin = Math.sin(landed.rotation);
+    const { w, h } = landed.props;
+    expect(landed.x + (w * cos - h * sin) / 2).toBeCloseTo(point.x);
+    expect(landed.y + (w * sin + h * cos) / 2).toBeCloseTo(point.y);
+    expect(landed.meta.deckFlightRotation).toBe(drawn.flight.rotation);
     expect(landed.meta.deckFlightDuration).toBe(489);
-    expect(landed.meta.deckTravelX).toBeCloseTo(-110);
-    expect(landed.meta.deckTravelY).toBeCloseTo(160);
+    expect(landed.meta.deckTravelX).toBeCloseTo(-160 * cos - 110 * sin);
+    expect(landed.meta.deckTravelY).toBeCloseTo(160 * sin - 110 * cos);
     expect(revealed(command({ ...drawn, flight: { duration: 170 } }))).toBe(result);
     expect(records.get(card)).toBe(landed);
     expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
@@ -207,6 +213,8 @@ describe("installable physical decks", () => {
     const reversed = records.get(card);
     if (reversed?.typeName !== "shape") throw new Error("Card is missing");
     expect(reversed.meta).not.toHaveProperty("deckFlightDuration");
+    expect(reversed.meta).not.toHaveProperty("deckFlightRotation");
+    expect(reversed.rotation).toBe(landed.rotation);
   });
 
   it("reserves the exact top card without consuming it on cancellation", () => {

@@ -51,6 +51,10 @@ export const cardFlightDuration = T.number.check((duration) => {
   if (duration <= 0 || duration > 500) throw new Error("Invalid card flight duration");
 });
 
+export const cardFlightRotation = T.number.check((radians) => {
+  if (Math.abs(radians) > Math.PI / 90) throw new Error("Invalid card flight rotation");
+});
+
 export const dealtDeckCard = T.object({
   deckId: T.string,
   deckFace: deckArt,
@@ -59,6 +63,7 @@ export const dealtDeckCard = T.object({
   deckTravelX: T.number,
   deckTravelY: T.number,
   deckFlightDuration: cardFlightDuration.optional(),
+  deckFlightRotation: cardFlightRotation.optional(),
   deckTurnedAt: T.number.optional(),
   deckCardId: T.string.optional(),
   deckFaceId: T.string.optional(),

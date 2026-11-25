@@ -164,7 +164,7 @@ function useDeckActions(canDeal: boolean, send: Transport) {
         point: { x: point.x, y: point.y },
         precise: !!options.release,
         ...(options.grid && { grid: options.grid }),
-        ...(options.flight && { flight: { duration: options.flight.duration } }),
+        ...(options.flight && { flight: options.flight }),
         ...(options.faceDown && { faceDown: true }),
         ...(options.pickup && { prepared: true }),
       };

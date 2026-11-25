@@ -36,23 +36,75 @@ function expectCoast(release: Point, rest: Point, direction: Point) {
   expect(forward).toBeGreaterThan(distance * 0.95);
 }
 
+type CardFrame = { x: number; angle: number };
+type FlightSample = CardFrame & { tilt: number };
+
+function cardAngle(card: Locator) {
+  return card.evaluate((paper) => {
+    const container = paper.closest("[data-shape-id]")!;
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(container).transform);
+    return (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+  });
+}
+
+function expectTurn(start: number, end: number, direction: number) {
+  const degrees = (end - start) * Math.sign(direction);
+  expect(degrees).toBeGreaterThanOrEqual(0.98);
+  expect(degrees).toBeLessThanOrEqual(2.02);
+}
+
+function expectTurningInFlight(
+  frames: CardFrame[],
+  releaseX: number,
+  rest: CardFrame,
+  initialAngle: number,
+) {
+  const progressed = frames.some(({ x, angle }) => {
+    const travel = (x - releaseX) / (rest.x - releaseX);
+    const turn = (angle - initialAngle) / (rest.angle - initialAngle);
+    return travel > 0.05 && travel < 0.9 && turn > 0.05 && turn < 0.95;
+  });
+  expect(progressed).toBe(true);
+}
+
 function trackCardAfterRelease(page: Page, selector: string) {
   return page.evaluate(
     (selector) =>
-      new Promise<number[]>((resolve) => {
+      new Promise<FlightSample[]>((resolve) => {
         document.addEventListener(
           "pointerup",
           () => {
-            const xs: number[] = [];
+            const frames: FlightSample[] = [];
             const released = performance.now();
             function sample() {
               const paper = document.querySelector(selector);
               if (paper) {
                 const box = paper.getBoundingClientRect();
-                xs.push(box.x + box.width / 2);
+                let angle = 0;
+                for (let node: Element | null = paper; node; node = node.parentElement) {
+                  if (
+                    !node.matches(
+                      "[data-shape-id], [data-deck-flight], [data-deck-loose-flight], [data-deck-ghost]",
+                    )
+                  )
+                    continue;
+                  const style = getComputedStyle(node);
+                  if (style.transform !== "none") {
+                    const matrix = new DOMMatrixReadOnly(style.transform);
+                    angle += (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+                  }
+                  if (style.rotate !== "none") angle += Number.parseFloat(style.rotate);
+                }
+                const back = paper.matches("[data-deck-waiting]")
+                  ? paper
+                  : paper.querySelector("img[data-deck-paper]");
+                const transform = back && getComputedStyle(back).transform;
+                const tilt =
+                  transform && transform !== "none" ? new DOMMatrixReadOnly(transform).m13 : 0;
+                frames.push({ x: box.x + box.width / 2, angle, tilt });
               }
               if (performance.now() - released < 500) requestAnimationFrame(sample);
-              else resolve(xs);
+              else resolve(frames);
             }
             requestAnimationFrame(sample);
           },
@@ -220,6 +272,7 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
     const ownerStart = await cardCenter(loose);
     const ownerBox = (await loose.boundingBox())!;
     const guestBox = (await guestBack.boundingBox())!;
+    const guestStartAngle = await cardAngle(guestBack);
     const guestStart = { x: guestBox.x + guestBox.width / 2, y: guestBox.y + guestBox.height / 2 };
     await dragCard(
       guest,
@@ -231,6 +284,8 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
       42,
     );
     const guestRest = await cardCenter(guestBack);
+    const guestAngle = await cardAngle(guestBack);
+    expectTurn(guestStartAngle, guestAngle, 75);
     expectCoast({ x: guestStart.x + 8, y: guestStart.y + 75 }, guestRest, { x: 8, y: 75 });
     const zoomRatio = ownerBox.width / guestBox.width;
     await expect
@@ -242,6 +297,8 @@ test("a loose face-down card survives rejoining and reveals the face prepared at
     await guest.reload();
     await expect(guestBack).toBeVisible();
     await expect.poll(() => cardCenter(guestBack)).toEqual(guestRest);
+    await expect.poll(() => cardAngle(guestBack)).toBeCloseTo(guestAngle, 2);
+    await expect.poll(() => cardAngle(loose)).toBeCloseTo(guestAngle, 2);
     await guestBack.getByRole("button", { name: "Turn card over" }).click();
     const guestFace = guest.locator("[data-deck-front]").getByRole("img", { name: /./u });
     await expect(guestFace).toHaveCount(1);
@@ -332,6 +389,7 @@ test("quick deals coast past the hand and loose cards slide without changing sid
     530,
   );
   const parked = (await down.boundingBox())!;
+  expect(await cardAngle(down)).toBeCloseTo(0, 2);
   expect(Math.abs(parked.x - near.x - shift.dx)).toBeLessThan(2);
   expect(Math.abs(parked.y - near.y - shift.dy)).toBeLessThan(2);
   await dragCard(page, { x, y }, path, 225);
@@ -341,6 +399,8 @@ test("quick deals coast past the hand and loose cards slide without changing sid
   await expect(count).toHaveText("76");
 
   const up = (await dealt.boundingBox())!;
+  const dealtAngle = await cardAngle(dealt);
+  expectTurn(0, dealtAngle, offset - 140);
   expectCoast(
     { x: rect.x + rect.width / 2 + offset, y: rect.y + rect.height / 2 },
     { x: up.x + up.width / 2, y: up.y + up.height / 2 },
@@ -356,6 +416,7 @@ test("quick deals coast past the hand and loose cards slide without changing sid
     315,
   );
   const shifted = (await dealt.boundingBox())!;
+  expect(await cardAngle(dealt)).toBeCloseTo(dealtAngle, 2);
   expect(Math.abs(shifted.y - up.y - 75)).toBeLessThan(2);
   await expect(down).toHaveCount(1);
 
@@ -366,6 +427,7 @@ test("quick deals coast past the hand and loose cards slide without changing sid
     [down, "[data-deck-down]", backCenter, -80, -50],
     [dealt, "[data-deck-card]", frontCenter, 80, 20],
   ] as const) {
+    const initialAngle = await cardAngle(card);
     const frames = trackCardAfterRelease(page, selector);
     await dragCard(
       page,
@@ -378,12 +440,13 @@ test("quick deals coast past the hand and loose cards slide without changing sid
     );
     await expect(down).toHaveCount(1);
     await expect(dealt).toHaveCount(1);
-    const xs = await frames;
+    const sampled = await frames;
     const release = { x: start.x + dx, y: start.y + dy };
     const rest = await cardCenter(card);
     expectCoast(release, rest, { x: dx, y: dy });
-    const progress = xs.map((x) => (x - release.x) / (rest.x - release.x));
-    expect(progress.some((fraction) => fraction > 0.05 && fraction < 0.9)).toBe(true);
+    const angle = await cardAngle(card);
+    expectTurn(initialAngle, angle, dx);
+    expectTurningInFlight(sampled, release.x, { x: rest.x, angle }, initialAngle);
   }
   await expect(count).toHaveText("76");
 });
@@ -435,7 +498,7 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
 }) => {
   await page.setViewportSize({ width: 650, height: 720 });
   const faceArt = /\/gizmos\/tarot\/art\/(?!back\.webp)[^/]+\.webp$/;
-  let fullMotionRest: Point | undefined;
+  let fullMotionRest: (Point & { angle: number }) | undefined;
 
   for (const reducedMotion of ["no-preference", "reduce"] as const) {
     await page.emulateMedia({ reducedMotion });
@@ -454,7 +517,8 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
     const release = { x: start.x + dx, y: start.y + 35 };
     const requested = page.waitForRequest(faceArt);
     const frames = trackCardAfterRelease(page, "[data-deck-card], [data-deck-ghost]");
-    let rest: Point;
+    const initialAngle = await cardAngle(top);
+    let rest: Point & { angle: number };
     try {
       await dragCard(
         page,
@@ -470,18 +534,21 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
           await expect(page.locator("[data-deck-base]")).toHaveText("78");
         },
       );
-      const xs = await frames;
+      const sampled = await frames;
       await expect(page.locator("[data-deck-card][data-deck-waiting]")).toHaveCount(1);
       await expect(card.locator("[data-deck-turn]")).toBeVisible();
       await expect(front).toBeHidden();
       await expect(page.locator("[data-deck-ghost], [data-deck-down]")).toHaveCount(0);
-      rest = await cardCenter(card);
+      rest = { ...(await cardCenter(card)), angle: await cardAngle(card) };
+      expectTurn(initialAngle, rest.angle, dx);
       expectCoast(release, rest, { x: dx, y: 35 });
       if (reducedMotion === "no-preference") {
-        const progress = xs.map((x) => (x - release.x) / (rest.x - release.x));
-        expect(progress.some((fraction) => fraction > 0.05 && fraction < 0.9)).toBe(true);
+        expectTurningInFlight(sampled, release.x, rest, initialAngle);
+        expect(sampled.some(({ tilt }) => Math.abs(tilt) > 0.4)).toBe(true);
         fullMotionRest = rest;
       } else {
+        expect(sampled.every(({ tilt }) => Math.abs(tilt) < 0.01)).toBe(true);
+        expect(rest.angle).toBeCloseTo(fullMotionRest!.angle, 2);
         expect(rest.x).toBeCloseTo(fullMotionRest!.x, 0);
         expect(rest.y).toBeCloseTo(fullMotionRest!.y, 0);
       }
@@ -489,6 +556,7 @@ test("a tossed back coasts while the artwork loads and settles at the same spot 
       allowArt.resolve(true);
     }
     await expect(front).toBeVisible();
+    expect(await cardAngle(card)).toBeCloseTo(rest.angle, 2);
     await expect(card).toHaveCount(1);
     const face = front.locator("img");
     const request = await requested;

@@ -50,6 +50,8 @@ it("coasts in the release direction, flying under gravity and slowing after cont
   const hand = trackRelease(point(0, 100, 100));
   const flight = hand.throwAt(point(40, 76, 132))!;
   // The established landing point for this diagonal flick is 82.03 px from release.
+  expect(flight.rotation).toBeGreaterThan(Math.PI / 180);
+  expect(flight.rotation).toBeLessThan(Math.PI / 90);
   expect(flight.x).toBeCloseTo(-49.22, 0);
   expect(flight.y).toBeCloseTo(65.63, 0);
 });
@@ -58,6 +60,9 @@ it("lets a hard flick bleed off speed over its final 200 ms", () => {
   const flight = trackRelease(point(0, 0)).throwAt(point(20, 1000))!;
   expect(flight.x).toBeCloseTo(145.83, 0);
   expect(flight.y).toBe(0);
+  expect(flight.rotation).toBeCloseTo(Math.PI / 90);
+  const left = trackRelease(point(0, 0)).throwAt(point(20, -1000))!;
+  expect(left.rotation).toBe(-flight.rotation);
   expect(flight.duration).toBeGreaterThan(470);
   expect(flight.duration).toBeLessThan(500);
 
