@@ -66,7 +66,7 @@ const escapeHtml = (text: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-const LANDING_PREVIEW = `<section data-landing-preview lang="en" aria-label="${escapeHtml(LANDING_COPY.publicBoard)}">${LANDING_COPY.publicStory
+const LANDING_PREVIEW = `<section data-landing-preview data-prerendered lang="en" aria-label="${escapeHtml(LANDING_COPY.publicBoard)}">${LANDING_COPY.publicStory
   .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
   .join("")}<footer>${escapeHtml(LANDING_COPY.publicExpiry)}</footer></section>`;
 

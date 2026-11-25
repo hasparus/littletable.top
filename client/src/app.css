@@ -55,6 +55,15 @@ body {
   visibility: hidden;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:has([data-landing-preview][data-prerendered]) {
+    color-scheme: dark;
+    --color-background: var(--dark-board-background);
+    --color-foreground: var(--dark-board-foreground);
+    --color-foreground-muted: var(--dark-board-muted);
+  }
+}
+
 body:has([data-landing-preview]) {
   background-color: var(--color-background);
 }

@@ -219,6 +219,20 @@ test("the landing introduction keeps its typography and position when the board 
   }
 });
 
+test("the prerendered landing intro uses dark mode before JavaScript runs", async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: "dark", javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(STANDALONE);
+    const intro = page.locator("[data-landing-preview]");
+    await expect(intro).toBeVisible();
+    await expect(intro).toHaveCSS("color", "rgb(250, 250, 250)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(10, 10, 10)");
+  } finally {
+    await context.close();
+  }
+});
+
 test("the home page is one editable public board for anonymous visitors", async ({
   browser,
   page,
