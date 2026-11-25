@@ -57,6 +57,7 @@ export function Sheet({
   const sheet = useRef<HTMLElement>(null);
   const aboveKeyboard = useAboveKeyboard();
   const hasField = field !== undefined;
+  const isChat = panel === "chat";
 
   // Focus moves in, and goes back to whatever opened the sheet.
   useEffect(() => {
@@ -89,14 +90,16 @@ export function Sheet({
       <section
         aria-label={hasField ? title : undefined}
         aria-labelledby={hasField ? undefined : heading}
-        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:w-88 sm:-translate-x-1/2 ${hasField ? "gap-2 p-2" : ""}`}
+        className={`fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--board-sheet-bottom) z-50 flex max-h-[min(70dvh,36rem)] flex-col rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-20 sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2 ${isChat ? "sm:w-96" : "sm:w-88"} ${hasField ? "gap-2 p-2" : ""}`}
         id={PANEL_ID[panel]}
         ref={sheet}
         role="dialog"
         style={aboveKeyboard}
         tabIndex={-1}
       >
-        <header className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"}`}>
+        <header
+          className={`flex items-center gap-2 ${hasField ? "" : "py-1 pr-1 pl-4"} ${isChat ? "shrink-0 border-b border-border" : ""}`}
+        >
           {field ?? (
             <h2 className="flex-1 text-lg font-semibold outline-none" id={heading} tabIndex={-1}>
               {title}
@@ -112,7 +115,11 @@ export function Sheet({
           </button>
         </header>
         <div
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${hasField ? "" : "px-4 pb-4"}`}
+          className={
+            isChat
+              ? "flex min-h-0 flex-1 flex-col"
+              : `min-h-0 flex-1 overflow-y-auto overscroll-contain ${hasField ? "" : "px-4 pb-4"}`
+          }
         >
           {children}
         </div>
