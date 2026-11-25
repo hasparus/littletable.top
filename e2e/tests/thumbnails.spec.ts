@@ -118,6 +118,13 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
     HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
       toBlob.call(this, callback, type === "image/webp" ? "image/png" : type, quality);
     };
+    const send = globalThis.fetch;
+    globalThis.fetch = (url, init) => {
+      if (typeof url === "string" && url.endsWith("/thumbnail") && init?.body instanceof Blob) {
+        Reflect.set(globalThis, "__thumbnail", init.body);
+      }
+      return send(url, init);
+    };
   });
   // WebKit does not keep Secure sign-in cookies over the test server's HTTP
   // connection. Use the API fixture's real session for the owner's requests.
@@ -128,7 +135,19 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
   const signedIn = await request.get(authorize.toString());
   expect(signedIn.url()).toBe(`${STANDALONE}/boards`);
   await page.route(`${STANDALONE}/api/**`, async (route) => {
-    const response = await request.fetch(route.request());
+    const outgoing = route.request();
+    // WebKit's intercepted request does not expose the Blob body. Forward the
+    // actual encoded bytes that the browser passed to fetch.
+    const data =
+      outgoing.method() === "PUT" && outgoing.url().endsWith("/thumbnail")
+        ? Buffer.from(
+            await page.evaluate(async () => {
+              const { __thumbnail } = globalThis as unknown as { __thumbnail: Blob };
+              return [...new Uint8Array(await __thumbnail.arrayBuffer())];
+            }),
+          )
+        : undefined;
+    const response = await request.fetch(outgoing, { data });
     await route.fulfill({ response });
   });
   await page.goto(`${STANDALONE}/boards`);
@@ -168,15 +187,6 @@ test("a thumbnail shows a remote drawing on another page and clears when it is e
     await page.reload();
     await expect(dice).toBeVisible();
     await page.route("**/api/boards/*/thumbnail", (route) => route.fulfill({ status: 204 }));
-    await page.evaluate(() => {
-      const fetchThumbnail = globalThis.fetch;
-      globalThis.fetch = (url, init) => {
-        if (typeof url === "string" && url.endsWith("/thumbnail") && init?.body instanceof Blob) {
-          Reflect.set(globalThis, "__thumbnail", init.body);
-        }
-        return fetchThumbnail(url, init);
-      };
-    });
     const cleared = page.waitForRequest(
       (request) => request.method() === "PUT" && request.url().endsWith("/thumbnail"),
     );
