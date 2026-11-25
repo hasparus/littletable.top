@@ -1,0 +1,30 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "spotlight-shader-research",
+      "dependencies": {
+        "@typegpu/kit": "0.1.0",
+        "typegpu": "0.12.11",
+      },
+    },
+  },
+  "packages": {
+    "@typegpu/color": ["@typegpu/color@0.12.2", "", { "peerDependencies": { "typegpu": "^0.12.10" } }, "sha512-wE3pZnKARS3yKIJqDpmGG3Gj8mGb8qe2TNtwicx5ERf1ksEVwUE4vN3xnJhpS4WmCjHrsPE9OzPSQk+79v0M8A=="],
+
+    "@typegpu/kit": ["@typegpu/kit@0.1.0", "", { "dependencies": { "wgpu-matrix": "^3.4.2" }, "peerDependencies": { "@pmndrs/glyph": "^0.1.0", "@typegpu/color": "^0.12.2", "@typegpu/noise": "^0.12.1", "react": ">=19", "react-native": ">=0.88.1", "react-native-webgpu": ">=0.21.1", "react-native-worklets": ">=0.13.1", "typegpu": "^0.12.11", "vitest": "^5.1.1", "webgpu": "^0.6.2" }, "optionalPeers": ["@pmndrs/glyph", "react", "react-native", "react-native-webgpu", "react-native-worklets", "vitest", "webgpu"], "bin": { "typegpu-kit-bake-font": "./dist/text/bake.js" } }, "sha512-OpX5CuVEcWXo82/UBX6iyPSNz9dVK86d3nOxI2aHOvqfOlnxZp7nUtL9nzxUT2DgvX+484/DVFlNIku1CtPjzQ=="],
+
+    "@typegpu/noise": ["@typegpu/noise@0.12.1", "", { "peerDependencies": { "typegpu": "^0.12.7" } }, "sha512-0WAQ/UwrOboCe9JsNbxxf19hht6XwESjPajHswRp6MD3j6CGHwZNFy8rbGCRfoOGDYop6iDDXCdfcRsNNc05Nw=="],
+
+    "tinyest": ["tinyest@0.3.4", "", {}, "sha512-81EcMHTCQ2IPweOGk9SpMgjbenR9ZJRsAE84btEv0DhvVKwhe7qBy28hWgatoXa9ppWzmtpHiJ+e86SiaAtY6w=="],
+
+    "tsover-runtime": ["tsover-runtime@0.0.7", "", {}, "sha512-FHHwMJzZbnP23+fU1PxXljy7j0RRRosL2r1/CRUNTqfW+l7m35JsUkM615x/cAzw4GqRdXPIl3axKMj9qzpZtQ=="],
+
+    "typed-binary": ["typed-binary@4.3.5", "", {}, "sha512-irziT9zxcyZs8TawuZBab1kQTACM3Q6wGWDh/a5IB2iWbueu+jbkN5ofoSvp28Em1w4ZEa7y44Jx7pHmgBGZdw=="],
+
+    "typegpu": ["typegpu@0.12.11", "", { "dependencies": { "tinyest": "~0.3.4", "tsover-runtime": "^0.0.7", "typed-binary": "^4.3.4" }, "bin": { "typegpu": "./bin.mjs" } }, "sha512-C2ytNE3KrJddfapKHS0uhLEtEHE7hmujHYMF8+5ZNs14X4DNXar/SoSVLCE6rru+rqRZz5HuCVZHugP8l02OPw=="],
+
+    "wgpu-matrix": ["wgpu-matrix@3.4.2", "", {}, "sha512-IfZFbG7olEYBD76VCZy2TzqM57GKy3LT++AZh37tMHPPByO6R2h61zXGBZFNPi2IzxNivNi8y5dvze5PjaczjA=="],
+  }
+}

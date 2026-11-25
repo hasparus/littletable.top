@@ -110,6 +110,7 @@ lab.innerHTML = `
       <p class="lab-caption">Scene pressure</p>
       <p id="lab-value"></p>
       <div id="lab-ticks" aria-hidden="true"></div>
+      <canvas id="lab-pressure-clock" width="288" height="48" aria-hidden="true" hidden></canvas>
       <button type="button" id="lab-step">Pass and run rule</button>
       <span id="lab-effect" role="status"></span>
     </div>
@@ -161,6 +162,7 @@ function render() {
     }),
   );
   el("value").textContent = `${pressure} / 6`;
+  el("pressure-clock").dispatchEvent(new Event("pressurechange"));
   el("ticks").replaceChildren(
     ...Array.from({ length: 6 }, (_, i) => {
       const tick = document.createElement("span");
@@ -223,3 +225,13 @@ el("step").addEventListener("click", () => markMoment(queue[0]));
 role.addEventListener("change", render);
 el("reset").addEventListener("click", reset);
 reset();
+
+if (navigator.gpu) {
+  try {
+    const { showSpotlightClock } = await import("./spotlight-gpu.js");
+    await showSpotlightClock(el("pressure-clock"), el("ticks"), () => pressure);
+  } catch {
+    el("pressure-clock").hidden = true;
+    el("ticks").hidden = false;
+  }
+}

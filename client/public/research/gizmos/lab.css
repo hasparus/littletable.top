@@ -215,3 +215,13 @@
     padding: 0.7rem;
   }
 }
+
+#gizmo-lab #lab-ticks[hidden] {
+  display: none;
+}
+#gizmo-lab #lab-pressure-clock {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  margin: 0.4rem 0 1rem;
+}
