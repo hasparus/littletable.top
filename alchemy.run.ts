@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import { Tabletop } from "./alchemy/index.js";
+import { httpsOrigin } from "./src/mcp/origin.ts";
 
 // Little Table: this repository's own standalone copy, on a domain of its
 // own (littletable.top in production). Stages prod and staging get custom
@@ -30,10 +31,16 @@ export default Alchemy.Stack(
             questionId: yield* Config.String("POSTHOG_FEEDBACK_QUESTION_ID"),
           }
         : undefined;
-    const mcpIssuer = yield* Config.String("MCP_AUTHKIT_ORIGIN").pipe(Config.withDefault(""));
+    const configuredIssuer = yield* Config.String("MCP_AUTHKIT_ORIGIN").pipe(
+      Config.withDefault(""),
+    );
     const mcpDomain = yield* Config.String("MCP_DOMAIN").pipe(Config.withDefault(""));
-    if ((mcpIssuer === "") !== (mcpDomain === "")) {
+    if ((configuredIssuer === "") !== (mcpDomain === "")) {
       throw new Error("Set MCP_AUTHKIT_ORIGIN and MCP_DOMAIN together");
+    }
+    const mcpIssuer = httpsOrigin(configuredIssuer);
+    if (configuredIssuer !== "" && mcpIssuer === null) {
+      throw new Error("Set MCP_AUTHKIT_ORIGIN to the HTTPS issuer origin");
     }
     const tabletop = yield* Tabletop("Tabletop", {
       displayName: "Little Table",
@@ -42,7 +49,7 @@ export default Alchemy.Stack(
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
       mcp:
-        mcpIssuer === ""
+        mcpIssuer === null
           ? undefined
           : {
               authorizationServer: mcpIssuer,
