@@ -157,7 +157,7 @@ jobs:
 
       - name: Bundle preview
         env:
-          TLDRAW_LICENSE_KEY: ${{ vars.PREVIEW_TLDRAW_LICENSE_KEY }}
+          TLDRAW_LICENSE_KEY: ${{ vars.PREVIEW_TLDRAW_LICENSE_KEY || vars.TLDRAW_LICENSE_KEY }}
           WRANGLER_SEND_METRICS: "false"
         run: |
           if [ -z "$TLDRAW_LICENSE_KEY" ]; then
@@ -193,6 +193,8 @@ jobs:
           overwrite: true
 
   preview:
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     name: ${{ github.event.action == 'closed' && 'Remove' || 'Deploy' }} preview
     needs: [authorize, build]
     if: >-
@@ -282,3 +284,30 @@ jobs:
           : "${CLOUDFLARE_ACCOUNT_ID:?Set preview variable CLOUDFLARE_ACCOUNT_ID}"
           : "${CLOUDFLARE_API_TOKEN:?Set preview secret CLOUDFLARE_API_TOKEN}"
           ./node_modules/.bin/alchemy destroy --config alchemy.preview.ts --stage "$STAGE" --yes
+
+  smoke:
+    name: Check deployed whiteboard
+    needs: [build, preview]
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - name: Open the deployed public board
+        env:
+          PREVIEW_URL: ${{ needs.preview.outputs.url }}
+        run: bunx playwright test -c e2e/preview/playwright.config.ts

@@ -83,7 +83,7 @@ Configure the `preview` Environment with the Cloudflare and non-production
 WorkOS values above. Previews generate their own signing keys and use workers.dev,
 so the Cloudflare token can omit zone permissions. Set the repository variable
 `PREVIEW_TLDRAW_LICENSE_KEY` to a tldraw key valid on the account's workers.dev
-subdomain. Configure WorkOS redirect URLs for the preview hosts.
+subdomain, or use the existing repository variable `TLDRAW_LICENSE_KEY` if it covers that domain. Configure WorkOS redirect URLs for the preview hosts.
 Use only non-production WorkOS data because preview code can access the WorkOS
 application configured for it.
 
