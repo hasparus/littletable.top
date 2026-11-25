@@ -1,5 +1,5 @@
 import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
-import { useEffect, useMemo } from "react";
+import { type Ref, useEffect, useMemo } from "react";
 import {
   type Editor,
   EmbedShapeUtil,
@@ -48,6 +48,7 @@ const PUBLIC_BINDING_UTILS = [PublicArrowBindingUtil];
 
 export function BoardEditors({
   active,
+  editorLayerRef,
   overlay,
   showUi,
   landing,
@@ -57,6 +58,7 @@ export function BoardEditors({
   store,
 }: {
   active: boolean;
+  editorLayerRef: Ref<HTMLDivElement>;
   overlay: boolean;
   showUi: boolean;
   landing?: PublicLanding;
@@ -85,7 +87,12 @@ export function BoardEditors({
 
   // WARNING: Keep the foreground editor isolated so tldraw's z-index 300 UI cannot cover the board's sheets.
   return (
-    <div className="absolute inset-0 isolate" data-board-editor inert={!active}>
+    <div
+      className="absolute inset-0 isolate"
+      data-board-editor
+      inert={!active}
+      ref={editorLayerRef}
+    >
       <Tldraw
         {...MEDIA_PROPS}
         assetUrls={assetUrls}
