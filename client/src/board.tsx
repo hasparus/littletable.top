@@ -67,7 +67,7 @@ function ReadyBoard({
   const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
   useEffect(() => () => view?.store.dispose(), [view]);
   return (
-    <>
+    <div data-board-layout>
       <BoardCanvas
         active={!editingSecret}
         copy={copy}
@@ -117,7 +117,7 @@ function ReadyBoard({
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

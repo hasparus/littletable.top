@@ -42,6 +42,9 @@
 [data-board-shell] {
   /* One-finger scrolling remains available. The canvas handles its own pinch. */
   touch-action: pan-x pan-y;
+}
+
+[data-board-layout] {
   --board-gutter: 12px;
   --board-left: max(var(--board-gutter), env(safe-area-inset-left));
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
@@ -120,7 +123,7 @@
 }
 
 @media (width < 640px) {
-  [data-board-shell] {
+  [data-board-layout] {
     --board-gutter: 4px;
     --board-bottom-gap: 4px;
     --board-tool-size: min(
@@ -163,7 +166,7 @@
 }
 
 @media (width >= 700px) {
-  [data-board-shell] {
+  [data-board-layout] {
     --board-watermark-width: 108px;
   }
 }
@@ -201,7 +204,7 @@
   }
 }
 
-[data-public-board] .tlui-menu-zone {
+[data-board-editor] .tlui-menu-zone {
   min-height: var(--board-top-control-size);
   margin: var(--board-top) 0 0 var(--board-left);
   border: 0;
@@ -210,15 +213,27 @@
   box-shadow: var(--tl-shadow-2);
 }
 
-[data-public-board] .tlui-menu-zone .tlui-button {
+[data-board-editor] .tlui-menu-zone .tlui-button {
   min-height: var(--board-top-control-size);
+}
+
+/* Use the same guides on both sides of the canvas. Leave the first row
+   available for the account or layer controls when they are present. */
+[data-board-editor] .tlui-style-panel__wrapper {
+  margin: var(--board-style-panel-top, var(--board-top)) var(--board-right) 0 0;
+}
+
+[data-board-layout]:has(> [data-secret-layer-toggle]),
+[data-board-shell]:has(> [data-public-board-controls]) {
+  --board-style-panel-top: calc(var(--board-top) + var(--board-top-control-size) + 8px);
 }
 
 [data-public-board-controls] {
   inset: var(--board-top) var(--board-right) auto auto;
 }
 
-[data-public-board-controls] > :is(a, button) {
+[data-public-board-controls] > :is(a, button),
+[data-secret-layer-toggle] {
   display: grid;
   min-height: var(--board-top-control-size);
   align-items: center;
@@ -239,11 +254,13 @@
 }
 
 [data-public-board-controls] > :is(a, button):hover,
+[data-secret-layer-toggle]:hover,
 [data-public-board-chat][aria-expanded="true"] {
   background: var(--color-bg-tertiary);
 }
 
-[data-public-board-controls] > :is(a, button):focus-visible {
+[data-public-board-controls] > :is(a, button):focus-visible,
+[data-secret-layer-toggle]:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
@@ -251,32 +268,15 @@
 [data-secret-layer-toggle] {
   position: fixed;
   z-index: 20;
-  top: max(4px, env(safe-area-inset-top));
-  right: max(4px, env(safe-area-inset-right));
-  min-height: 44px;
+  inset: var(--board-top) var(--board-right) auto auto;
   padding-inline: 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 11px;
-  background: var(--color-bg-secondary);
-  color: var(--color-foreground);
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
-}
-
-[data-secret-layer-toggle]:hover {
-  background: var(--color-bg-tertiary);
 }
 
 [data-secret-layer-toggle][aria-pressed="true"] {
   border-color: var(--color-primary-strong);
   background: var(--color-primary-light);
   color: var(--color-primary-strong);
-}
-
-[data-secret-layer-toggle]:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
 }
 
 [data-public-board-note] {
