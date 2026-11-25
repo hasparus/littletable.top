@@ -22,6 +22,7 @@ export type ConfigEnv = {
   SIGNING_KEY?: string;
   // Standalone: the WorkOS application people sign in through, its API
   // key (a secret), and the API's address (tests point it at a fake).
+  MCP_RESOURCE?: string;
   WORKOS_API_BASE?: string;
   WORKOS_API_KEY?: string;
   WORKOS_CLIENT_ID?: string;
@@ -50,6 +51,7 @@ export type HostedConfig = {
 };
 
 export type StandaloneConfig = {
+  assistants?: boolean;
   displayName: string;
   hosts: Hosts;
   mode: "standalone";
@@ -152,6 +154,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     "HOME_URL",
   ]);
   return {
+    assistants: present(env.MCP_RESOURCE),
     displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
     hosts: hostsOf(env),
     mode: "standalone",

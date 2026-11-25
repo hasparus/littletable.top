@@ -12,6 +12,7 @@ export type McpGrant = {
   account: string;
   boards: BoardGrant[];
   clientId: string | null;
+  manageUrl?: string;
 };
 
 export const MAX_GRANTED_BOARDS = 100;

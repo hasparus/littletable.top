@@ -19,6 +19,9 @@ import {
   MAX_SIGN_INS_PER_MINUTE,
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
+import { harden } from "../site";
+import { AssistantGrants } from "./assistant-grants";
+import { assistantsPage } from "./assistants-page";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
@@ -137,6 +140,13 @@ export class Standalone {
     if (pathname === "/auth/sign-in" && method === "GET") return this.signIn(request);
     if (pathname === "/auth/callback" && method === "GET") return this.callback(request);
     if (pathname === "/auth/sign-out" && method === "POST") return this.signOut(request);
+    if (
+      this.config.assistants &&
+      pathname === "/assistants" &&
+      (method === "GET" || method === "POST")
+    ) {
+      return this.assistants(request).then((response) => harden(response, request, this.config));
+    }
     if (pathname === "/api/me" && method === "GET") return this.me(request);
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
     if (picture !== null && (method === "GET" || method === "HEAD")) {
@@ -183,6 +193,35 @@ export class Standalone {
       return { refusal: refuse(403, "csrf") } as const;
     }
     return found;
+  }
+
+  private async assistants(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const found = await this.session(request);
+    if (found === null)
+      return Response.redirect(new URL("/auth/sign-in?return=/assistants", url), 302);
+    const { account, csrf } = found.session;
+    const grants = new AssistantGrants(this.env.DB);
+    if (request.method === "GET") return assistantsPage(grants, account.id, csrf);
+    if (
+      request.headers.get("Origin") !== url.origin ||
+      request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded"
+    ) {
+      return refuse(403, "forbidden-origin");
+    }
+    const form = await request.formData().catch(() => null);
+    if (form?.get("csrf") !== csrf) return refuse(403, "csrf");
+    const client = form.get("client");
+    const board = form.get("board");
+    const access = form.get("access");
+    if (
+      typeof client !== "string" ||
+      typeof board !== "string" ||
+      (access !== "off" && access !== "read" && access !== "write")
+    )
+      return refuse(400, "invalid-request");
+    if (!(await grants.set(account.id, client, board, access))) return refuse(404, "not-found");
+    return Response.redirect(new URL("/assistants", url), 303);
   }
 
   private async signIn(request: Request): Promise<Response> {
@@ -404,6 +443,7 @@ export class Standalone {
     if (board === null) return refuse(404, "not-found");
     if (!(await this.store.setRole(id, person, role))) return refuse(404, "not-found");
     if (role === "write") {
+      if (this.config.assistants) await new AssistantGrants(this.env.DB).revokeManager(person, id);
       const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
       await room.endAssistants(id);
     }

@@ -240,6 +240,19 @@ binding to this Worker's `BoardRoom` class and two calls on it,
 edits a board whether or not anyone has it open. A host that does not want
 assistants deploys the board Worker alone.
 
+For standalone staging or production, set `MCP_AUTHKIT_ORIGIN` to that
+stage's AuthKit issuer origin and `MCP_DOMAIN` to the MCP Worker's custom
+hostname. Register `https://<MCP_DOMAIN>/mcp` as a Resource Indicator in
+the same WorkOS environment and enable Client ID Metadata Documents (or
+Dynamic Client Registration for older clients). The MCP Worker uses the
+same D1 database as the board Worker, including the assistant grants
+migration. Sign into a Little Table account, connect the MCP client to
+the resource, then open `/assistants` on Little Table to select Off, Read,
+or Edit for each board and client. An existing Little Table account and
+an explicit grant are both required. Standalone access is rechecked in the
+room, so revoking a grant also invalidates a document snapshot taken for
+an in-flight write.
+
 `aube run serve:mcp` runs both Workers on :8788 (one `wrangler dev`
 session; `dev/both.ts` gives them one address). `aube run test` runs two
 Vitest projects, the second with both Workers in workerd. `aube run

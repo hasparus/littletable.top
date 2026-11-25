@@ -216,7 +216,17 @@ function serverFor(grant: McpGrant, rooms: Rooms, audit: CallLog): Server {
               words.some((word) => (title ?? "").toLowerCase().includes(word)),
           )
           .map(({ access, board: boardId, title }) => ({ access, boardId, name: title }));
-        return { result: quoting(toolJsonResult({ boardCount: boards.length, boards })) };
+        return {
+          result: quoting(
+            toolJsonResult({
+              boardCount: boards.length,
+              boards,
+              ...(grant.boards.length === 0 && grant.manageUrl !== undefined
+                ? { manageAccess: grant.manageUrl }
+                : {}),
+            }),
+          ),
+        };
       },
       [SEARCH_SHAPES]: async (input) => {
         const { boardId, page, query } = (input ?? {}) as Record<string, unknown>;

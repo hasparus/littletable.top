@@ -31,7 +31,13 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "connect-src": connect,
     "default-src": ["'none'"],
     "font-src": ["'self'"],
-    "form-action": ["'none'"],
+    "form-action": [
+      new URL(request.url).pathname === "/assistants" &&
+      config.mode === "standalone" &&
+      config.assistants
+        ? "'self'"
+        : "'none'",
+    ],
     "frame-ancestors": ["'none'"],
     // A board's images come from its /rooms/<board>/files route on this
     // origin; tldraw previews an image from a blob: URL while it uploads.

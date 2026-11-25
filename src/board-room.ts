@@ -24,8 +24,9 @@ import { FileLedger, type FileRefusal, type StoredFile } from "./file-store";
 import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import { RoomDocument } from "./room-document";
+import { AssistantGrants } from "./standalone/assistant-grants";
 
-type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; Files: R2Bucket };
+type Env = { BoardRoom: DurableObjectNamespace<BoardRoom>; DB?: D1Database; Files: R2Bucket };
 
 export type Refusal = "full" | "link-reset" | "too-fast";
 
@@ -276,7 +277,12 @@ export class BoardRoom extends DurableObject<Env> {
 
   // As with links: a grant older than the board's grant version was revoked;
   // a newer one moves the board on.
-  private admitGrant(grant: BoardGrant): "revoked" | null {
+  private async admitGrant(grant: BoardGrant): Promise<"revoked" | null> {
+    if (grant.standalone !== undefined) {
+      return this.env.DB && (await new AssistantGrants(this.env.DB).admits(grant))
+        ? null
+        : "revoked";
+    }
     const current = this.grantVersion();
     // NOTE: the caller verified the token; the rule is checked here too, so
     // no Worker bound to the room can act for someone who is not a shaman.
@@ -305,15 +311,18 @@ export class BoardRoom extends DurableObject<Env> {
 
   // NOTE: only a Worker bound to this class can call these; the caller has
   // verified the grant's token, the room checks its version and access.
-  readDocument(
+  async readDocument(
     grant: BoardGrant,
     request: { runId?: string; scope: DocumentScope },
-  ): "revoked" | DocumentSnapshot {
-    return this.admitGrant(grant) ?? this.document.read(request.scope, request.runId);
+  ): Promise<"revoked" | DocumentSnapshot> {
+    return (await this.admitGrant(grant)) ?? this.document.read(request.scope, request.runId);
   }
 
-  commitDocument(grant: BoardGrant, diff: DocumentDiff): "read-only" | "revoked" | CommitOutcome {
-    const refusal = this.admitGrant(grant);
+  async commitDocument(
+    grant: BoardGrant,
+    diff: DocumentDiff,
+  ): Promise<"read-only" | "revoked" | CommitOutcome> {
+    const refusal = await this.admitGrant(grant);
     if (refusal !== null) return refusal;
     if (grant.access !== "write") return "read-only";
     const outcome = this.document.commit(diff);

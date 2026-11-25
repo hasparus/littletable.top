@@ -17,11 +17,24 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const domain = yield* Config.String("TABLETOP_DOMAIN").pipe(Config.withDefault(""));
     const primary = { prod: domain, staging: `staging.${domain}` }[stage];
+    const mcpIssuer = yield* Config.String("MCP_AUTHKIT_ORIGIN").pipe(Config.withDefault(""));
+    const mcpDomain = yield* Config.String("MCP_DOMAIN").pipe(Config.withDefault(""));
+    if ((mcpIssuer === "") !== (mcpDomain === "")) {
+      throw new Error("Set MCP_AUTHKIT_ORIGIN and MCP_DOMAIN together");
+    }
     const tabletop = yield* Tabletop("Tabletop", {
       displayName: "Little Table",
       domain: primary === undefined || domain === "" ? undefined : { primary },
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
+      mcp:
+        mcpIssuer === ""
+          ? undefined
+          : {
+              authorizationServer: mcpIssuer,
+              domain: mcpDomain,
+              workerName: { prod: "littletable-mcp", staging: "littletable-mcp-staging" }[stage],
+            },
       signingKey: yield* Config.Redacted("TABLETOP_SIGNING_KEY"),
       workerName: { prod: "littletable", staging: "littletable-staging" }[stage],
       workOs: {
