@@ -98,9 +98,8 @@ test("standalone: the account's picture is on the front page and on its boards",
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Katherine Johnson");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByLabel("Signed in as Katherine Johnson", { exact: true })).toBeVisible();
-
-  const mine = page.getByRole("banner");
+  const mine = page.getByLabel("Signed in as Katherine Johnson", { exact: true });
+  await expect(mine).toBeVisible();
   await expect
     .poll(async () => pictureOf(mine))
     .toMatch(new RegExp(String.raw`^${STANDALONE}/api/avatars/[0-9a-f]{64}$`, "u"));
