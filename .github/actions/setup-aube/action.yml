@@ -1,0 +1,15 @@
+name: Set up aube
+description: Install the pinned Node and aube versions and restore locked dependencies
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7.1.0
+      with:
+        node-version: "26.13.1"
+        package-manager-cache: false
+    - name: Install aube and dependencies
+      shell: bash
+      run: |
+        npm install --prefix "$RUNNER_TEMP/aube" --ignore-scripts=false @endevco/aube@2.10.0
+        echo "$RUNNER_TEMP/aube/node_modules/.bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/aube/node_modules/.bin/aube" install --frozen-lockfile

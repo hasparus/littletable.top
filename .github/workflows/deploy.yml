@@ -100,11 +100,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@v2
+      - uses: ./.github/actions/setup-aube
         if: steps.configured.outputs.ready == 'true'
-
-      - if: steps.configured.outputs.ready == 'true'
-        run: aube install
 
       - name: Deploy
         id: deploy

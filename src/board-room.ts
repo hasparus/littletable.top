@@ -122,6 +122,7 @@ export class BoardRoom extends DurableObject<Env> {
   // link; a host's newer pass does the same on arrival.
   moveLink(board: string, link: number): void {
     if (link <= this.link()) return;
+    this.assistantGrantsChanged();
     this.ctx.storage.sql.exec(
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
@@ -276,21 +277,23 @@ export class BoardRoom extends DurableObject<Env> {
     );
   }
 
-  // As with links: a grant older than the board's grant version was revoked;
-  // a newer one moves the board on.
-  private async admitGrant(grant: BoardGrant): Promise<"revoked" | null> {
+  private async withDocumentGrant<T>(grant: BoardGrant, use: () => T): Promise<T | "revoked"> {
     if (grant.standalone !== undefined) {
-      return this.env.DB && (await new AssistantGrants(this.env.DB).admits(grant))
-        ? null
-        : "revoked";
+      const epoch = this.assistantGrantEpoch;
+      if (!this.env.DB || !(await new AssistantGrants(this.env.DB).admits(grant))) return "revoked";
+      // Grant changes, link resets and deletion can interleave with the D1 check.
+      // Use the document in the same turn as the final epoch check.
+      return this.assistantGrantEpoch === epoch ? use() : "revoked";
     }
+    // A hosted grant older than the board's grant version was revoked.
+    // A newer one moves the board on.
     const current = this.grantVersion();
     // NOTE: the caller verified the token; the rule is checked here too, so
     // no Worker bound to the room can act for someone who is not a shaman.
     if (grant.role !== "shaman" && grant.role !== "owner") return "revoked";
     if (grant.grant < current) return "revoked";
     if (grant.grant > current) this.setGrantVersion(grant.grant);
-    return null;
+    return use();
   }
 
   // The host revokes every assistant grant on this board signed before
@@ -317,36 +320,33 @@ export class BoardRoom extends DurableObject<Env> {
 
   // NOTE: only a Worker bound to this class can call these; the caller has
   // verified the grant's token, the room checks its version and access.
-  async readDocument(
+  readDocument(
     grant: BoardGrant,
     request: { runId?: string; scope: DocumentScope },
   ): Promise<"revoked" | DocumentSnapshot> {
-    return (await this.admitGrant(grant)) ?? this.document.read(request.scope, request.runId);
+    return this.withDocumentGrant(grant, () => this.document.read(request.scope, request.runId));
   }
 
-  async commitDocument(
+  commitDocument(
     grant: BoardGrant,
     diff: DocumentDiff,
   ): Promise<"read-only" | "revoked" | CommitOutcome> {
-    const epoch = this.assistantGrantEpoch;
-    const refusal = await this.admitGrant(grant);
-    if (refusal !== null) return refusal;
-    // A settings write waits for the room's notification before confirming. A stale
-    // D1 response delivered after that notification cannot authorize a commit.
-    if (grant.standalone !== undefined && epoch !== this.assistantGrantEpoch) return "revoked";
-    if (grant.access !== "write") return "read-only";
-    const outcome = this.document.commit(diff);
-    log("board.document_commit", {
-      board: grant.board,
-      outcome: outcome.kind,
-      people: this.room.getNumActiveSessions(),
-      puts: diff.puts.length,
-      removes: diff.removes.length,
+    return this.withDocumentGrant(grant, () => {
+      if (grant.access !== "write") return "read-only";
+      const outcome = this.document.commit(diff);
+      log("board.document_commit", {
+        board: grant.board,
+        outcome: outcome.kind,
+        people: this.room.getNumActiveSessions(),
+        puts: diff.puts.length,
+        removes: diff.removes.length,
+      });
+      return outcome;
     });
-    return outcome;
   }
 
   async destroy(board: string) {
+    this.assistantGrantsChanged();
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
     }

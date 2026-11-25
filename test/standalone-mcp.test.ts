@@ -8,6 +8,7 @@ import type { RoomDocumentCalls } from "../src/room-contract";
 
 import { handle } from "../src/mcp/worker";
 import { AssistantGrants } from "../src/standalone/assistant-grants";
+import { Store } from "../src/standalone/store";
 import { Browser, ORIGIN, standaloneEnv } from "./standalone-support";
 
 const issuer = "https://authkit.test";
@@ -120,15 +121,31 @@ it("only grants the signed-in owner's chosen client and enforces revocation at t
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
-it("discards a pending write authorization when assistant access changes", async () => {
+it.each([
+  ["read", "grant update"],
+  ["write", "grant update"],
+  ["write", "link reset"],
+  ["write", "board deletion"],
+] as const)("discards a pending %s authorization after a %s", async (access, change) => {
   const grants = new AssistantGrants(DB);
   const owner = new Browser();
+  const manager = new Browser();
   await owner.signIn("Ada");
+  await manager.signIn("Bea");
   const board = await owner.createBoard();
-  const { account } = await (await owner.fetch("/api/me")).json<{ account: { id: string } }>();
-  await grants.register(account.id, "assistant-one");
-  await grants.set(account.id, "assistant-one", board.id, "write");
-  const [grant] = await grants.grants(account.id, "assistant-one");
+  await manager.bootstrap(board.shareCode);
+  const {
+    account: { id: ownerId },
+  } = await (await owner.fetch("/api/me")).json<{ account: { id: string } }>();
+  const {
+    account: { id: managerId },
+  } = await (await manager.fetch("/api/me")).json<{ account: { id: string } }>();
+  const store = new Store(DB);
+  await store.setRole(board.id, managerId, "shaman");
+  await grants.register(managerId, "assistant-one");
+  await grants.set(managerId, "assistant-one", board.id, "write");
+  const [grant] = await grants.grants(managerId, "assistant-one");
+  expect(grant).toBeDefined();
   const room = BoardRoom.get(BoardRoom.idFromName(board.id));
 
   await runInDurableObject(room, async (object) => {
@@ -148,19 +165,37 @@ it("discards a pending write authorization when assistant access changes", async
         const allowed = await admit.call(this, pending);
         finishCheck();
         await resume;
+        expect(allowed).toBe(true);
         return allowed;
       });
     try {
-      const pending = instance.commitDocument(grant!, {
-        absent: [],
-        puts: [],
-        removes: [],
-        since: 0,
-        unchanged: [],
-      });
+      const pending =
+        access === "read"
+          ? instance.readDocument(grant!, { scope: "document" })
+          : instance.commitDocument(grant!, {
+              absent: [],
+              puts: [],
+              removes: [],
+              since: 0,
+              unchanged: [],
+            });
       await checked;
-      await grants.set(account.id, "assistant-one", board.id, "off");
-      instance.assistantGrantsChanged();
+      switch (change) {
+        case "grant update":
+          await grants.set(managerId, "assistant-one", board.id, "off");
+          instance.assistantGrantsChanged();
+          break;
+        case "link reset": {
+          const reset = await store.resetLink(board.id, ownerId, "new-share-code");
+          expect(reset).not.toBeNull();
+          instance.moveLink(board.id, reset!.linkVersion);
+          break;
+        }
+        case "board deletion":
+          expect(await store.delete(board.id, ownerId)).toBe(true);
+          await instance.destroy(board.id);
+          break;
+      }
       resumeCheck();
       expect(await pending).toBe("revoked");
     } finally {
