@@ -11,6 +11,7 @@ No bloat and no forms to fill.
 - Ping them when they inevitably get lost.
 - Summon them when they ignore your pings.
 - Set landmarks to jump to.
+- Scheme on a secret layer. Reveal your schemes to applause and surprise.
 - Give your AI of choice MCP access to clean up your mess and compress the 50MB concept art of a goblin you forgot about.
 
 [Say hi on the public board](https://littletable.top/) · [Make your own](https://littletable.top/boards)
