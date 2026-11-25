@@ -20,7 +20,7 @@ A fork is a separate package. For example, copy the explosion directory to a pub
 
 ## What a package can do
 
-Version 1 reads JSON and package-relative raster images. The manifests above are complete examples of the supported deck, tracker, and button primitives. The host handles pointer and keyboard input, multiplayer state, reduced motion, and sound preferences. A button can request the bounded `shake` effect. A deck supplies its card identities, names, dimensions, faces, and back. The room owns the shuffle and draw order.
+Version 1 reads JSON and package-relative raster images. The manifests above are complete examples of the supported deck, tracker, and button primitives. The host handles pointer and keyboard input, multiplayer state, reduced motion, and sound preferences. A button can request the bounded `shake` effect and supply a `burst` image. The image is a square five-by-five sprite sheet played across each row in order. Reduced motion shows one frame fading out. A deck supplies its card identities, names, dimensions, faces, and back. The room owns the shuffle and draw order.
 
 A shared board stores the installed manifest. Its images resolve on demand from the pinned public repository. Keep the source and its images available while a board uses it.
 

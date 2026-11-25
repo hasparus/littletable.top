@@ -74,3 +74,18 @@
 [data-gizmo-button]:disabled {
   pointer-events: none;
 }
+
+[data-gizmo-burst] {
+  position: absolute;
+  aspect-ratio: 1;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: var(--tl-layer-overlays, 500);
+}
+[data-gizmo-burst] img {
+  display: block;
+  width: 500%;
+  height: 500%;
+  max-width: none;
+}

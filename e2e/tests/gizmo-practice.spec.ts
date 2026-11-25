@@ -32,7 +32,22 @@ for (const viewport of [
     const button = page.getByRole("button", { name: "Explosion button" });
     if (wide) await drawer.getByRole("button", { name: "Close" }).click();
     await expect(button).toBeInViewport({ ratio: 0.99 });
+    const burst = page.locator("[data-gizmo-burst]");
+    await burst.locator("img").evaluate((image: HTMLImageElement) => image.decode());
+    const playback = burst.evaluate(
+      (layer) =>
+        new Promise<number>((resolve) => {
+          const sample = () => {
+            const animation = layer.querySelector("img")?.getAnimations()[0];
+            if (animation?.effect instanceof KeyframeEffect)
+              resolve(animation.effect.getKeyframes().length);
+            else requestAnimationFrame(sample);
+          };
+          sample();
+        }),
+    );
     await button.press("Space");
+    expect(await playback).toBe(wide ? 25 : 2);
     await expect(button).toHaveAttribute("data-hits", "1");
     await expect
       .poll(() =>

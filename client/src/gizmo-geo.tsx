@@ -1,6 +1,7 @@
 import { T } from "@tldraw/validate";
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- ShapeUtil is the tldraw extension API this piece implements. */
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   createShapeId,
   type Editor,
@@ -15,6 +16,7 @@ import {
 
 import { type InstalledGizmo, isGizmoAssetUrl } from "../../src/gizmo-packages";
 import { fill } from "./copy";
+import { playGizmoBurst } from "./gizmo-burst";
 import { playGizmoCue, springGizmo } from "./gizmo-feedback";
 import { useInstalledGizmo } from "./gizmo-installed";
 import { useGizmoUi } from "./gizmo-ui";
@@ -318,6 +320,7 @@ const lastShake = new WeakMap<Editor, number>();
 const HIT_INTERVAL = 650;
 
 function Pressable({
+  burst,
   shake,
   editor,
   shape,
@@ -326,6 +329,7 @@ function Pressable({
   editor: Editor;
   shape: TLGeoShape;
   state: Actuator;
+  burst?: string;
   shake: boolean;
 }) {
   const { locale } = useGizmoUi();
@@ -335,6 +339,7 @@ function Pressable({
     [editor, shape],
   );
   const plate = useRef<HTMLImageElement>(null);
+  const sprite = useRef<HTMLImageElement>(null);
   const previous = useRef(state.hits);
   useEffect(() => {
     const before = previous.current;
@@ -344,12 +349,15 @@ function Pressable({
     if (now - (lastShake.get(editor) ?? -Infinity) < HIT_INTERVAL) return;
     lastShake.set(editor, now);
     const settle = springGizmo(plate.current, (t) => `scale(${1 - 0.09 * t})`);
+    const stopBurst =
+      sprite.current && playGizmoBurst(sprite.current, plate.current, editor.getContainer());
     const canvas = shake ? editor.getContainer().querySelector(".tl-canvas") : null;
     const settleTable =
-      canvas && springGizmo(canvas, (t) => `translate(${6 * t}px,${-4 * t}px)`, -45);
+      canvas && springGizmo(canvas, (t) => `translate(${9 * t}px,${-6 * t}px)`, -45);
     return () => {
       settle();
       settleTable?.();
+      stopBurst?.();
     };
   }, [editor, shake, state.hits]);
   function press() {
@@ -370,6 +378,13 @@ function Pressable({
   }
   return (
     <HTMLContainer data-gizmo-actuator="" style={{ width: shape.props.w, height: shape.props.h }}>
+      {burst &&
+        createPortal(
+          <div data-gizmo-burst="" aria-hidden="true">
+            <img ref={sprite} src={burst} alt="" draggable={false} />
+          </div>,
+          editor.getContainer(),
+        )}
       <img ref={plate} src={state.preview} alt="" draggable={false} />
       <button
         type="button"
@@ -413,6 +428,7 @@ function InstalledPiece({
           editor={util.editor}
           shape={shape}
           state={state}
+          burst={manifest.burst}
           shake={manifest.effect === "shake"}
         />
       );

@@ -116,6 +116,7 @@ function manifestSchema(art: T.Validator<string>) {
     button: T.object({
       ...common,
       kind: T.literal("button"),
+      burst: art.optional(),
       effect: T.literalEnum("shake", "none").optional(),
     }),
   });
@@ -136,6 +137,8 @@ export function normalizeManifest(
 ) {
   const manifest = packageSchema.validate(value);
   const preview = resolveAsset(manifest.preview);
+  if (manifest.kind === "button" && manifest.burst)
+    return { ...manifest, preview, burst: resolveAsset(manifest.burst) };
   if (manifest.kind !== "deck") return { ...manifest, preview };
   return {
     ...manifest,
