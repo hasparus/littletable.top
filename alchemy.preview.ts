@@ -6,6 +6,8 @@ import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { previewAccounts } from "./alchemy.preview-db.ts";
 import { Tabletop } from "./alchemy/index.js";
@@ -38,14 +40,45 @@ export default Alchemy.Stack(
       );
     }
 
+    const prebuilt = yield* Config.String("PREVIEW_BUNDLE_DIR");
+    const issuer = yield* Config.String("MCP_AUTHKIT_ORIGIN").pipe(Config.withDefault(""));
+    const baseDomain = yield* Config.String("MCP_DOMAIN").pipe(Config.withDefault(""));
+    let mcp: { authorizationServer: string; domain: string; workerName: string } | undefined;
+    if (existsSync(resolve(prebuilt, "mcp/index.js")) && (issuer !== "" || baseDomain !== "")) {
+      if (issuer === "" || baseDomain === "") {
+        return yield* Effect.die(
+          new Error("Set preview MCP_AUTHKIT_ORIGIN and MCP_DOMAIN together."),
+        );
+      }
+      const issuerUrl = URL.canParse(issuer) ? new URL(issuer) : undefined;
+      if (issuerUrl?.protocol !== "https:" || issuerUrl.origin !== issuer) {
+        return yield* Effect.die(
+          new Error("Set preview MCP_AUTHKIT_ORIGIN to the HTTPS issuer origin."),
+        );
+      }
+      const domain = `${stage}.${baseDomain}`;
+      const hostnameLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+      if (
+        domain.length > 253 ||
+        !baseDomain.includes(".") ||
+        !domain.split(".").every((label) => hostnameLabel.test(label))
+      ) {
+        return yield* Effect.die(
+          new Error("Set preview MCP_DOMAIN to the base hostname for PR subdomains."),
+        );
+      }
+      mcp = { authorizationServer: issuer, domain, workerName: `littletable-mcp-${stage}` };
+    }
+
     const signing = yield* Alchemy.KeyPair("SigningKey", { algorithm: "rsa" });
     const { url } = yield* Tabletop("Tabletop", {
       boardDataScope: stage,
       database: yield* previewAccounts(),
       displayName: "Little Table",
       forceDestroyFiles: true,
+      mcp,
       mode: "standalone",
-      prebuilt: yield* Config.String("PREVIEW_BUNDLE_DIR"),
+      prebuilt,
       signingKey: signing.privateKey,
       workerName: `littletable-${stage}`,
       workOs: {
@@ -63,7 +96,7 @@ export default Alchemy.Stack(
       body: Output.interpolate`
         ## Little Table preview
 
-        [Open the preview](${url})
+        [Open the preview](${url})${mcp === undefined ? "" : `\n\n[MCP endpoint](https://${mcp.domain}/mcp)`}
 
         Built from \`${commit.slice(0, 7)}\`.
       `,

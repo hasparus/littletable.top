@@ -2,6 +2,7 @@ import { animals, colors, uniqueNamesGenerator } from "unique-names-generator";
 
 import type { StandaloneConfig } from "../config";
 import type { Limiter } from "../limiter";
+import type { Role } from "../pass";
 import type { SignInProvider } from "./provider";
 
 import { avatarKey, copyAvatar, logAvatar, providerRule } from "../avatars";
@@ -21,7 +22,10 @@ import {
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
 import { secretLayerOf } from "../secret-layer";
+import { harden } from "../site";
 import { isThumbnail, thumbnailKey } from "../thumbnail-store";
+import { AssistantGrants } from "./assistant-grants";
+import { assistantsPage } from "./assistants-page";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
@@ -145,6 +149,18 @@ export class Standalone {
     if (pathname === "/auth/sign-in" && method === "GET") return this.signIn(request);
     if (pathname === "/auth/callback" && method === "GET") return this.callback(request);
     if (pathname === "/auth/sign-out" && method === "POST") return this.signOut(request);
+    if (
+      this.config.assistants &&
+      pathname === "/assistants" &&
+      (method === "GET" || method === "POST")
+    ) {
+      return this.assistants(request).then((response) => {
+        const page = harden(response, request, this.config);
+        // WARNING: no-referrer makes native POST navigations send Origin: null.
+        if (method === "GET" && page.ok) page.headers.set("Referrer-Policy", "same-origin");
+        return page;
+      });
+    }
     if (pathname === "/api/me" && method === "GET") return this.me(request);
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
     if (picture !== null && (method === "GET" || method === "HEAD")) {
@@ -171,6 +187,12 @@ export class Standalone {
     }
     const action = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/(rename|reset|delete)$/u.exec(pathname);
     if (action !== null && method === "POST") return this.act(request, action[1]!, action[2]!);
+    const people = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/people$/u.exec(pathname);
+    if (people !== null && method === "GET") return this.people(request, people[1]!);
+    const role = /^\/api\/boards\/([A-Za-z0-9]{1,64})\/people\/([\w-]{1,128})\/role$/u.exec(
+      pathname,
+    );
+    if (role !== null && method === "POST") return this.setRole(request, role[1]!, role[2]!);
     const door = /^\/api\/b\/([A-Za-z0-9]{1,64})\/bootstrap$/u.exec(pathname);
     if (door !== null && method === "POST") return this.bootstrap(request, door[1]!);
     if (pathname.startsWith("/api/") || pathname.startsWith("/auth/")) {
@@ -201,6 +223,37 @@ export class Standalone {
       return { refusal: refuse(403, "csrf") } as const;
     }
     return found;
+  }
+
+  private async assistants(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const found = await this.session(request);
+    if (found === null)
+      return Response.redirect(new URL("/auth/sign-in?return=/assistants", url), 302);
+    const { account, csrf } = found.session;
+    const grants = new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE);
+    if (request.method === "GET") return assistantsPage(grants, account.id, csrf);
+    if (
+      request.headers.get("Origin") !== url.origin ||
+      request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded"
+    ) {
+      return refuse(403, "forbidden-origin");
+    }
+    const form = await request.formData().catch(() => null);
+    if (form?.get("csrf") !== csrf) return refuse(403, "csrf");
+    const client = form.get("client");
+    const board = form.get("board");
+    const access = form.get("access");
+    if (
+      typeof client !== "string" ||
+      typeof board !== "string" ||
+      (access !== "off" && access !== "read" && access !== "write")
+    )
+      return refuse(400, "invalid-request");
+    if (!(await grants.set(account.id, client, board, access))) return refuse(404, "not-found");
+    const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board));
+    await room.assistantGrantsChanged();
+    return Response.redirect(new URL("/assistants", url), 303);
   }
 
   private async signIn(request: Request): Promise<Response> {
@@ -504,6 +557,41 @@ export class Standalone {
     return new Response(null, { status: 204 });
   }
 
+  private async people(request: Request, id: string) {
+    const found = await this.session(request);
+    if (found === null) return refuse(401, "signed-out");
+    if ((await this.store.owned(id, found.session.account.id)) === null) {
+      return refuse(404, "not-found");
+    }
+    const people = await this.store.people(id);
+    return json(200, {
+      people: people.map(({ avatar, id: person, name, role }) => ({
+        avatar: avatar === null ? null : `/api/avatars/${avatar}`,
+        id: person,
+        name,
+        role,
+      })),
+    });
+  }
+
+  private async setRole(request: Request, id: string, person: string) {
+    const found = await this.member(request);
+    if ("refusal" in found) return found.refusal;
+    const owner = found.session.account.id;
+    const body = await request.json<{ role?: string }>().catch(() => null);
+    const role = body?.role;
+    if (role !== "write" && role !== "manager") return refuse(400, "role-invalid");
+    const board = await this.store.owned(id, owner);
+    if (board === null) return refuse(404, "not-found");
+    if (!(await this.store.setRole(id, person, role))) return refuse(404, "not-found");
+    if (role === "write") {
+      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
+      await room.endAssistants(id);
+    }
+    log("board.role_set", { account: owner, board: id, role });
+    return json(200, { id: person, role });
+  }
+
   // WARNING: Keep this response compatible with the hosted pass endpoint so the client can use either mode.
   private async bootstrap(request: Request, code: string | null): Promise<Response> {
     if (!sameOrigin(request)) return refuse(403, "forbidden-origin");
@@ -521,7 +609,7 @@ export class Standalone {
     }
     const found = await this.session(request);
     const headers = new Headers({ "Cache-Control": "no-store" });
-    let person: { avatar: string | null; id: string; name: string; owner: boolean };
+    let person: { avatar: string | null; id: string; name: string; role: Role };
     if (found === null) {
       const guestCookie = code === null ? PUBLIC_GUEST_COOKIE : GUEST_COOKIE;
       const kept = cookie(request, guestCookie);
@@ -543,40 +631,46 @@ export class Standalone {
           style: "capital",
         });
       }
-      person = { avatar: null, id, name, owner: false };
+      person = { avatar: null, id, name, role: "write" };
       const sealed = await seal(this.keys, GUEST_AUDIENCE, { name, sub: id }, GUEST_LIFETIME_S);
       headers.append("Set-Cookie", setCookie(guestCookie, sealed, GUEST_LIFETIME_S));
     } else {
       const { account } = found.session;
       const owner = (saved?.ownerId ?? this.config.publicBoardOwnerId) === account.id;
-      person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, owner };
-      if (!owner && saved !== null) await this.store.visit(account.id, saved, now());
+      let role: Role = owner ? "owner" : "write";
+      if (!owner && saved !== null) {
+        await this.store.visit(account.id, saved, now());
+        role = (await this.store.roleOf(account.id, saved.id)) ?? "write";
+      }
+      person = { avatar: account.avatar, id: `a:${account.id}`, name: account.name, role };
     }
     const claims = {
       avatar: person.avatar,
       board: board.id,
       link: board.linkVersion,
       name: person.name,
-      owner: person.owner,
+      owner: person.role === "owner",
+      role: person.role,
       sub: person.id,
     };
     const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
-      person.owner && saved !== null && found !== null
+      person.role === "owner" && saved !== null && found !== null
         ? signPass(this.keys, {
             ...claims,
             board: secretLayerOf(board.id),
             sessionHash: found.hash,
           })
         : null,
-      person.owner && saved !== null
+      person.role === "owner" && saved !== null
         ? this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board.id)).publicationCode()
         : null,
     ]);
     log("pass.issued", {
       board: board.id,
-      owner: person.owner,
+      owner: person.role === "owner",
       person: found ? "member" : "guest",
+      role: person.role,
     });
     return Response.json(
       {
@@ -584,7 +678,12 @@ export class Standalone {
         boardsUrl: found === null ? null : "/boards",
         home: { name: this.config.displayName, url: "/" },
         pass,
-        person: { id: person.id, name: person.name, owner: person.owner },
+        person: {
+          id: person.id,
+          name: person.name,
+          owner: person.role === "owner",
+          role: person.role,
+        },
         ...(secretPass !== null && found !== null
           ? {
               secretPass,

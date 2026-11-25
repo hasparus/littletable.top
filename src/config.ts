@@ -23,6 +23,8 @@ export type ConfigEnv = {
   DISPLAY_NAME?: string;
   /** Standalone: the private key (PKCS#8 PEM) the Worker signs passes with. */
   SIGNING_KEY?: string;
+  /** Standalone: the optional companion MCP Worker endpoint. */
+  MCP_RESOURCE?: string;
   /** Standalone: the WorkOS application's client ID, secret API key and API origin. */
   WORKOS_API_BASE?: string;
   WORKOS_API_KEY?: string;
@@ -55,6 +57,7 @@ export type HostedConfig = {
 };
 
 export type StandaloneConfig = {
+  assistants?: boolean;
   displayName: string;
   hosts: Hosts;
   mode: "standalone";
@@ -165,6 +168,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     "HOME_URL",
   ]);
   return {
+    assistants: present(env.MCP_RESOURCE),
     displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
     hosts: hostsOf(env),
     mode: "standalone",

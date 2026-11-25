@@ -120,6 +120,7 @@ function configure(props) {
       WORKOS_API_KEY: secret(props.workOs.apiKey),
       WORKOS_CLIENT_ID: props.workOs.clientId,
       PUBLIC_BOARD_OWNER_ID: props.publicBoardOwnerId ?? "",
+      MCP_RESOURCE: props.mcp === undefined ? "" : `https://${props.mcp.domain}/mcp`,
     },
   };
 }
@@ -162,6 +163,11 @@ export const Tabletop = (id, props) =>
       `${id}Files`,
       props.forceDestroyFiles ? { forceDestroy: true } : undefined,
     );
+    // WARNING: Alchemy otherwise selects a different module registry than the one Wrangler tests.
+    const compatibilityFlags =
+      prebuilt === undefined
+        ? ["legacy_module_registry"]
+        : ["legacy_module_registry", "nodejs_compat"];
     const worker = yield* Cloudflare.Worker(id, {
       assets: {
         directory: assets,
@@ -172,11 +178,7 @@ export const Tabletop = (id, props) =>
       },
       compatibility: {
         date: testedRuntime.compatibility_date,
-        // WARNING: Alchemy otherwise selects a different module registry than the one Wrangler tests.
-        flags:
-          prebuilt === undefined
-            ? ["legacy_module_registry"]
-            : ["legacy_module_registry", "nodejs_compat"],
+        flags: compatibilityFlags,
       },
       // WARNING: Domain aliases only attach DNS and TLS. The Worker must still redirect requests.
       domain:
@@ -195,5 +197,39 @@ export const Tabletop = (id, props) =>
       name: props.workerName,
       observability,
     });
-    return { files, url: worker.url, worker };
+    const mcp =
+      props.mcp === undefined
+        ? undefined
+        : yield* Cloudflare.Worker(`${id}Mcp`, {
+            compatibility: {
+              date: testedRuntime.compatibility_date,
+              flags: compatibilityFlags,
+            },
+            domain: props.mcp.domain === undefined ? undefined : { name: props.mcp.domain },
+            env: {
+              BoardRoom: Cloudflare.DurableObject("BoardRoom", { scriptName: worker.workerName }),
+              MCP_AUTHORIZATION_SERVER: props.mcp.authorizationServer,
+              ...(props.mode === "hosted"
+                ? {
+                    ISSUER: props.issuer,
+                    ISSUER_PUBLIC_KEY: props.issuerPublicKey,
+                    MCP_AUDIENCE: props.mcp.audience ?? "tabletop-mcp",
+                  }
+                : {
+                    BOARD_DATA_SCOPE: props.boardDataScope ?? "",
+                    DB: standalone.DB,
+                    MCP_BOARD_ORIGIN:
+                      props.domain === undefined
+                        ? worker.url.pipe(Output.map((url) => (url ? new URL(url).origin : "")))
+                        : `https://${props.domain.primary}`,
+                    MCP_RESOURCE: `https://${props.mcp.domain}/mcp`,
+                  }),
+            },
+            ...(prebuilt === undefined
+              ? { main: packageFile("src/mcp/worker.ts") }
+              : { bundle: false, main: sourceFile("mcp/index.js") }),
+            name: props.mcp.workerName,
+            observability,
+          });
+    return { files, mcp, url: worker.url, worker };
   });

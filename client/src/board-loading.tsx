@@ -7,7 +7,8 @@ function syncSpinnerRotation(spinner: SVGSVGElement | null) {
 export function BoardLoading({ text }: { text: string }) {
   return (
     <div
-      className="absolute inset-0 grid place-items-center bg-background text-foreground-secondary"
+      className="absolute inset-x-0 top-0 grid place-items-center bg-background text-foreground-secondary"
+      data-board-loading
       role="status"
     >
       <span className="sr-only">{text}</span>

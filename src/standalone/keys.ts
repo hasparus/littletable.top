@@ -34,13 +34,14 @@ export const PASS_LIFETIME_S = 300;
 
 export function signPass(
   keys: Keys,
-  { avatar, board, link, name, owner, sessionHash, sub }: Pass,
+  { avatar, board, link, name, owner, role, sessionHash, sub }: Pass,
 ): Promise<string> {
   return new SignJWT({
     board,
     link,
     name,
     owner,
+    role,
     ...(avatar === null ? {} : { avatar }),
     ...(sessionHash === undefined ? {} : { sessionHash }),
   })

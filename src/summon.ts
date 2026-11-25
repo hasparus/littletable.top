@@ -17,7 +17,7 @@ const viewFields = {
 };
 
 export function canSummon({ owner, role }: { owner: boolean; role?: string }) {
-  return owner || role === "manager" || role === "shaman";
+  return owner || role === "manager";
 }
 
 export const summonRequest = T.object({ target: T.string, ...viewFields });

@@ -77,11 +77,21 @@
   }
 }
 
-[data-board-layout] {
+[data-board-root] {
   --board-gutter: 12px;
+  --board-top: max(var(--board-gutter), env(safe-area-inset-top));
+  --board-top-control-size: 44px;
+}
+
+[data-board-loading] {
+  /* The editor can extend below the visible viewport on iOS. */
+  height: min(100%, 100dvh);
+  padding-block-start: calc(var(--board-top) + var(--board-top-control-size));
+}
+
+[data-board-layout] {
   --board-left: max(var(--board-gutter), env(safe-area-inset-left));
   --board-right: max(var(--board-gutter), env(safe-area-inset-right));
-  --board-top: max(var(--board-gutter), env(safe-area-inset-top));
   --board-bottom-gap: 8px;
   /* Reserve the tldraw watermark's edge tab, or its full badge at 700px. */
   --board-watermark-width: 10px;
@@ -94,7 +104,6 @@
   --board-tool-size: 48px;
   --board-sheet-bottom: calc(var(--board-toolbar-bottom) + var(--board-tool-size) + 8px);
   --board-control-radius: 11px;
-  --board-top-control-size: 44px;
 }
 
 /* Let tldraw's Zoom and minimap take their own space in the bottom row. */
@@ -156,8 +165,11 @@
 }
 
 @media (width < 640px) {
-  [data-board-layout] {
+  [data-board-root] {
     --board-gutter: 4px;
+  }
+
+  [data-board-layout] {
     --board-bottom-gap: 4px;
     --board-tool-size: min(
       44px,
@@ -354,26 +366,20 @@
 }
 
 [data-board-background-swatches] .tlui-button {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  justify-content: center;
+  width: 40px;
+  margin: 0;
   padding: 0;
 }
 
-[data-board-background-swatches] .tlui-icon {
-  filter: drop-shadow(0 0 1px var(--tl-color-text));
+[data-board-background-swatch] {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgb(0 0 0 / 2%);
+  border-radius: 50%;
 }
 
 [data-board-background-swatches] .tlui-button__checkbox__indicator {
-  position: absolute;
-  inset: 0;
-  width: auto;
-  height: auto;
-  display: grid;
-  place-items: center;
-  z-index: 1;
-  pointer-events: none;
+  display: none;
 }
 
 [data-chat-size] {

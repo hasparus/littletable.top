@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import {
   type Editor,
   react,
-  TldrawUiButtonIcon,
   TldrawUiDropdownMenuCheckboxItem,
   TldrawUiMenuGroup,
   TldrawUiMenuSubmenu,
@@ -66,6 +65,7 @@ export function BoardBackgroundMenu() {
           {Object.entries(PALETTE).map(([name, option]) => (
             <TldrawUiDropdownMenuCheckboxItem
               checked={color === name}
+              data-isactive={color === name}
               key={name}
               onSelect={() => {
                 const { meta } = editor.getDocumentSettings();
@@ -74,9 +74,11 @@ export function BoardBackgroundMenu() {
               title={copy[option.label]}
             >
               <span className="sr-only">{copy[option.label]}</span>
-              <span aria-hidden="true" style={{ color: option[mode] }}>
-                <TldrawUiButtonIcon icon="color" />
-              </span>
+              <span
+                aria-hidden="true"
+                data-board-background-swatch
+                style={{ backgroundColor: option[mode] }}
+              />
             </TldrawUiDropdownMenuCheckboxItem>
           ))}
         </div>
