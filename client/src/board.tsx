@@ -15,6 +15,7 @@ import {
 } from "./bootstrap";
 import { BoardCanvas } from "./canvas";
 import { type Copy, fill } from "./copy";
+import { Icon } from "./icons";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
 import { captureSharedView, type SharedView } from "./secret-backdrop";
@@ -67,7 +68,7 @@ function ReadyBoard({
   const refuseSecretPage = useCallback(() => setLayer({ kind: "full" }), []);
   useEffect(() => () => view?.store.dispose(), [view]);
   return (
-    <>
+    <div data-board-layout>
       <BoardCanvas
         active={!editingSecret}
         copy={copy}
@@ -93,6 +94,7 @@ function ReadyBoard({
       )}
       {canEnterSecret && (
         <button
+          aria-label={copy.secretLayer}
           aria-pressed={editingSecret}
           data-secret-layer-toggle
           disabled={!editingSecret && shared === null}
@@ -104,9 +106,10 @@ function ReadyBoard({
               if (secret === undefined) setSecret(keeper.forSecret(closeSecret));
             }
           }}
+          title={copy.secretLayer}
           type="button"
         >
-          {copy.secretLayer}
+          <Icon name="Incognito" />
         </button>
       )}
       {layer.kind === "full" && (
@@ -117,7 +120,7 @@ function ReadyBoard({
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
