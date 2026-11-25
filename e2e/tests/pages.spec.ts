@@ -158,7 +158,7 @@ test("a connected guest receives the latest summon while the editor is still loa
     const people = await openSheet(owner, "People");
     await expect(people.getByRole("button", { name: /^Bea/u })).toBeVisible();
     await expect(pageButton(guest)).toHaveCount(0);
-    const summon = people.getByRole("button", { name: "Summon everyone" });
+    const summon = people.getByRole("button", { name: "Summon Bea" });
     await Promise.all([receiveSummon(), summon.click()]);
     await expect(people.getByRole("status")).toHaveText("Summon sent.");
     await closeSheet(owner, "People");
@@ -275,10 +275,13 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await gate.getByRole("button", { exact: true, name: "Gate Town" }).click();
   await expect(onBoard(ada, "Gate")).toBeInViewport();
   const ownerPeople = await openSheet(ada, "People");
-  const summon = ownerPeople.getByRole("button", { name: "Summon everyone" });
+  const summon = ownerPeople.getByRole("button", { name: "Summon Bea" });
   await expect(summon).toBeEnabled();
   await summon.click();
-  await expect(ownerPeople.getByRole("status")).toHaveText("Summon sent.");
+  const summonedRow = ownerPeople.getByRole("listitem").filter({
+    has: ada.getByRole("button", { exact: true, name: "Summon Bea" }),
+  });
+  await expect(summonedRow.getByRole("status")).toHaveText("Summon sent.");
   await expect(pageButton(bea)).toHaveText("Town");
   await expect(onBoard(bea, "Gate")).toBeInViewport();
   await shot(ada, "owner-summon");
@@ -286,7 +289,7 @@ test("pages are made, renamed, reordered and deleted together, and places and pe
   await goToPage(bea, "Crypt");
 
   const people = await openSheet(bea, "People");
-  await expect(people.getByRole("button", { name: "Summon everyone" })).toHaveCount(0);
+  await expect(people.getByRole("button", { name: /^Summon /u })).toHaveCount(0);
   await expect(people.getByRole("listitem")).toHaveCount(2, { timeout: 30_000 });
   const adaRow = people.getByRole("button", { name: /^Ada/u });
   await expect(adaRow).toContainText("Town");

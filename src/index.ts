@@ -27,7 +27,7 @@ import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
-import { MAX_SUMMON_BYTES, type SummonView, summonView } from "./summon";
+import { canSummon, MAX_SUMMON_BYTES, type SummonRequest, summonRequest } from "./summon";
 
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
@@ -121,20 +121,21 @@ async function summon(request: Request, room: DurableObjectStub<BoardRoom>, pass
   if (request.method !== "POST" || isSecretLayer(pass.board)) {
     return new Response(null, { status: 404 });
   }
-  if (!pass.owner) return new Response(null, { status: 403 });
+  if (!canSummon(pass)) return new Response(null, { status: 403 });
   const body = await readCapped(request.body, {
     declared: Number(request.headers.get("Content-Length")),
     max: MAX_SUMMON_BYTES,
   });
   if (body === "too-large") return new Response(null, { status: 413 });
-  let view: SummonView;
+  let destination: SummonRequest;
   try {
-    view = summonView.validate(JSON.parse(new TextDecoder().decode(body)));
+    destination = summonRequest.validate(JSON.parse(new TextDecoder().decode(body)));
   } catch {
     return new Response(null, { status: 400 });
   }
-  const refusal = await room.summon(pass, view);
-  if (refusal === "page-missing") return new Response(null, { status: 409 });
+  const refusal = await room.summon(pass, destination);
+  if (refusal === "page-missing" || refusal === "participant-missing")
+    return new Response(null, { status: 409 });
   return refusal === null ? new Response(null, { status: 204 }) : answer(refusal);
 }
 

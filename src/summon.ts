@@ -16,6 +16,11 @@ const viewFields = {
   }),
 };
 
-export const summonView = T.object(viewFields);
+export function canSummon({ owner, role }: { owner: boolean; role?: string }) {
+  return owner || role === "manager" || role === "shaman";
+}
+
+export const summonRequest = T.object({ target: T.string, ...viewFields });
+export type SummonRequest = T.TypeOf<typeof summonRequest>;
 export const summonMessage = T.object({ type: T.literal("summon"), ...viewFields });
-export type SummonView = T.TypeOf<typeof summonView>;
+export type SummonView = Omit<SummonRequest, "target">;

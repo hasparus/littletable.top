@@ -46,7 +46,7 @@ export type BoardUi = {
   search: BoardSearch | null;
   setNaming: (id: TLShapeId | null) => void;
   setRollDraft: Dispatch<SetStateAction<RollDraft>>;
-  summon?: () => Promise<boolean>;
+  summon?: (target: string) => Promise<boolean>;
   typing: boolean;
 };
 

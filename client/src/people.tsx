@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createUserId, type Editor, type TLPageId, useValue } from "tldraw";
 
 import { Avatar } from "./avatar";
+import { fill } from "./copy";
 import { usePageNames } from "./pages";
 import { Sheet } from "./sheet";
 import { useBoardUi } from "./ui";
@@ -73,27 +74,28 @@ function Who({ page, who }: { page: string | undefined; who: Person }) {
   );
 }
 
-function SummonButton({ hasOthers }: { hasOthers: boolean }) {
+function SummonButton({ target }: { target: Present }) {
   const { copy, summon } = useBoardUi();
   const [status, setStatus] = useState<"idle" | "pending" | "sent" | "failed">("idle");
   if (summon === undefined) return null;
   const message = status === "sent" ? copy.summoned : status === "failed" ? copy.summonFailed : "";
 
   return (
-    <div className="mb-2 border-b border-border pb-3">
+    <div className="shrink-0 text-right">
       <button
         aria-busy={status === "pending"}
-        className="btn btn-secondary min-h-11 w-full"
-        disabled={!hasOthers || status === "pending"}
+        aria-label={fill(copy.summonPerson, { name: target.name })}
+        className="min-h-11 rounded-lg px-2 text-sm font-medium text-primary-strong hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus disabled:opacity-40"
+        disabled={status === "pending"}
         onClick={async () => {
           setStatus("pending");
-          setStatus((await summon()) ? "sent" : "failed");
+          setStatus((await summon(target.id)) ? "sent" : "failed");
         }}
         type="button"
       >
         {copy.summon}
       </button>
-      <p className="mt-2 text-sm text-foreground-secondary empty:mt-0" role="status">
+      <p className="max-w-24 px-1 text-xs text-foreground-secondary" role="status">
         {message}
       </p>
     </div>
@@ -119,7 +121,6 @@ export function PeopleSheet() {
 
   return (
     <Sheet panel="people" title={copy.people}>
-      <SummonButton hasOthers={others.length > 0} />
       <ul className="divide-y divide-border">
         <li className="flex min-h-12 items-center gap-3">
           <Who
@@ -136,9 +137,9 @@ export function PeopleSheet() {
           const userId = createUserId(present.id);
           const followed = following === userId;
           return (
-            <li key={present.id}>
+            <li className="flex items-center gap-1" key={present.id}>
               <button
-                className="flex min-h-12 w-full items-center gap-3 rounded-lg py-1 text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
+                className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:outline-border-focus"
                 onClick={() => {
                   if (editor === null) return;
                   if (followed) {
@@ -155,6 +156,7 @@ export function PeopleSheet() {
                   {followed ? copy.stopFollowing : copy.follow}
                 </span>
               </button>
+              <SummonButton target={present} />
             </li>
           );
         })}

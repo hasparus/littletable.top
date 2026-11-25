@@ -2,8 +2,9 @@ import type { Editor } from "tldraw";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
-import type { SummonView } from "../../src/summon";
 import type { PassKeeper } from "./bootstrap";
+
+import { canSummon, type SummonRequest, type SummonView } from "../../src/summon";
 
 type IncomingSummons = {
   editor: Editor | null;
@@ -42,9 +43,15 @@ function applySummon(editor: Editor, view: SummonView) {
   return stop;
 }
 
-async function sendSummon(editor: Editor, keeper: PassKeeper) {
+async function sendSummon(editor: Editor, keeper: PassKeeper, target: string) {
   const { x, y } = editor.getViewportPageBounds().center;
-  const view: SummonView = { page: editor.getCurrentPageId(), x, y, zoom: editor.getZoomLevel() };
+  const view: SummonRequest = {
+    page: editor.getCurrentPageId(),
+    target,
+    x,
+    y,
+    zoom: editor.getZoomLevel(),
+  };
   try {
     const response = await fetch(`${keeper.room}/summon`, {
       body: JSON.stringify(view),
@@ -97,11 +104,13 @@ export function useSummon(editor: Editor | null, active: boolean, keeper: PassKe
     target.cancel = applySummon(target.editor, view);
   }, []);
 
-  const { owner } = keeper.bootstrap.person;
+  const allowed = canSummon(keeper.bootstrap.person);
   const summon = useMemo(
     () =>
-      editor !== null && !keeper.secret && owner ? () => sendSummon(editor, keeper) : undefined,
-    [editor, keeper, owner],
+      editor !== null && !keeper.secret && allowed
+        ? (target: string) => sendSummon(editor, keeper, target)
+        : undefined,
+    [allowed, editor, keeper],
   );
 
   return { receiveSummon, summon };
