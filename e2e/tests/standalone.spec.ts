@@ -303,6 +303,109 @@ test("the home page is one editable public board for anonymous visitors", async 
   await guest.context().close();
 });
 
+test("the public handout is searchable with data saver and the prompt rolls a d20", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (!("connection" in navigator) || !(navigator.connection instanceof EventTarget))
+      throw new TypeError("Network Information API unavailable");
+    Object.defineProperty(navigator.connection, "saveData", { value: true });
+  });
+  const engineRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/text/claim") || /\/assets\/(ocr\/|ort-wasm|text-worker)/u.test(path)) {
+      engineRequests.push(path);
+    }
+  });
+  let readingLoaded = false;
+  page.on("response", (response) => {
+    if (response.request().method() === "GET" && response.url().endsWith("/text/tesseract-6.0.1")) {
+      readingLoaded = response.ok();
+    }
+  });
+  await page.goto(`${STANDALONE}/?lang=en`);
+  await expect(page.locator("[data-public-board-note]")).toBeInViewport();
+  const handout = page
+    .getByTestId("canvas")
+    .locator('img.tl-image[alt="Note from the north gate"]');
+  await reachEditor(page);
+  await page.evaluate(() => {
+    const editor = globalThis.__editor;
+    editor.setCamera({ x: -2000, y: -2000, z: 1 }, { immediate: true });
+  });
+  await expect(handout).not.toBeInViewport();
+
+  const places = await openSheet(page, "Search");
+  await expect(places.getByRole("heading", { name: "Places" })).toBeVisible();
+  await expect(places.getByRole("button", { name: "Remove from places: North Gate" })).toHaveCount(
+    0,
+  );
+  await places.getByRole("button", { exact: true, name: "North Gate" }).click();
+  await expect(places).toBeHidden();
+  await expect(handout).toBeInViewport();
+  await expect(page.getByText(/choose North Gate under Places/u)).toBeInViewport();
+
+  const search = await openSheet(page, "Search");
+  await search.getByRole("combobox", { name: "Search the board" }).fill("MOONBELL");
+  const result = search.getByRole("option").filter({ hasText: "In image" });
+  await expect(result, "the stored OCR result contains the password").toContainText(/MOONBELL/iu);
+  expect(readingLoaded).toBe(true);
+  expect(engineRequests).toEqual([]);
+  await result.click();
+  await expect(page.getByRole("img", { name: /Found:.*MOONBELL/iu })).toBeVisible();
+
+  const dice = await openSheet(page, "Dice");
+  await dice.getByRole("textbox", { name: "Dice notation" }).fill("1d20");
+  const request = page.waitForRequest(
+    (candidate) => candidate.method() === "POST" && candidate.url().endsWith("/roll"),
+  );
+  await dice.getByRole("button", { exact: true, name: "Roll d20" }).click();
+  const rolled = await request;
+  expect(rolled.postDataJSON()).toMatchObject({ expression: "1d20" });
+});
+
+test("new public visits open the handout page after reordering", async ({ browser, page }) => {
+  const url = `${STANDALONE}/?lang=en`;
+  await page.goto(url);
+  await expect(page.getByTestId("page-menu.button")).toHaveText("Landing Page");
+  await reachEditor(page);
+  const observer = await browser.newPage();
+  const visitor = await browser.newPage();
+  try {
+    await observer.goto(url);
+    await expect(observer.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await reachEditor(observer);
+    await page.evaluate(() => {
+      const editor = globalThis.__editor;
+      const landing = editor.getCurrentPage();
+      editor.createPage({ name: "Scratch" });
+      const scratch = editor.getPages().find((candidate) => candidate.name === "Scratch");
+      if (scratch === undefined) throw new Error("Scratch page was not created");
+      editor.run(() => {
+        editor.updatePage({ id: landing.id, index: scratch.index });
+        editor.updatePage({ id: scratch.id, index: landing.index });
+      });
+    });
+    await expect
+      .poll(() => observer.evaluate(() => globalThis.__editor.getPages()[0]?.name))
+      .toBe("Scratch");
+
+    await visitor.goto(url);
+    await expect(visitor.getByTestId("page-menu.button")).toHaveText("Landing Page");
+    await expect(visitor.locator("[data-public-board-note]")).toBeInViewport();
+    await expect(visitor.getByText(/choose North Gate under Places/u)).toBeAttached();
+  } finally {
+    await page.evaluate(() => {
+      const editor = globalThis.__editor;
+      const scratch = editor.getPages().find((candidate) => candidate.name === "Scratch");
+      if (scratch !== undefined) editor.deletePage(scratch.id);
+    });
+    await visitor.close();
+    await observer.close();
+  }
+});
+
 test("two guests can chat live and see their messages after reloading", async ({
   browser,
   page,

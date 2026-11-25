@@ -30,6 +30,7 @@ import { avatarKey } from "../src/avatars";
 import { type ChatMessage, MAX_CHAT_LENGTH } from "../src/chat";
 import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
+import { PUBLIC_HANDOUT_ASSET, PUBLIC_HANDOUT } from "../src/public-board-demo-ids";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass } from "./support";
@@ -161,6 +162,36 @@ describe("the public board", () => {
     const now = Date.now();
     const day = 4 * PUBLIC_SWEEP_MS;
     const page = PageRecordType.createId("page");
+    const drawing = (state: DurableObjectState) =>
+      new SQLiteSyncStorage<TLRecord>({
+        sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
+      });
+    // Another bootstrap or an alarm must keep the handout and its file in place.
+    expect((await guest.post("/api/public-board/bootstrap")).ok).toBe(true);
+    const demoHash = await runInDurableObject(
+      room,
+      (_room, state) =>
+        drawing(state).transaction((store) => {
+          expect(store.get(PUBLIC_HANDOUT)).toMatchObject({
+            isLocked: true,
+            meta: { place: "North Gate" },
+            parentId: page,
+            props: { assetId: PUBLIC_HANDOUT_ASSET },
+          });
+          const demo = store.get(PUBLIC_HANDOUT) as TLImageShape;
+          store.set(demo.id, stampPublicShape(demo, now - 2 * day - 1));
+          const asset = store.get(PUBLIC_HANDOUT_ASSET) as TLImageAsset;
+          return asset.props.src?.split("/").at(-1);
+        }).result,
+    );
+    expect(demoHash).toMatch(/^[a-f0-9]{64}$/u);
+    const listing = await roomCall(`/rooms/${board}/files/text`, pass);
+    expect(await listing.json()).toMatchObject({
+      stored: [{ engine: "tesseract-6.0.1", hash: demoHash }],
+    });
+    const demoText = await roomCall(`/rooms/${board}/files/${demoHash}/text/tesseract-6.0.1`, pass);
+    expect(demoText.status).toBe(200);
+    expect(await demoText.text()).toContain("MOONBELL");
     const group = (name: string, overrides: Partial<TLGroupShape> = {}): TLGroupShape => ({
       id: createShapeId(name),
       index: ZERO_INDEX_KEY,
@@ -262,10 +293,6 @@ describe("the public board", () => {
     const expiredImage = stampPublicShape(image("expired-image", orphan.id), now - 2 * day - 1);
     const oldSharedImage = stampPublicShape(image("old-shared-image", held.id), now - 2 * day - 1);
     const newSharedImage = stampPublicShape(image("new-shared-image", held.id), now);
-    const drawing = (state: DurableObjectState) =>
-      new SQLiteSyncStorage<TLRecord>({
-        sql: new DurableObjectSqliteSyncWrapper(state.storage, { tablePrefix: "tldraw_" }),
-      });
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
         for (const record of [
@@ -319,6 +346,7 @@ describe("the public board", () => {
     await runInDurableObject(room, (_room, state) => {
       drawing(state).transaction((store) => {
         expect(store.get(expired.id)).toBeUndefined();
+        expect(store.get(PUBLIC_HANDOUT)).toMatchObject({ opacity: 1 });
         expect(store.get(faded.id)).toMatchObject({ meta: faded.meta, opacity: 0.5 });
         expect(store.get(faint.id)).toEqual(faint);
         expect(store.get(recent.id)).toMatchObject({
@@ -349,8 +377,18 @@ describe("the public board", () => {
     expect(await bucket.head(fileKey(board, hashes.shared))).not.toBeNull();
     await runInDurableObject(room, (_room, state) => {
       const { sql } = state.storage;
-      expect(sql.exec("SELECT hash FROM files").toArray()).toEqual([{ hash: hashes.shared }]);
-      expect(sql.exec("SELECT hash FROM texts").toArray()).toEqual([{ hash: hashes.shared }]);
+      expect(
+        sql
+          .exec("SELECT hash FROM files ORDER BY hash")
+          .toArray()
+          .map(({ hash }) => hash),
+      ).toEqual([demoHash, hashes.shared].sort());
+      expect(
+        sql
+          .exec("SELECT hash FROM texts ORDER BY hash")
+          .toArray()
+          .map(({ hash }) => hash),
+      ).toEqual([demoHash, hashes.shared].sort());
       drawing(state).transaction((store) => {
         expect(store.get(orphan.id)).toBeUndefined();
         expect(store.get(held.id)).toBeDefined();

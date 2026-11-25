@@ -101,7 +101,7 @@ export class TextLedger {
     };
   }
 
-  private has(hash: string, engine: EngineKey): boolean {
+  has(hash: string, engine: EngineKey): boolean {
     return (
       this.sql.exec("SELECT 1 FROM texts WHERE hash = ? AND engine = ?", hash, engine).toArray()
         .length > 0

@@ -3,6 +3,7 @@ import { type Editor, type TLPageId, type TLShapeId, useValue } from "tldraw";
 
 import type { Hit, SearchKind } from "./search-index";
 
+import { PUBLIC_BOARD, PUBLIC_HANDOUT } from "../../src/public-board-demo-ids";
 import { type Copy, fill } from "./copy";
 import { flash } from "./highlight";
 import { Icon, type IconName } from "./icons";
@@ -98,7 +99,7 @@ function PlacesList({
   pages: Map<TLPageId, string> | null;
   setMine: (id: TLShapeId | null) => void;
 }) {
-  const { copy, editor, open } = useBoardUi();
+  const { board, copy, editor, open } = useBoardUi();
   return (
     <>
       <h3 className="mt-2 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
@@ -140,14 +141,16 @@ function PlacesList({
               >
                 <Icon name={starred ? "Star" : "StarOutline"} />
               </button>
-              <button
-                aria-label={`${copy.removePlace}: ${place.name}`}
-                className={ROW_BUTTON}
-                onClick={() => editor !== null && removePlace(editor, place.id)}
-                type="button"
-              >
-                <Icon name="Trash" />
-              </button>
+              {(board !== PUBLIC_BOARD || place.id !== PUBLIC_HANDOUT) && (
+                <button
+                  aria-label={`${copy.removePlace}: ${place.name}`}
+                  className={ROW_BUTTON}
+                  onClick={() => editor !== null && removePlace(editor, place.id)}
+                  type="button"
+                >
+                  <Icon name="Trash" />
+                </button>
+              )}
             </li>
           );
         })}

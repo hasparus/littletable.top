@@ -10,5 +10,12 @@
       "unknown"
     ]
   },
-  "ignorePatterns": [".agents/skills/impeccable/**", "bun.lock", "dist", "e2e/fixtures/text/*.json"]
+  "ignorePatterns": [
+    ".agents/skills/humanizer/**",
+    ".agents/skills/impeccable/**",
+    ".agents/skills/writing-clearly-and-concisely/**",
+    "bun.lock",
+    "dist",
+    "e2e/fixtures/text/*.json"
+  ]
 }
