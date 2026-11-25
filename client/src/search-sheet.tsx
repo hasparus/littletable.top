@@ -101,14 +101,14 @@ function PlacesList({
   const { copy, editor, open } = useBoardUi();
   return (
     <>
-      <h3 className="mt-2 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
-      <ul className="mt-1 divide-y divide-border">
+      <h3 className="my-1 px-3 text-sm font-medium text-foreground-secondary">{copy.places}</h3>
+      <ul className="space-y-0.5">
         {list.map((place) => {
           const starred = place.id === mine;
           return (
-            <li className="flex items-center gap-1" key={place.id}>
+            <li className="flex items-center rounded-lg hover:bg-bg-tertiary" key={place.id}>
               <button
-                className={`relative flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-lg text-left hover:bg-bg-tertiary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus ${SEARCH_TEXT_PADDING}`}
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-border-focus"
                 onClick={() => {
                   if (editor === null) return;
                   open(null);
@@ -116,7 +116,6 @@ function PlacesList({
                 }}
                 type="button"
               >
-                <Icon className={`${SEARCH_ICON} text-primary`} name="PinIcon" />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-base">{place.name}</span>
                   {pages !== null && (
@@ -336,7 +335,7 @@ export function SearchSheet() {
     list.length > 0 ? (
       <PlacesList list={list} mine={mine} pages={pages} setMine={setMine} />
     ) : (
-      hits === null && <p className="py-3 text-sm text-foreground-muted">{copy.noPlacesYet}</p>
+      hits === null && <p className="px-3 py-1 text-sm text-foreground-muted">{copy.noPlacesYet}</p>
     );
 
   return (
