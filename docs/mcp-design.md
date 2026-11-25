@@ -13,9 +13,9 @@ Made by the maintainer; later sections follow them.
    "adapt the code"; no written confirmation is being waited for. The
    provenance document, the per-file origin headers and the separate
    `upstream/` folders stay.
-2. **The role is "shaman"** (Polish "szaman"). A board has people who can
-   write, and shamans. Only a shaman connects an assistant to a board and
-   chooses read or edit. The owner makes shamans on a permissions page.
+2. **The role is "manager"** (Polish "opiekun tablicy"). A board has people who can
+   write, and managers. Only a manager connects an assistant to a board and
+   chooses read or edit. The owner makes managers on a permissions page.
    Built: §9b.
 3. **Recent changes list people and assistants**, a summary per actor and
    time, 200 entries or 30 days, with undo for an assistant's batch.
@@ -889,7 +889,7 @@ Assistant client        MCP Worker (mcp.<domain>)          WorkOS AuthKit       
    |                           |                                |                      |
    Person, in a browser, signed in to the tabletop:             |                      |
    |   GET /assistants  -> the clients that hold a token for this account (seen by the MCP
-   |   Worker, recorded in D1), and for each the boards where the account is owner or shaman,
+   |   Worker, recorded in D1), and for each the boards where the account is owner or manager,
    |   each off / read / edit.  POST with CSRF, as the other owner actions.            |
    |                           |                                |                      |
    | POST /mcp tools/call      |                                |                      |
@@ -906,10 +906,10 @@ Assistant client        MCP Worker (mcp.<domain>)          WorkOS AuthKit       
   `/assistants` page.
 - **The role is looked up, not stored in the grant**: on each call the MCP
   Worker joins the grant with `boards.owner_id` and `visits.role`; an
-  account that is no longer owner or shaman has no usable grant, whatever
+  account that is no longer owner or manager has no usable grant, whatever
   the row says. The room still gets `role` in the board grant and refuses
   anything else.
-- **Grant version**: `boards` gains `grant_version`; demoting a shaman or
+- **Grant version**: `boards` gains `grant_version`; demoting a manager or
   switching a board off for a client raises it (`endAssistants` on the
   room, built), and the MCP Worker passes the current one. With grants
   looked up per call this is a second lock, kept so both modes present the
@@ -941,15 +941,15 @@ Assistant client        MCP Worker (mcp.<domain>)          WorkOS AuthKit       
 | Role     | May                                                                      | Who                                                         |
 | -------- | ------------------------------------------------------------------------ | ----------------------------------------------------------- |
 | `write`  | draw, roll, upload                                                       | anyone holding a pass: guests (always `write`) and accounts |
-| `shaman` | all of that, and connect an assistant to the board, read-only or editing | accounts the owner makes shamans                            |
-| `owner`  | all of that; rename, reset the link, delete; make and unmake shamans     | the account that made the board                             |
+| `manager` | all of that, and connect an assistant to the board, read-only or editing | accounts the owner makes managers                            |
+| `owner`  | all of that; rename, reset the link, delete; make and unmake managers     | the account that made the board                             |
 
 An assistant never holds a role. It acts for one account, on boards where
-that account is `shaman` or `owner`, with the access that person picked.
+that account is `manager` or `owner`, with the access that person picked.
 
 What changed in the contract:
 
-- **The pass** has `role: "owner" | "shaman" | "write"`. `owner: boolean`
+- **The pass** has `role: "owner" | "manager" | "write"`. `owner: boolean`
   stays readable for one step: a pass without `role` is `owner` or `write`
   by that flag; a pass with both goes by `role`. A pass that gives a guest
   (`g:`) more than `write`, or names an unknown role, is refused (403).
@@ -957,25 +957,25 @@ What changed in the contract:
   (`e2e/fake-host.ts`) sends `role`.
 - **The bootstrap answer**'s `person` has `role` beside `owner`.
 - **An assistant's board grant** (in the access token, and in every call to
-  the room) has `role: "shaman" | "owner"`: the role of the account it acts
+  the room) has `role: "manager" | "owner"`: the role of the account it acts
   for. The MCP Worker refuses a token entry with any other role, and the
   room refuses the call again on its side (`readDocument`,
   `commitDocument` answer "revoked"), so no Worker bound to the room can
-  act for someone who is not a shaman.
+  act for someone who is not a manager.
 - **Hosted mode**: the host keeps roles and its own permissions page; it
   names the person's role in each pass, offers on its consent page only
-  boards where the member is shaman or owner, puts that role in the token,
+  boards where the member is manager or owner, puts that role in the token,
   and raises the board's grant version (and tells the room, §9) when a
-  shaman is demoted.
-- **Standalone mode**: `visits.role` (`write` or `shaman`, migration
+  manager is demoted.
+- **Standalone mode**: `visits.role` (`write` or `manager`, migration
   `0003_board_roles.sql`); the owner is the board's `owner_id`.
   `GET /api/boards/<id>/people` lists the accounts that joined by link;
   `POST /api/boards/<id>/people/<account>/role` sets one, with the same
-  origin and CSRF checks as the other owner actions. Taking shaman back
+  origin and CSRF checks as the other owner actions. Taking manager back
   calls the room's `endAssistants`, which ends every assistant on the board
   at once. The page is "People" on a board's row of the front page
-  (`client/src/board-people.tsx`): each person with a "Shaman" checkbox,
-  and a line saying what a shaman can do; guests are not listed and cannot
+  (`client/src/board-people.tsx`): each person with a "Manager" checkbox,
+  and a line saying what a manager can do; guests are not listed and cannot
   be promoted.
 - Tests: `test/roles.test.ts` (every refusal: signed out, not the owner,
   no CSRF token, another origin, a role that is not one, an account that
@@ -1003,7 +1003,7 @@ changed, removed, undo` and a cap (the last 200 entries or 30 days).
   person). Pushes are coalesced per person and page into one row per
   minute of activity ("Ania changed 12 shapes on Dungeon"). No inverse is
   kept: people have their own undo.
-- **Undo a batch.** `undoBatch(batchId)`, for shamans, from the list or
+- **Undo a batch.** `undoBatch(batchId)`, for managers, from the list or
   as an MCP tool: applies the stored inverse through the same commit path,
   under the precondition that the records it restores or removes are still
   as the batch left them. Records someone has since edited are skipped and
@@ -1026,7 +1026,7 @@ names". So the title lives with the board in both modes, and
   together with the room's.
 - **Who may set it.** The owner from the board itself (a rename in the
   board's menu) and, in standalone mode, the front page; an assistant
-  acting for a shaman or owner with edit access, through `rename_board`.
+  acting for a manager or owner with edit access, through `rename_board`.
 - **The bootstrap answer.** `title` becomes optional and is only a
   **suggestion for a board the tabletop has not seen**: the first pass for
   a new board id may carry `title` (also as a claim of the pass, since the
@@ -1120,7 +1120,7 @@ Workers in CI.
 
 | Phase | What                                                                                                                                                                                                                                                                                                                      | Days                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| 1     | Hosted authorization end to end: the first host's consent page listing boards where the member is shaman or owner, tokens with `role`, the revocation call (`/rooms/<board>/mcp/revoke`), the reference host as an authorization server for e2e, the MCP Worker deployed at `mcp.<domain>`, tried with Claude and ChatGPT | 6 (plus the host's side) |
+| 1     | Hosted authorization end to end: the first host's consent page listing boards where the member is manager or owner, tokens with `role`, the revocation call (`/rooms/<board>/mcp/revoke`), the reference host as an authorization server for e2e, the MCP Worker deployed at `mcp.<domain>`, tried with Claude and ChatGPT | 6 (plus the host's side) |
 | 2     | Standalone authorization: verify AuthKit tokens (JWKS, issuer, audience), `assistant_clients` and `assistant_grants` in D1, the `/assistants` page (EN/PL), `grant_version` on boards, the Alchemy helper deploying the MCP Worker in standalone mode with the D1 binding                                                 | 7                        |
 | 3     | Board names in the tabletop (§9c): title in the room, rename in the board's menu, the bootstrap `title` as a first suggestion, `create_board` and `rename_board`, the host's create endpoint in the reference host                                                                                                        | 5                        |
 | 4     | Recent changes and undo-a-batch (§9b): the room's change log, attribution of people's pushes per session, inverse diffs for assistant batches, the list in the client, `undoBatch`                                                                                                                                        | 7                        |
@@ -1178,15 +1178,15 @@ needs assistants; 5 to 8 as wanted.
 
 ## 13. Open decisions
 
-1. Role values: `"owner" | "shaman" | "write"` as built, with `owner:
+1. Role values: `"owner" | "manager" | "write"` as built, with `owner:
 boolean` read for one more step. Confirm, and say when the flag goes.
-2. Whether a shaman, and not only the owner, may make other shamans
+2. Whether a manager, and not only the owner, may make other managers
    (built: owner only).
 3. §9c: that the host keeps minting board ids (the MCP Worker asks it),
    and that the bootstrap `title` becomes a first suggestion only.
 4. Standalone grants per client need `client_id` in AuthKit's token; if it
    is not there, grants per account, or wait for it.
-5. Whether demoting a shaman should end every assistant on the board
+5. Whether demoting a manager should end every assistant on the board
    (built: yes, the simple and safe reading) or only that person's.
 6. Italic faces (+700 KB in the MCP Worker) and the "sized approximately"
    flag: now or later.

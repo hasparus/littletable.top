@@ -24,8 +24,8 @@ function boardGrant(value: unknown): BoardGrant {
     typeof board !== "string" ||
     !BOARD_ID.test(board) ||
     (access !== "read" && access !== "write") ||
-    // NOTE: an assistant acts only where its person is a shaman of the board.
-    (role !== "shaman" && role !== "owner") ||
+    // NOTE: an assistant acts only where its person is a manager of the board.
+    (role !== "manager" && role !== "owner") ||
     !Number.isInteger(grant) ||
     (grant as number) < 0 ||
     (title !== undefined && (typeof title !== "string" || title.length > 200))

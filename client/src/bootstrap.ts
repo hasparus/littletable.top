@@ -4,7 +4,7 @@ export type Person = {
   id: string;
   name: string;
   owner: boolean;
-  role?: "owner" | "shaman" | "write";
+  role?: "owner" | "manager" | "write";
 };
 
 /** What the pass endpoint answers (docs/hosting.md, "The host contract"). */

@@ -193,7 +193,7 @@ it.each([
     account: { id: managerId },
   } = await (await manager.fetch("/api/me")).json<{ account: { id: string } }>();
   const store = new Store(DB);
-  await store.setRole(board.id, managerId, "shaman");
+  await store.setRole(board.id, managerId, "manager");
   await grants.register(managerId, "assistant-one");
   await grants.set(managerId, "assistant-one", board.id, "write");
   const [grant] = await grants.grants(managerId, "assistant-one");
@@ -267,12 +267,12 @@ it("keeps a manager's assistant grants off after demotion and promotion", async 
   await manager.bootstrap(board.shareCode);
   const { account } = await (await manager.fetch("/api/me")).json<{ account: { id: string } }>();
   const role = `/api/boards/${board.id}/people/${account.id}/role`;
-  expect((await owner.post(role, { role: "shaman" })).status).toBe(200);
+  expect((await owner.post(role, { role: "manager" })).status).toBe(200);
   await grants.register(account.id, "assistant-one");
   expect(await grants.set(account.id, "assistant-one", board.id, "write")).toBe(true);
   expect(await grants.grants(account.id, "assistant-one")).toHaveLength(1);
 
   expect((await owner.post(role, { role: "write" })).status).toBe(200);
-  expect((await owner.post(role, { role: "shaman" })).status).toBe(200);
+  expect((await owner.post(role, { role: "manager" })).status).toBe(200);
   expect(await grants.grants(account.id, "assistant-one")).toEqual([]);
 });

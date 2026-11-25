@@ -5,7 +5,7 @@ import type { FrontCopy } from "./front-copy";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 
-type BoardRole = "shaman" | "write";
+type BoardRole = "manager" | "write";
 export type BoardRoleChange = { role: BoardRole };
 type Joined = { avatar: string | null; id: string; name: string; role: BoardRole };
 
@@ -47,7 +47,7 @@ export function BoardPeople({
   }, [peoplePath]);
 
   const setRole = (person: Joined, manager: boolean) => {
-    const role = manager ? "shaman" : "write";
+    const role = manager ? "manager" : "write";
     setFailed(false);
     setSaving(true);
     void post(`${peoplePath}/${person.id}/role`, { role })
@@ -94,7 +94,7 @@ export function BoardPeople({
               <span className="min-w-0 flex-1 truncate">{person.name}</span>
               <label className="flex min-h-11 items-center gap-2 text-sm">
                 <input
-                  checked={person.role === "shaman"}
+                  checked={person.role === "manager"}
                   className="size-5 accent-primary"
                   disabled={saving}
                   onChange={(event) => setRole(person, event.target.checked)}

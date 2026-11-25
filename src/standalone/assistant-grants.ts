@@ -6,12 +6,12 @@ type AccessRow = {
   access: AssistantAccess;
   board: string;
   revision: number;
-  role: "owner" | "shaman";
+  role: "owner" | "manager";
   title: string;
 };
 
 // WARNING: A manager's access depends on holding the board's current join link.
-const ELIGIBLE = `(b.owner_id = ?1 OR (v.role = 'shaman' AND v.share_code = b.share_code))`;
+const ELIGIBLE = `(b.owner_id = ?1 OR (v.role = 'manager' AND v.share_code = b.share_code))`;
 const VISIT = "LEFT JOIN visits v ON v.board_id = b.id AND v.account_id = ?1";
 const GRANT = "g.board_id = b.id AND g.account_id = ?1 AND g.client_id = ?2";
 
@@ -41,7 +41,7 @@ export class AssistantGrants {
     const { results } = await this.db
       .prepare(`SELECT b.id AS board, b.title,
       COALESCE(g.access, 'off') AS access, COALESCE(g.revision, 0) AS revision,
-      CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'shaman' END AS role
+      CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'manager' END AS role
       FROM boards b ${VISIT} LEFT JOIN assistant_grants g ON ${GRANT}
       WHERE b.deployment = ?3 AND ${ELIGIBLE} ORDER BY b.title, b.id`)
       .bind(account, client, this.deployment)
@@ -52,7 +52,7 @@ export class AssistantGrants {
   async grants(account: string, client: string) {
     const { results } = await this.db
       .prepare(`SELECT b.id AS board, b.title, g.access, g.revision,
-      CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'shaman' END AS role
+      CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'manager' END AS role
       FROM assistant_grants g JOIN boards b ON ${GRANT} ${VISIT}
       WHERE b.deployment = ?3 AND ${ELIGIBLE} AND g.access != 'off' ORDER BY b.title, b.id LIMIT 100`)
       .bind(account, client, this.deployment)

@@ -12,10 +12,10 @@ export type BoardGrant = {
   /** The board's grant version when the host signed this; a lower one is revoked. */
   grant: number;
   /**
-   * What the account the assistant acts for is on this board. Only a shaman
+   * What the account the assistant acts for is on this board. Only a manager
    * (the owner is one) may connect an assistant; the room refuses any other.
    */
-  role: "owner" | "shaman";
+  role: "owner" | "manager";
   /** The board's title, as the host knows it. */
   title: string | null;
   /** A standalone grant is rechecked in the room against current D1 access. */

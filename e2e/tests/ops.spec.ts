@@ -33,7 +33,7 @@ let rpcId = 0;
 
 async function applyOps(board: string, ops: object[]) {
   const token = await sign(
-    { boards: [{ access: "write", board, grant: 0, role: "shaman" }] },
+    { boards: [{ access: "write", board, grant: 0, role: "manager" }] },
     "tabletop-mcp",
   );
   const meta = {

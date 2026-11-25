@@ -55,7 +55,7 @@ export type BoardPerson = {
   avatar: string | null;
   id: string;
   name: string;
-  role: "shaman" | "write";
+  role: "manager" | "write";
 };
 
 export async function hasActiveSession(db: D1Database | undefined, hash: string | undefined) {
@@ -261,7 +261,7 @@ export class Store {
          WHERE v.account_id = ? AND v.board_id = ? AND b.deployment = ?`,
       )
       .bind(accountId, boardId, this.deployment)
-      .first<{ role: "shaman" | "write" }>();
+      .first<{ role: "manager" | "write" }>();
     return row?.role ?? null;
   }
 
@@ -274,7 +274,7 @@ export class Store {
          WHERE v.board_id = ? AND b.deployment = ? ORDER BY v.visited_at DESC LIMIT 200`,
       )
       .bind(boardId, this.deployment)
-      .all<{ avatar_hash: string | null; id: string; name: string; role: "shaman" | "write" }>();
+      .all<{ avatar_hash: string | null; id: string; name: string; role: "manager" | "write" }>();
     return results.map(
       (row) =>
         ({
@@ -287,7 +287,7 @@ export class Store {
   }
 
   /** Sets a joined account's role; false if that account never joined the board. */
-  async setRole(boardId: string, accountId: string, role: "shaman" | "write") {
+  async setRole(boardId: string, accountId: string, role: "manager" | "write") {
     const result = await this.db
       .prepare(
         `UPDATE visits SET role = ?2 WHERE board_id = ?1 AND account_id = ?3

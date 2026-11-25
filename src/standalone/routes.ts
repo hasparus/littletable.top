@@ -580,7 +580,7 @@ export class Standalone {
     const owner = found.session.account.id;
     const body = await request.json<{ role?: string }>().catch(() => null);
     const role = body?.role;
-    if (role !== "write" && role !== "shaman") return refuse(400, "role-invalid");
+    if (role !== "write" && role !== "manager") return refuse(400, "role-invalid");
     const board = await this.store.owned(id, owner);
     if (board === null) return refuse(404, "not-found");
     if (!(await this.store.setRole(id, person, role))) return refuse(404, "not-found");

@@ -71,7 +71,7 @@ function signPass(
     name: person.name,
     owner: person.owner,
     // NOTE: the reference host has owners and everyone else; a host with
-    // shamans names them here.
+    // managers names them here.
     role: person.owner ? "owner" : "write",
   })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })

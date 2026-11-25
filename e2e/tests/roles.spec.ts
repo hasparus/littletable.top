@@ -58,7 +58,7 @@ test("an owner can grant and revoke a board manager role", async ({ browser }) =
 
   const second = member.waitForResponse(isBootstrap);
   await member.reload();
-  expect(await roleIn(second)).toBe("shaman");
+  expect(await roleIn(second)).toBe("manager");
 
   await owner.reload();
   await openPeople(owner, /^Manage /u, "People");

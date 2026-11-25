@@ -34,7 +34,7 @@ export type Pass = {
 };
 
 /** Owners and board managers can grant assistants access. Guests can draw. */
-export type Role = "owner" | "shaman" | "write";
+export type Role = "owner" | "manager" | "write";
 
 const MAX_AVATAR_CLAIM = 2048;
 
@@ -68,7 +68,7 @@ export async function verifyPass(token: string, verifier: Verifier): Promise<Pas
     typeof name !== "string" ||
     name.length === 0 ||
     name.length > MAX_NAME_LENGTH ||
-    (role !== "owner" && role !== "shaman" && role !== "write") ||
+    (role !== "owner" && role !== "manager" && role !== "write") ||
     (sub.startsWith("g:") && role !== "write") ||
     !Number.isInteger(link) ||
     (link as number) < 0

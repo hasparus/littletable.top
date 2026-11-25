@@ -629,7 +629,7 @@ export class BoardRoom extends DurableObject<Env> {
       return this.assistantGrantEpoch === epoch ? apply() : "revoked";
     }
     const current = this.grantVersion();
-    if (grant.role !== "shaman" && grant.role !== "owner") return "revoked";
+    if (grant.role !== "manager" && grant.role !== "owner") return "revoked";
     if (grant.grant < current) return "revoked";
     if (grant.grant > current) this.setGrantVersion(grant.grant);
     return apply();
