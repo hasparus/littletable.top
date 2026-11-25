@@ -44,6 +44,25 @@
   touch-action: pan-x pan-y;
 }
 
+[data-board-import-track]:not([aria-valuenow]) > div {
+  margin-inline-start: 35%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-board-import-track]:not([aria-valuenow]) > div {
+    animation: board-import-sweep 1.45s ease-in-out infinite alternate;
+  }
+
+  @keyframes board-import-sweep {
+    from {
+      transform: translateX(-115%);
+    }
+    to {
+      transform: translateX(115%);
+    }
+  }
+}
+
 [data-board-layout] {
   --board-gutter: 12px;
   --board-left: max(var(--board-gutter), env(safe-area-inset-left));
