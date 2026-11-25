@@ -56,6 +56,32 @@ async function capture(chat: Locator, name: string) {
   }
 }
 
+for (const textSize of ["default", "compact"]) {
+  test(`shrinking a newly opened empty chat with ${textSize} text never enlarges it`, async ({
+    page,
+  }) => {
+    await page.route("**/rooms/*/chat", (route) => route.fulfill({ json: [] }));
+    await page.goto(STANDALONE);
+    if (textSize === "compact") {
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = "12px";
+      });
+    }
+    const chat = await openSheet(page, "Chat");
+    await expect(chat.getByText("No messages yet.")).toBeVisible();
+    await settleSheet(chat);
+    const initial = await box(chat);
+    await chat.getByRole("separator", { name: "Resize chat" }).press("ArrowDown");
+    const resized = await box(chat);
+    if (textSize === "compact") {
+      expect(resized.height).toBe(initial.height);
+      await expect(chat).toHaveAttribute("data-chat-size", "natural");
+    } else {
+      expect(resized.height).toBeLessThan(initial.height);
+    }
+  });
+}
+
 test("desktop chat resizes by mouse and keyboard and keeps the message being read", async ({
   page,
 }) => {

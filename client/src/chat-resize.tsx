@@ -40,12 +40,17 @@ function resize(size: ChatSize, rect: DOMRect, edge: Edge, dx: number, dy: numbe
     next.bottom = innerHeight - rect.bottom;
   }
   if (edge.includes("n") || edge.includes("s")) {
-    const top = edge.includes("n") ? clamp(rect.top + dy, margin, rect.bottom - 144) : rect.top;
+    const minHeight = Math.min(144, rect.height);
+    const top = edge.includes("n")
+      ? clamp(rect.top + dy, margin, rect.bottom - minHeight)
+      : rect.top;
     const bottom = edge.includes("s")
-      ? clamp(rect.bottom + dy, top + 144, innerHeight - margin)
+      ? clamp(rect.bottom + dy, top + minHeight, innerHeight - margin)
       : rect.bottom;
-    next.height = bottom - top;
-    if (desktop()) next.bottom = innerHeight - bottom;
+    if (top !== rect.top || bottom !== rect.bottom) {
+      next.height = bottom - top;
+      if (desktop()) next.bottom = innerHeight - bottom;
+    }
   }
   return next;
 }
