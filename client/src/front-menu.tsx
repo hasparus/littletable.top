@@ -51,9 +51,11 @@ export function FrontMenu({
       >
         {trigger}
       </summary>
-      <div className="absolute top-full right-0 z-10 w-max min-w-36 max-w-60 rounded-xl border border-border bg-bg-secondary p-1">
-        {children}
-      </div>
+      {open && (
+        <div className="absolute top-full right-0 z-10 w-max min-w-36 max-w-60 rounded-xl border border-border bg-bg-secondary p-1">
+          {children}
+        </div>
+      )}
     </details>
   );
 }
