@@ -7,8 +7,8 @@ name: Deploy
 # `vars` and `secrets` come from the GitHub Environment the stage maps to:
 # `production` for `prod`, `staging` for `staging` and every preview stage.
 # Until that Environment has its required inputs, the deploy job ends green
-# with a notice and deploys nothing. README.md, "Deploys",
-# lists what to create.
+# with a notice and deploys nothing. See docs/deployment.md
+# for the required inputs.
 
 on:
   push:
@@ -79,7 +79,7 @@ jobs:
           if [ "${#missing[@]}" -gt 0 ]; then
             list=$(printf '%s, ' "${missing[@]}")
             echo "::notice title=Deploy skipped::The $ENVIRONMENT Environment lacks ${list%, };" \
-              "nothing was deployed. See README.md, \"Deploys\"."
+              "nothing was deployed. See docs/deployment.md."
             {
               echo "### Deploy of \`$STAGE\` skipped"
               echo
@@ -122,6 +122,10 @@ jobs:
           # CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN. --yes also lets it
           # create (or upgrade) the account's state store on the first deploy.
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_REGION: ${{ vars.POSTHOG_REGION }}
+          POSTHOG_FEEDBACK_SURVEY_ID: ${{ vars.POSTHOG_FEEDBACK_SURVEY_ID }}
+          POSTHOG_FEEDBACK_QUESTION_ID: ${{ vars.POSTHOG_FEEDBACK_QUESTION_ID }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
           TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY }}
         run: |

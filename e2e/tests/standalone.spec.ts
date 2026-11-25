@@ -298,7 +298,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Ada Lovelace");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Signed in as Ada Lovelace")).toBeVisible();
+  await expect(page.getByLabel("Signed in as Ada Lovelace", { exact: true })).toBeVisible();
   await expect(page.getByText("No boards yet.", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "New board" }).click();
@@ -337,10 +337,12 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await collectCspViolations(front);
   await front.goto(`${STANDALONE}/boards`);
   const row = front.getByRole("listitem").filter({ hasText: "Board" });
+  await row.getByLabel(/^Manage /u).click();
   await row.getByRole("button", { name: "Rename" }).click();
   await row.getByLabel("Board name").fill("Mörk Borg night");
   await row.getByRole("button", { name: "Save" }).click();
   const renamed = front.getByRole("listitem").filter({ hasText: "Mörk Borg night" });
+  await renamed.getByLabel("Manage Mörk Borg night", { exact: true }).click();
   await renamed.getByRole("button", { name: "Reset link" }).click();
   await renamed.getByRole("alertdialog").getByRole("button", { name: "Reset link" }).click();
   await expect(
@@ -355,6 +357,7 @@ test("an owner signs in and makes a board; a guest joins by link and plays", asy
   await expect(onBoard(page, "Hello table")).toBeVisible();
   await expect(page).toHaveTitle("Mörk Borg night");
 
+  await front.getByLabel("Signed in as Ada Lovelace", { exact: true }).click();
   await front.getByRole("button", { name: "Sign out" }).click();
   await expect(front).toHaveURL(`${STANDALONE}/`);
   await expect(front.getByRole("link", { name: "Sign in" })).toBeVisible();

@@ -88,6 +88,7 @@ async function mount(): Promise<void> {
     copy,
     door,
     fallbackExit,
+    feedback: settings.mode === "standalone",
     first,
     landing,
     language,
