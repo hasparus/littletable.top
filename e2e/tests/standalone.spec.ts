@@ -28,6 +28,67 @@ import {
 
 const ON_BOARD = boardAt(STANDALONE);
 
+test("the board menu and right-hand controls share guides on public and private boards", async ({
+  browser,
+  page,
+}) => {
+  const landing = await phone(browser, `${STANDALONE}/`);
+  await landing.getByTestId("page-menu.button").waitFor();
+  const landingMenu = (await landing.locator(".tlui-menu-zone").boundingBox())!;
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`${STANDALONE}/boards`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Layout owner");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  const toggle = page.getByRole("button", { name: "Secret layer" });
+  await expect(toggle).toBeEnabled();
+
+  const menu = page.locator(".tlui-menu-zone:visible");
+  const tools = page.getByRole("toolbar", { exact: true, name: "Tools" });
+  const ownerMenu = (await menu.boundingBox())!;
+  const ownerTools = (await tools.boundingBox())!;
+  const ownerToggle = (await toggle.boundingBox())!;
+  expect(ownerMenu.x).toBe(landingMenu.x);
+  expect(ownerMenu.y).toBe(landingMenu.y);
+  expect(ownerMenu.height).toBe(landingMenu.height);
+  expect(ownerMenu.x).toBeCloseTo(ownerTools.x, 0);
+  expect(ownerMenu.y).toBe(ownerToggle.y);
+  expect(ownerMenu.height).toBe(ownerToggle.height);
+  expect(ownerToggle.width).toBe(ownerToggle.height);
+
+  const guest = await phone(browser, page.url());
+  await joinAs(guest, "Layout guest");
+  const guestMenu = (await guest.locator(".tlui-menu-zone").boundingBox())!;
+  expect(guestMenu).toMatchObject({
+    height: landingMenu.height,
+    x: landingMenu.x,
+    y: landingMenu.y,
+  });
+
+  await page.setViewportSize({ height: 900, width: 1200 });
+  const styles = page.locator(".tlui-style-panel__wrapper:visible");
+  await expect(styles).toBeVisible();
+  const desktopMenu = (await menu.boundingBox())!;
+  const desktopToggle = (await toggle.boundingBox())!;
+  const desktopStyles = (await styles.boundingBox())!;
+  expect(desktopMenu.y).toBe(desktopToggle.y);
+  expect(desktopStyles.y).toBeGreaterThan(desktopToggle.y + desktopToggle.height);
+  expect(desktopStyles.x + desktopStyles.width).toBeCloseTo(
+    desktopToggle.x + desktopToggle.width,
+    0,
+  );
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(menu).toBeVisible();
+  expect((await menu.boundingBox())!.y).toBe(desktopMenu.y);
+
+  await guest.context().close();
+  await landing.context().close();
+});
+
 test("the home page is one editable public board for anonymous visitors", async ({
   browser,
   page,

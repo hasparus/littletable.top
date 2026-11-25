@@ -240,7 +240,6 @@ export function BoardCanvas({
       <div
         className="fixed inset-0 overflow-hidden"
         data-board-shell
-        data-public-board={landing === undefined ? undefined : ""}
         hidden={!active}
         ref={keepBoardZoom}
       >
