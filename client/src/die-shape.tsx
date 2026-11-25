@@ -82,42 +82,50 @@ function Silhouette({ className, sides }: { className: string; sides: number }) 
   return <polygon className={className} points={(OUTLINES[sides] ?? FALLBACK).points} />;
 }
 
+function diePresentation({ copy, dropped, fate, mark, sides, tone, value }: DieShapeProps) {
+  const shown = fate ? String(value ?? 0).replace("-", "−") : String(value ?? sides);
+  const name = fate ? dieLabel(copy, 0).replace("0", "F") : dieLabel(copy, sides);
+  const marker = mark === undefined ? "" : " (" + copy[MARK_LABEL[mark]] + ")";
+  const label = name + ": " + shown + marker;
+  const colours =
+    TONES[
+      mark === "success" || mark === "critical" || mark === "match" ? "soft" : (tone ?? "solid")
+    ];
+  const stroke =
+    mark === "failure" || mark === "botch" ? "fill-bg-tertiary stroke-danger-text" : colours.shape;
+  const silhouetteSides = fate ? 6 : sides;
+  const outline = OUTLINES[silhouetteSides] ?? FALLBACK;
+  return {
+    label: dropped ? fill(copy.droppedDie, { die: label }) : label,
+    fontSize:
+      shown.length > 2 ? Math.min(outline.text.size - 2.5, 40 / shown.length) : outline.text.size,
+    shown,
+    colours,
+    stroke,
+    silhouetteSides,
+    outline,
+  };
+}
+
 /**
  * A die's face count and value on its own flat silhouette, in the colours of
  * the theme. The name read aloud is "d20: 2"; only the number is drawn.
  */
-export function DieShape({
-  copy,
-  dropped = false,
-  fate = false,
-  mark,
-  sides,
-  size = "md",
-  tone = "solid",
-  value,
-}: DieShapeProps) {
-  const shown = fate ? String(value ?? 0).replace("-", "−") : String(value ?? sides);
-  const colours =
-    TONES[mark === "success" || mark === "critical" || mark === "match" ? "soft" : tone];
-  const name = fate ? dieLabel(copy, 0).replace("0", "F") : dieLabel(copy, sides);
-  const label =
-    name + ": " + shown + (mark === undefined ? "" : " (" + copy[MARK_LABEL[mark]] + ")");
-  const danger = mark === "failure" || mark === "botch";
-
-  const outline = OUTLINES[fate ? 6 : sides] ?? FALLBACK;
-  const { text } = outline;
+export function DieShape({ dropped = false, size = "md", ...die }: DieShapeProps) {
+  const { colours, fontSize, label, outline, shown, silhouetteSides, stroke } = diePresentation({
+    ...die,
+    dropped,
+  });
+  const y = outline.text.y;
   return (
     <svg
-      aria-label={dropped ? fill(copy.droppedDie, { die: label }) : label}
+      aria-label={label}
       className={`${SIZES[size]} aspect-square shrink-0 data-dropped:opacity-60`}
       data-dropped={dropped ? "" : undefined}
       role="img"
       viewBox="0 0 32 32"
     >
-      <Silhouette
-        className={`${danger ? "fill-bg-tertiary stroke-danger-text" : colours.shape} ${SHAPE_CLASS}`}
-        sides={fate ? 6 : sides}
-      />
+      <Silhouette className={`${stroke} ${SHAPE_CLASS}`} sides={silhouetteSides} />
       {outline.ticks !== undefined && (
         <path
           className={`${colours.tick} fill-none stroke-[1.5]`}
@@ -128,15 +136,15 @@ export function DieShape({
       <text
         className={`${colours.text} font-bold tabular-nums`}
         dy="0.35em"
-        fontSize={shown.length > 2 ? Math.min(text.size - 2.5, 40 / shown.length) : text.size}
+        fontSize={fontSize}
         textAnchor="middle"
         x="16"
-        y={text.y}
+        y={y}
       >
         {shown}
       </text>
       {dropped && (
-        <path className="stroke-foreground stroke-2" d={`M7 ${text.y}h18`} strokeLinecap="round" />
+        <path className="stroke-foreground stroke-2" d={`M7 ${y}h18`} strokeLinecap="round" />
       )}
     </svg>
   );

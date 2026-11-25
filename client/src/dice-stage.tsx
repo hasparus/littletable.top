@@ -21,6 +21,7 @@ const WIDE_BOARD_WIDTH = 1024;
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 const RESTING_AFTER_MS = 4000;
+const ANIMATED_SIDES = new Set<number>(DIE_SIDES);
 
 export type DiceStageProps = {
   copy: Copy;
@@ -127,6 +128,15 @@ function nameFits(toast: HTMLElement, dice: HTMLElement, sum: HTMLElement | null
   probe.remove();
   const room = width - chrome - dice.scrollWidth - (sum === null ? 0 : sum.offsetWidth + GAP) - GAP;
   return room >= Math.min(name, NAME_MIN_WIDTH);
+}
+
+function needsTotal(dice: Roll["dice"], result: RollResult, modifier: number | null) {
+  return (
+    dice.length !== 1 ||
+    modifier !== null ||
+    result.kept[0] === false ||
+    result.total !== dice[0]?.value
+  );
 }
 
 function ResultToast({
@@ -257,10 +267,7 @@ function ResultToast({
             />
           ))}
         </span>
-        {(roll.dice.length !== 1 ||
-          modifier !== null ||
-          result.kept.includes(false) ||
-          result.total !== roll.dice[0]?.value) && (
+        {needsTotal(roll.dice, result, modifier) && (
           <span
             className="shrink-0 border-l border-border pl-2 text-base leading-none font-bold tabular-nums"
             ref={sum}
@@ -286,13 +293,12 @@ export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceSt
   const [, setFailures] = useState(0);
   const still = useMemo(() => prefersStill(), []);
   const result = useMemo(() => rollResult(roll), [roll]);
-  const playable: readonly number[] = DIE_SIDES;
   const unavailable =
     isDice3dDown() ||
     roll.dice.length > MAX_DICE ||
     roll.dice.length === 0 ||
     roll.dice.some(
-      ({ fate, sides, value }) => fate || !playable.includes(sides) || value < 1 || value > sides,
+      ({ fate, sides, value }) => fate || !ANIMATED_SIDES.has(sides) || value < 1 || value > sides,
     );
   const showToast = still || unavailable || settledId === roll.id;
 
