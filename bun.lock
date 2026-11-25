@@ -16,7 +16,7 @@
         "@tldraw/utils": "5.6.2",
         "@tldraw/validate": "5.6.2",
         "@typegpu/color": "0.12.2",
-        "@typegpu/kit": "0.0.8",
+        "@typegpu/kit": "0.1.0",
         "@typegpu/noise": "0.12.1",
         "@vitejs/plugin-react": "6.3.0",
         "babel-plugin-react-compiler": "1.0.0",
@@ -30,7 +30,7 @@
         "tesseract.js": "6.0.1",
         "tesseract.js-core": "6.1.2",
         "tldraw": "5.6.2",
-        "typegpu": "0.12.10",
+        "typegpu": "0.12.11",
         "unique-names-generator": "4.7.1",
         "vite": "8.1.6",
       },
@@ -864,7 +864,7 @@
 
     "@typegpu/color": ["@typegpu/color@0.12.2", "", { "peerDependencies": { "typegpu": "^0.12.10" } }, "sha512-wE3pZnKARS3yKIJqDpmGG3Gj8mGb8qe2TNtwicx5ERf1ksEVwUE4vN3xnJhpS4WmCjHrsPE9OzPSQk+79v0M8A=="],
 
-    "@typegpu/kit": ["@typegpu/kit@0.0.8", "", { "dependencies": { "wgpu-matrix": "^3.4.2" }, "peerDependencies": { "@pmndrs/glyph": "0.1.0", "@typegpu/color": "^0.12.2", "@typegpu/noise": "^0.12.1", "react": "^19.3.0", "react-native": "^0.88.1", "react-native-webgpu": "^0.21.1", "react-native-worklets": "^0.13.1", "typegpu": "^0.12.10", "vitest": "^5.1.0", "webgpu": "^0.6.2" }, "optionalPeers": ["@pmndrs/glyph", "react", "react-native", "react-native-webgpu", "react-native-worklets", "vitest", "webgpu"], "bin": { "typegpu-kit-bake-font": "./dist/text/bake.js" } }, "sha512-VPySS2o1xt0zl/WgyfYrzRB6tA7PrjzY4pHcTo12Wgbg+rlTn+GlOAGam5jfd3HoTopvEjmFaKQNQS70guPvXA=="],
+    "@typegpu/kit": ["@typegpu/kit@0.1.0", "", { "dependencies": { "wgpu-matrix": "^3.4.2" }, "peerDependencies": { "@pmndrs/glyph": "^0.1.0", "@typegpu/color": "^0.12.2", "@typegpu/noise": "^0.12.1", "react": ">=19", "react-native": ">=0.88.1", "react-native-webgpu": ">=0.21.1", "react-native-worklets": ">=0.13.1", "typegpu": "^0.12.11", "vitest": "^5.1.1", "webgpu": "^0.6.2" }, "optionalPeers": ["@pmndrs/glyph", "react", "react-native", "react-native-webgpu", "react-native-worklets", "vitest", "webgpu"], "bin": { "typegpu-kit-bake-font": "./dist/text/bake.js" } }, "sha512-OpX5CuVEcWXo82/UBX6iyPSNz9dVK86d3nOxI2aHOvqfOlnxZp7nUtL9nzxUT2DgvX+484/DVFlNIku1CtPjzQ=="],
 
     "@typegpu/noise": ["@typegpu/noise@0.12.1", "", { "peerDependencies": { "typegpu": "^0.12.7" } }, "sha512-0WAQ/UwrOboCe9JsNbxxf19hht6XwESjPajHswRp6MD3j6CGHwZNFy8rbGCRfoOGDYop6iDDXCdfcRsNNc05Nw=="],
 
@@ -1480,7 +1480,7 @@
 
     "typed-binary": ["typed-binary@4.3.5", "", {}, "sha512-irziT9zxcyZs8TawuZBab1kQTACM3Q6wGWDh/a5IB2iWbueu+jbkN5ofoSvp28Em1w4ZEa7y44Jx7pHmgBGZdw=="],
 
-    "typegpu": ["typegpu@0.12.10", "", { "dependencies": { "tinyest": "~0.3.4", "tsover-runtime": "^0.0.7", "typed-binary": "^4.3.4" }, "bin": { "typegpu": "./bin.mjs" } }, "sha512-uZDsn/HKSS81X3RARkXGC3EkTQba7HPBPpTsOR4a/yVeJxdDEsj2K7oAvbTXuRsKW2IFsKdstrIRff1mIqoDxA=="],
+    "typegpu": ["typegpu@0.12.11", "", { "dependencies": { "tinyest": "~0.3.4", "tsover-runtime": "^0.0.7", "typed-binary": "^4.3.4" }, "bin": { "typegpu": "./bin.mjs" } }, "sha512-C2ytNE3KrJddfapKHS0uhLEtEHE7hmujHYMF8+5ZNs14X4DNXar/SoSVLCE6rru+rqRZz5HuCVZHugP8l02OPw=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

@@ -12,56 +12,60 @@ import { useBoardUi } from "./ui";
 const SCAN_COLLECTION =
   "https://commons.wikimedia.org/wiki/Category:Rider-Waite_tarot_deck_(Roses_%26_Lilies)";
 
+async function requestDraw(keeper: PassKeeper, editor: Editor, locale: string, id: string) {
+  const bounds = editor.getViewportPageBounds();
+  const { x, y } = bounds.center;
+  const height = Math.max(1, Math.min(bounds.height * 0.46, 270 / editor.getZoomLevel()));
+  const response = await fetch(`${keeper.room}/tarot`, {
+    body: JSON.stringify({
+      height,
+      id,
+      language: locale === "pl" ? "pl" : "en",
+      page: editor.getCurrentPageId(),
+      x,
+      y,
+    }),
+    headers: {
+      Authorization: `Bearer ${await keeper.pass()}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  if (response.status === 403) {
+    keeper.end("link-reset");
+    return { status: "idle" } satisfies DrawState;
+  }
+  if (!response.ok) throw new Error(`status ${response.status}`);
+  const reveal: unknown = await response.json();
+  if (!tarotReveal.isValid(reveal)) throw new Error("Invalid tarot reveal");
+  return { status: "revealed", card: reveal } satisfies DrawState;
+}
+
+type DrawState =
+  | { status: "idle" }
+  | { status: "drawing" }
+  | { status: "failed"; retryId: string }
+  | { status: "revealed"; card: TarotReveal };
+
 export function useTarotDraw(keeper: PassKeeper) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [revealed, setRevealed] = useState<TarotReveal | null>(null);
-  const [retryId, setRetryId] = useState<string | null>(null);
+  const [state, setState] = useState<DrawState>({ status: "idle" });
 
   async function draw(editor: Editor, locale: string) {
-    if (busy || editor.getIsReadonly()) return;
-    const id = retryId ?? crypto.randomUUID();
-    const bounds = editor.getViewportPageBounds();
-    const { x, y } = bounds.center;
-    const height = Math.max(1, Math.min(bounds.height * 0.46, 270 / editor.getZoomLevel()));
-    setBusy(true);
-    setFailed(false);
-    setRevealed(null);
-    try {
-      const response = await fetch(`${keeper.room}/tarot`, {
-        body: JSON.stringify({
-          height,
-          id,
-          language: locale === "pl" ? "pl" : "en",
-          page: editor.getCurrentPageId(),
-          x,
-          y,
-        }),
-        headers: {
-          Authorization: `Bearer ${await keeper.pass()}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-      if (response.status === 403) {
-        keeper.end("link-reset");
-        return;
-      }
-      if (!response.ok) throw new Error(`status ${response.status}`);
-      const reveal: unknown = await response.json();
-      if (!tarotReveal.isValid(reveal)) throw new Error("Invalid tarot reveal");
-      setRetryId(null);
-      setRevealed(reveal);
-    } catch {
-      setRetryId(id);
-      setFailed(true);
-      return;
-    } finally {
-      setBusy(false);
-    }
+    if (state.status === "drawing" || editor.getIsReadonly()) return;
+    const id = state.status === "failed" ? state.retryId : crypto.randomUUID();
+    setState({ status: "drawing" });
+    const next = await requestDraw(keeper, editor, locale, id).catch(
+      () => ({ status: "failed", retryId: id }) satisfies DrawState,
+    );
+    setState(next);
   }
 
-  return { busy, draw, failed, revealed };
+  return {
+    busy: state.status === "drawing",
+    draw,
+    failed: state.status === "failed",
+    revealed: state.status === "revealed" ? state.card : null,
+  };
 }
 
 export function TarotSheet({
@@ -111,6 +115,14 @@ export function TarotSheet({
   );
 }
 
+function startReveal(surface: HTMLCanvasElement, src: string) {
+  const lifetime = new AbortController();
+  void import("./tarot-reveal-gpu")
+    .then(({ playTarotReveal }) => playTarotReveal(surface, src, lifetime.signal))
+    .catch(() => lifetime.abort());
+  return () => lifetime.abort();
+}
+
 function CardPreview({ reveal }: { reveal: TarotReveal }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const src = tarotImage(reveal.card);
@@ -123,11 +135,7 @@ function CardPreview({ reveal }: { reveal: TarotReveal }) {
     ) {
       return;
     }
-    const lifetime = new AbortController();
-    void import("./tarot-reveal-gpu")
-      .then(({ playTarotReveal }) => playTarotReveal(surface, src, lifetime.signal))
-      .catch(() => lifetime.abort());
-    return () => lifetime.abort();
+    return startReveal(surface, src);
   }, [src]);
 
   return (
