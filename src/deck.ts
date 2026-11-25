@@ -7,6 +7,7 @@ import { T } from "@tldraw/validate";
 import type { DeckManifest, InstalledGizmo } from "./gizmo-packages";
 
 import {
+  cardFlightDuration,
   dealtDeckCard,
   type DeckDropResult,
   type DeckReveal,
@@ -88,6 +89,7 @@ const deckDeal = T.object({
   action: T.literal("draw"),
   deck: imageId,
   faceDown: T.boolean.optional(),
+  flight: T.object({ duration: cardFlightDuration }).optional(),
   grid: deckGrid.optional(),
   id: requestId,
   language,
@@ -599,6 +601,7 @@ function flipDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     deckDealtAt: _dealt,
     deckTravelX: _x,
     deckTravelY: _y,
+    deckFlightDuration: _flight,
     ...previous
   } = image.meta;
   drawing.set(asset.id, asset);
@@ -643,6 +646,8 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
   const card = manifest.cards[selected];
   if (!card) return null;
   const faceDown = command.faceDown === true;
+  const { flight } = command;
+  if (flight && (!command.precise || faceDown)) return null;
   const name = faceDown
     ? language === "pl"
       ? "Zakryta karta"
@@ -657,6 +662,12 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
     : (state.grids?.[page] ?? establishGrid(command, stackHeight, widest));
   const height = grid?.height ?? stackHeight;
   const destination = grid === undefined ? command.point : dealPoint(drawing, page, grid);
+  const rotation = command.precise ? placement.rotation : 0;
+  const dx = command.precise && !flight ? 0 : command.origin.x - destination.x;
+  const dy = command.precise && !flight ? 0 : command.origin.y - destination.y;
+  const travelX = dx * Math.cos(rotation) + dy * Math.sin(rotation);
+  const travelY = dy * Math.cos(rotation) - dx * Math.sin(rotation);
+  if (!Number.isFinite(travelX) || !Number.isFinite(travelY)) return null;
   const cardId = dealtCardId(deck, id);
   addImage(drawing, {
     height,
@@ -671,13 +682,14 @@ function drawDeck(drawing: Drawing, storage: Decks, resolve: ResolvePackage, com
           deckDealtAt: Date.now(),
           deckFace: card.src,
           deckFaceId: card.id,
-          deckTravelX: command.precise ? 0 : command.origin.x - destination.x,
-          deckTravelY: command.precise ? 0 : command.origin.y - destination.y,
+          deckTravelX: travelX,
+          deckTravelY: travelY,
+          ...(flight && { deckFlightDuration: flight.duration }),
         },
     name,
     page,
     point: destination,
-    rotation: command.precise ? placement.rotation : 0,
+    rotation,
     src: faceDown ? manifest.back : card.src,
     width: faceDown ? manifest.backWidth : card.width,
   });

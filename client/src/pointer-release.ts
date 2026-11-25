@@ -1,6 +1,62 @@
+import { FPS } from "./table-physics";
+
 const SAMPLE_MS = 80;
 const TOSS_PX_PER_MS = 0.6;
 const MIN_SAMPLE_MS = 16;
+
+const GRAVITY_PX_PER_MS2 = 0.006;
+const FRICTION_PX_PER_MS2 = 0.008;
+const LIFT_TO_FORWARD_SPEED = 0.25;
+const MAX_LAUNCH_PX_PER_MS = 1;
+const RELEASE_TRANSFER = 0.75;
+const CAMERA_DISTANCE_PX = 220;
+const AIR_TIME_PER_SPEED = (2 * LIFT_TO_FORWARD_SPEED) / GRAVITY_PX_PER_MS2;
+const STOP_TIME_PER_SPEED = AIR_TIME_PER_SPEED + 1 / FRICTION_PX_PER_MS2;
+
+type Offset = { x: number; y: number };
+export type CardFlight = Offset & { duration: number };
+
+function travel(speed: number, time: number) {
+  const sliding = Math.max(0, time - AIR_TIME_PER_SPEED * speed);
+  return speed * time - (FRICTION_PX_PER_MS2 * sliding * sliding) / 2;
+}
+
+/** Animate from the release offset to the stored resting position. The card flies at its launch
+ * velocity until contact, then kinetic friction slows it to rest. */
+export function animateCardFlight(
+  element: HTMLElement,
+  offset: Offset,
+  duration: number,
+  elapsed = 0,
+) {
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  if (motion.matches || duration <= 0 || elapsed >= duration) return;
+  const speed = duration / STOP_TIME_PER_SPEED;
+  const airTime = speed * AIR_TIME_PER_SPEED;
+  const distance = travel(speed, duration);
+  const pose = (t: number) => {
+    const remaining = 1 - travel(speed, t) / distance;
+    const height = (GRAVITY_PX_PER_MS2 * t * Math.max(0, airTime - t)) / 2;
+    return {
+      offset: t / duration,
+      translate: `${offset.x * remaining}px ${offset.y * remaining}px`,
+      scale: String(1 + height / CAMERA_DISTANCE_PX),
+    };
+  };
+  const frames = [pose(0)];
+  for (let time = 1000 / FPS; time < duration; time += 1000 / FPS) frames.push(pose(time));
+  frames.push(pose(airTime), pose(duration));
+  const flight = element.animate(
+    frames.sort((a, b) => a.offset - b.offset),
+    { duration, id: "deck-flight" },
+  );
+  flight.currentTime = Math.max(0, elapsed);
+  const cancel = () => flight.cancel();
+  motion.addEventListener("change", cancel);
+  const cleanup = () => motion.removeEventListener("change", cancel);
+  void flight.finished.then(cleanup, cleanup);
+  return cancel;
+}
 
 type Sample = Pick<PointerEvent, "clientX" | "clientY" | "timeStamp">;
 type Movement = Sample & { getCoalescedEvents?: () => Sample[] };
@@ -22,9 +78,9 @@ export function trackRelease(start: Sample) {
     record(event);
   }
 
-  function isToss(end: Sample) {
+  function throwAt(end: Sample) {
     record(end);
-    if (samples.length < 2) return false;
+    if (samples.length < 2) return null;
     const first = samples[0]!;
     const second = samples[1]!;
     const gap = second.timeStamp - first.timeStamp;
@@ -36,8 +92,14 @@ export function trackRelease(start: Sample) {
     const fraction = (from - first.timeStamp) / gap;
     const dx = end.clientX - first.clientX - fraction * (second.clientX - first.clientX);
     const dy = end.clientY - first.clientY - fraction * (second.clientY - first.clientY);
-    return Math.hypot(dx, dy) >= TOSS_PX_PER_MS * Math.max(MIN_SAMPLE_MS, elapsed);
+    const displacement = Math.hypot(dx, dy);
+    const handSpeed = displacement / Math.max(MIN_SAMPLE_MS, elapsed);
+    if (handSpeed < TOSS_PX_PER_MS) return null;
+    const speed = Math.min(MAX_LAUNCH_PX_PER_MS, RELEASE_TRANSFER * handSpeed);
+    const duration = STOP_TIME_PER_SPEED * speed;
+    const reach = travel(speed, duration) / displacement;
+    return { x: dx * reach, y: dy * reach, duration } satisfies CardFlight;
   }
 
-  return { move, isToss };
+  return { move, throwAt };
 }

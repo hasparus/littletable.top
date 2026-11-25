@@ -170,6 +170,45 @@ describe("installable physical decks", () => {
     expect(card.index > stack.index).toBe(true);
   });
 
+  it("persists a fast release offset in the card's rotated local coordinates", () => {
+    const { command, records } = table();
+    const deck = placed(command(place));
+    const stack = records.get(deck);
+    if (stack?.typeName !== "shape") throw new Error("Stack is missing");
+    records.set(deck, { ...stack, rotation: Math.PI / 2 });
+    const id = crypto.randomUUID();
+    const origin = { x: 160, y: 130 };
+    const point = { x: 320, y: 240 };
+    const drawn = {
+      ...draw(deck),
+      id,
+      origin,
+      point,
+      precise: true,
+      flight: { duration: 220 },
+    };
+    expect(command({ ...drawn, precise: false })).toBeNull();
+    expect(command({ ...drawn, faceDown: true })).toBeNull();
+    expect(() => command({ ...drawn, flight: { duration: 251 } })).toThrow();
+    const result = revealed(command(drawn));
+    const card = dealtCardId(deck, id);
+    const landed = records.get(card);
+    if (landed?.typeName !== "shape" || landed.type !== "image") throw new Error("Card is missing");
+    expect(landed.x - landed.props.h / 2).toBeCloseTo(point.x);
+    expect(landed.y + landed.props.w / 2).toBeCloseTo(point.y);
+    expect(landed.meta.deckFlightDuration).toBe(220);
+    expect(landed.meta.deckTravelX).toBeCloseTo(-110);
+    expect(landed.meta.deckTravelY).toBeCloseTo(160);
+    expect(revealed(command({ ...drawn, flight: { duration: 170 } }))).toBe(result);
+    expect(records.get(card)).toBe(landed);
+    expect(records.get(deck)).toMatchObject({ meta: { deckRemaining: 77 } });
+
+    command({ action: "flip", card, faceDown: true });
+    const reversed = records.get(card);
+    if (reversed?.typeName !== "shape") throw new Error("Card is missing");
+    expect(reversed.meta).not.toHaveProperty("deckFlightDuration");
+  });
+
   it("reserves the exact top card without consuming it on cancellation", () => {
     const { command, records } = table();
     const deck = placed(command(place));

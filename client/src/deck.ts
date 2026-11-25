@@ -31,6 +31,7 @@ export type DeckPickup = { id: string; cancel: () => void; image: HTMLImageEleme
 type DealOptions = {
   pickup?: DeckPickup;
   faceDown?: boolean;
+  flight?: Deal["flight"];
   grid?: Deal["grid"];
   release?: { at: number; grip: CardGrip; track: (drop: DeckDrop) => void };
 };
@@ -163,6 +164,7 @@ function useDeckActions(canDeal: boolean, send: Transport) {
         point: { x: point.x, y: point.y },
         precise: !!options.release,
         ...(options.grid && { grid: options.grid }),
+        ...(options.flight && { flight: { duration: options.flight.duration } }),
         ...(options.faceDown && { faceDown: true }),
         ...(options.pickup && { prepared: true }),
       };

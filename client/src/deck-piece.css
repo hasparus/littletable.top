@@ -236,6 +236,7 @@ img[data-deck-top],
 [data-deck-piece] {
   position: relative;
 }
+[data-deck-flight],
 [data-deck-card],
 [data-deck-back-scene] {
   width: 100%;
