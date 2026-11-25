@@ -84,9 +84,11 @@ test("a drawing becomes a thumbnail in the created and joined board collections"
   });
   await page.goto(`${STANDALONE}/boards`);
   await expectThumbnail(page);
+  await expect(thumbnail(page)).toHaveCSS("width", "110px");
+  await reviewShot(page, "board-thumbnail-desktop");
   await expectNoCspViolations(page);
 
-  const phone = await browser.newContext(PHONE);
+  const phone = await browser.newContext({ ...PHONE, colorScheme: "dark" });
   try {
     const visitor = await phone.newPage();
     await collectCspViolations(visitor);
@@ -100,6 +102,8 @@ test("a drawing becomes a thumbnail in the created and joined board collections"
     await expect(visitor.getByText("Boards created", { exact: true })).toBeVisible();
     await expect(visitor.getByText("Boards joined", { exact: true })).toBeVisible();
     await expectThumbnail(visitor);
+    await expect(thumbnail(visitor)).toHaveCSS("width", "70px");
+    await expect(thumbnail(visitor)).toHaveCSS("background-color", "rgb(247, 246, 243)");
     await reviewShot(visitor, "board-thumbnail-mobile");
     await expectNoCspViolations(visitor);
   } finally {
