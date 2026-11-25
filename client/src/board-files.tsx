@@ -86,24 +86,29 @@ function ImportStatus({
       className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2 sm:max-w-xs"
       data-board-import
     >
-      <p className="truncate font-medium">{fill(copy.boardFileImporting, { name })}</p>
-      <div
-        className="mt-1 flex items-baseline justify-between gap-2 text-xs text-foreground-secondary"
-        role="status"
-      >
-        <span>{label}</span>
+      <div className="flex items-baseline justify-between gap-3 font-medium">
+        <p className="truncate">{fill(copy.boardFileImporting, { name })}</p>
         {percent !== undefined && (
-          <span aria-hidden="true" className="tabular-nums">
+          <span aria-hidden="true" className="shrink-0 tabular-nums">
             {percent}%
           </span>
         )}
       </div>
-      <progress
+      <div
         aria-label={label}
-        className="mt-1 block h-1 w-full accent-primary"
-        max={100}
-        value={percent}
-      />
+        aria-valuenow={percent}
+        className="mt-[3px] h-1.5 overflow-hidden rounded-full bg-border"
+        data-board-import-track
+        role="progressbar"
+      >
+        <div
+          className={`h-full rounded-full ${progress.kind === "uploading" && progress.waiting ? "bg-warning" : "bg-primary"}`}
+          style={{ width: percent === undefined ? "30%" : `${percent}%` }}
+        />
+      </div>
+      <p className="mt-[5px] text-xs text-foreground-secondary" role="status">
+        {label}
+      </p>
     </div>
   );
 }
