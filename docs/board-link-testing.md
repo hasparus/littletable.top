@@ -25,9 +25,24 @@ bun run test test/board-link-model.test.ts -t 'seed 42$'
 The simulated input is notification and connection order. The runtime still
 uses its real clock for pass expiration and socket timers. The test observes
 protocol behavior across serialized commands with valid signed tokens.
-Concurrent arrivals, storage failures and Durable Object restarts are outside
-this experiment. A next experiment could restart the room after a reset and
-check the model against a stale reconnect after the persisted version loads.
+Concurrent arrivals and storage failures are outside the seeded test. A
+separate Worker test forces a room restart after reset, then checks an old
+pass before a current pass can advance the room version. Workerd logs
+`test restart` when it aborts the instance. The test expects that error.
+
+```sh
+bun run test test/board-link-model.test.ts -t 'room restart'
+```
+
+The standalone demonstration controls logical time and event order. It uses
+a toy board. With seed 43, a connection starts before a reset and finishes
+after a restart. The first command should print `PASS`, and the
+intentionally broken variant should print `FAIL` and exit with status 1.
+
+```sh
+bun scripts/demo-board-link-simulation.ts 43
+bun scripts/demo-board-link-simulation.ts 43 stale-snapshot
+```
 
 For more on controlling time and faults in a simulator, see
 [FoundationDB's simulation documentation](https://github.com/apple/foundationdb/blob/main/documentation/sphinx/source/testing.rst).

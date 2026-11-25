@@ -1,5 +1,8 @@
 import { TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason } from "@tldraw/sync-core";
+import { env, runInDurableObject } from "cloudflare:test";
 import { expect, it } from "vitest";
+
+import type { BoardRoom } from "../src/board-room";
 
 import { call, linkReset, open, pass, seat, until } from "./support";
 
@@ -53,12 +56,7 @@ it.each(SEEDS)("replays the board link lifecycle with seed %i", async (seed) => 
         } else {
           const token = await pass({ board, link, sub: command.sub });
           if (link < latest) {
-            const rejected = await open(board, token);
-            expect(rejected.response.status).toBe(101);
-            let closure: Awaited<typeof rejected.closure> | undefined;
-            void rejected.closure.then((event) => (closure = event));
-            await until(() => closure !== undefined);
-            expect(closure).toEqual(FORBIDDEN);
+            await expectStalePass(board, token);
           } else {
             sockets.set(index, await seat(board, token));
             versions.set(index, link);
@@ -84,5 +82,41 @@ it.each(SEEDS)("replays the board link lifecycle with seed %i", async (seed) => 
     }
   } finally {
     for (const socket of sockets.values()) socket.close();
+  }
+});
+
+async function expectStalePass(board: string, token: string) {
+  const rejected = await open(board, token);
+  expect(rejected.response.status).toBe(101);
+  let closure: Awaited<typeof rejected.closure> | undefined;
+  void rejected.closure.then((event) => (closure = event));
+  try {
+    await until(() => closure !== undefined);
+    expect(closure).toEqual(FORBIDDEN);
+  } finally {
+    rejected.socket?.close(1000);
+  }
+}
+
+it("keeps an old pass revoked after room restart", async () => {
+  const board = "link-model-restart";
+  const oldPass = await pass({ board, link: 0, sub: GUEST });
+  const currentPass = await pass({ board, link: 2, sub: GUEST });
+  const reset = await linkReset({ board, link: 2 });
+  expect((await call(`/rooms/${board}/link`, reset, { method: "POST" })).status).toBe(204);
+
+  const namespace = (env as unknown as { BoardRoom: DurableObjectNamespace<BoardRoom> }).BoardRoom;
+  const room = namespace.get(namespace.idFromName(board));
+  await expect(
+    runInDurableObject(room, (_instance, state) => state.abort("test restart")),
+  ).rejects.toThrow("test restart");
+
+  await expectStalePass(board, oldPass);
+  const guest = await seat(board, currentPass);
+  try {
+    guest.send({ type: "ping" });
+    await until(() => guest.received.some(({ type }) => type === "pong"));
+  } finally {
+    guest.close();
   }
 });
