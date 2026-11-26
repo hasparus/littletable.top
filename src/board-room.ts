@@ -96,6 +96,7 @@ const SOCKET_SNAPSHOT_PREFIX = "socketSnapshot:";
 
 export const PASS_HEADER = "X-Board-Pass";
 export const AVATAR_HEADER = "X-Board-Avatar";
+export const SOCKET_SESSION_HEADER = "X-Board-Socket-Session";
 
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
@@ -327,10 +328,22 @@ export class BoardRoom extends DurableObject<Env> {
     return this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null;
   }
 
+  private socketSessionId(request: Request, sub: string) {
+    const tabId = new URL(request.url).searchParams.get("sessionId")!;
+    const scopedId = request.headers.get(SOCKET_SESSION_HEADER);
+    if (scopedId === null) return tabId;
+    // WARNING: An existing tab-only seat may survive deployment and still belongs to its original player.
+    const legacy = this.room
+      .getSessions()
+      .some((session) => session.sessionId === tabId && session.meta.sub === sub);
+    return legacy ? tabId : scopedId;
+  }
+
   private connectRoom(request: Request, pass: Pass): Response {
     const avatar = request.headers.get(AVATAR_HEADER) || null;
-    const sessionId = new URL(request.url).searchParams.get("sessionId")!;
-    const refusal = this.admit(pass) ?? this.seatRefusal(sessionId, pass.sub);
+    const linkRefusal = this.admit(pass);
+    const sessionId = linkRefusal === null ? this.socketSessionId(request, pass.sub) : "";
+    const refusal = linkRefusal ?? this.seatRefusal(sessionId, pass.sub);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
     if (refusal !== null) {

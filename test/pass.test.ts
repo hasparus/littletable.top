@@ -48,6 +48,20 @@ describe("a refusal on the socket", () => {
     });
   });
 
+  it("gives a member a separate session when signing in from a guest's tab", async () => {
+    const board = "signed-in-tab";
+    const tabId = crypto.randomUUID();
+    const guest = await seat(board, await pass({ board, sub: "g:visitor" }), tabId, "guest-store");
+    const memberPass = await pass({ board, sub: "u:member" });
+    const member = await seat(board, memberPass, tabId, "member-store");
+    const reloaded = await seat(board, memberPass, tabId, "reloaded-store");
+
+    expect(await member.closure).toEqual({ code: 1012, reason: "Session replaced" });
+    expect(guest.isClosed()).toBe(false);
+    guest.close();
+    reloaded.close();
+  });
+
   it("keeps a full board at capacity while the same player reclaims their seat", async () => {
     const sessionId = crypto.randomUUID();
     const returningToken = await pass({ board: "full", sub: "u:returning" });
@@ -69,9 +83,14 @@ describe("a refusal on the socket", () => {
       code: TLSyncErrorCloseEventCode,
       reason: TLSyncErrorCloseEventReason.FORBIDDEN,
     });
+    const newIdentity = await open("full", strangerToken, sessionId, "another-store");
+    expect(await newIdentity.closure).toEqual({
+      code: TLSyncErrorCloseEventCode,
+      reason: TLSyncErrorCloseEventReason.ROOM_FULL,
+    });
     expect(original.isClosed()).toBe(false);
 
-    const replacement = await seat("full", returningToken, sessionId);
+    const replacement = await seat("full", returningToken, sessionId, "new-store");
     expect(await original.closure).toEqual({ code: 1012, reason: "Session replaced" });
 
     const late = await open("full", strangerToken);

@@ -109,9 +109,17 @@ export async function restartRoom(board: string) {
   );
 }
 
-export async function open(board: string, token: string, sessionId = crypto.randomUUID()) {
+export async function open(
+  board: string,
+  token: string,
+  sessionId: string = crypto.randomUUID(),
+  storeId?: string,
+) {
+  const url = new URL(`https://board.test/rooms/${board}/connect`);
+  url.search = new URLSearchParams({ pass: token, sessionId }).toString();
+  if (storeId !== undefined) url.searchParams.set("storeId", storeId);
   const response = await worker.fetch(
-    new Request(`https://board.test/rooms/${board}/connect?sessionId=${sessionId}&pass=${token}`, {
+    new Request(url, {
       headers: { Upgrade: "websocket" },
     }),
   );
@@ -127,8 +135,8 @@ type SyncMessage = { data?: unknown; type: string };
 
 // Speaks just enough of the tldraw sync protocol to become a connected
 // session, then collects what the room sends.
-export async function seat(board: string, token: string, sessionId?: string) {
-  const { closure, response, socket } = await open(board, token, sessionId);
+export async function seat(board: string, token: string, sessionId?: string, storeId?: string) {
+  const { closure, response, socket } = await open(board, token, sessionId, storeId);
   if (socket === null) throw new Error(`refused: ${response.status}`);
   const received: SyncMessage[] = [];
   let closed = false;

@@ -9,12 +9,13 @@ import {
   PASS_HEADER,
   PUBLIC_BOARD,
   type Refusal,
+  SOCKET_SESSION_HEADER,
 } from "./board-room";
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parseLaunch, parsePool } from "./dice";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
-import { readCapped } from "./file-store";
+import { readCapped, sha256Hex } from "./file-store";
 import { serveFiles } from "./files";
 import { addressKey } from "./limiter";
 import {
@@ -240,6 +241,12 @@ async function rooms(
     const forwarded = new Request(request);
     forwarded.headers.set(PASS_HEADER, JSON.stringify(pass));
     forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
+    forwarded.headers.delete(SOCKET_SESSION_HEADER);
+    if (url.searchParams.has("storeId")) {
+      // WARNING: tldraw retains a tab ID across sign-in. Bind it to the verified identity.
+      const key = new TextEncoder().encode(JSON.stringify([sessionId, pass.sub]));
+      forwarded.headers.set(SOCKET_SESSION_HEADER, await sha256Hex(key.buffer));
+    }
     return room.fetch(forwarded);
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));
