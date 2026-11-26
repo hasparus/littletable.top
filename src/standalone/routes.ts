@@ -372,13 +372,21 @@ export class Standalone {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
     await this.store.closeSession(found.hash);
-    const { owned } = await this.store.list(found.session.account.id);
-    await Promise.all(
-      owned.map(({ id }) => {
-        const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
-        return this.env.BoardRoom.get(secret).disconnectSession(found.hash);
-      }),
-    );
+    try {
+      const { owned } = await this.store.list(found.session.account.id);
+      const deliveries = await Promise.allSettled(
+        owned.map(async ({ id }) => {
+          const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
+          await this.env.BoardRoom.get(secret).disconnectSession(found.hash);
+        }),
+      );
+      if (deliveries.some(({ status }) => status === "rejected")) {
+        log("auth.socket_disconnect_incomplete");
+      }
+    } catch {
+      // Private rooms also recheck the deleted session on their own alarms.
+      log("auth.socket_disconnect_incomplete");
+    }
     log("auth.signed_out", { account: found.session.account.id });
     const { origin } = new URL(request.url);
     const redirect =

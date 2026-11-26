@@ -56,7 +56,7 @@ import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
 import { isSecretLayer } from "./secret-layer";
 import { AssistantGrants } from "./standalone/assistant-grants";
-import { hasActiveSession } from "./standalone/store";
+import { activeSessionExpiry } from "./standalone/store";
 import {
   type Claim,
   type ClaimRequest,
@@ -92,6 +92,7 @@ const PUBLIC_SIGNATURE_PAGE = "publicSignaturePage";
 const RETIRED = "retired";
 const CONNECT_TIMEOUT_MS = 10_000;
 const SOCKET_SNAPSHOT_PREFIX = "socketSnapshot:";
+const PRIVATE_SESSION_CHECK_MS = 30_000;
 
 export const PASS_HEADER = "X-Board-Pass";
 export const AVATAR_HEADER = "X-Board-Avatar";
@@ -135,6 +136,7 @@ export class BoardRoom extends DurableObject<Env> {
   private document!: RoomDocument;
   private drawingRoom?: DrawingRoom;
   private readonly sockets = new Map<string, RoomSocket>();
+  private readonly privateSessionDeadlines = new Map<string, number>();
   private publicExpiryEnabled = false;
   private publicSignaturePage?: TLPageId;
   private retired = false;
@@ -151,7 +153,15 @@ export class BoardRoom extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'),
     );
-    this.restoreSockets();
+    const sockets = ctx.getWebSockets();
+    if (this.privateSessionHashes(sockets).size === 0) {
+      this.restoreSockets(sockets);
+    } else {
+      void ctx.blockConcurrencyWhile(async () => {
+        await this.recheckPrivateSessions(sockets);
+        this.restoreSockets(sockets);
+      });
+    }
   }
 
   // WARNING: After deleteAll, the cached room still refers to rows whose tables were dropped.
@@ -300,16 +310,88 @@ export class BoardRoom extends DurableObject<Env> {
     const pass: Pass = JSON.parse(request.headers.get(PASS_HEADER)!);
     if (!isSecretLayer(pass.board)) return this.connectRoom(request, pass);
 
-    // WARNING: Disconnection can miss a secret socket opened after its final session check unless both are serialized.
+    // WARNING: Keep authorization and acceptance in the same input gate as logout.
     return this.ctx.blockConcurrencyWhile(async () => {
-      if (!(await hasActiveSession(this.env.DB, pass.sessionHash))) {
+      const hash = pass.sessionHash;
+      if (hash === undefined || !(await this.checkPrivateSession(hash))) {
         return new Response("Forbidden", { status: 403 });
       }
+      await this.schedulePrivateSessionCheck();
+      if (!this.mayUseSocket(hash)) return new Response("Forbidden", { status: 403 });
       return this.connectRoom(request, pass);
     });
   }
 
+  private privateSessionHashes(sockets: WebSocket[]): Set<string> {
+    const hashes = new Set<string>();
+    for (const socket of sockets) {
+      const saved = socket.deserializeAttachment() as SocketAttachment | null;
+      const hash = saved?.person.sessionHash;
+      if (socket.readyState === WebSocket.OPEN && hash !== undefined) hashes.add(hash);
+    }
+    return hashes;
+  }
+
+  private async checkPrivateSession(hash: string): Promise<boolean> {
+    const started = Date.now();
+    let expiry: number | null = null;
+    try {
+      expiry = await activeSessionExpiry(this.env.DB, hash);
+    } catch {
+      log("board.private_session_check_failed", {});
+    }
+    if (expiry === null || expiry <= Date.now()) {
+      this.disconnectSession(hash);
+      return false;
+    }
+    // The alarm rechecks at half the lease. An overdue alarm cannot extend a cached authorization.
+    this.privateSessionDeadlines.set(
+      hash,
+      Math.min(expiry, started + 2 * PRIVATE_SESSION_CHECK_MS),
+    );
+    return true;
+  }
+
+  private async schedulePrivateSessionCheck(): Promise<void> {
+    if (this.privateSessionDeadlines.size === 0) return;
+    const next = Math.min(
+      Date.now() + PRIVATE_SESSION_CHECK_MS,
+      ...this.privateSessionDeadlines.values(),
+    );
+    const scheduled = await this.ctx.storage.getAlarm();
+    if (scheduled === null || scheduled > next) await this.ctx.storage.setAlarm(next);
+  }
+
+  private async recheckPrivateSessions(sockets: WebSocket[]): Promise<void> {
+    const hashes = this.privateSessionHashes(sockets);
+    for (const hash of this.privateSessionDeadlines.keys()) {
+      if (!hashes.has(hash)) this.privateSessionDeadlines.delete(hash);
+    }
+    await Promise.all([...hashes].map((hash) => this.checkPrivateSession(hash)));
+    await this.schedulePrivateSessionCheck();
+  }
+
+  private mayUseSocket(hash: string | undefined): boolean {
+    return hash === undefined || (this.privateSessionDeadlines.get(hash) ?? 0) > Date.now();
+  }
+
+  private syncSocket(socket: WebSocket, hash: string | undefined) {
+    // WARNING: Hibernatable WebSockets deliver events to the object instead of socket listeners.
+    const room = this;
+    return {
+      get readyState() {
+        return socket.readyState;
+      },
+      close: (code?: number, reason?: string) => socket.close(code, reason),
+      send(message: string) {
+        if (room.mayUseSocket(hash)) socket.send(message);
+        else socket.close(TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason.FORBIDDEN);
+      },
+    };
+  }
+
   disconnectSession(hash: string): void {
+    this.privateSessionDeadlines.delete(hash);
     const room = this.drawingRoom?.room;
     if (room === undefined) return;
     for (const session of room.getSessions()) {
@@ -339,7 +421,7 @@ export class BoardRoom extends DurableObject<Env> {
       link: pass.link,
       name: pass.name,
       owner: pass.owner,
-      sessionHash: pass.sessionHash,
+      sessionHash: isSecretLayer(pass.board) ? pass.sessionHash : undefined,
       sub: pass.sub,
     };
     const previous = this.sockets.get(sessionId);
@@ -356,14 +438,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.room.handleSocketConnect({
       meta: person,
       sessionId,
-      // WARNING: Hibernatable WebSockets deliver events to the object, not socket listeners.
-      socket: {
-        get readyState() {
-          return server.readyState;
-        },
-        close: (code, reason) => server.close(code, reason),
-        send: (message) => server.send(message),
-      },
+      socket: this.syncSocket(server, person.sessionHash),
     });
     log("board.connected", {
       board: pass.board,
@@ -373,8 +448,7 @@ export class BoardRoom extends DurableObject<Env> {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private restoreSockets() {
-    const sockets = this.ctx.getWebSockets();
+  private restoreSockets(sockets: WebSocket[]) {
     const { kv } = this.ctx.storage;
     const unused = new Map(kv.list<SessionStateSnapshot>({ prefix: SOCKET_SNAPSHOT_PREFIX }));
     const link = sockets.length === 0 ? 0 : this.link();
@@ -382,7 +456,11 @@ export class BoardRoom extends DurableObject<Env> {
       if (socket.readyState !== WebSocket.OPEN) continue;
       const saved = socket.deserializeAttachment() as SocketAttachment | null;
       if (saved === null) continue;
-      if (this.retired || saved.person.link < link) {
+      if (
+        this.retired ||
+        saved.person.link < link ||
+        !this.mayUseSocket(saved.person.sessionHash)
+      ) {
         socket.close(
           TLSyncErrorCloseEventCode,
           this.retired
@@ -401,7 +479,7 @@ export class BoardRoom extends DurableObject<Env> {
         this.sockets.set(saved.sessionId, { socket, snapshot, stored: inStorage });
         this.room.handleSocketResume({
           sessionId: saved.sessionId,
-          socket,
+          socket: this.syncSocket(socket, saved.person.sessionHash),
           meta: saved.person,
           snapshot,
         });
@@ -415,6 +493,10 @@ export class BoardRoom extends DurableObject<Env> {
     if (saved === null) return;
     const connection = this.sockets.get(saved.sessionId);
     if (connection?.socket !== socket) return;
+    if (!this.mayUseSocket(saved.person.sessionHash)) {
+      this.room.closeSession(saved.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
+      return;
+    }
     this.room.handleSocketMessage(saved.sessionId, message);
     const compact = this.room.getSessionSnapshot(saved.sessionId);
     if (compact === null) return;
@@ -469,7 +551,12 @@ export class BoardRoom extends DurableObject<Env> {
     if (connection === undefined) {
       // WARNING: A disconnect can wake the room after getWebSockets has already dropped that socket.
       if (snapshot?.presenceRecord == null) return;
-      this.room.handleSocketResume({ sessionId, socket, meta: person, snapshot });
+      this.room.handleSocketResume({
+        sessionId,
+        socket: this.syncSocket(socket, person.sessionHash),
+        meta: person,
+        snapshot,
+      });
     } else {
       if (connection.socket !== socket) return;
       clearTimeout(connection.connectTimer);
@@ -847,7 +934,12 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
-    if (!this.publicExpiryEnabled) return;
+    if (!this.publicExpiryEnabled) {
+      await this.ctx.blockConcurrencyWhile(() =>
+        this.recheckPrivateSessions(this.ctx.getWebSockets()),
+      );
+      return;
+    }
     await this.ctx.blockConcurrencyWhile(async () => {
       const now = Date.now();
       const { assetsByHash, live } = this.drawing.transaction((store) => {

@@ -58,13 +58,17 @@ export type BoardPerson = {
   role: "manager" | "write";
 };
 
-export async function hasActiveSession(db: D1Database | undefined, hash: string | undefined) {
-  if (db === undefined || hash === undefined) return false;
+export async function activeSessionExpiry(db: D1Database | undefined, hash: string | undefined) {
+  if (db === undefined || hash === undefined) return null;
   const found = await db
-    .prepare("SELECT 1 FROM sessions WHERE token_hash = ? AND expires_at > ?")
+    .prepare("SELECT expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?")
     .bind(hash, Math.floor(Date.now() / 1000))
-    .first();
-  return found !== null;
+    .first<{ expires_at: number }>();
+  return found === null ? null : found.expires_at * 1000;
+}
+
+export async function hasActiveSession(db: D1Database | undefined, hash: string | undefined) {
+  return (await activeSessionExpiry(db, hash)) !== null;
 }
 
 export class Store {
