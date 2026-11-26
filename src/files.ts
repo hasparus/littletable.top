@@ -23,6 +23,7 @@ type FileRoute = {
   board: string;
   bucket: R2Bucket;
   config: Config;
+  ctx?: ExecutionContext;
   passOf: (token: string | null) => Promise<Pass | null>;
   room: DurableObjectStub<BoardRoom>;
   secret: boolean;
@@ -271,7 +272,9 @@ async function textControl(request: Request, route: FileRoute, action: string): 
     const pass = await reader(request, route);
     if (pass === null) return refuse(403, "forbidden");
     const listing = await route.room.textListing(pass);
-    return typeof listing === "string" ? refuse(403, listing) : fresh(listing);
+    if (typeof listing === "string") return refuse(403, listing);
+    if (listing.recoveryDelay === 0) route.ctx?.waitUntil(route.room.recoverTexts(pass));
+    return fresh(listing);
   }
   if (request.method !== "POST") return new Response("Not found", { status: 404 });
   const pass = await route.passOf(bearer(request));

@@ -25,7 +25,7 @@ import type {
   DocumentSnapshot,
 } from "./room-contract";
 import type { SummonRequest } from "./summon";
-import type { EngineKey } from "./text-result";
+import type { EngineKey, Reading, TextListing } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
@@ -60,10 +60,8 @@ import { hasActiveSession } from "./standalone/store";
 import {
   type Claim,
   type ClaimRequest,
-  type Reading,
   type StoredText,
   TextLedger,
-  type TextListing,
   type TextRefusal,
 } from "./text-store";
 import { type ThumbnailWrite, writeThumbnail } from "./thumbnail-store";
@@ -138,6 +136,7 @@ export class BoardRoom extends DurableObject<Env> {
   private publicExpiryEnabled = false;
   private publicSignaturePage?: TLPageId;
   private retired = false;
+  private destruction?: Promise<void>;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
@@ -272,7 +271,7 @@ export class BoardRoom extends DurableObject<Env> {
 
   // WARNING: A fresh pass can arrive before the host notifies the room of a link reset.
   private admit(pass: Pass): "link-reset" | null {
-    if (this.retired) return "link-reset";
+    if (this.retired || this.destruction !== undefined) return "link-reset";
     const current = this.link();
     if (pass.link < current) return "link-reset";
     if (pass.link > current) this.moveLink(pass.board, pass.link);
@@ -281,7 +280,7 @@ export class BoardRoom extends DurableObject<Env> {
 
   /** Advances the link version and evicts sessions still using an older one. */
   moveLink(board: string, link: number): void {
-    if (this.retired || link <= this.link()) return;
+    if (this.retired || this.destruction !== undefined || link <= this.link()) return;
     this.assistantGrantsChanged();
     this.ctx.storage.sql.exec(
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
@@ -717,7 +716,7 @@ export class BoardRoom extends DurableObject<Env> {
     body: ArrayBuffer,
     type: ThumbnailType,
   ): Promise<ThumbnailWrite> {
-    if (this.retired || link < this.link()) return "forbidden";
+    if (this.retired || this.destruction !== undefined || link < this.link()) return "forbidden";
     if (this.thumbnailPending) return { retryAt: Date.now() + 5000 };
     if (link > this.link()) this.moveLink(board, link);
     this.thumbnailPending = true;
@@ -746,8 +745,12 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  async textListing(pass: Pass): Promise<"link-reset" | TextListing> {
-    return this.admit(pass) ?? this.trackUpload(this.texts.listing(pass.board));
+  textListing(pass: Pass): "link-reset" | TextListing {
+    return this.admit(pass) ?? this.texts.listing();
+  }
+
+  async recoverTexts(pass: Pass): Promise<void> {
+    if (this.admit(pass) === null) await this.trackUpload(this.texts.recover(pass.board));
   }
 
   claimText(pass: Pass, request: ClaimRequest): Claim | Refusal | null {
@@ -954,7 +957,14 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  async destroy(board: string) {
+  async destroy(board: string): Promise<void> {
+    this.destruction ??= this.clearBoard(board).finally(() => {
+      this.destruction = undefined;
+    });
+    return this.destruction;
+  }
+
+  private async clearBoard(board: string) {
     this.assistantGrantsChanged();
     for (const session of this.room.getSessions()) {
       this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
@@ -965,7 +975,7 @@ export class BoardRoom extends DurableObject<Env> {
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {
-      if (this.retired) await Promise.allSettled(this.pendingUploads);
+      await Promise.allSettled(this.pendingUploads);
       files = await this.files.wipe(board);
     } catch (error) {
       this.open();
