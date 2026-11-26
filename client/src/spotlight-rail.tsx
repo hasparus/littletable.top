@@ -26,13 +26,18 @@ export function SpotlightRail({
   const markerIndex = seats.findIndex((seat) => seat.id === (hoveredSeat ?? active));
 
   function pointedSeat(event: PointerEvent<HTMLButtonElement>) {
-    const layers = document.elementsFromPoint(event.clientX, event.clientY);
-    const boardRail = rail.current;
-    if (!boardRail?.contains(layers[0] ?? null)) return null;
-    const strip = layers.find((element) => element.hasAttribute("data-spotlight-strip"));
-    return strip && boardRail.contains(strip)
-      ? Number(strip.getAttribute("data-spotlight-strip"))
-      : null;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const row = target?.closest<HTMLElement>("[data-spotlight-strip]");
+    if (row && rail.current?.contains(row)) return Number(row.dataset.spotlightStrip);
+    if (target?.closest("[data-spotlight-marker]") && rail.current?.contains(target)) {
+      const rows = rail.current.querySelectorAll<HTMLElement>("[data-spotlight-strip]");
+      for (const strip of rows) {
+        const bounds = strip.getBoundingClientRect();
+        if (event.clientY >= bounds.top && event.clientY < bounds.bottom)
+          return Number(strip.dataset.spotlightStrip);
+      }
+    }
+    return null;
   }
 
   function drop(event: PointerEvent<HTMLButtonElement>) {

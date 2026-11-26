@@ -211,7 +211,7 @@ export async function reviewShot(page: Page, name: string): Promise<void> {
 export async function reachEditor(page: Page): Promise<void> {
   await page.evaluate(() => {
     const canvas = document.querySelector(
-      "[data-board-shell]:not([hidden]) [data-board-editor]:not([inert]) [data-testid=canvas]",
+      "[data-board-shell]:not([hidden]) :is([data-board-editor]:not([inert]), [data-practice-canvas]) [data-testid=canvas]",
     )!;
     const key = Object.keys(canvas).find((name) => name.startsWith("__reactFiber$"))!;
     type Fiber = { memoizedProps?: { value?: unknown }; return: Fiber | null };

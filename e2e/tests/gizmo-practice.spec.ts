@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { STANDALONE } from "../ports";
-import { browseGizmos, joinAs, openGallery } from "./helpers";
+import { browseGizmos, joinAs, openGallery, reachEditor } from "./helpers";
 
 async function dragByTouch(page: Page, handle: Locator, target: Locator) {
   const start = (await handle.boundingBox())!;
@@ -188,6 +188,48 @@ test("practice installs a marketplace piece and brings its drawer button into vi
   );
   await grip.press("ArrowDown");
   await expect(names.last()).toHaveValue("Nia");
+});
+
+test("a Spotlight slider accepts an arrow and stays attached through grouping", async ({
+  page,
+}) => {
+  await installPracticePiece(page, "Spotlight sliders");
+  const slider = page.getByRole("slider", { name: "Level for Ash" });
+  const bounds = (await slider.boundingBox())!;
+  await reachEditor(page);
+  await page.evaluate(() => {
+    const editor = globalThis.__editor;
+    editor.selectNone().setCurrentTool("arrow");
+  });
+  const x = bounds.x + bounds.width * 0.5;
+  const y = bounds.y + bounds.height * 0.5;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 240, y + 80, { steps: 12 });
+  await page.mouse.up();
+  await expect(slider).toHaveValue("0");
+  const result = await page.evaluate(() => {
+    const editor = globalThis.__editor;
+    /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Exercise tldraw’s public shape and binding APIs. */
+    const arrow = editor.getCurrentPageShapes().find((piece) => piece.type === "arrow")!;
+    const target = editor.getCurrentPageShapes().find((piece) => piece.meta.gizmo)!;
+    const follows = () =>
+      editor.getBindingsFromShape(arrow, "arrow").some((binding) => binding.toId === target.id);
+    const initiallyBound = follows();
+    editor.setCurrentTool("select").createShape({ type: "note", x: target.x, y: target.y + 240 });
+    const note = editor.getCurrentPageShapes().find((piece) => piece.type === "note")!;
+    editor.groupShapes([target.id, note.id]);
+    const group = editor.getOnlySelectedShape()!;
+    const before = editor.getShapePageBounds(target.id)!.x;
+    editor.updateShape({ id: group.id, type: group.type, x: group.x + 96 });
+    const distance = editor.getShapePageBounds(target.id)!.x - before;
+    editor.ungroupShapes([group.id]);
+    /* oxlint-enable anti-slop/no-shape-in-symbol-names */
+    return { initiallyBound, distance, stillBound: follows(), group: group.type };
+  });
+  expect(result).toEqual({ initiallyBound: true, distance: 96, stillBound: true, group: "group" });
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveValue("10");
 });
 
 test("each Spotlight slider keeps its own level and participant name", async ({ page }) => {

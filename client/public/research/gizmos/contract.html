@@ -31,10 +31,11 @@
         </p>
       </header>
       <nav class="contents" aria-label="Specification sections">
-        <a href="#install">Installation</a><a href="#runtime">Native web apps</a
-        ><a href="#rules">PsychoScript</a><a href="#owlbear">Owlbear compatibility</a
-        ><a href="#state">Multiplayer and trust</a><a href="#parity">Release gates</a
-        ><a href="#authoring">MCP and Workshop</a><a href="#release">Updates</a>
+        <a href="#install">Installation</a><a href="#board-objects">Board objects</a
+        ><a href="#runtime">Native web apps</a><a href="#rules">PsychoScript</a
+        ><a href="#owlbear">Owlbear compatibility</a><a href="#state">Multiplayer and trust</a
+        ><a href="#parity">Release gates</a><a href="#authoring">MCP and Workshop</a
+        ><a href="#release">Updates</a>
       </nav>
 
       <section class="chapter" id="install">
@@ -104,6 +105,44 @@
         </div>
       </section>
 
+      <section class="chapter" id="board-objects">
+        <header><h2>Put the Gizmo on the board</h2></header>
+        <div class="prose">
+          <p class="lead">
+            Placeable tldraw shapes are the default. Draw an arrow from the Spotlight rail to a
+            note, group them, and move them across the map. The arrow follows the rail and the names
+            stay in order. Drop a second rail for a different party.
+          </p>
+          <p>
+            Tarot decks and each dealt card, both Spotlight widgets, the initiative rail and the
+            explosion button belong on the canvas. The host creates a stable shape ID, page and
+            parent, bounds and transform for each placed object. The renderer draws inside those
+            bounds. An arrow binds to the shape ID, so edits, reconnects and renderer reloads
+            preserve the connection. Selection, multiselect, move, rotate, grouping, ungrouping and
+            z-order use the ordinary tldraw tools. Group transforms apply to the prop and its hit
+            area together.
+          </p>
+          <p>
+            The select tool can operate the prop’s controls or move it by its body. With the arrow
+            tool, the same controls are part of the board target. Pointing an arrow at the red
+            button must never set it off. Copying a prop creates a new instance with independent
+            state under its package’s duplication policy. A duplicate deck must never acquire the
+            source deck’s private draw pile. A disabled renderer leaves a selectable placeholder
+            with the same geometry and attachments.
+          </p>
+          <p>
+            Panels and background services are appropriate for board-wide utilities, including
+            Owlbear extensions that only declare a popover or background page. They can operate on
+            scene objects through granted SDK calls. A utility needs no invisible shape just to run.
+          </p>
+          <p>
+            <strong>Acceptance test.</strong> Place a widget, bind an arrow using the arrow tool
+            over a control, and group the widget with another shape. Move the group and ungroup it.
+            Check that the endpoint still follows the same shape and the widget still works. Repeat
+            after another participant joins and after reloading the shared board.
+          </p>
+        </div>
+      </section>
       <section class="chapter" id="runtime">
         <header><h2>A native Gizmo owns its canvas</h2></header>
         <div class="prose">

@@ -93,3 +93,16 @@
 [data-table-tracker] :is(button, input, select, [data-portrait], [data-tracker-scroll]) {
   pointer-events: auto;
 }
+
+/* Drawing tools need the whole prop as a tldraw hit target, including its controls. */
+.tl-container[data-state]:not([data-state^="select."])
+  :is(
+    [data-table-tracker],
+    [data-gizmo-tracker],
+    [data-gizmo-actuator],
+    [data-deck-stack],
+    [data-deck-card]
+  )
+  :is(button, input, select, [data-portrait], [data-tracker-scroll]) {
+  pointer-events: none;
+}
