@@ -79,12 +79,15 @@ it("keeps concurrent creations within the rolling hour even after deletion", asy
   }
 });
 
-it("initializes a Polish board on a retried bootstrap without creating a second board", async () => {
+it("keeps the Polish first page across a link reset and a retried first bootstrap", async () => {
   const owner = new Browser();
   await owner.signIn("Ada");
   const response = await create(owner, "", "pl");
   expect(response.status).toBe(201);
-  const { id, shareCode } = await response.json<{ id: string; shareCode: string }>();
+  const { id } = await response.json<{ id: string }>();
+  const reset = await owner.post(`/api/boards/${id}/reset`);
+  expect(reset.status).toBe(200);
+  const { shareCode } = await reset.json<{ shareCode: string }>();
   const { BoardRoom } = standaloneEnv;
   const stub = BoardRoom.get(BoardRoom.idFromName(id));
   await runInDurableObject(stub, (room) => {

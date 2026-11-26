@@ -287,12 +287,14 @@ export class BoardRoom extends DurableObject<Env> {
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
     );
-    for (const session of this.room.getSessions()) {
+    log("board.link_reset", { board, link });
+    const room = this.drawingRoom?.room;
+    if (room === undefined) return;
+    for (const session of room.getSessions()) {
       if (session.meta.link < link) {
-        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
+        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
       }
     }
-    log("board.link_reset", { board, link });
   }
 
   // WARNING: WebSockets cannot cross Durable Object RPC. Forward the upgrade request with the verified pass.
