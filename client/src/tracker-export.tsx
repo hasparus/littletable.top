@@ -1,7 +1,8 @@
 import { FileHelpers, type SvgExportContext } from "tldraw";
 
 import type { TrackerLayout } from "../../src/gizmo-packages";
-import type { TrackerSeat } from "./tracker-controls";
+
+import { spotlightLevel, type TrackerSeat } from "./tracker-controls";
 
 const materials = {
   wood: "#875735",
@@ -87,23 +88,31 @@ export function exportTracker(
             </g>
           );
         }
-        const x = 11 + index * (sliders ? 64 : 72);
-        const cy = 153 - Math.min(100, Math.max(0, seat.marks)) * 1.02;
-        if (sliders)
+        if (sliders) {
+          const level = spotlightLevel(seat.marks);
+          const cx = 25 + level * 1.34;
           return (
-            <g key={seat.id} transform={`translate(${x} 0)`}>
-              <rect x={3} y={11} width={57} height={24} rx={3} fill={materials.label} />
-              <text x={31} y={27} textAnchor="middle" fontSize={11} fill={materials.graphite}>
-                {seat.name.slice(0, 9)}
+            <g key={seat.id} transform={`translate(0 ${8 + index * 78})`}>
+              <rect x={15} y={11} width={107} height={24} rx={3} fill={materials.label} />
+              <text x={22} y={27} fontSize={12} fill={materials.graphite}>
+                {seat.name.slice(0, 15)}
               </text>
-              <rect x={29} y={44} width={5} height={119} rx={3} fill={materials.track} />
-              <rect x={14} y={cy - 9} width={34} height={18} rx={3} fill={materials.cap} />
-              {cap && <use href={cap} x={14} y={cy - 9} />}
-              <text x={31} y={184} textAnchor="middle" fill={materials.label} fontSize={11}>
-                {seat.marks}
+              <text x={167} y={27} textAnchor="end" fill={materials.label} fontSize={11}>
+                {level}
               </text>
+              <rect x={17} y={47} width={152} height={6} rx={3} fill={materials.track} />
+              <path
+                d="M25 62h135"
+                stroke={materials.label}
+                strokeWidth={4}
+                strokeDasharray="1 12.4"
+              />
+              <rect x={cx - 9} y={39} width={18} height={22} rx={3} fill={materials.cap} />
+              {cap && <use href={cap} transform={`translate(${cx - 9} 39) scale(0.53 1.22)`} />}
             </g>
           );
+        }
+        const x = 11 + index * 72;
         const art = state.portraits?.[seat.id % state.portraits.length];
         if (art && !portraits.has(art))
           portraits.set(art, embed(ctx, key + "-" + portraits.size, art, 58, 69));

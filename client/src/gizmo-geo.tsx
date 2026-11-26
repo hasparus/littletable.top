@@ -75,7 +75,7 @@ const heightFor = (count: number) => Math.max(116, count * ROW + 32);
 
 function trackerSize(layout: TrackerLayout | undefined, count: number) {
   if (layout === "rail") return { w: 220, h: 60 + 42 * count };
-  if (layout === "sliders") return { w: 58 + 64 * Math.min(count, 8), h: 202 };
+  if (layout === "sliders") return { w: 186, h: 46 + 78 * Math.min(count, 8) };
   if (layout === "initiative") return { w: 88 + 72 * Math.min(count, 8), h: 116 };
   return { w: WIDTH, h: heightFor(count) };
 }

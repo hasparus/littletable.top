@@ -40,7 +40,7 @@
 [data-spotlight-strip] {
   position: relative;
   display: grid;
-  grid-template-columns: 25% minmax(0, 1fr) 10%;
+  grid-template-columns: 25% minmax(0, 1fr) auto auto;
   align-items: center;
   min-height: 0;
   gap: 2%;
@@ -153,4 +153,18 @@
 [data-spotlight-add]:disabled {
   opacity: 0.48;
   cursor: default;
+}
+
+[data-spotlight-grip] {
+  align-self: stretch;
+  padding: 0 3px;
+  color: #fff0d4;
+  cursor: grab;
+  touch-action: none;
+}
+[data-spotlight-grip]:active {
+  cursor: grabbing;
+}
+[data-spotlight-strip][data-drop-target="true"] [data-spotlight-name] {
+  outline: 2px solid #633d1d;
 }

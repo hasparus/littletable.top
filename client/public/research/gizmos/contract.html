@@ -133,14 +133,26 @@
             pose once. Other clients can interpolate from the same flight inputs. Suspend offscreen
             renderers, release GPU and sound resources on teardown, and restore from room state.
           </p>
+          <h3 id="spotlight">Two Spotlight widgets</h3>
           <p>
-            For example, a native prop receives an instance-bound SDK when the frame opens. The
-            proposal below lets the same rule drive a brass slider, a keyboard shortcut or an
-            entirely different control in a fork.
+            <strong>Rail.</strong> A vertical rail holds editable name strips. Drag any strip to
+            another position, or focus its grip and use the up and down arrows. The brass marker
+            stays with the selected name when the order changes.
+            <a href="/dev/gizmos/?gizmo=spotlight-rail">Try the rail</a>
+          </p>
+          <p>
+            <strong>Sliders.</strong> Stack one horizontal slider per name. Each metallic thumb
+            clicks into visible stops. Moving one changes just that person’s level. The prototype
+            uses eleven positions from 0 to 100. All participants share the order and levels.
+            <a href="/dev/gizmos/?gizmo=spotlight-sliders">Try the sliders</a>
+          </p>
+          <p>
+            The proposed renderer SDK lets a pointer or keyboard gesture save the same slider value
+            and subscribe to changes from other players.
           </p>
           <pre><code>// Renderer-side SDK sketch
 const stop = table.state.subscribe(drawSpotlight);
-await table.actions.run("advance", {}, { revision, requestId });
+await table.actions.run("setLevel", { seatId, level }, { revision, requestId });
 stop(); // on unmount</code></pre>
           <p>
             A TypeGPU adapter or device can be unavailable or lost mid-gesture. The package supplies
@@ -159,9 +171,8 @@ stop(); // on unmount</code></pre>
         <header><h2>PsychoScript owns the house rule</h2></header>
         <div class="prose">
           <p class="lead">
-            An author can ship a standalone rule or pair rules with a visual Gizmo. A spotlight
-            fader animates locally at pointer speed. Releasing it can call one shared rule that
-            awards the turn.
+            An author can ship a standalone rule or pair rules with a visual Gizmo. For instance, a
+            separate round counter can run a rule when someone advances it.
           </p>
           <p>
             The filename <code>rules/advance.js</code> declares an action called
@@ -338,12 +349,12 @@ return { speaker, turns: turns + 1 };</code></pre>
               >
             </li>
             <li>
-              <strong>Fork a behavior mid-campaign.</strong> Install a native TypeGPU Kit spotlight
-              from a different GitHub repository. Change only its PsychoScript rule to count duets.
+              <strong>Fork a behavior mid-campaign.</strong> Install a player-authored round counter
+              from another GitHub repository. Fork its PsychoScript action to advance by two rounds.
               Have a player request the revised edition, an owner approve it, and two clients use it
-              on an existing deployment. Verify one turn under a retry, independent second-instance
-              state, a failed rule leaving the prior turn playable, and rejection of a stale grant
-              after uninstall.
+              on an existing deployment. Verify one advance under a retry, independent
+              second-instance state, a failed rule leaving the previous count intact, and rejection
+              of a stale grant after uninstall.
             </li>
             <li>
               <strong>Play through the original Owlbear tracker.</strong> Use its original release
@@ -378,11 +389,10 @@ return { speaker, turns: turns + 1 };</code></pre>
           </p>
           <h3>Publish from your own agent with MCP</h3>
           <p>
-            Mira asks her agent to fork the official tracker, keep the spotlight controls with the
-            GM and advance the clock after two turns. She authorizes Little Table to let that client
-            work on her draft. The agent can rehearse a sample turn, show her the proposed release,
-            publish it to the audience she selects and return a link. This path needs no Workshop
-            account connection or provider token at Little Table.
+            Mira asks her agent to fork the round counter and change the increment. She authorizes
+            Little Table to let that client work on her draft. The agent can rehearse a sample turn,
+            show her the proposed release, publish it to the audience she selects and return a link.
+            This path needs no Workshop account connection or provider token at Little Table.
           </p>
           <ul>
             <li>
@@ -535,11 +545,11 @@ return { speaker, turns: turns + 1 };</code></pre>
         <div class="prose">
           <p>
             <strong>My preference for the first trial is MCP publishing</strong> if the people at
-            the table already use coding agents. One player can publish the duet fork and another GM
-            can install it without Little Table holding a model credential. If the intended author
-            only uses their phone during prep, I’d test the Workshop with the same brief instead.
-            Measure whether they can get a second table playing the fork unaided and explain who can
-            change it.
+            the table already use coding agents. One player can publish the counter fork and another
+            GM can install it without Little Table holding a model credential. If the intended
+            author only uses their phone during prep, I’d test the Workshop with the same brief
+            instead. Measure whether they can get a second table playing the fork unaided and
+            explain who can change it.
           </p>
           <p>
             Run the local contract experiment with

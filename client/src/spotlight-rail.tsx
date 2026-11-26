@@ -10,6 +10,7 @@ export function SpotlightRail({
   active,
   select,
   rename,
+  reorder,
   add,
   remove,
   readonly,
@@ -19,16 +20,19 @@ export function SpotlightRail({
   const rail = useRef<HTMLDivElement>(null);
   const dragging = useRef<number | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
   const polish = locale === "pl";
   const activeIndex = seats.findIndex((seat) => seat.id === active);
   const markerIndex = seats.findIndex((seat) => seat.id === (hoveredSeat ?? active));
 
   function pointedSeat(event: PointerEvent<HTMLButtonElement>) {
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    const row = target?.closest<HTMLElement>("[data-spotlight-strip]");
-    if (row && rail.current?.contains(row)) return Number(row.dataset.spotlightStrip);
-    if (target?.closest("[data-spotlight-marker]")) return hoveredSeat;
-    return null;
+    const layers = document.elementsFromPoint(event.clientX, event.clientY);
+    const boardRail = rail.current;
+    if (!boardRail?.contains(layers[0] ?? null)) return null;
+    const strip = layers.find((element) => element.hasAttribute("data-spotlight-strip"));
+    return strip && boardRail.contains(strip)
+      ? Number(strip.getAttribute("data-spotlight-strip"))
+      : null;
   }
 
   function drop(event: PointerEvent<HTMLButtonElement>) {
@@ -44,8 +48,13 @@ export function SpotlightRail({
     <div data-spotlight-rail="" ref={rail}>
       <div data-spotlight-seats="">
         <div data-spotlight-track="" aria-hidden="true" />
-        {seats.map((seat) => (
-          <div key={seat.id} data-spotlight-strip={seat.id} data-active={seat.id === active}>
+        {seats.map((seat, index) => (
+          <div
+            key={seat.id}
+            data-spotlight-strip={seat.id}
+            data-active={seat.id === active}
+            data-drop-target={seat.id === dropTarget}
+          >
             <button
               type="button"
               data-spotlight-seat=""
@@ -82,6 +91,43 @@ export function SpotlightRail({
                 else event.currentTarget.value = seat.name;
               }}
             />
+            {!readonly && seats.length > 1 && (
+              <button
+                type="button"
+                data-spotlight-grip=""
+                aria-label={polish ? `Przestaw: ${seat.name}` : `Reorder ${seat.name}`}
+                aria-keyshortcuts="ArrowUp ArrowDown"
+                title={
+                  polish ? "Przeciągnij lub użyj strzałek" : "Drag or use the up and down arrows"
+                }
+                onPointerDown={(event) => {
+                  stop(event);
+                  if (event.isPrimary && event.button === 0)
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    setDropTarget(pointedSeat(event));
+                }}
+                onPointerUp={(event) => {
+                  stop(event);
+                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                  const to = pointedSeat(event);
+                  if (to !== null && to !== seat.id) reorder(seat.id, to);
+                  setDropTarget(null);
+                }}
+                onLostPointerCapture={() => setDropTarget(null)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const next = seats[index + (event.key === "ArrowUp" ? -1 : 1)];
+                  if (next) reorder(seat.id, next.id);
+                }}
+              >
+                <span aria-hidden="true">⠿</span>
+              </button>
+            )}
             {!readonly && seats.length > 1 && (
               <button
                 type="button"

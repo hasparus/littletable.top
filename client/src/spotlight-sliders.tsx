@@ -1,6 +1,12 @@
 import { type CSSProperties, type PointerEvent, useRef, useState } from "react";
 
-import { MAX_TRACKER_SEATS, type TrackerControls, type TrackerSeat } from "./tracker-controls";
+import {
+  MAX_TRACKER_SEATS,
+  SPOTLIGHT_STEP,
+  spotlightLevel,
+  type TrackerControls,
+  type TrackerSeat,
+} from "./tracker-controls";
 import "./spotlight-sliders.css";
 
 function contain(event: PointerEvent) {
@@ -24,7 +30,7 @@ function Fader({
 }) {
   const pointer = useRef<{ id: number; value: number } | null>(null);
   const [draft, setDraft] = useState<number | null>(null);
-  const marks = draft ?? seat.marks;
+  const marks = draft ?? spotlightLevel(seat.marks);
 
   function release(event: PointerEvent<HTMLInputElement>) {
     contain(event);
@@ -32,7 +38,7 @@ function Fader({
     const { value } = pointer.current;
     pointer.current = null;
     setDraft(null);
-    if (value !== seat.marks) setValue(value);
+    if (value !== spotlightLevel(seat.marks)) setValue(value);
   }
 
   function cancel() {
@@ -71,6 +77,7 @@ function Fader({
           type="range"
           min="0"
           max="100"
+          step={SPOTLIGHT_STEP}
           value={marks}
           disabled={readonly}
           aria-label={polish ? `Poziom: ${seat.name}` : `Level for ${seat.name}`}

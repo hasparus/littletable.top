@@ -179,6 +179,15 @@ test("practice installs a marketplace piece and brings its drawer button into vi
     "aria-pressed",
     "false",
   );
+  const grip = rail.getByRole("button", { name: "Reorder Nia" });
+  await dragByTouch(page, grip, names.first());
+  await expect(names.first()).toHaveValue("Nia");
+  await expect(rail.getByRole("button", { name: "Spotlight Nia" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await grip.press("ArrowDown");
+  await expect(names.last()).toHaveValue("Nia");
 });
 
 test("each Spotlight slider keeps its own level and participant name", async ({ page }) => {
@@ -189,20 +198,24 @@ test("each Spotlight slider keeps its own level and participant name", async ({ 
   await expect(ash).toHaveAttribute("min", "0");
   await expect(ash).toHaveAttribute("max", "100");
   await expect(rowan).toHaveValue("0");
+  const first = (await ash.boundingBox())!;
+  const second = (await rowan.boundingBox())!;
+  expect(first.width).toBeGreaterThan(first.height);
+  expect(second.y).toBeGreaterThan(first.y + first.height);
   await ash.press("End");
   await expect(ash).toHaveValue("100");
   await ash.press("ArrowDown");
-  await expect(ash).toHaveValue("99");
+  await expect(ash).toHaveValue("90");
   await expect(rowan).toHaveValue("0");
   await rowan.press("ArrowUp");
   const participant = sliders.getByRole("textbox", { name: "Participant name" }).nth(1);
   await participant.fill("Nia");
   await participant.press("Enter");
   const renamed = sliders.getByRole("slider", { name: "Level for Nia" });
-  await expect(renamed).toHaveValue("1");
+  await expect(renamed).toHaveValue("10");
   await renamed.press("Home");
   await expect(renamed).toHaveValue("0");
-  await expect(ash).toHaveValue("99");
+  await expect(ash).toHaveValue("90");
 });
 
 test("reordering initiative portraits preserves the active character and changes the next turn", async ({
