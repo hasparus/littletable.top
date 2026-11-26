@@ -29,13 +29,20 @@ import type { EngineKey } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
+import { boardSeat } from "./board-seat";
 import { type ChatMessage, rollCommand } from "./chat";
 import { appendChat, openChat, recentChat } from "./chat-store";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { evaluateExpression } from "./dice-evaluation";
 import { InvalidRoll, parseExpression } from "./dice-expression";
-import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
-import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import {
+  FileLedger,
+  type FileRefusal,
+  publicationKey,
+  sha256Hex,
+  type StoredFile,
+} from "./file-store";
+import { AVATAR_RETRY_MS, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import {
   expirePublicShapes,
@@ -96,7 +103,6 @@ const SOCKET_SNAPSHOT_PREFIX = "socketSnapshot:";
 
 export const PASS_HEADER = "X-Board-Pass";
 export const AVATAR_HEADER = "X-Board-Avatar";
-export const SOCKET_SESSION_HEADER = "X-Board-Socket-Session";
 
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
@@ -321,37 +327,23 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  private seatRefusal(sessionId: string, sub: string): "full" | "session-conflict" | null {
-    // WARNING: tldraw retains seats briefly after disconnect, so include sessions without a live socket.
-    const existing = this.room.getSessions().find((session) => session.sessionId === sessionId);
-    if (existing !== undefined) return existing.meta.sub === sub ? null : "session-conflict";
-    return this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null;
-  }
-
-  private socketSessionId(request: Request, sub: string) {
+  private async connectRoom(request: Request, pass: Pass): Promise<Response> {
     const tabId = new URL(request.url).searchParams.get("sessionId")!;
-    // WARNING: An existing tab-only seat may survive deployment and still belongs to its original player.
-    const legacy = this.room
-      .getSessions()
-      .some((session) => session.sessionId === tabId && session.meta.sub === sub);
-    return legacy ? tabId : request.headers.get(SOCKET_SESSION_HEADER)!;
-  }
-
-  private connectRoom(request: Request, pass: Pass): Response {
+    const key = new TextEncoder().encode(JSON.stringify([tabId, pass.sub]));
+    const scopedId = await sha256Hex(key.buffer);
     const avatar = request.headers.get(AVATAR_HEADER) || null;
-    const linkRefusal = this.admit(pass);
-    const sessionId = linkRefusal === null ? this.socketSessionId(request, pass.sub) : "";
-    const refusal = linkRefusal ?? this.seatRefusal(sessionId, pass.sub);
+    const seat = this.admit(pass) ?? boardSeat(this.room.getSessions(), tabId, scopedId, pass.sub);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
-    if (refusal !== null) {
-      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: refusal });
+    if (typeof seat === "string") {
+      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: seat });
       server.close(
         TLSyncErrorCloseEventCode,
-        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[refusal],
+        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[seat],
       );
       return new Response(null, { status: 101, webSocket: client });
     }
+    const { sessionId } = seat;
     const person: Person = {
       avatar,
       link: pass.link,
