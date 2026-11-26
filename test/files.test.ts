@@ -1,9 +1,9 @@
-import { env } from "cloudflare:workers";
+import { env, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { Env } from "../src/index";
 
-import { boardPrefix } from "../src/file-store";
+import { boardPrefix, fileKey } from "../src/file-store";
 import { MAX_FILE_BYTES, MAX_UPLOADS_PER_MINUTE } from "../src/limits";
 import { Browser, roomCall, standaloneEnv } from "./standalone-support";
 import { deletion, destroy, pass } from "./support";
@@ -83,6 +83,34 @@ async function objectsOf(board: string) {
 }
 
 describe("uploading an image (hosted)", () => {
+  it("repairs a reserved image whose write never reached R2", async () => {
+    const board = "recover-image";
+    const token = await pass({ board });
+    const hash = await sha256(PNG);
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      state.storage.sql.exec(
+        "INSERT INTO files (hash, bytes, type, at) VALUES (?, ?, ?, ?)",
+        hash,
+        PNG.byteLength,
+        "image/png",
+        1,
+      );
+    });
+    await evictDurableObject(room);
+    expect(await hostedEnv.Files.head(fileKey(board, hash))).toBeNull();
+
+    const retries = await Promise.all([upload(board, token, PNG), upload(board, token, PNG)]);
+    expect(retries.map(({ status }) => status)).toEqual([200, 200]);
+    const object = await hostedEnv.Files.get(fileKey(board, hash));
+    expect(new Uint8Array(await object!.arrayBuffer())).toEqual(PNG);
+    await runInDurableObject(room, (_instance, state) => {
+      expect(state.storage.sql.exec("SELECT bytes FROM files").toArray()).toEqual([
+        { bytes: PNG.byteLength },
+      ]);
+    });
+  });
+
   it("stores it under its SHA-256 for every member and guest of the board", async () => {
     const response = await upload("pics", await pass({ board: "pics" }), PNG);
 

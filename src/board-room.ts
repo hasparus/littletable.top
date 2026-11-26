@@ -746,8 +746,8 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  textListing(pass: Pass): "link-reset" | TextListing {
-    return this.admit(pass) ?? this.texts.listing();
+  async textListing(pass: Pass): Promise<"link-reset" | TextListing> {
+    return this.admit(pass) ?? this.trackUpload(this.texts.listing(pass.board));
   }
 
   claimText(pass: Pass, request: ClaimRequest): Claim | Refusal | null {
@@ -859,7 +859,7 @@ export class BoardRoom extends DurableObject<Env> {
         live,
         now,
         PUBLIC_SWEEP_MS,
-        (hash) => this.textUploads.has(hash),
+        (hash) => this.textUploads.has(hash) || this.texts.busy(hash),
       );
       this.drawing.transaction((store) => {
         for (const hash of reclaimed) {
