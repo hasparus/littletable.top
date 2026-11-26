@@ -190,6 +190,29 @@ describe("the secret layer", () => {
     peer.socket?.close();
   });
 
+  it("lets valid private readers reconnect after a session lookup fails on wake", async () => {
+    const { secret, secretPass } = await accountBoard();
+    const reader = await readSecretLayer(secret, secretPass);
+    const { BoardRoom, DB } = standaloneEnv;
+    const room = BoardRoom.get(BoardRoom.idFromName(secret));
+
+    await evictDurableObject(room, { webSockets: "hibernate" });
+    await DB!.exec("ALTER TABLE sessions RENAME TO unavailable_sessions");
+    try {
+      // A protocol event wakes the room even when hibernation handles pings automatically.
+      reader.send({ type: "push", clientClock: 1, diff: {} });
+      expect(await reader.closure).toEqual({
+        code: 1012,
+        reason: "Session verification unavailable",
+      });
+    } finally {
+      await DB!.exec("ALTER TABLE unavailable_sessions RENAME TO sessions");
+    }
+
+    const recovered = await readSecretLayer(secret, secretPass);
+    recovered.socket?.close();
+  });
+
   it("rechecks private readers after hibernation and recovers from failed sign-out fanout", async () => {
     const { owner, board, secret, secretPass } = await accountBoard();
     const retained = await readSecretLayer(secret, secretPass);
