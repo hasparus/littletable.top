@@ -1,3 +1,5 @@
+import { TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason } from "@tldraw/sync-core";
+
 import type { ChatMessage } from "./chat";
 import type { ExpressionError } from "./dice-expression";
 import type { Roll } from "./dice-notation";
@@ -29,7 +31,7 @@ import { isSecretLayer, secretLayerOf } from "./secret-layer";
 import { aliasRedirect, serveBoards, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
-import { hasActiveSession } from "./standalone/store";
+import { hasActiveSession, Store } from "./standalone/store";
 import { canSummon, MAX_SUMMON_BYTES, type SummonRequest, summonRequest } from "./summon";
 
 export { BoardRoom } from "./board-room";
@@ -172,6 +174,11 @@ async function rooms(
   ) {
     return new Response("Not found", { status: 404 });
   }
+  const boardMissing = async () => {
+    if (config.mode !== "standalone" || board === PUBLIC_BOARD) return false;
+    const id = secret ? board.slice(0, board.lastIndexOf("/")) : board;
+    return !(env.DB && (await new Store(env.DB, env.BOARD_DATA_SCOPE).exists(id)));
+  };
   const passOf = async (token: string | null) => {
     const pass = await verifiedPass(token, verifiers.pass, board);
     if (!secret) return pass;
@@ -186,7 +193,10 @@ async function rooms(
         board: filesOf,
         bucket: env.Files,
         config,
-        passOf,
+        passOf: async (token) => {
+          const pass = await passOf(token);
+          return pass === null || (await boardMissing()) ? null : pass;
+        },
         room,
         secret,
       },
@@ -210,6 +220,15 @@ async function rooms(
   }
   const pass = await passOf(bearer(request) ?? url.searchParams.get("pass"));
   if (pass === null) return new Response("Forbidden", { status: 403 });
+  if (await boardMissing()) {
+    if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
+      const { 0: client, 1: server } = new WebSocketPair();
+      server.accept();
+      server.close(TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason.NOT_FOUND);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    return new Response("Forbidden", { status: 403 });
+  }
   if (action === "summon") return summon(request, room, pass);
 
   if (action === "chat") {

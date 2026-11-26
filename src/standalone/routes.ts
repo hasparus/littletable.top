@@ -549,11 +549,15 @@ export class Standalone {
       ]);
       return json(200, { id, shareCode: reset.shareCode, title: reset.title });
     }
-    if (!(await this.store.delete(id, owner))) return refuse(404, "not-found");
+    if (!(await this.store.beginDeletion(id, owner))) return refuse(404, "not-found");
     const secret = secretLayerOf(id);
-    await this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret);
-    await room.retire(id);
+    const results = await Promise.allSettled([
+      room.retire(id),
+      this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret),
+    ]);
+    for (const result of results) if (result.status === "rejected") throw result.reason;
     await this.env.Files.delete(thumbnailKey(id));
+    await this.store.finishDeletion(id, owner);
     return new Response(null, { status: 204 });
   }
 

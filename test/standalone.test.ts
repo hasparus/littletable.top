@@ -24,6 +24,7 @@ import { importPKCS8, SignJWT } from "jose";
 import { createPublicKey } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
+import type { FileLedger } from "../src/file-store";
 import type { Env } from "../src/index";
 
 import { avatarKey } from "../src/avatars";
@@ -32,6 +33,8 @@ import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { PUBLIC_SIGNATURE_GROUP } from "../src/public-signature";
+import { secretLayerOf } from "../src/secret-layer";
+import { thumbnailKey } from "../src/thumbnail-store";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass, seat, until } from "./support";
 
@@ -828,6 +831,80 @@ describe("deleting a board", () => {
     });
     expect((await ada.list()).owned).toEqual([]);
     expect((await ada.bootstrap(board.shareCode)).status).toBe(404);
+  });
+
+  it("closes both rooms and lets only the owner retry a failed file cleanup", async () => {
+    const owner = new Browser();
+    const other = new Browser();
+    await owner.signIn("Ada");
+    await other.signIn("Bea");
+    const board = await owner.createBoard("Map to retire");
+    const secret = secretLayerOf(board.id);
+    const { pass, secretPass } = await (
+      await owner.bootstrap(board.shareCode)
+    ).json<Answer & { secretPass: string }>();
+    expect((await other.bootstrap(board.shareCode)).status).toBe(200);
+    const [sharedSocket, secretSocket] = await Promise.all([
+      openSocket(board.id, pass),
+      openSocket(secret, secretPass),
+    ]);
+    const sharedFile = fileKey(board.id, "shared");
+    const secretFile = fileKey(secret, "private");
+    const thumbnail = thumbnailKey(board.id);
+    const { BoardRoom, Files } = standaloneEnv;
+    await Promise.all([sharedFile, secretFile, thumbnail].map((key) => Files.put(key, "image")));
+    const secretRoom = BoardRoom.get(BoardRoom.idFromName(secret));
+    expect(
+      (
+        await roomCall(`/rooms/${secret}/roll`, secretPass, {
+          body: JSON.stringify({ dice: [20] }),
+          method: "POST",
+        })
+      ).status,
+    ).toBe(200);
+    await runInDurableObject(secretRoom, (room) => {
+      const ledger = Reflect.get(room, "files") as FileLedger;
+      vi.spyOn(ledger, "wipe").mockRejectedValueOnce(new Error("File storage unavailable"));
+    });
+
+    const endpoint = `/api/boards/${board.id}/delete`;
+    await expect(owner.post(endpoint)).rejects.toThrow("File storage unavailable");
+    const closed = {
+      code: TLSyncErrorCloseEventCode,
+      reason: TLSyncErrorCloseEventReason.NOT_FOUND,
+    };
+    expect(await sharedSocket.closure).toEqual(closed);
+    expect(await secretSocket.closure).toEqual(closed);
+    expect(await Files.head(sharedFile)).toBeNull();
+    expect(await Files.head(thumbnail)).not.toBeNull();
+    expect((await owner.bootstrap(board.shareCode)).status).toBe(404);
+    expect(await (await openSocket(board.id, pass)).closure).toEqual(closed);
+    expect(await (await openSocket(secret, secretPass)).closure).toEqual(closed);
+    await runInDurableObject(secretRoom, (_room, state) => {
+      expect(state.storage.sql.exec("SELECT id FROM rolls").toArray()).toHaveLength(1);
+    });
+    expect((await other.list()).visited).toEqual([]);
+    expect((await other.post(endpoint)).status).toBe(404);
+
+    expect(await owner.list()).toMatchObject({
+      owned: [],
+      pendingDeletions: [{ id: board.id, title: board.title }],
+    });
+    const boardPage = await (await owner.fetch("/boards?lang=en")).text();
+    expect(boardPage).toContain("Finish deleting");
+    const polish = await (await owner.fetch("/boards?lang=pl")).text();
+    expect(polish).toContain("Dokończ usuwanie");
+    expect(boardPage).not.toContain(`/b/${board.shareCode}`);
+
+    expect((await owner.post(endpoint)).status).toBe(204);
+    expect(await Files.head(secretFile)).toBeNull();
+    expect(await Files.head(thumbnail)).toBeNull();
+    await runInDurableObject(secretRoom, (_room, state) => {
+      expect(state.storage.sql.exec("SELECT id FROM rolls").toArray()).toEqual([]);
+      expect(state.storage.kv.get("retired")).toBe(true);
+    });
+    expect(await owner.list()).not.toHaveProperty("pendingDeletions");
+    expect((await owner.post(endpoint)).status).toBe(404);
   });
 });
 

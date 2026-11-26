@@ -138,6 +138,7 @@ export class BoardRoom extends DurableObject<Env> {
   private publicExpiryEnabled = false;
   private publicSignaturePage?: TLPageId;
   private retired = false;
+  private retirement?: Promise<void>;
   private lastRollAt = new Map<string, number>();
   private files!: FileLedger;
   private texts!: TextLedger;
@@ -871,10 +872,18 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   async retire(board: string): Promise<void> {
+    if (this.retirement !== undefined) return this.retirement;
     // WARNING: Without the retired marker, a still-valid pass could reopen the deleted private room.
     this.retired = true;
     this.ctx.storage.kv.put(RETIRED, true);
-    await this.destroy(board);
+    const retirement = this.destroy(board);
+    this.retirement = retirement;
+    try {
+      await retirement;
+    } catch (error) {
+      this.retirement = undefined;
+      throw error;
+    }
   }
 
   private grantVersion() {
@@ -956,10 +965,13 @@ export class BoardRoom extends DurableObject<Env> {
 
   async destroy(board: string) {
     this.assistantGrantsChanged();
-    for (const session of this.room.getSessions()) {
-      this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
+    const room = this.drawingRoom?.room;
+    if (room !== undefined) {
+      for (const session of room.getSessions()) {
+        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
+      }
+      room.close();
     }
-    this.room.close();
     for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
     this.sockets.clear();
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
