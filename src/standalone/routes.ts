@@ -384,7 +384,6 @@ export class Standalone {
         log("auth.socket_disconnect_incomplete");
       }
     } catch {
-      // Private rooms also recheck the deleted session on their own alarms.
       log("auth.socket_disconnect_incomplete");
     }
     log("auth.signed_out", { account: found.session.account.id });

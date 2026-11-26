@@ -322,7 +322,7 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  private privateSessionHashes(sockets: WebSocket[]): Set<string> {
+  private privateSessionHashes(sockets: WebSocket[]) {
     const hashes = new Set<string>();
     for (const socket of sockets) {
       const saved = socket.deserializeAttachment() as SocketAttachment | null;
@@ -332,7 +332,7 @@ export class BoardRoom extends DurableObject<Env> {
     return hashes;
   }
 
-  private async checkPrivateSession(hash: string): Promise<boolean> {
+  private async checkPrivateSession(hash: string) {
     const started = Date.now();
     let expiry: number | null = null;
     try {
@@ -344,7 +344,6 @@ export class BoardRoom extends DurableObject<Env> {
       this.disconnectSession(hash);
       return false;
     }
-    // The alarm rechecks at half the lease. An overdue alarm cannot extend a cached authorization.
     this.privateSessionDeadlines.set(
       hash,
       Math.min(expiry, started + 2 * PRIVATE_SESSION_CHECK_MS),
@@ -352,7 +351,7 @@ export class BoardRoom extends DurableObject<Env> {
     return true;
   }
 
-  private async schedulePrivateSessionCheck(): Promise<void> {
+  private async schedulePrivateSessionCheck() {
     if (this.privateSessionDeadlines.size === 0) return;
     const next = Math.min(
       Date.now() + PRIVATE_SESSION_CHECK_MS,
@@ -362,7 +361,7 @@ export class BoardRoom extends DurableObject<Env> {
     if (scheduled === null || scheduled > next) await this.ctx.storage.setAlarm(next);
   }
 
-  private async recheckPrivateSessions(sockets: WebSocket[]): Promise<void> {
+  private async recheckPrivateSessions(sockets: WebSocket[]) {
     const hashes = this.privateSessionHashes(sockets);
     for (const hash of this.privateSessionDeadlines.keys()) {
       if (!hashes.has(hash)) this.privateSessionDeadlines.delete(hash);
@@ -371,20 +370,19 @@ export class BoardRoom extends DurableObject<Env> {
     await this.schedulePrivateSessionCheck();
   }
 
-  private mayUseSocket(hash: string | undefined): boolean {
+  private mayUseSocket(hash: string | undefined) {
     return hash === undefined || (this.privateSessionDeadlines.get(hash) ?? 0) > Date.now();
   }
 
   private syncSocket(socket: WebSocket, hash: string | undefined) {
     // WARNING: Hibernatable WebSockets deliver events to the object instead of socket listeners.
-    const room = this;
     return {
       get readyState() {
         return socket.readyState;
       },
       close: (code?: number, reason?: string) => socket.close(code, reason),
-      send(message: string) {
-        if (room.mayUseSocket(hash)) socket.send(message);
+      send: (message: string) => {
+        if (this.mayUseSocket(hash)) socket.send(message);
         else socket.close(TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason.FORBIDDEN);
       },
     };
