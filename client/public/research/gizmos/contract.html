@@ -72,9 +72,10 @@
               <strong>Play.</strong> Before the first install, the Gizmos menu opens the
               marketplace. Installation opens the quiet white drawer already scrolled to the new
               piece. All participants can use an installed Gizmo. Drag, tap or keyboard-place a
-              native prop. An Owlbear action opens its original panel from the drawer. An extension
-              with a background entry gets one background context per connected participant per
-              board, independent of panel opens. The tldraw sidebar carries the gallery launcher.
+              native prop. For an HTML entry, the drawer can open a panel or place the page in a
+              board frame. An extension with a background entry gets one background context per
+              connected participant per board, shared across its panels and board frames. The tldraw
+              sidebar carries the gallery launcher.
             </li>
           </ol>
           <blockquote id="owlbear-install-warning">
@@ -130,10 +131,29 @@
             source deck’s private draw pile. A disabled renderer leaves a selectable placeholder
             with the same geometry and attachments.
           </p>
+          <h3 id="html-frames">An HTML page can be a board object</h3>
           <p>
-            Panels and background services are appropriate for board-wide utilities, including
-            Owlbear extensions that only declare a popover or background page. They can operate on
-            scene objects through granted SDK calls. A utility needs no invisible shape just to run.
+            A player makes a one-page HTML character sheet and wants it next to their miniature. The
+            author chooses a board frame as the default presentation. Dragging the sheet from the
+            drawer places it where the player drops it. Little Table creates the tldraw shape and
+            embeds the installed page. Ordinary HTML inputs and buttons work without a canvas
+            renderer or a custom shape implementation.
+          </p>
+          <p>
+            A panel is another way to open the same HTML entry. For example, open an Owlbear
+            initiative popover for a quick look, or choose <strong>Place on board</strong> to leave
+            it beside the encounter map for everyone. Use the popover dimensions as its initial
+            size. Resizing the shape resizes the page viewport. Each participant sees the frame at
+            the same board coordinates and runs their own view with their existing grants. The
+            extension can still share scene-level initiative data across views. A background-only
+            extension keeps its existing lifecycle.
+          </p>
+          <p>
+            Drag the frame edge to move it. Enter its content to type, scroll or operate controls.
+            Escape returns focus to the board. Drawing tools target the frame, including over an
+            input. Save geometry, entry and instance ID in the board document. For a character sheet
+            to keep edits across clients and reloads, its page writes those values through the state
+            API. Placing HTML on the board grants the page the same access as opening it in a panel.
           </p>
           <p>
             <strong>Acceptance test.</strong> Place a widget, bind an arrow using the arrow tool
@@ -141,10 +161,17 @@
             Check that the endpoint still follows the same shape and the widget still works. Repeat
             after another participant joins and after reloading the shared board.
           </p>
+          <p>
+            <strong>HTML frame test.</strong> Drop the character sheet beside a token, edit a field
+            and draw an arrow to the sheet. Group the sheet with the token and move them. A second
+            participant who reopens the board must see the saved field, group position and bound
+            arrow. With the Owlbear tracker, also verify that placing its popover adds no second
+            background service.
+          </p>
         </div>
       </section>
       <section class="chapter" id="runtime">
-        <header><h2>A native Gizmo owns its canvas</h2></header>
+        <header><h2>A native Gizmo owns its page</h2></header>
         <div class="prose">
           <p class="lead">
             TypeGPU and TypeGPU Kit run in the participant's browser. A mod author owns the shaders,
@@ -165,12 +192,13 @@
           </p>
           <p>
             Mount each visible instance in an isolated HTTPS frame on a dedicated mod origin with a
-            canvas and an instance-scoped SDK connection. Scope asset URLs and storage so another
-            installation cannot use them. During a drag the host supplies zoom-correct board
-            coordinates, pointer capture beyond the frame, cancellation and screen-to-board
-            transforms. The renderer owns the animation loop. Commit the semantic drop and final
-            pose once. Other clients can interpolate from the same flight inputs. Suspend offscreen
-            renderers, release GPU and sound resources on teardown, and restore from room state.
+            page-owned DOM or canvas and an instance-scoped SDK connection. Scope asset URLs and
+            storage so another installation cannot use them. During a drag the host supplies
+            zoom-correct board coordinates, pointer capture beyond the frame, cancellation and
+            screen-to-board transforms. The renderer owns the animation loop. Commit the semantic
+            drop and final pose once. Other clients can interpolate from the same flight inputs.
+            Suspend offscreen renderers, release GPU and sound resources on teardown, and restore
+            from room state.
           </p>
           <h3 id="spotlight">Two Spotlight widgets</h3>
           <p>
