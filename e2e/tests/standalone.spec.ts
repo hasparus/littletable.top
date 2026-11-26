@@ -131,6 +131,44 @@ test("board sections collapse on phones only when both lists have three boards",
   await expect(created.or(joined)).toHaveCount(0);
 });
 
+test("a board thumbnail warms the shared editor and opens its board", async ({ page }) => {
+  const start = await page.request.get(`${STANDALONE}/auth/sign-in?return=/boards`, {
+    maxRedirects: 0,
+  });
+  const authorize = new URL(start.headers().location!);
+  authorize.searchParams.set("fake_user", `Board links ${crypto.randomUUID()}`);
+  await page.request.get(authorize.href);
+  const account = await page.request.get(`${STANDALONE}/api/me`);
+  const me = await account.json();
+  for (const title of ["Created 0", "Created 1"]) {
+    const response = await page.request.post(`${STANDALONE}/api/boards`, {
+      data: { title },
+      headers: { Origin: STANDALONE, "X-CSRF-Token": me.csrf },
+    });
+    expect(response.status()).toBe(201);
+  }
+  await page.goto(`${STANDALONE}/boards`);
+
+  const firstBoard = page.getByRole("link", { name: "Created 0", exact: true });
+  const thumbnail = firstBoard.locator("..").locator("span[aria-hidden=true]").first();
+  const box = await thumbnail.boundingBox();
+  expect(box).not.toBeNull();
+  const x = box!.x + box!.width / 2;
+  const y = box!.y + box!.height / 2;
+  const editor = page.waitForResponse(/\/assets\/board-[^/]+\.js$/u);
+  await page.mouse.move(x, y);
+  const editorResponse = await editor;
+  expect(editorResponse.ok()).toBe(true);
+  const warmed = page.locator('head > link[rel="modulepreload"][href*="/board-"]');
+  await expect(warmed).toHaveCount(1);
+  await page.getByRole("link", { name: "Created 1", exact: true }).focus();
+  await expect(warmed).toHaveCount(1);
+  await expect(page).toHaveURL(`${STANDALONE}/boards`);
+  const target = await firstBoard.getAttribute("href");
+  await page.mouse.click(x, y);
+  await expect(page).toHaveURL(`${STANDALONE}${target}`);
+});
+
 test("landing header controls fit narrow phones before and after sign-in", async ({ browser }) => {
   const landing = await phone(browser, `${STANDALONE}/`);
   const github = landing.getByRole("link", { name: "Source code on GitHub" });
