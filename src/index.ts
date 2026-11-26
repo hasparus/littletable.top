@@ -306,6 +306,15 @@ async function routeRequest(request: Request, env: Env, ctx?: ExecutionContext):
   return serveSite(request, env, config);
 }
 
+function quotaRoute(path: string) {
+  if (path.startsWith("/auth/")) return "auth";
+  if (path.startsWith("/b/") || path.startsWith("/api/b/")) return "share";
+  if (path.startsWith("/p/")) return "published-image";
+  if (ROOMS.test(path)) return "room";
+  if (path.startsWith("/api/")) return "api";
+  return "site";
+}
+
 export async function handle(request: Request, env: Env, ctx?: ExecutionContext) {
   try {
     return await routeRequest(request, env, ctx);
@@ -321,8 +330,9 @@ export async function handle(request: Request, env: Env, ctx?: ExecutionContext)
     const day = 24 * 60 * 60 * 1000;
     const retry = Math.ceil((day - (now % day)) / 1000);
     const headers = { "Cache-Control": "no-store", "Retry-After": String(retry) };
-    console.error(JSON.stringify({ event: "tabletop.daily-server-limit", path }));
-    return path.startsWith("/auth/")
+    const route = quotaRoute(path);
+    console.error(JSON.stringify({ event: "tabletop.daily-server-limit", route }));
+    return route === "auth"
       ? new Response("Little Table reached its daily server limit. Try again after 00:00 UTC.", {
           headers,
           status: 503,
