@@ -177,7 +177,7 @@ function tabletop(): Plugin {
             (file) => `<link rel="preload" as="style" crossorigin href="/${escapeHtml(file)}">`,
           ),
         ];
-        // The Worker unwraps these inert hints only for the standalone public board.
+        // The landing page activates these on load, and the board list warms the editor on intent.
         html = html.replace(
           "</head>",
           `<template data-board-preloads>${hints.join("")}</template></head>`,
