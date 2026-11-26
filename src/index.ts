@@ -241,12 +241,9 @@ async function rooms(
     const forwarded = new Request(request);
     forwarded.headers.set(PASS_HEADER, JSON.stringify(pass));
     forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
-    forwarded.headers.delete(SOCKET_SESSION_HEADER);
-    if (url.searchParams.has("storeId")) {
-      // WARNING: tldraw retains a tab ID across sign-in. Bind it to the verified identity.
-      const key = new TextEncoder().encode(JSON.stringify([sessionId, pass.sub]));
-      forwarded.headers.set(SOCKET_SESSION_HEADER, await sha256Hex(key.buffer));
-    }
+    // WARNING: Scoping only upgrades with a store ID gives the same tab two seats.
+    const key = new TextEncoder().encode(JSON.stringify([sessionId, pass.sub]));
+    forwarded.headers.set(SOCKET_SESSION_HEADER, await sha256Hex(key.buffer));
     return room.fetch(forwarded);
   }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));

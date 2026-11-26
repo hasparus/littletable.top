@@ -330,13 +330,11 @@ export class BoardRoom extends DurableObject<Env> {
 
   private socketSessionId(request: Request, sub: string) {
     const tabId = new URL(request.url).searchParams.get("sessionId")!;
-    const scopedId = request.headers.get(SOCKET_SESSION_HEADER);
-    if (scopedId === null) return tabId;
     // WARNING: An existing tab-only seat may survive deployment and still belongs to its original player.
     const legacy = this.room
       .getSessions()
       .some((session) => session.sessionId === tabId && session.meta.sub === sub);
-    return legacy ? tabId : scopedId;
+    return legacy ? tabId : request.headers.get(SOCKET_SESSION_HEADER)!;
   }
 
   private connectRoom(request: Request, pass: Pass): Response {

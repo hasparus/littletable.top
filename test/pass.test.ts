@@ -1,5 +1,9 @@
 import { TLSyncErrorCloseEventCode, TLSyncErrorCloseEventReason } from "@tldraw/sync-core";
+import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+
+import type { Env } from "../src";
 
 import { MAX_PEOPLE } from "../src/limits";
 import { call, now, open, pass, seat, until } from "./support";
@@ -54,7 +58,7 @@ describe("a refusal on the socket", () => {
     const guest = await seat(board, await pass({ board, sub: "g:visitor" }), tabId, "guest-store");
     const memberPass = await pass({ board, sub: "u:member" });
     const member = await seat(board, memberPass, tabId, "member-store");
-    const reloaded = await seat(board, memberPass, tabId, "reloaded-store");
+    const reloaded = await seat(board, memberPass, tabId);
 
     expect(await member.closure).toEqual({ code: 1012, reason: "Session replaced" });
     expect(guest.isClosed()).toBe(false);
@@ -62,29 +66,37 @@ describe("a refusal on the socket", () => {
     reloaded.close();
   });
 
+  it("reclaims a seat saved by the previous tab-only protocol after hibernation", async () => {
+    const board = "legacy-seat";
+    const tab = crypto.randomUUID();
+    const token = await pass({ board });
+    const original = await seat(board, token, tab);
+    const { BoardRoom } = env as unknown as Env;
+    const room = BoardRoom.get(BoardRoom.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      const [socket] = state.getWebSockets();
+      const saved = socket!.deserializeAttachment();
+      socket!.serializeAttachment({ ...saved, sessionId: tab });
+    });
+    await evictDurableObject(room, { webSockets: "hibernate" });
+
+    const replacement = await seat(board, token, tab, "new-store");
+    expect(await original.closure).toEqual({ code: 1012, reason: "Session replaced" });
+    replacement.close();
+  });
+
   it("keeps a full board at capacity while the same player reclaims their seat", async () => {
     const sessionId = crypto.randomUUID();
     const returningToken = await pass({ board: "full", sub: "u:returning" });
     const strangerToken = await pass({ board: "full", sub: "u:late" });
     const original = await seat("full", returningToken, sessionId);
-    const conflict = await open("full", strangerToken, sessionId);
-    expect(await conflict.closure).toEqual({
-      code: TLSyncErrorCloseEventCode,
-      reason: TLSyncErrorCloseEventReason.FORBIDDEN,
-    });
-
     const seated = [];
     for (let person = 1; person < MAX_PEOPLE; person++) {
       seated.push(await seat("full", await pass({ board: "full", sub: `u:${person}` })));
     }
 
-    const fullConflict = await open("full", strangerToken, sessionId);
-    expect(await fullConflict.closure).toEqual({
-      code: TLSyncErrorCloseEventCode,
-      reason: TLSyncErrorCloseEventReason.FORBIDDEN,
-    });
-    const newIdentity = await open("full", strangerToken, sessionId, "another-store");
-    expect(await newIdentity.closure).toEqual({
+    const newcomer = await open("full", strangerToken, sessionId);
+    expect(await newcomer.closure).toEqual({
       code: TLSyncErrorCloseEventCode,
       reason: TLSyncErrorCloseEventReason.ROOM_FULL,
     });
@@ -92,6 +104,9 @@ describe("a refusal on the socket", () => {
 
     const replacement = await seat("full", returningToken, sessionId, "new-store");
     expect(await original.closure).toEqual({ code: 1012, reason: "Session replaced" });
+
+    const backWithoutStore = await seat("full", returningToken, sessionId);
+    expect(await replacement.closure).toEqual({ code: 1012, reason: "Session replaced" });
 
     const late = await open("full", strangerToken);
 
@@ -101,8 +116,8 @@ describe("a refusal on the socket", () => {
       reason: TLSyncErrorCloseEventReason.ROOM_FULL,
     });
     expect(seated.some((person) => person.isClosed())).toBe(false);
-    replacement.send({ type: "ping" });
-    await until(() => replacement.received.some((message) => message.type === "pong"));
-    for (const person of [replacement, ...seated]) person.close();
+    backWithoutStore.send({ type: "ping" });
+    await until(() => backWithoutStore.received.some((message) => message.type === "pong"));
+    for (const person of [backWithoutStore, ...seated]) person.close();
   });
 });
