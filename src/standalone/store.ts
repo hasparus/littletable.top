@@ -221,11 +221,9 @@ export class Store {
         .prepare(
           `INSERT INTO pending_board_deletions (id, owner_id, deployment, title, created_at)
            SELECT id, owner_id, deployment, title, created_at FROM boards
-           WHERE id = ? AND owner_id = ? AND deployment = ?`,
+           WHERE id = ? AND owner_id = ? AND deployment = ?
+           ON CONFLICT (id) DO NOTHING`,
         )
-        .bind(...ownerKey),
-      this.db
-        .prepare("DELETE FROM boards WHERE id = ? AND owner_id = ? AND deployment = ?")
         .bind(...ownerKey),
       this.db
         .prepare(
@@ -233,7 +231,14 @@ export class Store {
         )
         .bind(...ownerKey),
     ]);
-    return results[2]!.results.length > 0;
+    return results[1]!.results.length > 0;
+  }
+
+  async removeBoardForDeletion(id: string, ownerId: string) {
+    await this.db
+      .prepare("DELETE FROM boards WHERE id = ? AND owner_id = ? AND deployment = ?")
+      .bind(id, ownerId, this.deployment)
+      .run();
   }
 
   async finishDeletion(id: string, ownerId: string): Promise<void> {
@@ -341,7 +346,10 @@ export class Store {
         .bind(accountId, this.deployment),
       this.db
         .prepare(
-          "SELECT id, title FROM pending_board_deletions WHERE owner_id = ? AND deployment = ? ORDER BY created_at DESC",
+          `SELECT p.id, p.title FROM pending_board_deletions p
+           WHERE p.owner_id = ? AND p.deployment = ?
+             AND NOT EXISTS (SELECT 1 FROM boards WHERE id = p.id)
+           ORDER BY p.created_at DESC`,
         )
         .bind(accountId, this.deployment),
     ]);

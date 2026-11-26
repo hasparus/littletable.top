@@ -551,11 +551,16 @@ export class Standalone {
     }
     if (!(await this.store.beginDeletion(id, owner))) return refuse(404, "not-found");
     const secret = secretLayerOf(id);
-    const results = await Promise.allSettled([
-      room.retire(id),
-      this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret)).retire(secret),
+    const secretRoom = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(secret));
+    // WARNING: Keep the board listed until both rooms have persisted retirement and disconnected their sockets.
+    const retirements = await Promise.allSettled([room.markRetired(), secretRoom.markRetired()]);
+    for (const result of retirements) if (result.status === "rejected") throw result.reason;
+    await this.store.removeBoardForDeletion(id, owner);
+    const cleanup = await Promise.allSettled([
+      room.wipeRetired(id),
+      secretRoom.wipeRetired(secret),
     ]);
-    for (const result of results) if (result.status === "rejected") throw result.reason;
+    for (const result of cleanup) if (result.status === "rejected") throw result.reason;
     await this.env.Files.delete(thumbnailKey(id));
     await this.store.finishDeletion(id, owner);
     return new Response(null, { status: 204 });

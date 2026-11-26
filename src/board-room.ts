@@ -54,6 +54,12 @@ import {
 } from "./public-signature";
 import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
+import {
+  closeRoomSessions,
+  type Person,
+  type RoomSocket,
+  type SocketAttachment,
+} from "./room-sessions";
 import { isSecretLayer } from "./secret-layer";
 import { AssistantGrants } from "./standalone/assistant-grants";
 import { hasActiveSession } from "./standalone/store";
@@ -98,22 +104,6 @@ export const AVATAR_HEADER = "X-Board-Avatar";
 
 export type AvatarSource = { hostOrigin: string; mode: "hosted" } | { mode: "standalone" };
 
-type Person = Pick<Pass, "link" | "name" | "owner" | "sessionHash" | "sub"> & {
-  avatar: string | null;
-};
-type SocketAttachment = {
-  sessionId: string;
-  person: Person;
-} & (
-  | { snapshot?: SessionStateSnapshot; stored?: never }
-  | { snapshot: SessionStateSnapshot; stored: true }
-);
-type RoomSocket = {
-  socket: WebSocket;
-  connectTimer?: ReturnType<typeof setTimeout>;
-  snapshot?: SessionStateSnapshot;
-  stored?: boolean;
-};
 type RollCompletion =
   | { refusal: Refusal }
   | { error: ExpressionError }
@@ -288,11 +278,11 @@ export class BoardRoom extends DurableObject<Env> {
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
     );
-    for (const session of this.room.getSessions()) {
-      if (session.meta.link < link) {
-        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.link < link,
+    );
     log("board.link_reset", { board, link });
   }
 
@@ -311,13 +301,11 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   disconnectSession(hash: string): void {
-    const room = this.drawingRoom?.room;
-    if (room === undefined) return;
-    for (const session of room.getSessions()) {
-      if (session.meta.sessionHash === hash) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.drawingRoom?.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.sessionHash === hash,
+    );
   }
 
   private connectRoom(request: Request, pass: Pass): Response {
@@ -871,11 +859,18 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  async retire(board: string): Promise<void> {
-    if (this.retirement !== undefined) return this.retirement;
-    // WARNING: Without the retired marker, a still-valid pass could reopen the deleted private room.
+  async markRetired() {
+    // WARNING: Persist the marker before acknowledging retirement so old passes cannot reopen an evicted room.
     this.retired = true;
     this.ctx.storage.kv.put(RETIRED, true);
+    this.disconnectAll();
+    this.drawingRoom = undefined;
+    await this.ctx.storage.sync();
+  }
+
+  async wipeRetired(board: string): Promise<void> {
+    if (!this.retired) throw new Error("Board must be retired before wiping");
+    if (this.retirement !== undefined) return this.retirement;
     const retirement = this.destroy(board);
     this.retirement = retirement;
     try {
@@ -963,17 +958,19 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  async destroy(board: string) {
+  private disconnectAll() {
     this.assistantGrantsChanged();
     const room = this.drawingRoom?.room;
     if (room !== undefined) {
-      for (const session of room.getSessions()) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
-      }
+      closeRoomSessions(room, TLSyncErrorCloseEventReason.NOT_FOUND);
       room.close();
     }
     for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
     this.sockets.clear();
+  }
+
+  async destroy(board: string) {
+    this.disconnectAll();
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {

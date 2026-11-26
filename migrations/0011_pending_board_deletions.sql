@@ -1,4 +1,4 @@
--- Ownership of cleanup survives removal of the live board and its access grants.
+-- Track deletion attempts before room retirement, and preserve cleanup ownership after D1 removal.
 CREATE TABLE pending_board_deletions (
   id TEXT PRIMARY KEY,
   deployment TEXT NOT NULL,
