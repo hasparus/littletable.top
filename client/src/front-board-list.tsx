@@ -44,9 +44,9 @@ export type Editing = { id: string; kind: (typeof ACTIONS)[number] } | null;
 type Post = (path: string, body: BoardRoleChange) => Promise<Response>;
 
 const ROW =
-  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
+  "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
 const BOARD_TITLE = "col-start-2 row-start-1 min-w-0 self-end font-semibold @3xl:self-center";
-const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`;
+const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 after:absolute after:inset-0 after:rounded-sm hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-border-focus`;
 const BOARD_DATE =
   "col-start-2 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-3 @3xl:row-start-1 @3xl:self-center";
 
@@ -124,8 +124,8 @@ function OwnedRow({
   };
 
   return (
-    <li className="py-2">
-      <div className={`${ROW} min-h-11`}>
+    <li>
+      <div className={`${ROW} min-h-15 py-2`}>
         <BoardThumbnail board={board} />
         {mode === "rename" ? (
           <form
@@ -156,7 +156,7 @@ function OwnedRow({
           </a>
         )}
         <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
-        <div className="col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
+        <div className="relative col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
           {mode === "rename" ? (
             <>
               <button
