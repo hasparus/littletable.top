@@ -162,6 +162,9 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     })
     .on("head", {
       element: (head) => {
+        if (config.posthogWebProjectToken) {
+          head.append('<meta name="little-table-support">', { html: true });
+        }
         const tags = Object.entries(graph).map(
           ([name, value]) => `<meta property="og:${name}" content="${htmlAttribute(value)}">`,
         );
@@ -216,6 +219,7 @@ export async function serveBoards(
           initialPage: data,
           locale: locale ?? "en",
           name: config.displayName,
+          support: config.posthogWebProjectToken !== undefined,
         } as const;
         root.setAttribute("class", "fixed inset-0 overflow-y-auto bg-background");
         root.setInnerContent(renderBoards(state), { html: true });

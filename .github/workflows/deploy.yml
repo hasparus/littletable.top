@@ -122,11 +122,7 @@ jobs:
           # CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN. --yes also lets it
           # create (or upgrade) the account's state store on the first deploy.
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
-          POSTHOG_REGION: ${{ vars.POSTHOG_REGION }}
           POSTHOG_WEB_PROJECT_TOKEN: ${{ vars.POSTHOG_WEB_PROJECT_TOKEN }}
-          POSTHOG_FEEDBACK_SURVEY_ID: ${{ vars.POSTHOG_FEEDBACK_SURVEY_ID }}
-          POSTHOG_FEEDBACK_QUESTION_ID: ${{ vars.POSTHOG_FEEDBACK_QUESTION_ID }}
           WORKOS_API_KEY: ${{ secrets.WORKOS_API_KEY }}
           TABLETOP_SIGNING_KEY: ${{ secrets.TABLETOP_SIGNING_KEY }}
           MCP_AUTHKIT_ORIGIN: ${{ (env.STAGE == 'prod' || env.STAGE == 'staging') && vars.MCP_AUTHKIT_ORIGIN || '' }}

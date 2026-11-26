@@ -13,7 +13,6 @@ import {
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
 import { parseLaunch, parsePool } from "./dice";
-import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
 import { addressKey } from "./limiter";
@@ -37,7 +36,6 @@ export { Limiter } from "./limiter";
 
 /** The standalone deployment alone binds D1 and the address limiter. */
 export type Env = ConfigEnv &
-  FeedbackEnv &
   Partial<Pick<StandaloneEnv, "BOARD_DATA_SCOPE" | "DB" | "Limiter">> & {
     ASSETS: Fetcher;
     BoardRoom: DurableObjectNamespace<BoardRoom>;
@@ -283,7 +281,6 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
       );
       return new Response("This tabletop is not configured", { status: 500 });
     }
-    if (pathname === "/api/feedback") return feedbackRoute(request, env, env.Limiter);
     const own = new Standalone(
       {
         BOARD_DATA_SCOPE: env.BOARD_DATA_SCOPE,

@@ -6,12 +6,12 @@ import type { Action, Editing, Lists, Owned } from "./front-board-list";
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
 import { fill } from "./copy";
-import { FeedbackProvider, useFeedback } from "./feedback";
 import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { boardShell } from "./front-skeleton";
 import { Icon, TableMark } from "./icons";
+import { SUPPORT_URL, supportLabel } from "./support";
 
 type Account = { avatar: string | null; id: string; name: string };
 
@@ -55,17 +55,18 @@ function SignedIn({
   me,
   name,
   reload,
+  support,
 }: {
   copy: FrontCopy;
   locale: Language;
   me: BoardPage;
   name: string;
   reload: () => Promise<void>;
+  support?: boolean;
 }) {
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const post = useApi(me.csrf);
-  const feedback = useFeedback();
 
   const create = async () => {
     setError(null);
@@ -141,16 +142,15 @@ function SignedIn({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.yourBoards}</h1>
           <div className="flex flex-wrap items-center gap-2">
-            {feedback !== null && (
-              <button
+            {support && (
+              <a
                 className="btn btn-secondary min-h-11"
-                onClick={(event) =>
-                  feedback.open({ role: "member", screen: "boards" }, event.currentTarget)
-                }
-                type="button"
+                href={SUPPORT_URL}
+                rel="noreferrer"
+                target="_blank"
               >
-                {feedback.label}
-              </button>
+                {supportLabel(locale)}
+              </a>
             )}
             <button
               className="btn btn-primary min-h-11 font-semibold"
@@ -187,9 +187,10 @@ type FrontProps = {
   initialPage?: "signed-out" | BoardPage;
   locale: Language;
   name: string;
+  support?: boolean;
 };
 
-export function Front({ copy, failed, initialPage, locale, name }: FrontProps) {
+export function Front({ copy, failed, initialPage, locale, name, support }: FrontProps) {
   const [page, setPage] = useState<"failed" | "signed-out" | BoardPage | null>(initialPage ?? null);
   const reload = useCallback(async () => {
     try {
@@ -223,14 +224,6 @@ export function Front({ copy, failed, initialPage, locale, name }: FrontProps) {
   return page === "signed-out" ? (
     <SignedOut copy={copy} failed={failed === true} name={name} />
   ) : (
-    <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} />
-  );
-}
-
-export function BoardsApp(props: FrontProps) {
-  return (
-    <FeedbackProvider enabled language={props.locale}>
-      <Front {...props} />
-    </FeedbackProvider>
+    <SignedIn copy={copy} locale={locale} me={page} name={name} reload={reload} support={support} />
   );
 }

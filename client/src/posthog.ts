@@ -43,6 +43,7 @@ async function startPostHog(projectToken: string) {
         recordHeaders: false,
       },
     });
+    if (new URLSearchParams(location.search).has("support")) posthog.conversations.open();
   } catch (error) {
     console.warn("PostHog could not start", error);
   }

@@ -94,11 +94,11 @@ async function mount(): Promise<void> {
     copy,
     door,
     fallbackExit,
-    feedback: settings.mode === "standalone",
     first,
     landing,
     language,
     licenseKey: settings.licenseKey,
+    support: document.querySelector('meta[name="little-table-support"]') !== null,
   });
 }
 

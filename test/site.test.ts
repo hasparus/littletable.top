@@ -224,6 +224,18 @@ describe("PostHog browser configuration", () => {
     expect(await response.text()).not.toContain("posthog-project-token");
   });
 
+  it("offers Support on signed-in boards without injecting the token", async () => {
+    const owner = new Browser();
+    await owner.signIn("Support tester");
+    const board = await owner.createBoard("A private table");
+    const list = await (await owner.fetch("/boards", {}, production)).text();
+    expect(list).toContain('href="/docs/?support"');
+    expect(list).toContain('rel="noreferrer"');
+    const shell = await (await owner.fetch(`/b/${board.shareCode}`, {}, production)).text();
+    expect(shell).toContain('<meta name="little-table-support">');
+    expect(shell).not.toContain('name="posthog-project-token"');
+  });
+
   it("keeps PostHog off unconfigured deployments", async () => {
     const response = await new Browser().fetch("/");
     expect(response.headers.get("Content-Security-Policy")).not.toContain("posthog.com");
