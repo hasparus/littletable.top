@@ -78,9 +78,10 @@ type Env = {
 export type Refusal = "full" | "link-reset" | "too-fast";
 
 // WARNING: tldraw retries ordinary closes. Code 4099 passes the final reason to useSync.
-const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
+const SOCKET_REFUSAL = {
   full: TLSyncErrorCloseEventReason.ROOM_FULL,
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
+  "session-conflict": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
 /** Account board IDs are alphanumeric, so they cannot collide with this room name. */
@@ -319,11 +320,17 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
+  private seatRefusal(sessionId: string, sub: string): "full" | "session-conflict" | null {
+    // WARNING: tldraw retains seats briefly after disconnect, so include sessions without a live socket.
+    const existing = this.room.getSessions().find((session) => session.sessionId === sessionId);
+    if (existing !== undefined) return existing.meta.sub === sub ? null : "session-conflict";
+    return this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null;
+  }
+
   private connectRoom(request: Request, pass: Pass): Response {
     const avatar = request.headers.get(AVATAR_HEADER) || null;
     const sessionId = new URL(request.url).searchParams.get("sessionId")!;
-    const refusal =
-      this.admit(pass) ?? (this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null);
+    const refusal = this.admit(pass) ?? this.seatRefusal(sessionId, pass.sub);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
     if (refusal !== null) {

@@ -48,13 +48,33 @@ describe("a refusal on the socket", () => {
     });
   });
 
-  it("tells the newcomer the board is full and leaves the seats alone", async () => {
+  it("keeps a full board at capacity while the same player reclaims their seat", async () => {
+    const sessionId = crypto.randomUUID();
+    const returningToken = await pass({ board: "full", sub: "u:returning" });
+    const strangerToken = await pass({ board: "full", sub: "u:late" });
+    const original = await seat("full", returningToken, sessionId);
+    const conflict = await open("full", strangerToken, sessionId);
+    expect(await conflict.closure).toEqual({
+      code: TLSyncErrorCloseEventCode,
+      reason: TLSyncErrorCloseEventReason.FORBIDDEN,
+    });
+
     const seated = [];
-    for (let person = 0; person < MAX_PEOPLE; person++) {
+    for (let person = 1; person < MAX_PEOPLE; person++) {
       seated.push(await seat("full", await pass({ board: "full", sub: `u:${person}` })));
     }
 
-    const late = await open("full", await pass({ board: "full", sub: "u:late" }));
+    const fullConflict = await open("full", strangerToken, sessionId);
+    expect(await fullConflict.closure).toEqual({
+      code: TLSyncErrorCloseEventCode,
+      reason: TLSyncErrorCloseEventReason.FORBIDDEN,
+    });
+    expect(original.isClosed()).toBe(false);
+
+    const replacement = await seat("full", returningToken, sessionId);
+    expect(await original.closure).toEqual({ code: 1012, reason: "Session replaced" });
+
+    const late = await open("full", strangerToken);
 
     expect(late.response.status).toBe(101);
     expect(await late.closure).toEqual({
@@ -62,8 +82,8 @@ describe("a refusal on the socket", () => {
       reason: TLSyncErrorCloseEventReason.ROOM_FULL,
     });
     expect(seated.some((person) => person.isClosed())).toBe(false);
-    const free = seated[0]!;
-    free.send({ type: "ping" });
-    await until(() => free.received.some((message) => message.type === "pong"));
+    replacement.send({ type: "ping" });
+    await until(() => replacement.received.some((message) => message.type === "pong"));
+    for (const person of [replacement, ...seated]) person.close();
   });
 });

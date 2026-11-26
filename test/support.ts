@@ -127,8 +127,8 @@ type SyncMessage = { data?: unknown; type: string };
 
 // Speaks just enough of the tldraw sync protocol to become a connected
 // session, then collects what the room sends.
-export async function seat(board: string, token: string) {
-  const { closure, response, socket } = await open(board, token);
+export async function seat(board: string, token: string, sessionId?: string) {
+  const { closure, response, socket } = await open(board, token, sessionId);
   if (socket === null) throw new Error(`refused: ${response.status}`);
   const received: SyncMessage[] = [];
   let closed = false;
