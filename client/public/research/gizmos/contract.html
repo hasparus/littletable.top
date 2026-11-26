@@ -72,10 +72,14 @@
               <strong>Play.</strong> Before the first install, the Gizmos menu opens the
               marketplace. Installation opens the quiet white drawer already scrolled to the new
               piece. All participants can use an installed Gizmo. Drag, tap or keyboard-place a
-              native prop. For an HTML entry, the drawer can open a panel or place the page in a
-              board frame. An extension with a background entry gets one background context per
-              connected participant per board, shared across its panels and board frames. The tldraw
-              sidebar carries the gallery launcher.
+              native prop. Dropping a marketplace listing onto the board places an installed Gizmo
+              at the drop point. For a new listing, an owner starts installation and a participant
+              sends an install request. Any required source or live-update review happens before
+              activation. For an HTML entry, the artifact can choose to open inside the drawer
+              itself. For popovers, the proposed owner setting offers a board object or a floating
+              window. An extension with a background entry gets one background context per connected
+              participant per board, shared across its views. The tldraw sidebar carries the gallery
+              launcher.
             </li>
           </ol>
           <blockquote id="owlbear-install-warning">
@@ -131,29 +135,22 @@
             source deck’s private draw pile. A disabled renderer leaves a selectable placeholder
             with the same geometry and attachments.
           </p>
-          <h3 id="html-frames">An HTML page can be a board object</h3>
+          <h3 id="html-frames">HTML inside the drawer</h3>
           <p>
-            A player makes a one-page HTML character sheet and wants it next to their miniature. The
-            author chooses a board frame as the default presentation. Dragging the sheet from the
-            drawer places it where the player drops it. Little Table creates the tldraw shape and
-            embeds the installed page. Ordinary HTML inputs and buttons work without a canvas
-            renderer or a custom shape implementation.
+            An HTML artifact can choose the drawer as its presentation. Opening a character sheet
+            this way renders its page inside the Gizmos drawer. Players type, scroll and use the
+            sheet there. Back returns to the installed Gizmos. Opening the sheet leaves the canvas
+            free. The page uses the state API for values that should survive closing it or be shared
+            with the table.
           </p>
           <p>
-            A panel is another way to open the same HTML entry. For example, open an Owlbear
-            initiative popover for a quick look, or choose <strong>Place on board</strong> to leave
-            it beside the encounter map for everyone. Use the popover dimensions as its initial
-            size. Resizing the shape resizes the page viewport. Each participant sees the frame at
-            the same board coordinates and runs their own view with their existing grants. The
-            extension can still share scene-level initiative data across views. A background-only
-            extension keeps its existing lifecycle.
-          </p>
-          <p>
-            Drag the frame edge to move it. Enter its content to type, scroll or operate controls.
-            Escape returns focus to the board. Drawing tools target the frame, including over an
-            input. Save geometry, entry and instance ID in the board document. For a character sheet
-            to keep edits across clients and reloads, its page writes those values through the state
-            API. Placing HTML on the board grants the page the same access as opening it in a panel.
+            <strong>Owner choice for popovers, proposed.</strong> A board owner could choose
+            <strong>On the board</strong> or <strong>Floating</strong> for an installed popover such
+            as Owlbear’s Initiative Tracker. On the board, it has a saved position and size, can
+            join a group and accepts arrow bindings. Floating opens over the canvas for the
+            participant using it and follows their screen when they pan. The owner’s choice sets how
+            the popover opens for that board. Every presentation uses the same installation,
+            permissions and shared extension data.
           </p>
           <p>
             <strong>Acceptance test.</strong> Place a widget, bind an arrow using the arrow tool
@@ -162,11 +159,11 @@
             after another participant joins and after reloading the shared board.
           </p>
           <p>
-            <strong>HTML frame test.</strong> Drop the character sheet beside a token, edit a field
-            and draw an arrow to the sheet. Group the sheet with the token and move them. A second
-            participant who reopens the board must see the saved field, group position and bound
-            arrow. With the Owlbear tracker, also verify that placing its popover adds no second
-            background service.
+            <strong>Presentation test.</strong> Edit a character sheet inside the drawer, return to
+            the listings and reopen the sheet. Check its saved field and the board’s original shape
+            count. Try the Owlbear tracker under both owner settings. Pan the board to verify which
+            view moves with it. Reopening a view must preserve initiative order and keep one
+            background service per participant.
           </p>
         </div>
       </section>

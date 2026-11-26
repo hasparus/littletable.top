@@ -126,6 +126,45 @@ test("a workshop button without a shake capability keeps the table still", async
   expect(await page.locator(".tl-canvas").evaluate((el) => el.getAnimations().length)).toBe(0);
 });
 
+test("a marketplace drag installs only on a board drop and places at the pointer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1190, height: 760 });
+  const manifestRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/spotlight-rail/gizmo.json"))
+      manifestRequests.push(request.url());
+  });
+  await page.goto(STANDALONE + "/dev/gizmos/?empty&lang=en");
+  const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
+  const pickup = market.getByRole("button", { name: "Install and place Spotlight rail" });
+  async function lift() {
+    const bounds = (await pickup.boundingBox())!;
+    await page.mouse.move(bounds.x + 20, bounds.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 38, bounds.y + 23, { steps: 3 });
+    await expect(page.locator("[data-gizmo-carry]")).toBeVisible();
+  }
+  await lift();
+  await page.mouse.up();
+  await expect(page.locator("[data-gizmo-carry]")).toHaveCount(0);
+  expect(manifestRequests).toHaveLength(0);
+  await lift();
+  await page.mouse.move(820, 420, { steps: 8 });
+  expect(manifestRequests).toHaveLength(0);
+  await page.mouse.up();
+  const rail = page.locator("[data-spotlight-rail]");
+  await expect(rail).toHaveCount(1);
+  const bounds = (await rail.boundingBox())!;
+  expect(Math.abs(bounds.x + bounds.width / 2 - 820)).toBeLessThan(3);
+  expect(Math.abs(bounds.y + bounds.height / 2 - 420)).toBeLessThan(3);
+  await page.getByRole("button", { name: "Gizmos", exact: true }).click();
+  await page.getByRole("button", { name: "Browse marketplace" }).click();
+  await market.getByRole("button", { name: "Place Spotlight rail", exact: true }).press("Enter");
+  await expect(rail).toHaveCount(2);
+  expect(manifestRequests).toHaveLength(1);
+});
+
 test("practice installs a marketplace piece and brings its drawer button into view", async ({
   page,
 }) => {
@@ -387,7 +426,20 @@ test("requests survive the owner's absence, merge across players, and install on
       await joinAs(tab, name);
       const market = await openGallery(tab, "Gizmo marketplace");
       const listing = market.getByRole("article", { name: "Explosion button" });
-      await listing.getByRole("button", { name: "Request Explosion button" }).click();
+      if (tab === player) {
+        const canvas = tab.getByTestId("canvas").first();
+        const bounds = (await canvas.boundingBox())!;
+        await listing
+          .getByRole("button", { name: "Drop to request Explosion button" })
+          .dragTo(canvas, {
+            targetPosition: { x: bounds.width * 0.8, y: bounds.height * 0.45 },
+          });
+        await expect(tab.locator("[data-gizmo-actuator]")).toHaveCount(0);
+      } else {
+        await listing
+          .getByRole("button", { name: "Request Explosion button", exact: true })
+          .click();
+      }
       await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
     }
     await friend
@@ -398,7 +450,9 @@ test("requests survive the owner's absence, merge across players, and install on
     const market = await openGallery(player, "Gizmo marketplace");
     const listing = market.getByRole("article", { name: "Explosion button" });
     await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
-    await expect(listing.getByRole("button", { name: "Request Explosion button" })).toHaveCount(0);
+    await expect(
+      listing.getByRole("button", { name: "Request Explosion button", exact: true }),
+    ).toHaveCount(0);
     await page.goto(board);
     const inbox = page.getByRole("dialog", { name: "Review Gizmo request" });
     await expect(inbox.getByRole("heading", { name: "Explosion button" })).toBeVisible();

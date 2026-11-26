@@ -14,9 +14,9 @@ Open `/dev/gizmos` to play with the packages in this checkout. The practice tabl
 
 Open **Gizmos** from the board menu. A new board opens the marketplace. Once a piece is installed, the menu opens the drawer and **Browse marketplace** takes you back to the catalog.
 
-Owners can install an [official listing](registry.json) or paste a public GitHub folder or `gizmo.json` link. Browsing loads only listing metadata and thumbnails. Install resolves the link to a commit and fetches the manifest. The drawer opens with the installed piece in view. Anyone at the table can drag the piece onto the board, or tap it or press Enter to place it at the center.
+Owners can install an [official listing](registry.json) or paste a public GitHub folder or `gizmo.json` link. Browsing loads only listing metadata and thumbnails. Install resolves the link to a commit and fetches the manifest. The drawer opens with the installed piece in view. Owners can also drag a listing’s thumbnail or name straight from the marketplace onto the board to install it and place it at the drop point. Anyone at the table can place an installed piece from either view. Tap its artwork or press Enter to place it at the center.
 
-Participants can request a listing or paste their own link. The owner sees the package source and who requested it, and can install or decline it. Requests survive the owner being away. Repeated requests for the same source share one decision.
+Dragging an uninstalled listing as a participant sends an install request to the owner. Participants can also use the Request button or paste their own link. The owner sees the package source and who requested it, and can install or decline it. Requests survive the owner being away. Repeated requests for the same source share one decision.
 
 A fork is a separate package. For example, copy the explosion directory to a public repository, replace the cap artwork or change `effect` to `"none"`, commit, and install that permalink. Each installation stays on the selected commit.
 

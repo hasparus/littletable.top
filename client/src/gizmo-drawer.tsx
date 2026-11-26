@@ -32,7 +32,7 @@ type Piece = InstalledGizmo;
 type RequestStatus = GizmoRequest["status"];
 export type GizmoListing = { url: string; name: { en: string; pl: string }; thumbnail: string };
 type Point = { x: number; y: number };
-type Drag = Point & { piece: Piece; tilt: number };
+type Drag = Point & { piece: Piece | GizmoListing; tilt: number };
 type Grip = Point & { pointer: number; moved: boolean };
 function Miniature({ piece }: { piece: Piece }) {
   const { manifest } = piece;
@@ -63,7 +63,11 @@ function CarriedPiece({ drag }: { drag: Drag }) {
       }}
     >
       <span ref={miniature}>
-        <Miniature piece={drag.piece} />
+        {"manifest" in drag.piece ? (
+          <Miniature piece={drag.piece} />
+        ) : (
+          <img alt="" src={drag.piece.thumbnail} />
+        )}
       </span>
     </div>
   );
@@ -75,6 +79,8 @@ function Marketplace({
   requested,
   declined,
   installOrRequest,
+  placement,
+  center,
   canInstall,
   canRequest,
   custom,
@@ -84,7 +90,9 @@ function Marketplace({
   installed: readonly Piece[];
   requested: readonly string[];
   declined: readonly string[];
-  installOrRequest: (url: string) => Promise<RequestStatus | false>;
+  installOrRequest: (url: string, point?: Point) => Promise<RequestStatus | false>;
+  placement: ReturnType<typeof useGizmoPlacement>;
+  center: () => Point;
   canInstall: boolean;
   canRequest: boolean;
   custom: boolean;
@@ -94,18 +102,17 @@ function Marketplace({
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const action = canInstall ? copy.gizmoInstall : copy.gizmoRequest;
-  const available = online && !pending && (canInstall || canRequest);
+  const available = online && !placement.busy && !pending && (canInstall || canRequest);
   const language = locale === "pl" ? "pl" : "en";
-  const installedUrls = new Set(installed.map((piece) => piece.url));
   const listedUrls = new Set(entries.map((entry) => entry.url));
   const requestedUrls = new Set(requested);
   const declinedUrls = new Set(declined);
 
-  async function submit(url: string) {
+  async function submit(url: string, point?: Point) {
     if (!available) return false;
     setPending(url);
     setMessage(null);
-    const result = await installOrRequest(url).catch(() => false as const);
+    const result = await installOrRequest(url, point).catch(() => false as const);
     setPending("");
     if (!result) {
       setMessage({
@@ -127,9 +134,11 @@ function Marketplace({
     <div data-gizmo-market-body>
       {entries.length > 0 && (
         <div data-gizmo-listings>
-          {entries.map(({ url, name, thumbnail }) => {
+          {entries.map((entry) => {
+            const { url, name, thumbnail } = entry;
             const title = name[language];
-            const present = installedUrls.has(url);
+            const piece = installed.find((item) => item.url === url);
+            const present = !!piece;
             const state = present
               ? copy.gizmoInstalled
               : requestedUrls.has(url)
@@ -137,17 +146,43 @@ function Marketplace({
                 : declinedUrls.has(url)
                   ? copy.gizmoDeclined
                   : null;
+            const pickup = present
+              ? copy.gizmoPlaceAction
+              : canInstall
+                ? copy.gizmoInstallAndPlace
+                : copy.gizmoDropToRequest;
+            function drop(point: Point) {
+              if (piece) void placement.place(piece, point);
+              else void submit(url, point);
+            }
             return (
               <article key={url} aria-label={title} data-gizmo-listing>
-                <div data-gizmo-listing-art>
+                <button
+                  type="button"
+                  data-gizmo-listing-pickup
+                  aria-label={`${pickup} ${title}`}
+                  title={pickup}
+                  disabled={
+                    !online || placement.busy || !!pending || (!present && (!available || !!state))
+                  }
+                  onPointerDown={placement.grab}
+                  onPointerMove={(event) => placement.move(event, entry)}
+                  onPointerUp={(event) => {
+                    const point = placement.dropPoint(event);
+                    if (point) drop(point);
+                  }}
+                  onPointerCancel={placement.cancel}
+                  onLostPointerCapture={placement.cancel}
+                  onClick={(event) => {
+                    if (event.detail === 0) drop(center());
+                  }}
+                >
                   <img alt="" src={thumbnail} draggable={false} />
-                </div>
-                <div data-gizmo-listing-copy>
-                  <h3>{title}</h3>
-                  <a href={url} target="_blank" rel="noreferrer">
-                    {copy.gizmoViewCode}
-                  </a>
-                </div>
+                  <span>{title}</span>
+                </button>
+                <a data-gizmo-listing-source href={url} target="_blank" rel="noreferrer">
+                  {copy.gizmoViewCode}
+                </a>
                 {state ? (
                   <span data-gizmo-install-state>{state}</span>
                 ) : (
@@ -206,6 +241,7 @@ function Marketplace({
             </article>
           ),
         )}
+      {placement.failed && <p role="alert">{copy.gizmoPlaceFailed}</p>}
       {message && <p role={message.error ? "alert" : "status"}>{message.text}</p>}
     </div>
   );
@@ -261,7 +297,7 @@ function useGizmoPlacement({
     playGizmoCue("pickup");
     grip.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
   }
-  function move(event: PointerEvent<HTMLButtonElement>, piece: Piece) {
+  function move(event: PointerEvent<HTMLButtonElement>, piece: Piece | GizmoListing) {
     const start = grip.current;
     if (start?.pointer !== event.pointerId) return;
     const dx = event.clientX - start.x;
@@ -274,19 +310,15 @@ function useGizmoPlacement({
       tilt: Math.max(-14, Math.min(dx / 9, 14)),
     });
   }
-  function release(event: PointerEvent<HTMLButtonElement>, piece: Piece) {
+  function dropPoint(event: PointerEvent<HTMLButtonElement>) {
     const start = grip.current;
-    if (start?.pointer !== event.pointerId) return;
+    if (start?.pointer !== event.pointerId) return null;
     grip.current = null;
     setDrag(null);
-    if (!start.moved) {
-      void place(piece, editor.getViewportPageBounds().center);
-      return;
-    }
+    if (!start.moved) return editor.getViewportPageBounds().center;
     const { clientX: x, clientY: y } = event;
     const target = document.elementFromPoint(x, y)?.closest(".tl-canvas");
-    if (target && editor.getContainer().contains(target))
-      void place(piece, editor.screenToPage({ x, y }));
+    return target && editor.getContainer().contains(target) ? editor.screenToPage({ x, y }) : null;
   }
   function cancel(event: PointerEvent<HTMLButtonElement>) {
     if (grip.current?.pointer !== event.pointerId) return;
@@ -298,7 +330,7 @@ function useGizmoPlacement({
     setDrag(null);
   }
 
-  return { busy, failed, drag, clearGrip, place, grab, move, release, cancel };
+  return { busy, failed, drag, clearGrip, place, grab, move, dropPoint, cancel };
 }
 
 function useDrawerFocus(
@@ -437,9 +469,9 @@ function useMarketplaceRoute({
       const piece = await install(url);
       setInstalled({ url: piece.url, arrival });
       setBrowsing(null);
-      return "installed" as const;
+      return { status: "installed", piece } as const;
     }
-    return request ? request(url) : (false as const);
+    return { status: request ? await request(url) : false } as const;
   }
 
   return {
@@ -504,7 +536,7 @@ export function GizmoDrawer({
     arriving,
     pieces.some((piece) => piece.url === arriving),
   );
-  const { busy, failed, drag, clearGrip, place, grab, move, release, cancel } = useGizmoPlacement({
+  const placement = useGizmoPlacement({
     editor,
     online,
     deck,
@@ -513,6 +545,7 @@ export function GizmoDrawer({
       if (shelf.current?.isConnected) dismiss();
     },
   });
+  const { busy, failed, drag, clearGrip, place, grab, move, dropPoint, cancel } = placement;
   const escape = useEffectEvent((event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
@@ -548,7 +581,20 @@ export function GizmoDrawer({
             installed={pieces}
             requested={requested}
             declined={declined}
-            installOrRequest={installOrRequest}
+            placement={placement}
+            center={() => editor.getViewportPageBounds().center}
+            installOrRequest={async (url, point) => {
+              const page = editor.getCurrentPageId();
+              const { piece, status } = await installOrRequest(url);
+              if (
+                point &&
+                piece &&
+                shelf.current?.isConnected &&
+                editor.getCurrentPageId() === page
+              )
+                await place(piece, point);
+              return status;
+            }}
             canInstall={!!install}
             canRequest={!!request}
             custom={custom}
@@ -568,7 +614,10 @@ export function GizmoDrawer({
                     disabled={busy || !online}
                     onPointerDown={grab}
                     onPointerMove={(e) => move(e, piece)}
-                    onPointerUp={(e) => release(e, piece)}
+                    onPointerUp={(e) => {
+                      const point = dropPoint(e);
+                      if (point) void place(piece, point);
+                    }}
                     onPointerCancel={cancel}
                     onLostPointerCapture={cancel}
                     onClick={(e) => {
