@@ -150,14 +150,18 @@ it("keeps assistant grants within a board's preview deployment", async () => {
   const grantsB = new AssistantGrants(DB, "pr-43");
   await grantsA.register(account.id, client);
 
-  const addBoard = (id: string, deployment: string, title: string) =>
-    new Store(DB, deployment).createBoard({
+  const addBoard = async (id: string, deployment: string, title: string) => {
+    const result = await new Store(DB, deployment).createBoard({
       createdAt: Math.floor(Date.now() / 1000),
+      firstPageName: null,
       id,
       ownerId: account.id,
       shareCode: `link-${id}`,
       title,
     });
+    expect(result.board).toBeDefined();
+    return result.board!;
+  };
   const boardA = await addBoard("scopedBoardA", "pr-42", "First preview");
   const boardB = await addBoard("scopedBoardB", "pr-43", "Second preview");
   const production = await owner.createBoard("Production board");
@@ -187,8 +191,8 @@ it("keeps assistant grants within a board's preview deployment", async () => {
   expect(await grantsB.grants(account.id, client)).toMatchObject([
     { board: boardB.id, access: "read" },
   ]);
-  expect(await grantsA.admits(fromA[0]!)).toBe(true);
-  expect(await grantsB.admits(fromA[0]!)).toBe(false);
+  expect(await grantsA.admittedBoard(fromA[0]!)).not.toBeNull();
+  expect(await grantsB.admittedBoard(fromA[0]!)).toBeNull();
   const otherRoom = BoardRoom.get(BoardRoom.idFromName(boardA.id)) as unknown as RoomDocumentCalls;
   expect(await otherRoom.readDocument(fromA[0]!, { scope: "document" })).toBe("revoked");
 });
@@ -230,14 +234,14 @@ it.each([
     const resume = new Promise<void>((resolve) => {
       resumeCheck = resolve;
     });
-    const admit = AssistantGrants.prototype.admits;
+    const admit = AssistantGrants.prototype.admittedBoard;
     const check = vi
-      .spyOn(AssistantGrants.prototype, "admits")
+      .spyOn(AssistantGrants.prototype, "admittedBoard")
       .mockImplementation(async function (this: AssistantGrants, pending) {
         const allowed = await admit.call(this, pending);
         finishCheck();
         await resume;
-        expect(allowed).toBe(true);
+        expect(allowed).not.toBeNull();
         return allowed;
       });
     try {

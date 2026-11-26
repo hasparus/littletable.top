@@ -270,7 +270,7 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   initializeDrawing(firstPageName: string): void {
-    this.openDrawing(firstPageName);
+    if (!this.retired) this.openDrawing(firstPageName);
   }
 
   private link(): number {
@@ -295,12 +295,14 @@ export class BoardRoom extends DurableObject<Env> {
       "INSERT INTO board (id, link) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET link = excluded.link",
       link,
     );
-    for (const session of this.room.getSessions()) {
+    log("board.link_reset", { board, link });
+    const room = this.drawingRoom?.room;
+    if (room === undefined) return;
+    for (const session of room.getSessions()) {
       if (session.meta.link < link) {
-        this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
+        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
       }
     }
-    log("board.link_reset", { board, link });
   }
 
   // WARNING: WebSockets cannot cross Durable Object RPC. Forward the upgrade request with the verified pass.
@@ -885,13 +887,14 @@ export class BoardRoom extends DurableObject<Env> {
     if (this.retired) return "revoked";
     if (grant.standalone !== undefined) {
       const epoch = this.assistantGrantEpoch;
-      if (
-        !this.env.DB ||
-        !(await new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE).admits(grant))
-      )
-        return "revoked";
+      if (!this.env.DB) return "revoked";
+      const board = await new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE).admittedBoard(
+        grant,
+      );
       // WARNING: A stale D1 result can arrive after revocation, a link reset, or deletion.
-      return this.assistantGrantEpoch === epoch ? apply() : "revoked";
+      if (board === null || this.assistantGrantEpoch !== epoch) return "revoked";
+      if (board.first_page_name !== null) this.initializeDrawing(board.first_page_name);
+      return apply();
     }
     const current = this.grantVersion();
     if (grant.role !== "manager" && grant.role !== "owner") return "revoked";
