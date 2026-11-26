@@ -38,7 +38,7 @@
         "@alchemy.run/cloudflare": "2.0.0-beta.85",
         "@alchemy.run/github": "2.0.0-beta.85",
         "@cloudflare/vitest-pool-workers": "0.20.1",
-        "@cloudflare/workers-types": "5.20260801.1",
+        "@cloudflare/workers-types": "5.20261119.1",
         "@effect/platform-node": "4.1.2",
         "@hasparus/oxlint-config": "file:vendor/oxlint/hasparus-oxlint-config-0.5.0.tgz",
         "@playwright/test": "1.65.0",
@@ -141,7 +141,7 @@
 
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260930.2", "", { "os": "win32", "cpu": "x64" }, "sha512-JHFMdGFMqP+M2QiVzZq1S8Ie66Gvxo7Og5EYz/KtmDvGCqge5L3lK+ksZxAhF3j/tpSLqdvlUvcTKoR9PkwTTQ=="],
 
-    "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20260801.1", "", {}, "sha512-XCv5xWi47WQOK0LpLa6997Mrpz8Ct+nZmp/M5Xp8Z4BFsarf7nYjkznGOcOoYK5m1GfbMFEEuQ2OIZnbIWoe9A=="],
+    "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20261119.1", "", {}, "sha512-TSAVVAUehPUN1idYKaUwJTUhrdKBdlb1jdbA0+OaLQgHHCnOT32oAexu/Aw48CG2NpzSZ7kqi6nIFcO/+t6k5w=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

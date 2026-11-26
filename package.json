@@ -76,7 +76,7 @@
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
     "@alchemy.run/github": "2.0.0-beta.85",
     "@cloudflare/vitest-pool-workers": "0.20.1",
-    "@cloudflare/workers-types": "5.20260801.1",
+    "@cloudflare/workers-types": "5.20261119.1",
     "@effect/platform-node": "4.1.2",
     "@hasparus/oxlint-config": "file:vendor/oxlint/hasparus-oxlint-config-0.5.0.tgz",
     "@playwright/test": "1.65.0",
