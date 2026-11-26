@@ -70,7 +70,7 @@
     "tldraw": "5.6.2",
     "unique-names-generator": "4.7.1",
     "vite": "8.1.6",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
