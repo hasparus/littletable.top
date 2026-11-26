@@ -154,6 +154,7 @@ async function rooms(
   env: Env,
   config: Config,
   verifiers: Verifiers,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const url = new URL(request.url);
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
@@ -186,6 +187,7 @@ async function rooms(
         board: filesOf,
         bucket: env.Files,
         config,
+        ctx,
         passOf,
         room,
         secret,
@@ -261,7 +263,7 @@ async function rooms(
   return new Response("Not found", { status: 404 });
 }
 
-async function routeRequest(request: Request, env: Env): Promise<Response> {
+async function routeRequest(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   let config: Config;
   let verifiers: Verifiers;
   try {
@@ -275,7 +277,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
   const moved = aliasRedirect(request, config.hosts);
   if (moved !== null) return moved;
   const { pathname } = new URL(request.url);
-  if (ROOMS.test(pathname)) return rooms(request, env, config, verifiers);
+  if (ROOMS.test(pathname)) return rooms(request, env, config, verifiers, ctx);
   if (config.mode === "standalone") {
     if (env.DB === undefined || env.Limiter === undefined) {
       console.error(
@@ -313,9 +315,9 @@ function quotaRoute(path: string) {
   return "site";
 }
 
-export async function handle(request: Request, env: Env) {
+export async function handle(request: Request, env: Env, ctx?: ExecutionContext) {
   try {
-    return await routeRequest(request, env);
+    return await routeRequest(request, env, ctx);
   } catch (error) {
     if (
       !(error instanceof Error) ||

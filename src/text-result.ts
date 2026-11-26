@@ -19,6 +19,16 @@ export const TEXT_ENGINES = {
 export type EngineKey = keyof typeof TEXT_ENGINES;
 export type EngineName = (typeof TEXT_ENGINES)[EngineKey]["name"];
 
+export type Reading = { engine: EngineKey; hash: string };
+
+export type TextListing = {
+  /** Images and engines that have reached MAX_TEXT_FAILURES. */
+  failed: Reading[];
+  reading: Reading[];
+  recoveryDelay?: number;
+  stored: Reading[];
+};
+
 export const isEngineKey = (key: string): key is EngineKey => Object.hasOwn(TEXT_ENGINES, key);
 
 /** [x0, y0, x1, y1], upright. */

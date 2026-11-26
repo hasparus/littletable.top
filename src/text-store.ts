@@ -8,16 +8,15 @@ import {
   TEXT_LEASE_MS,
 } from "./limits";
 import { spendRoomAllowance } from "./room-allowance";
-import { type EngineKey, isEngineKey, validateTextResult } from "./text-result";
-
-export type Reading = { engine: EngineKey; hash: string };
-
-export type TextListing = {
-  /** Images and engines that have reached MAX_TEXT_FAILURES. */
-  failed: Reading[];
-  reading: Reading[];
-  stored: Reading[];
-};
+import {
+  type EngineKey,
+  isEngineKey,
+  type Reading,
+  TEXT_ENGINES,
+  type TextListing,
+  type TextResult,
+  validateTextResult,
+} from "./text-result";
 
 export type Claim = { engines: EngineKey[]; hash: string; lease: string; until: number };
 
@@ -27,8 +26,12 @@ export type TextRefusal = "invalid" | "over-quota" | "too-fast" | "unknown-image
 
 export type StoredText = { body: string; duplicate: boolean; words: number };
 
+type ReconciledText = false | true | StoredText;
+
 const HASH = /^[0-9a-f]{64}$/u;
 const MAX_CANDIDATES = 2000;
+const RECOVERY_BATCH = 6;
+const RECOVERY_RETRY_MS = 60_000;
 
 const pairOf = (hash: string, engine: string) => `${hash} ${engine}`;
 
@@ -44,7 +47,8 @@ export function parseClaim(body: unknown): ClaimRequest | null {
 }
 
 export class TextLedger {
-  private readonly writing = new Map<string, Promise<unknown>>();
+  private readonly writing = new Map<string, Promise<ReconciledText>>();
+  private recovering?: Promise<void>;
 
   constructor(
     private readonly sql: SqlStorage,
@@ -59,6 +63,17 @@ export class TextLedger {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS text_leases (hash TEXT NOT NULL, engine TEXT NOT NULL, lease TEXT NOT NULL, sub TEXT NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (hash, engine))",
     );
+    const columns = sql.exec("SELECT name FROM pragma_table_info('texts')").toArray();
+    if (!columns.some((column) => column.name === "pending_body")) {
+      sql.exec("ALTER TABLE texts ADD COLUMN pending_body TEXT");
+    }
+    if (!columns.some((column) => column.name === "ready")) {
+      sql.exec("ALTER TABLE texts ADD COLUMN ready INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!columns.some((column) => column.name === "retry_after")) {
+      sql.exec("ALTER TABLE texts ADD COLUMN retry_after INTEGER NOT NULL DEFAULT 0");
+    }
+    sql.exec("CREATE INDEX IF NOT EXISTS texts_recovery ON texts (retry_after) WHERE ready = 0");
   }
 
   private readings(query: string, ...bindings: (string | number)[]): Reading[] {
@@ -69,14 +84,51 @@ export class TextLedger {
   }
 
   listing(at = Date.now()): TextListing {
-    return {
+    const [next] = this.sql
+      .exec<{ retry_after: number }>(
+        "SELECT retry_after FROM texts WHERE ready = 0 ORDER BY retry_after LIMIT 1",
+      )
+      .toArray();
+    const listing: TextListing = {
       failed: this.readings(
         "SELECT hash, engine FROM text_failures WHERE failures >= ?",
         MAX_TEXT_FAILURES,
       ),
       reading: this.readings("SELECT hash, engine FROM text_leases WHERE until > ?", at),
-      stored: this.readings("SELECT hash, engine FROM texts"),
+      stored: this.readings("SELECT hash, engine FROM texts WHERE ready = 1"),
     };
+    if (next !== undefined) listing.recoveryDelay = Math.max(0, next.retry_after - at);
+    return listing;
+  }
+
+  recover(board: string) {
+    this.recovering ??= this.recoverBatch(board).finally(() => {
+      this.recovering = undefined;
+    });
+    return this.recovering;
+  }
+
+  private async recoverBatch(board: string): Promise<void> {
+    const batch = this.readings(
+      "SELECT hash, engine FROM texts WHERE ready = 0 AND retry_after <= ? ORDER BY retry_after, rowid LIMIT ?",
+      Date.now(),
+      RECOVERY_BATCH,
+    );
+    await Promise.all(
+      batch.map(async ({ engine, hash }) => {
+        try {
+          await this.reconcile(board, hash, engine);
+        } catch {
+          this.sql.exec(
+            "UPDATE texts SET retry_after = ? WHERE hash = ? AND engine = ? AND ready = 0",
+            Date.now() + RECOVERY_RETRY_MS,
+            hash,
+            engine,
+          );
+          console.warn("Could not recover a board reading");
+        }
+      }),
+    );
   }
 
   private has(hash: string, engine: EngineKey): boolean {
@@ -184,13 +236,88 @@ export class TextLedger {
     return size;
   }
 
-  private async stored(board: string, hash: string, engine: EngineKey): Promise<StoredText> {
-    await this.writing.get(pairOf(hash, engine));
+  busy(hash: string): boolean {
+    return Object.keys(TEXT_ENGINES).some((engine) => this.writing.has(pairOf(hash, engine)));
+  }
+
+  private async reconcile(board: string, hash: string, engine: EngineKey): Promise<ReconciledText> {
+    const pair = pairOf(hash, engine);
+    const active = this.writing.get(pair);
+    if (active !== undefined) return active;
+    const [row] = this.sql
+      .exec<{ pending_body: string | null; ready: number }>(
+        "SELECT pending_body, ready FROM texts WHERE hash = ? AND engine = ?",
+        hash,
+        engine,
+      )
+      .toArray();
+    if (row === undefined) return false;
+    if (row.ready === 1) return true;
+    const check = this.finish(board, hash, engine, row.pending_body);
+    this.writing.set(pair, check);
+    try {
+      return await check;
+    } finally {
+      this.writing.delete(pair);
+    }
+  }
+
+  private async finish(
+    board: string,
+    hash: string,
+    engine: EngineKey,
+    pending: string | null,
+  ): Promise<ReconciledText> {
+    const key = textKey(board, hash, engine);
+    let existing: StoredText | undefined;
+    if (pending !== null) {
+      // WARNING: A restart can leave the first result in R2 before SQLite recorded completion.
+      const written = await this.bucket.put(key, pending, {
+        httpMetadata: { contentType: "application/json" },
+        onlyIf: { etagDoesNotMatch: "*" },
+      });
+      if (written === null) {
+        const object = await this.bucket.get(key);
+        if (object === null) throw new Error("Stored text disappeared during recovery");
+        const body = await object.text();
+        if (body !== pending) {
+          const result = JSON.parse(body) as TextResult;
+          const words = result.lines.reduce((sum, line) => sum + line.words.length, 0);
+          this.sql.exec(
+            "UPDATE texts SET bytes = ?, words = ? WHERE hash = ? AND engine = ?",
+            object.size,
+            words,
+            hash,
+            engine,
+          );
+          existing = { body, duplicate: true, words };
+        }
+      }
+    } else if ((await this.bucket.head(key)) === null) {
+      this.sql.exec("DELETE FROM texts WHERE hash = ? AND engine = ?", hash, engine);
+      this.sql.exec("DELETE FROM text_leases WHERE hash = ? AND engine = ?", hash, engine);
+      this.sql.exec("DELETE FROM text_failures WHERE hash = ? AND engine = ?", hash, engine);
+      return false;
+    }
+    this.sql.exec(
+      "UPDATE texts SET ready = 1, pending_body = NULL WHERE hash = ? AND engine = ?",
+      hash,
+      engine,
+    );
+    this.sql.exec("DELETE FROM text_leases WHERE hash = ? AND engine = ?", hash, engine);
+    return existing ?? true;
+  }
+
+  private async stored(board: string, hash: string, engine: EngineKey): Promise<StoredText | null> {
+    const reconciled = await this.reconcile(board, hash, engine);
+    if (reconciled === false) return null;
+    if (reconciled !== true) return reconciled;
     const object = await this.bucket.get(textKey(board, hash, engine));
     const [row] = this.sql
       .exec("SELECT words FROM texts WHERE hash = ? AND engine = ?", hash, engine)
       .toArray();
-    return { body: (await object?.text()) ?? "", duplicate: true, words: row!.words as number };
+    if (object === null || row === undefined) throw new Error("Stored text is missing");
+    return { body: await object.text(), duplicate: true, words: row.words as number };
   }
 
   /** Stores the first valid result per image and engine, returning that result to later writers. */
@@ -207,7 +334,10 @@ export class TextLedger {
     if (this.sql.exec("SELECT 1 FROM files WHERE hash = ?", hash).toArray().length === 0) {
       return "unknown-image";
     }
-    if (this.has(hash, engine)) return this.stored(board, hash, engine);
+    while (this.has(hash, engine)) {
+      const stored = await this.stored(board, hash, engine);
+      if (stored !== null) return stored;
+    }
     const size = this.readable(hash) ? await this.dimensions(board, hash) : null;
     if (size === null) return "unreadable";
     let parsed: unknown;
@@ -224,34 +354,27 @@ export class TextLedger {
     });
     if ("problem" in checked) return { problem: checked.problem, refusal: "invalid" };
     // WARNING: Another write of this image and engine can finish while the dimensions check awaits R2.
-    if (this.has(hash, engine)) return this.stored(board, hash, engine);
+    while (this.has(hash, engine)) {
+      const stored = await this.stored(board, hash, engine);
+      if (stored !== null) return stored;
+    }
     const body = JSON.stringify(checked.result);
     const bytes = new TextEncoder().encode(body).byteLength;
     if (bytesNow() + bytes > MAX_BOARD_FILE_BYTES) return "over-quota";
     const words = checked.result.lines.reduce((sum, line) => sum + line.words.length, 0);
     // WARNING: Reserve the row before awaiting R2 so concurrent writes respect the quota and first-write wins.
     this.sql.exec(
-      "INSERT INTO texts (hash, engine, bytes, words, at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO texts (hash, engine, bytes, words, at, pending_body, retry_after) VALUES (?, ?, ?, ?, ?, ?, ?)",
       hash,
       engine,
       bytes,
       words,
       at,
+      body,
+      at,
     );
-    const pair = pairOf(hash, engine);
-    const write = this.bucket.put(textKey(board, hash, engine), body, {
-      httpMetadata: { contentType: "application/json" },
-    });
-    this.writing.set(pair, write);
-    try {
-      await write;
-    } catch (error) {
-      this.sql.exec("DELETE FROM texts WHERE hash = ? AND engine = ?", hash, engine);
-      throw error;
-    } finally {
-      this.writing.delete(pair);
-    }
-    this.sql.exec("DELETE FROM text_leases WHERE hash = ? AND engine = ?", hash, engine);
-    return { body, duplicate: false, words };
+    const reconciled = await this.reconcile(board, hash, engine);
+    if (reconciled === false) throw new Error("Text reservation is missing");
+    return reconciled === true ? { body, duplicate: false, words } : reconciled;
   }
 }
