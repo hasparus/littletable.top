@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="iron" x2=".18" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#8c8474"/><stop offset=".18" stop-color="#656863"/><stop offset=".7" stop-color="#4c5051"/><stop offset="1" stop-color="#373b39"/>
+    </linearGradient>
+    <radialGradient id="steel" cx=".34" cy=".20" r=".9">
+      <stop stop-color="#dad2b6"/><stop offset=".48" stop-color="#89867a"/><stop offset=".82" stop-color="#acaa91"/><stop offset="1" stop-color="#4b504d"/>
+    </radialGradient>
+    <radialGradient id="cap" cx=".34" cy=".20" r=".9">
+      <stop stop-color="#ff7b64"/><stop offset=".28" stop-color="#f35940"/><stop offset=".71" stop-color="#ca2c1e"/><stop offset=".92" stop-color="#ac261c"/><stop offset="1" stop-color="#86231c"/>
+    </radialGradient>
+    <pattern id="stripes" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(40)">
+      <path fill="#c79949" d="M0 0h16v16H0z"/><path fill="#393830" d="M0 0h8v16H0z"/>
+    </pattern>
+  </defs>
+  <path d="M29 13h102l15 15v101l-15 18H29l-15-16V29z" fill="#302f2a"/>
+  <path d="M29 12h102l14 14v99l-14 15H29l-15-15V27z" fill="url(#iron)" stroke="#292d2b" stroke-width="3"/>
+  <path d="M32 16h96l12 13v92l-11 13H31l-12-13V30z" fill="none" stroke="#c9bea1" stroke-opacity=".65"/>
+  <g fill="url(#stripes)">
+    <path d="M35 19h31l-9 6H30zM95 19h31l5 6H106zM30 127h27l9 6H35zM105 127h26l-6 6H95z"/>
+  </g>
+  <g fill="#242b29" stroke="#a59f8a" stroke-width="1.25">
+    <circle cx="29" cy="29" r="4"/><circle cx="131" cy="29" r="4"/><circle cx="29" cy="122" r="4"/><circle cx="131" cy="122" r="4"/>
+  </g>
+  <path d="m27 30 4-2m98 3 4-4m-106 96 4-2m99 4 2-5" fill="none" stroke="#8c9185" stroke-width="1.3"/>
+  <ellipse cx="80" cy="83" rx="54" ry="53" fill="#222722" opacity=".55"/>
+  <circle cx="80" cy="76" r="54" fill="url(#steel)" stroke="#343c38" stroke-width="2"/>
+  <circle cx="80" cy="76" r="47" fill="#343b37" stroke="#e0d7b1"/>
+  <circle cx="80" cy="77" r="42" fill="#811c13"/>
+  <circle cx="80" cy="72" r="41" fill="url(#cap)" stroke="#94251d" stroke-width="1.5"/>
+  <path d="M47 61c4-13 16-23 30-25" fill="none" stroke="#ffbd8e" stroke-opacity=".7" stroke-width="3.3" stroke-linecap="round"/>
+  <path d="m82 86-8-6-8 4 1-10-9-5 12-2-3-12 11 8 6-15 4 16 12-5-7 12 10 7-12 1 1 10-8-8z" fill="#ffc893" opacity=".94"/>
+</svg>

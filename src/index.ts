@@ -12,10 +12,13 @@ import {
 } from "./board-room";
 import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES_PER_MINUTE } from "./chat";
 import { type Config, type ConfigEnv, ConfigError, readConfig } from "./config";
+import { deckCommand } from "./deck";
 import { parseLaunch, parsePool } from "./dice";
 import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
+import { gizmoDecision, gizmoInstallRequest } from "./gizmo-packages";
+import { submitGizmo } from "./gizmo-submissions";
 import { addressKey } from "./limiter";
 import {
   type Pass,
@@ -35,11 +38,12 @@ import { canSummon, MAX_SUMMON_BYTES, type SummonRequest, summonRequest } from "
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
 
-/** The standalone deployment alone binds D1 and the address limiter. */
+/** Only standalone deployments bind the accounts database. */
 export type Env = ConfigEnv &
   FeedbackEnv &
   Partial<Pick<StandaloneEnv, "BOARD_DATA_SCOPE" | "DB" | "Limiter">> & {
     ASSETS: Fetcher;
+    GIZMO_SUBMISSIONS_TOKEN?: string;
     BoardRoom: DurableObjectNamespace<BoardRoom>;
     Files: R2Bucket;
   };
@@ -120,7 +124,9 @@ async function newLinkOf(request: Request, verifier: Verifier | null, board: str
 
 const ROOMS = /^\/rooms\//u;
 const FILES = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/files(?:\/([\w./-]{1,160}))?$/u;
-const ACTION = /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|link|rolls?|summon)$/u;
+const GIZMO_ASSET = /^\/rooms\/([\w-]{1,64})\/gizmo-assets\/([a-f\d]{64})\/([\w./-]{1,240})$/u;
+const ACTION =
+  /^\/rooms\/([\w-]{1,64}(?:\/secret)?)\/(chat|connect|delete|gizmos|gizmo-requests|link|rolls?|deck|summon)$/u;
 
 const avatarSource = (config: Config): AvatarSource =>
   config.mode === "hosted"
@@ -156,6 +162,14 @@ async function rooms(
   verifiers: Verifiers,
 ): Promise<Response> {
   const url = new URL(request.url);
+  const asset = GIZMO_ASSET.exec(url.pathname);
+  if (asset) {
+    const [, board, key, path] = asset;
+    if (board === PUBLIC_BOARD || (request.method !== "GET" && request.method !== "HEAD"))
+      return new Response(null, { status: 404 });
+    const room = env.BoardRoom.get(env.BoardRoom.idFromName(board!));
+    return room.gizmoImage(key!, path!, request.method === "HEAD");
+  }
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
   const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
@@ -171,6 +185,9 @@ async function rooms(
     (secret || (config.mode === "standalone" && board === PUBLIC_BOARD))
   ) {
     return new Response("Not found", { status: 404 });
+  }
+  if (action === "deck" && (secret || board === PUBLIC_BOARD || request.method !== "POST")) {
+    return new Response(null, { status: 404 });
   }
   const passOf = async (token: string | null) => {
     const pass = await verifiedPass(token, verifiers.pass, board);
@@ -192,6 +209,35 @@ async function rooms(
       },
       file,
     );
+  }
+  if (action === "gizmos" || action === "gizmo-requests") {
+    if (secret || board === PUBLIC_BOARD || (request.method !== "GET" && request.method !== "POST"))
+      return new Response(null, { status: 404 });
+    const pass = await passOf(bearer(request));
+    if (pass === null) return new Response(null, { status: 403 });
+    if (request.method === "GET")
+      return answer(
+        action === "gizmos" ? await room.listGizmos(pass) : await room.listGizmoRequests(pass),
+      );
+    if (action === "gizmos" && (!pass.owner || pass.sub.startsWith("g:")))
+      return new Response(null, { status: 403 });
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: 2048,
+    });
+    if (body === "too-large") return new Response(null, { status: 413 });
+    const input: unknown = await new Response(body).json().catch(() => null);
+    const result = gizmoInstallRequest.isValid(input)
+      ? action === "gizmos"
+        ? await room.installGizmo(pass, input.url)
+        : await room.requestGizmo(pass, input.url)
+      : action === "gizmo-requests" && gizmoDecision.isValid(input)
+        ? await room.reviewGizmo(pass, input)
+        : null;
+    if (result === null) return new Response(null, { status: 400 });
+    return "error" in result
+      ? Response.json({ error: result.error }, { status: result.status })
+      : answer(result);
   }
   if (action === "delete") {
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
@@ -242,6 +288,17 @@ async function rooms(
     forwarded.headers.set(AVATAR_HEADER, avatar ?? "");
     return room.fetch(forwarded);
   }
+  if (action === "deck") {
+    const body = await readCapped(request.body, {
+      declared: Number(request.headers.get("Content-Length")),
+      max: 1024,
+    });
+    if (body === "too-large") return new Response(null, { status: 413 });
+    const value: unknown = await new Response(body).json().catch(() => null);
+    if (!deckCommand.isValid(value)) return new Response(null, { status: 400 });
+    const result = await room.deck(pass, value);
+    return result === null ? new Response(null, { status: 409 }) : answer(result);
+  }
   if (action === "rolls" && request.method === "GET") return answer(await room.rolls(pass));
   if (action === "roll" && request.method === "POST") {
     const body = await request.json().catch(() => null);
@@ -276,6 +333,10 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
   if (moved !== null) return moved;
   const { pathname } = new URL(request.url);
   if (ROOMS.test(pathname)) return rooms(request, env, config, verifiers);
+  if (pathname === "/api/gizmo-submissions") {
+    if (!env.Limiter) return new Response(null, { status: 503 });
+    return submitGizmo(request, env.GIZMO_SUBMISSIONS_TOKEN, env.Limiter);
+  }
   if (config.mode === "standalone") {
     if (env.DB === undefined || env.Limiter === undefined) {
       console.error(

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "kind": "tracker",
+  "name": { "en": "Spotlight tracker", "pl": "Znacznik reflektora" },
+  "preview": "token.webp",
+  "width": 260,
+  "height": 116
+}

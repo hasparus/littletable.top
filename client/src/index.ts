@@ -71,6 +71,11 @@ function warmBoardLinks() {
 }
 
 async function mount(): Promise<void> {
+  if (/^\/dev\/gizmos\/?$/.test(location.pathname)) {
+    const { mountGizmoPlayground } = await import("./gizmo-playground");
+    mountGizmoPlayground(root, language, settings.licenseKey);
+    return;
+  }
   if (settings.hosted === null && location.pathname === "/boards") {
     warmBoardLinks();
     const { mountFront } = await import("./mount-front");

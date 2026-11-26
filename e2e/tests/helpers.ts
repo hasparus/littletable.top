@@ -127,6 +127,26 @@ export async function putNote(
   await expect(onBoard(page, text)).toBeVisible();
 }
 
+export async function openGallery(
+  page: Page,
+  dialog: "Gizmo gallery" | "Gizmo marketplace" = "Gizmo gallery",
+) {
+  await page.getByTestId("main-menu.button").click();
+  await expect(page.getByRole("menuitem", { name: "Tarot deck" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Gizmos", exact: true }).click();
+  return page.getByRole("dialog", { name: dialog });
+}
+
+export async function browseGizmos(page: Page) {
+  await page
+    .getByRole("dialog", { name: "Gizmo gallery" })
+    .getByRole("button", { name: "Browse marketplace", exact: true })
+    .click();
+  const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
+  await expect(market).toBeVisible();
+  return market;
+}
+
 export async function joinAs(page: Page, name: string): Promise<void> {
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join the board" }).click();
@@ -191,7 +211,7 @@ export async function reviewShot(page: Page, name: string): Promise<void> {
 export async function reachEditor(page: Page): Promise<void> {
   await page.evaluate(() => {
     const canvas = document.querySelector(
-      "[data-board-shell]:not([hidden]) [data-board-editor]:not([inert]) [data-testid=canvas]",
+      "[data-board-shell]:not([hidden]) :is([data-board-editor]:not([inert]), [data-practice-canvas]) [data-testid=canvas]",
     )!;
     const key = Object.keys(canvas).find((name) => name.startsWith("__reactFiber$"))!;
     type Fiber = { memoizedProps?: { value?: unknown }; return: Fiber | null };

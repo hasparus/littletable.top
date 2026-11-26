@@ -141,6 +141,8 @@ export const Tabletop = (id, props) =>
     /** @type {{ compatibility_date: string }} */
     const testedRuntime = JSON.parse(readFileSync(sourceFile("wrangler.json"), "utf8"));
     const { client, env } = configure(props);
+    if (props.gizmoSubmissionsToken)
+      env.GIZMO_SUBMISSIONS_TOKEN = secret(props.gizmoSubmissionsToken);
     const assets =
       prebuilt === undefined ? resolve(".alchemy", "tabletop", id) : sourceFile("client");
     if (prebuilt === undefined) {
@@ -156,7 +158,6 @@ export const Tabletop = (id, props) =>
               (yield* Cloudflare.D1.Database(`${id}Accounts`, {
                 migrations: sourceFile("migrations"),
               })),
-            Limiter: Cloudflare.DurableObject("Limiter"),
           }
         : {};
     const files = yield* Cloudflare.R2.Bucket(
@@ -188,6 +189,7 @@ export const Tabletop = (id, props) =>
       env: {
         ...env,
         ...standalone,
+        Limiter: Cloudflare.DurableObject("Limiter"),
         BoardRoom: Cloudflare.DurableObject("BoardRoom"),
         Files: files,
       },

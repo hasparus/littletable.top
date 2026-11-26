@@ -1,3 +1,4 @@
 [install]
 # A week, in seconds: new releases wait this long before an install takes them.
 minimumReleaseAge = 604800
+minimumReleaseAgeExcludes = ["typegpu", "@typegpu/color", "@typegpu/kit", "@typegpu/noise"]

@@ -22,6 +22,9 @@ export default Alchemy.Stack(
     const projectToken = yield* Config.Redacted("POSTHOG_PROJECT_TOKEN").pipe(
       Config.withDefault(Redacted.make("")),
     );
+    const gizmoToken = yield* Config.Redacted("GIZMO_SUBMISSIONS_TOKEN").pipe(
+      Config.withDefault(Redacted.make("")),
+    );
     const feedback =
       (stage === "prod" || stage === "staging") && Redacted.value(projectToken) !== ""
         ? {
@@ -46,6 +49,7 @@ export default Alchemy.Stack(
       displayName: "Little Table",
       domain: primary === undefined || domain === "" ? undefined : { primary },
       feedback,
+      gizmoSubmissionsToken: Redacted.value(gizmoToken) ? gizmoToken : undefined,
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
       mcp:

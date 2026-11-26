@@ -33,9 +33,9 @@ jobs:
       - run: bun run build
       - name: Check for new React Doctor findings
         if: github.event_name == 'pull_request'
-        env:
-          BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
-        run: bun run doctor --scope changed --base "$BASE_COMMIT" --blocking warning
+        run: |
+          base=$(git rev-parse --verify HEAD^1)
+          bun run doctor --scope changed --base "$base" --blocking warning
 
   test:
     name: CI / test
@@ -53,6 +53,7 @@ jobs:
           node-version-file: package.json
           package-manager-cache: false
       - run: bun install --frozen-lockfile
+      - run: node --test .github/scripts/gizmo-submission.test.mjs
       - run: bun run test
 
   e2e:

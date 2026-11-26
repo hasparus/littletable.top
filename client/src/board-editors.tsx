@@ -15,7 +15,10 @@ import { BoardBackground } from "./board-background";
 import { BoardFileHandlers } from "./board-files";
 import { BoardLoading } from "./board-loading";
 import { BoardMainMenu, components } from "./chrome";
+import { type DeckActions, DeckContext } from "./deck";
+import { DeckImageUtil } from "./deck-piece";
 import { MEDIA_PROPS } from "./file-flows";
+import { GizmoGeoUtil } from "./gizmo-geo";
 import { fitPublicBoardIntro } from "./landing-preview";
 import { PageKeeper } from "./pages";
 import { BoardArrowShapeUtil, BoardDrawShapeUtil, BoardGeoShapeUtil } from "./pattern-shapes";
@@ -37,10 +40,11 @@ function ThemeKeeper() {
 }
 
 // WARNING: The Content-Security-Policy blocks external frames, including tldraw embeds for YouTube and Figma links.
-const SHAPE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] })];
+const BASE_UTILS = [EmbedShapeUtil.configure({ embedDefinitions: [] }), DeckImageUtil];
+const SHAPE_UTILS = [...BASE_UTILS, GizmoGeoUtil];
 
 const LANDING_SHAPE_UTILS = [
-  ...SHAPE_UTILS,
+  ...BASE_UTILS,
   BoardArrowShapeUtil,
   BoardDrawShapeUtil,
   BoardGeoShapeUtil,
@@ -58,6 +62,7 @@ export function BoardEditors({
   onEditor,
   secret,
   store,
+  deck,
 }: {
   active: boolean;
   editorLayerRef: Ref<HTMLDivElement>;
@@ -68,6 +73,7 @@ export function BoardEditors({
   onEditor: (editor: Editor | null) => void;
   secret: boolean;
   store: TLStoreWithStatus;
+  deck?: DeckActions;
 }) {
   const { board, copy, locale: language } = useBoardUi();
   const canvasComponents = useMemo(() => {
@@ -95,37 +101,39 @@ export function BoardEditors({
       inert={!active}
       ref={editorLayerRef}
     >
-      <Tldraw
-        {...MEDIA_PROPS}
-        assetUrls={assetUrls}
-        autoFocus={active}
-        bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
-        colorScheme="system"
-        components={canvasComponents}
-        hideUi={!showUi}
-        licenseKey={licenseKey === "" ? undefined : licenseKey}
-        locale={language}
-        onMount={(mounted) => {
-          // WARNING: tldraw's menus read the user preference rather than the locale prop.
-          mounted.user.updateUserPreferences({ locale: language });
-          if (landing !== undefined) {
-            const page = publicLandingPage(mounted);
-            if (page !== undefined && mounted.getCurrentPageId() !== page)
-              mounted.setCurrentPage(page);
-            fitPublicBoardIntro(mounted);
-            rememberExistingArrows(mounted);
-          }
-          onEditor(mounted);
-          return () => onEditor(null);
-        }}
-        shapeUtils={landing ? LANDING_SHAPE_UTILS : SHAPE_UTILS}
-        store={store}
-      >
-        {active && <BoardFileHandlers />}
-        {landing !== undefined && <PublicPageDeleteGuard />}
-        {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
-        <ThemeKeeper />
-      </Tldraw>
+      <DeckContext.Provider value={deck}>
+        <Tldraw
+          {...MEDIA_PROPS}
+          assetUrls={assetUrls}
+          autoFocus={active}
+          bindingUtils={landing === undefined ? undefined : PUBLIC_BINDING_UTILS}
+          colorScheme="system"
+          components={canvasComponents}
+          hideUi={!showUi}
+          licenseKey={licenseKey === "" ? undefined : licenseKey}
+          locale={language}
+          onMount={(mounted) => {
+            // WARNING: tldraw's menus read the user preference rather than the locale prop.
+            mounted.user.updateUserPreferences({ locale: language });
+            if (landing !== undefined) {
+              const page = publicLandingPage(mounted);
+              if (page !== undefined && mounted.getCurrentPageId() !== page)
+                mounted.setCurrentPage(page);
+              fitPublicBoardIntro(mounted);
+              rememberExistingArrows(mounted);
+            }
+            onEditor(mounted);
+            return () => onEditor(null);
+          }}
+          shapeUtils={landing ? LANDING_SHAPE_UTILS : SHAPE_UTILS}
+          store={store}
+        >
+          {active && <BoardFileHandlers />}
+          {landing !== undefined && <PublicPageDeleteGuard />}
+          {landing === undefined && !secret && <PageKeeper board={board} copy={copy} />}
+          <ThemeKeeper />
+        </Tldraw>
+      </DeckContext.Provider>
     </div>
   );
 }

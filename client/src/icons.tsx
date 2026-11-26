@@ -1,4 +1,26 @@
 const paths = {
+  SoundOn: (
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8h3l4-4v12l-4-4H3zM13 7a4.4 4.4 0 0 1 0 6m2-8.5a7.5 7.5 0 0 1 0 11" />
+    </g>
+  ),
+  SoundOff: (
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8h3l4-4v12l-4-4H3zM13.5 8l4 4m0-4-4 4" />
+    </g>
+  ),
   ArrowUpRight: (
     <path d="M5.75 4.5a.75.75 0 0 0 0 1.5h7.19l-8.22 8.22a.75.75 0 1 0 1.06 1.06L14 7.06v7.19a.75.75 0 0 0 1.5 0v-9a.75.75 0 0 0-.75-.75h-9Z" />
   ),

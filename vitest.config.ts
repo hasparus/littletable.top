@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 import { fakeWorkOs } from "./e2e/fake-workos";
+import { fakeGizmoUpstream } from "./test/gizmo-upstream";
 
 // The committed dev pair, which a local host signs passes with.
 const devSigningKey = readFileSync(new URL("dev/dev-signing-key.pem", import.meta.url), "utf8");
@@ -48,8 +49,10 @@ const board = cloudflareTest({
       TEST_MIGRATIONS: await readD1Migrations(path("migrations")),
       TEST_SIGNING_KEY: devSigningKey,
     },
-    // Every request the Worker sends out meets a fake WorkOS.
-    outboundService: (request) => fakeWorkOs(request as unknown as Request) as never,
+    outboundService: (request) => {
+      const outgoing = request as unknown as Request;
+      return (fakeGizmoUpstream(outgoing) ?? fakeWorkOs(outgoing)) as never;
+    },
   },
   wrangler: { configPath: "./wrangler.json" },
 });

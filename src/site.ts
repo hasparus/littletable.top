@@ -215,6 +215,11 @@ export async function serveSite(
   if (request.method !== "GET" && request.method !== "HEAD") {
     return harden(new Response("Method not allowed", { status: 405 }), request, config);
   }
+  if (url.pathname === "/research/gizmos/") {
+    const index = new Request(new URL("index.html", url), request);
+    return harden(await assets.fetch(index), request, config);
+  }
+  if (/^\/dev\/gizmos\/?$/.test(url.pathname)) return shell(request, assets, config);
   if (url.pathname === "/") {
     if (config.mode === "hosted") {
       return harden(Response.redirect(config.homeUrl, 302), request, config);

@@ -1,0 +1,706 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+import { deckPrepared } from "../../src/deck-records";
+import { STANDALONE } from "../ports";
+import { browseGizmos, joinAs, openGallery } from "./helpers";
+
+async function tapCard(page: Page, x: number, y: number, times = 1) {
+  const finger = await page.context().newCDPSession(page);
+  try {
+    for (let tap = 0; tap < times; tap++) {
+      await finger.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y }],
+      });
+      await finger.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
+  } finally {
+    await finger.detach();
+  }
+}
+
+const faceArt = /\/gizmos\/tarot\/art\/(?!back\.webp)[^/]+\.webp$/;
+
+async function deckFace(page: Page, action: "prepare" | "warm", previousFace?: string) {
+  const reply = await page.waitForResponse(async (response) => {
+    if (
+      !response.url().endsWith("/deck") ||
+      response.request().method() !== "POST" ||
+      response.request().postDataJSON().action !== action ||
+      !response.ok()
+    )
+      return false;
+    return (
+      previousFace === undefined ||
+      deckPrepared.validate(await response.json()).face !== previousFace
+    );
+  });
+  return deckPrepared.validate(await reply.json()).face;
+}
+
+function faceLoaded(page: Page, face: string) {
+  return page.evaluate(
+    (src) =>
+      performance
+        .getEntriesByName(new URL(src, document.baseURI).href)
+        .some(
+          (entry) => entry instanceof PerformanceResourceTiming && entry.initiatorType === "img",
+        ),
+    face,
+  );
+}
+
+type Point = { x: number; y: number };
+
+async function cardCenter(card: Locator) {
+  const box = (await card.boundingBox())!;
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+function expectCoast(release: Point, rest: Point, direction: Point) {
+  const dx = rest.x - release.x;
+  const dy = rest.y - release.y;
+  const distance = Math.hypot(dx, dy);
+  expect(distance).toBeGreaterThan(5);
+  expect(distance).toBeLessThanOrEqual(155);
+  const forward = (direction.x * dx + direction.y * dy) / Math.hypot(direction.x, direction.y);
+  expect(forward).toBeGreaterThan(distance * 0.95);
+}
+
+type CardFrame = { x: number; angle: number };
+type FlightSample = CardFrame & { tilt: number; faceVisible: boolean };
+
+function cardAngle(card: Locator) {
+  return card.evaluate((paper) => {
+    const container = paper.closest("[data-shape-id]")!;
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(container).transform);
+    return (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+  });
+}
+
+function expectTurn(start: number, end: number, direction: number) {
+  const degrees = (end - start) * Math.sign(direction);
+  expect(degrees).toBeGreaterThanOrEqual(2.9);
+  expect(degrees).toBeLessThanOrEqual(3.02);
+}
+
+function expectTurningInFlight(
+  frames: CardFrame[],
+  releaseX: number,
+  rest: CardFrame,
+  initialAngle: number,
+) {
+  const progressed = frames.some(({ x, angle }) => {
+    const travel = (x - releaseX) / (rest.x - releaseX);
+    const turn = (angle - initialAngle) / (rest.angle - initialAngle);
+    return travel > 0.05 && travel < 0.9 && turn > 0.05 && turn < 0.95;
+  });
+  expect(progressed).toBe(true);
+}
+
+function trackCardAfterRelease(page: Page, selector: string) {
+  return page.evaluate(
+    (selector) =>
+      new Promise<FlightSample[]>((resolve) => {
+        document.addEventListener(
+          "pointerup",
+          () => {
+            const frames: FlightSample[] = [];
+            const released = performance.now();
+            function sample() {
+              const paper = document.querySelector(selector);
+              if (paper) {
+                const box = paper.getBoundingClientRect();
+                let angle = 0;
+                for (let node: Element | null = paper; node; node = node.parentElement) {
+                  if (
+                    !node.matches(
+                      "[data-shape-id], [data-deck-flight], [data-deck-loose-flight], [data-deck-ghost]",
+                    )
+                  )
+                    continue;
+                  const style = getComputedStyle(node);
+                  if (style.transform !== "none") {
+                    const matrix = new DOMMatrixReadOnly(style.transform);
+                    angle += (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+                  }
+                  if (style.rotate !== "none") angle += Number.parseFloat(style.rotate);
+                }
+                const plane = paper.matches("[data-deck-card]")
+                  ? paper
+                  : paper.querySelector("img[data-deck-paper]");
+                const transform = plane && getComputedStyle(plane).transform;
+                const pose = new DOMMatrixReadOnly(
+                  transform && transform !== "none" ? transform : undefined,
+                );
+                const tilt = (Math.atan2(pose.m13, pose.m11) * 180) / Math.PI;
+                frames.push({
+                  x: box.x + box.width / 2,
+                  angle,
+                  tilt,
+                  faceVisible:
+                    pose.m11 > 0.2 && paper.matches("[data-deck-card]:not([data-deck-waiting])"),
+                });
+              }
+              if (performance.now() - released < 500) requestAnimationFrame(sample);
+              else resolve(frames);
+            }
+            requestAnimationFrame(sample);
+          },
+          { once: true, capture: true },
+        );
+      }),
+    selector,
+  );
+}
+
+function recordReveal(card: Locator, turnDirection: number) {
+  return card.evaluateHandle((paper: HTMLElement, direction) => {
+    const samples = new Promise<number[]>((resolve) => {
+      const angles: number[] = [];
+      const observer = new MutationObserver(() => {
+        if (paper.dataset.deckWaiting !== undefined) return;
+        observer.disconnect();
+        const revealedAt = performance.now();
+        function sample() {
+          const { transform } = getComputedStyle(paper);
+          const pose = new DOMMatrixReadOnly(transform === "none" ? undefined : transform);
+          const remaining = (Math.atan2(-direction * pose.m13, pose.m11) * 180) / Math.PI;
+          angles.push(180 - remaining);
+          if (performance.now() - revealedAt < 400) requestAnimationFrame(sample);
+          else resolve(angles);
+        }
+        requestAnimationFrame(sample);
+      });
+      observer.observe(paper, { attributes: true, attributeFilter: ["data-deck-waiting"] });
+    });
+    return { samples };
+  }, turnDirection);
+}
+
+function expectForwardTurn(angles: number[]) {
+  for (let i = 1; i < angles.length; i++) {
+    expect(angles[i]!).toBeGreaterThanOrEqual(angles[i - 1]! - 1);
+  }
+}
+
+type PointerStep = { dx: number; dy: number; ms: number };
+
+async function dragCard(
+  page: Page,
+  start: { x: number; y: number },
+  steps: PointerStep[],
+  releaseMs: number,
+  onPickup?: () => Promise<void>,
+) {
+  const mouse = await page.context().newCDPSession(page);
+  const startTime = (Date.now() - releaseMs) / 1000;
+  let point = start;
+  try {
+    await mouse.send("Input.dispatchMouseEvent", {
+      ...point,
+      button: "left",
+      buttons: 1,
+      clickCount: 1,
+      timestamp: startTime,
+      type: "mousePressed",
+    });
+    await onPickup?.();
+    for (const { dx, dy, ms } of steps) {
+      point = { x: start.x + dx, y: start.y + dy };
+      await mouse.send("Input.dispatchMouseEvent", {
+        ...point,
+        button: "left",
+        buttons: 1,
+        timestamp: startTime + ms / 1000,
+        type: "mouseMoved",
+      });
+    }
+    await mouse.send("Input.dispatchMouseEvent", {
+      ...point,
+      button: "left",
+      clickCount: 1,
+      timestamp: startTime + releaseMs / 1000,
+      type: "mouseReleased",
+    });
+  } finally {
+    await mouse.detach();
+  }
+}
+
+test("the owner warms each top card and a loose back reveals the same face after rejoining", async ({
+  browser,
+  page,
+}) => {
+  // WARNING: Parallel browsers share loopback in Miniflare. Model two distinct addresses for rejoin coverage.
+  await page.context().setExtraHTTPHeaders({ "CF-Connecting-IP": "192.0.2.41" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ height: 760, width: 360 });
+  await page.goto(`${STANDALONE}/boards`);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByLabel("Name").fill("Deck owner");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "New board" }).click();
+  await expect(page.getByRole("button", { exact: true, name: "Dice" })).toBeVisible();
+
+  const guestContext = await browser.newContext({
+    extraHTTPHeaders: { "CF-Connecting-IP": "192.0.2.42" },
+  });
+  const guest = await guestContext.newPage();
+  await guest.emulateMedia({ reducedMotion: "reduce" });
+  try {
+    await guest.goto(page.url());
+    await joinAs(guest, "Card player");
+    const guestMarket = await openGallery(guest, "Gizmo marketplace");
+    await guestMarket.getByRole("button", { name: "Close" }).click();
+
+    await page.mouse.move(180, 255);
+    await page.keyboard.down("Control");
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up("Control");
+    const market = await openGallery(page, "Gizmo marketplace");
+    await expect(market).toBeInViewport({ ratio: 1 });
+    const gallery = page.getByRole("dialog", { name: "Gizmo gallery" });
+    await market.getByRole("button", { name: "Install Tarot deck", exact: true }).click();
+    await expect(gallery.getByRole("button", { name: "Tarot deck", exact: true })).toBeFocused();
+    await browseGizmos(page);
+    const source = "https://github.com/example/gizmos/tree/main/gizmos/spotlight";
+    await market.getByRole("textbox", { name: /GitHub/ }).fill(source);
+    await market.getByRole("button", { name: "Install", exact: true }).click();
+    await expect(
+      gallery.getByRole("button", { name: "Spotlight tracker", exact: true }),
+    ).toBeFocused();
+    const sounds = gallery.getByRole("button", { name: "Gizmo sounds" });
+    await sounds.click();
+    await expect(sounds).toHaveAttribute("aria-pressed", "false");
+    const miniature = gallery.getByRole("button", { name: "Tarot deck" });
+    const origin = await miniature.boundingBox();
+    expect(origin).not.toBeNull();
+    const firstWarm = deckFace(page, "warm");
+    const finger = await page.context().newCDPSession(page);
+    await finger.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: origin!.x + origin!.width / 2, y: origin!.y + 48 }],
+    });
+    await finger.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: 105, y: 234 }],
+    });
+    await expect(page.locator("[data-gizmo-carry]")).toBeVisible();
+    await finger.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await finger.detach();
+    await expect(gallery).toBeHidden();
+    const stack = page.locator("[data-deck-stack]");
+    await expect(stack).toBeVisible();
+    const bounds = await stack.boundingBox();
+    expect(Math.abs(bounds!.x + bounds!.width / 2 - 105)).toBeLessThan(6);
+    expect(Math.abs(bounds!.y + bounds!.height / 2 - 234)).toBeLessThan(6);
+    await expect(guest.locator("[data-deck-stack]")).toBeVisible();
+    await expect(guest.getByRole("button", { name: "Draw a card" })).toBeEnabled();
+
+    const top = (await stack.getByRole("button", { name: "Draw a card" }).boundingBox())!;
+    const center = { x: top.x + top.width / 2, y: top.y + top.height / 2 };
+    const warmed = await firstWarm;
+    await expect.poll(() => faceLoaded(page, warmed)).toBe(true);
+    await expect(stack.locator("[data-deck-base]")).toHaveText("78");
+    const prepared = deckFace(page, "prepare");
+    const nextWarm = deckFace(page, "warm", warmed);
+    await dragCard(
+      page,
+      center,
+      [
+        { dx: 40, dy: 12, ms: 150 },
+        { dx: 80, dy: 24, ms: 300 },
+        { dx: 120, dy: 36, ms: 450 },
+      ],
+      480,
+      async () => {
+        expect(await prepared).toBe(warmed);
+        await expect(stack.locator("[data-deck-base]")).toHaveText("78");
+      },
+    );
+    const face = await prepared;
+    const secondFace = await nextWarm;
+    await expect.poll(() => faceLoaded(page, secondFace)).toBe(true);
+
+    const loose = page.locator("[data-deck-down]");
+    const guestBack = guest.locator("[data-deck-down]");
+    await expect(loose).toHaveCount(1);
+    await expect(guestBack).toBeVisible();
+    await expect(stack.locator("[data-deck-base]")).toHaveText("77");
+    await guest.reload();
+    await expect(guestBack).toBeVisible();
+    await expect(guest.locator("[data-deck-front]")).toHaveCount(0);
+    await page.reload();
+    await expect(loose).toBeVisible();
+    const ownerStart = await cardCenter(loose);
+    const ownerBox = (await loose.boundingBox())!;
+    const guestBox = (await guestBack.boundingBox())!;
+    const guestStartAngle = await cardAngle(guestBack);
+    const guestStart = { x: guestBox.x + guestBox.width / 2, y: guestBox.y + guestBox.height / 2 };
+    await dragCard(
+      guest,
+      guestStart,
+      [
+        { dx: 2, dy: 20, ms: 20 },
+        { dx: 8, dy: 75, ms: 40 },
+      ],
+      42,
+    );
+    const guestRest = await cardCenter(guestBack);
+    const guestAngle = await cardAngle(guestBack);
+    expectTurn(guestStartAngle, guestAngle, 75);
+    expectCoast({ x: guestStart.x + 8, y: guestStart.y + 75 }, guestRest, { x: 8, y: 75 });
+    const zoomRatio = ownerBox.width / guestBox.width;
+    await expect
+      .poll(async () => {
+        const ownerRest = await cardCenter(loose);
+        return ownerRest.y - ownerStart.y;
+      })
+      .toBeCloseTo((guestRest.y - guestStart.y) * zoomRatio, 0);
+    await guest.reload();
+    await expect(guestBack).toBeVisible();
+    await expect.poll(() => cardCenter(guestBack)).toEqual(guestRest);
+    await expect.poll(() => cardAngle(guestBack)).toBeCloseTo(guestAngle, 2);
+    await expect.poll(() => cardAngle(loose)).toBeCloseTo(guestAngle, 2);
+    await guestBack.getByRole("button", { name: "Turn card over" }).click();
+    const guestFace = guest.locator("[data-deck-front]").getByRole("img", { name: /./u });
+    await expect(guestFace).toHaveCount(1);
+    await expect(guestFace).toHaveJSProperty("src", new URL(face, page.url()).href);
+    await expect
+      .poll(() => guestFace.evaluate((img: HTMLImageElement) => img.naturalHeight))
+      .toBe(640);
+    await expect(guestBack).toHaveCount(0);
+    await expect(
+      page.locator("[data-deck-front]").getByRole("img", { name: /./u }),
+    ).toHaveJSProperty("src", new URL(face, page.url()).href);
+    await expect(stack.locator("[data-deck-base]")).toHaveText("77");
+
+    const upButton = guest.getByRole("button", { name: "Turn card over" });
+    const upBounds = (await upButton.boundingBox())!;
+    await tapCard(guest, upBounds.x + upBounds.width / 2, upBounds.y + upBounds.height / 2);
+    await expect(loose).toBeVisible();
+    await expect(guestFace).toHaveCount(0);
+    await loose.getByRole("button", { name: "Turn card over" }).click();
+    await expect(guestFace).toHaveJSProperty("src", new URL(face, page.url()).href);
+    await expect(guest.locator('[data-deck-front] img.tl-image[alt=""]')).toHaveCount(0);
+    await expect(stack.locator("[data-deck-base]")).toHaveText("77");
+
+    await guest.getByRole("button", { name: "Draw a card" }).click();
+    await expect(stack.locator("[data-deck-base]")).toHaveText("76");
+    const guestGallery = await openGallery(guest);
+    await guestGallery.getByRole("button", { name: "Spotlight tracker" }).press("Enter");
+    await expect(guestGallery).toBeHidden();
+    const next = page.locator("[data-tracker-seat]").first();
+    await expect(next).toHaveAttribute("aria-label", "Mark a moment for Card player");
+    await guest.keyboard.press("Escape");
+    await guest.getByRole("button", { name: "Mark a moment for Card player" }).click();
+    await expect(next).toHaveAttribute("aria-label", "Mark a moment for Deck owner");
+    await openGallery(guest);
+    await guestGallery.getByRole("button", { name: "Tarot deck" }).press("Enter");
+    await expect(stack).toHaveCount(2);
+  } finally {
+    await guestContext.close();
+  }
+});
+
+test("quick deals coast past the hand and loose cards slide without changing sides", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 700 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(STANDALONE + "/dev/gizmos");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const top = page.getByRole("button", { name: "Draw a card" });
+  const dealt = page.locator("[data-deck-card]");
+  const count = page.locator("[data-deck-base]");
+  await expect(count).toHaveText("78");
+  const rect = (await top.boundingBox())!;
+  const x = rect.x + 9,
+    y = rect.y + 16;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 130, y - 74, { steps: 7 });
+  const held = (await page.locator("[data-deck-ghost]").boundingBox())!;
+  expect(Math.abs(held.x - rect.x - 130)).toBeLessThan(2);
+  expect(Math.abs(held.y - rect.y + 74)).toBeLessThan(2);
+  expect(Math.abs(held.width - rect.width)).toBeLessThan(2);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(dealt).toHaveCount(0);
+  await expect(count).toHaveText("78");
+
+  const offset = rect.width * 0.35;
+  const path = [
+    { dx: 80, dy: -35, ms: 100 },
+    { dx: 140, dy: -70, ms: 200 },
+    { dx: offset, dy: 0, ms: 222 },
+  ];
+  await dragCard(page, { x, y }, path, 400);
+  const down = page.locator("[data-deck-down]");
+  await expect(down).toBeVisible();
+  const near = (await down.boundingBox())!;
+  expect(Math.abs(near.x - rect.x - offset)).toBeLessThan(2);
+  expect(Math.abs(near.y - rect.y)).toBeLessThan(2);
+  await expect(count).toHaveText("77");
+  await expect(page.locator("[data-deck-front]")).toHaveCount(0);
+  const center = { x: near.x + near.width / 2, y: near.y + near.height / 2 };
+  const shift = { dx: 160, dy: 90 };
+  await dragCard(
+    page,
+    center,
+    [
+      { dx: 48, dy: 28, ms: 140 },
+      { dx: 100, dy: 60, ms: 300 },
+      { ...shift, ms: 500 },
+    ],
+    530,
+  );
+  const parked = (await down.boundingBox())!;
+  expect(await cardAngle(down)).toBeCloseTo(0, 2);
+  expect(Math.abs(parked.x - near.x - shift.dx)).toBeLessThan(2);
+  expect(Math.abs(parked.y - near.y - shift.dy)).toBeLessThan(2);
+  await dragCard(page, { x, y }, path, 225);
+  await expect(dealt).toHaveCount(1);
+  await expect(dealt.locator("[data-deck-front] img")).toBeVisible();
+  await expect(down).toHaveCount(1);
+  await expect(count).toHaveText("76");
+
+  const up = (await dealt.boundingBox())!;
+  const dealtAngle = await cardAngle(dealt);
+  expectTurn(0, dealtAngle, offset - 140);
+  expectCoast(
+    { x: rect.x + rect.width / 2 + offset, y: rect.y + rect.height / 2 },
+    { x: up.x + up.width / 2, y: up.y + up.height / 2 },
+    { x: offset - 140, y: 70 },
+  );
+  await dragCard(
+    page,
+    { x: up.x + up.width / 2, y: up.y + up.height / 2 },
+    [
+      { dx: 0, dy: 30, ms: 120 },
+      { dx: 0, dy: 75, ms: 300 },
+    ],
+    315,
+  );
+  const shifted = (await dealt.boundingBox())!;
+  expect(await cardAngle(dealt)).toBeCloseTo(dealtAngle, 2);
+  expect(Math.abs(shifted.y - up.y - 75)).toBeLessThan(2);
+  await expect(down).toHaveCount(1);
+
+  const backCenter = await cardCenter(down);
+  const frontCenter = await cardCenter(dealt);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  for (const [card, selector, start, dx, dy] of [
+    [down, "[data-deck-down]", backCenter, -80, -50],
+    [dealt, "[data-deck-card]", frontCenter, 80, 20],
+  ] as const) {
+    const initialAngle = await cardAngle(card);
+    const frames = trackCardAfterRelease(page, selector);
+    await dragCard(
+      page,
+      start,
+      [
+        { dx: dx / 4, dy: dy / 4, ms: 20 },
+        { dx, dy, ms: 40 },
+      ],
+      42,
+    );
+    await expect(down).toHaveCount(1);
+    await expect(dealt).toHaveCount(1);
+    const sampled = await frames;
+    const release = { x: start.x + dx, y: start.y + dy };
+    const rest = await cardCenter(card);
+    expectCoast(release, rest, { x: dx, y: dy });
+    const angle = await cardAngle(card);
+    expectTurn(initialAngle, angle, dx);
+    expectTurningInFlight(sampled, release.x, { x: rest.x, angle }, initialAngle);
+  }
+  await expect(count).toHaveText("76");
+});
+
+test("a card can be dragged immediately after turning it over", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(STANDALONE + "/dev/gizmos");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Draw a card" }).click();
+  const front = page.locator("[data-deck-card]");
+  const back = page.locator("[data-deck-down]");
+  const start = await cardCenter(front);
+  await page.mouse.click(start.x, start.y);
+  await expect(back).toBeVisible();
+  await dragCard(page, start, [{ dx: 70, dy: 9, ms: 30 }], 180);
+  const rest = await cardCenter(back);
+  expect(Math.abs(rest.x - start.x - 70)).toBeLessThan(2);
+  expect(Math.abs(rest.y - start.y - 9)).toBeLessThan(2);
+});
+
+test("rapid taps fill a three-column Tarot spread in reading order", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(STANDALONE + "/dev/gizmos");
+  const top = page.getByRole("button", { name: "Draw a card" });
+  const cards = page.locator("[data-deck-card]");
+  const rect = (await top.boundingBox())!;
+  await tapCard(page, rect.x + rect.width / 2, rect.y + rect.height / 2, 3);
+  await expect(cards).toHaveCount(3);
+  const centers = await cards.evaluateAll((nodes) =>
+    nodes
+      .map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      })
+      .sort((a, b) => a.x - b.x),
+  );
+  expect(Math.abs(centers[2]!.y - centers[0]!.y)).toBeLessThan(1);
+  expect(Math.abs(centers[2]!.x - 2 * centers[1]!.x + centers[0]!.x)).toBeLessThan(1);
+  expect(centers[1]!.x - centers[0]!.x).toBeGreaterThan(70);
+  for (const card of await cards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
+  await top.click();
+  await expect(cards).toHaveCount(4);
+  await expect(page.locator("[data-deck-base]")).toHaveText("74");
+});
+
+test("a warmed top card shows its real face during a touch toss", async ({ page }) => {
+  await page.setViewportSize({ width: 650, height: 720 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const warmed = page.waitForResponse(faceArt);
+  await page.goto(STANDALONE + "/dev/gizmos");
+  const response = await warmed;
+  expect(await response.finished()).toBeNull();
+  const top = page.locator("[data-deck-draw]");
+  const start = await cardCenter(top);
+  const count = page.locator("[data-deck-base]");
+  await expect(count).toHaveText("78");
+  const frames = trackCardAfterRelease(page, "[data-deck-card], [data-deck-ghost]");
+  const finger = await page.context().newCDPSession(page);
+  const t = (Date.now() - 80) / 1000;
+  try {
+    await finger.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      timestamp: t,
+      touchPoints: [start],
+    });
+    for (const [dx, ms] of [
+      [45, 20],
+      [125, 40],
+    ] as const) {
+      await finger.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        timestamp: t + ms / 1000,
+        touchPoints: [{ x: start.x + dx, y: start.y + dx / 5 }],
+      });
+    }
+    await finger.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      timestamp: t + 0.042,
+      touchPoints: [],
+    });
+  } finally {
+    await finger.detach();
+  }
+  const card = page.locator("[data-deck-card]");
+  await expect(card.locator("[data-deck-front] img")).toHaveJSProperty("src", response.url());
+  const sampled = await frames;
+  const releaseX = start.x + 125;
+  const rest = await cardCenter(card);
+  expect(rest.x - releaseX).toBeGreaterThan(5);
+  expect(sampled.some(({ x, faceVisible }) => faceVisible && x > releaseX && x < rest.x - 3)).toBe(
+    true,
+  );
+  await expect(count).toHaveText("77");
+});
+
+test("a tossed back coasts while the artwork loads and settles at the same spot with reduced motion", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 650, height: 720 });
+  let fullMotionRest: (Point & { angle: number }) | undefined;
+
+  for (const reducedMotion of ["no-preference", "reduce"] as const) {
+    await page.emulateMedia({ reducedMotion });
+    const allowArt = Promise.withResolvers<boolean>();
+    const requested = page.waitForRequest(faceArt);
+    let blockedFace: string | undefined;
+    await page.route(faceArt, async (route) => {
+      blockedFace ??= route.request().url();
+      if (route.request().url() === blockedFace) await allowArt.promise;
+      await route.continue();
+    });
+    await page.goto(STANDALONE + "/dev/gizmos", { waitUntil: "domcontentloaded" });
+    const request = await requested;
+    expect(request.resourceType()).toBe("image");
+    const top = page.locator("[data-deck-draw]");
+    const card = page.locator("[data-deck-card]");
+    const front = card.locator("[data-deck-front]");
+    const rect = (await top.boundingBox())!;
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    const dx = rect.width * 1.8;
+    const release = { x: start.x + dx, y: start.y + 35 };
+    const frames = trackCardAfterRelease(page, "[data-deck-card], [data-deck-ghost]");
+    const initialAngle = await cardAngle(top);
+    let rest: Point & { angle: number };
+    let heldAngle: number;
+    let revealed: Awaited<ReturnType<typeof recordReveal>>;
+    try {
+      await dragCard(
+        page,
+        start,
+        [
+          { dx: rect.width, dy: 16, ms: 120 },
+          { dx, dy: 35, ms: 145 },
+        ],
+        148,
+        async () => {
+          await expect(page.locator("[data-deck-base]")).toHaveText("78");
+        },
+      );
+      const sampled = await frames;
+      await expect(page.locator("[data-deck-card][data-deck-waiting]")).toHaveCount(1);
+      await expect(card.locator("[data-deck-turn]")).toBeVisible();
+      await expect(front).toBeHidden();
+      await expect(page.locator("[data-deck-ghost], [data-deck-down]")).toHaveCount(0);
+      rest = { ...(await cardCenter(card)), angle: await cardAngle(card) };
+      expectTurn(initialAngle, rest.angle, dx);
+      expectCoast(release, rest, { x: dx, y: 35 });
+      heldAngle = sampled.at(-1)!.tilt;
+      if (reducedMotion === "no-preference") {
+        expectTurningInFlight(sampled, release.x, rest, initialAngle);
+        expectForwardTurn(sampled.map(({ tilt }) => tilt * Math.sign(heldAngle)));
+        expect(Math.abs(heldAngle)).toBeGreaterThan(65);
+        expect(Math.abs(heldAngle)).toBeLessThan(90);
+        fullMotionRest = rest;
+      } else {
+        expect(sampled.every(({ tilt }) => Math.abs(tilt) < 0.01)).toBe(true);
+        expect(rest.angle).toBeCloseTo(fullMotionRest!.angle, 2);
+        expect(rest.x).toBeCloseTo(fullMotionRest!.x, 0);
+        expect(rest.y).toBeCloseTo(fullMotionRest!.y, 0);
+      }
+      revealed = await recordReveal(card, Math.sign(heldAngle));
+    } finally {
+      allowArt.resolve(true);
+    }
+    const angles = await revealed.evaluate(({ samples }) => samples);
+    await revealed.dispose();
+    expect(angles.at(-1)).toBeCloseTo(180, 1);
+    if (reducedMotion === "no-preference") {
+      expectForwardTurn([Math.abs(heldAngle), ...angles]);
+      expect(angles.some((angle) => angle > 95 && angle < 170)).toBe(true);
+    }
+    await expect(front).toBeVisible();
+    await expect(card.locator("[data-deck-turn]")).toBeHidden();
+    expect(await cardAngle(card)).toBeCloseTo(rest.angle, 2);
+    await expect(card).toHaveCount(1);
+    const face = front.locator("img");
+    await expect(face).toHaveJSProperty("src", request.url());
+    await expect.poll(() => face.evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(640);
+    await expect
+      .poll(async () => {
+        const settled = await cardCenter(card);
+        return Math.hypot(settled.x - rest.x, settled.y - rest.y);
+      })
+      .toBeLessThan(1);
+    await expect(page.locator("[data-deck-base]")).toHaveText("77");
+    await page.unroute(faceArt);
+  }
+});

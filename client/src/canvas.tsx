@@ -14,12 +14,16 @@ import { secretLayerOf } from "../../src/secret-layer";
 import { BoardFiles } from "./assets";
 import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
+import { BoardGizmoGallery } from "./board-gizmo-gallery";
 import { BoardLoading } from "./board-loading";
 import { keepThumbnail } from "./board-thumbnail";
 import { ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
+import { useBoardDeck } from "./deck";
+import { DeckAnnouncement } from "./deck-announcement";
 import { DiceSheet } from "./dice";
 import { rollSentence } from "./dice-labels";
+import { BoardInstallations } from "./gizmo-installed";
 import { makeHighlight } from "./highlight";
 import { Icon } from "./icons";
 import { ImageText } from "./image-text";
@@ -104,11 +108,13 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
+  const canUseGizmos = !keeper.secret && landing === undefined;
+  const deck = useBoardDeck(keeper, canUseGizmos);
   const chat = useChat(keeper, landing !== undefined);
   const [editor, setEditor] = useState<Editor | null>(null);
   const { receiveSummon, summon } = useSummon(editor, active, keeper);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
-  const { refusal, store } = useBoardStore({
+  const { refusal, store, gizmoRevision } = useBoardStore({
     active,
     color,
     files,
@@ -184,6 +190,7 @@ export function BoardCanvas({
   const ui = useMemo<BoardUi>(
     () => ({
       board,
+      canPlaceGizmos: canUseGizmos,
       close: (name) => {
         if (name === "chat") setReadChat(chat.latestIncoming);
         setPanel((current) => (current === name ? null : current));
@@ -216,6 +223,7 @@ export function BoardCanvas({
     }),
     [
       board,
+      canUseGizmos,
       chat.latestIncoming,
       color,
       copy,
@@ -263,20 +271,23 @@ export function BoardCanvas({
         style={keeper.secret && editor === null ? { visibility: "hidden" } : undefined}
         ref={keepBoardZoom}
       >
-        <BoardEditors
-          active={active}
-          editorLayerRef={setEditorLayer}
-          overlay={overlay}
-          showUi={active || waiting}
-          landing={landing}
-          licenseKey={licenseKey}
-          onEditor={(mounted) => {
-            setEditor(mounted);
-            onEditor?.(mounted);
-          }}
-          secret={keeper.secret}
-          store={store}
-        />
+        <BoardInstallations keeper={keeper}>
+          <BoardEditors
+            active={active}
+            deck={active && online && canUseGizmos ? deck : undefined}
+            editorLayerRef={setEditorLayer}
+            overlay={overlay}
+            showUi={active || waiting}
+            landing={landing}
+            licenseKey={licenseKey}
+            onEditor={(mounted) => {
+              setEditor(mounted);
+              onEditor?.(mounted);
+            }}
+            secret={keeper.secret}
+            store={store}
+          />
+        </BoardInstallations>
         {landing && editor === null && <LandingPlaceholder copy={landing.copy} />}
         {landing !== undefined && (
           <div className="absolute z-10 flex gap-1" data-public-board-controls>
@@ -316,6 +327,16 @@ export function BoardCanvas({
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}
+        {active && canUseGizmos && editor && (
+          <BoardGizmoGallery
+            editor={editor}
+            online={online}
+            deck={deck}
+            keeper={keeper}
+            revision={gizmoRevision}
+          />
+        )}
+        {active && canUseGizmos && <DeckAnnouncement name={deck.revealed?.name ?? ""} />}
         {active && editorLayer !== null && rolls.arrived !== null && (
           <Suspense fallback={null}>
             <DiceStage

@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Gizmo runtime and compatibility spec · Little Table</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="./report.css" />
+  </head>
+  <body>
+    <a class="skip" href="#contract">Skip to specification</a>
+    <header class="mast">
+      <a class="brand" href="./"
+        ><img src="/favicon.svg" alt="" width="28" height="28" />little table</a
+      ><a href="./">Gizmo research notebook</a>
+    </header>
+    <main id="contract">
+      <header class="workshop">
+        <p class="kicker">Gizmo specification · proposal for PR #59</p>
+        <h1>What runs at the table?</h1>
+        <p class="intro">
+          A player forks the tarot deck so that The Tower rumbles when it lands. Another brings
+          their Owlbear initiative tracker. The owner installs each once, and everyone can play.
+          Neither author needs a Little Table release.
+        </p>
+        <p>
+          The following is a proposed contract. The playable PR currently implements the
+          marketplace, requests, drawer and host-rendered pieces. The first executable release has
+          three acceptance gates below.
+        </p>
+      </header>
+      <nav class="contents" aria-label="Specification sections">
+        <a href="#install">Installation</a><a href="#board-objects">Board objects</a
+        ><a href="#runtime">Native web apps</a><a href="#rules">PsychoScript</a
+        ><a href="#owlbear">Owlbear compatibility</a><a href="#state">Multiplayer and trust</a
+        ><a href="#parity">Release gates</a><a href="#authoring">MCP and Workshop</a
+        ><a href="#release">Updates</a>
+      </nav>
+
+      <section class="chapter" id="install">
+        <header><h2>What the owner installs</h2></header>
+        <div class="prose">
+          <p class="lead">
+            The owner installs a Gizmo for one board. Each placed prop gets its own saved state. Two
+            decks from the same edition can have different cards on top.
+          </p>
+          <ol>
+            <li>
+              <strong>Browse or request.</strong> The repository registry supplies a small static
+              thumbnail, a name and a source link. Browsing and player requests fetch zero mod code.
+              Anyone can request a listed Gizmo, an unlisted public GitHub folder or a direct
+              manifest URL. The owner receives a modal and can defer or decline.
+            </li>
+            <li>
+              <strong>Resolve for installation.</strong> Once the owner starts installation, resolve
+              a GitHub ref to its full commit. Accept a folder containing <code>index.html</code>,
+              <code>rules/</code>, or an Owlbear v1 <code>manifest.json</code>. Also accept the
+              Owlbear manifest URL copied from its store, including HTTPS URLs outside GitHub. For
+              hosted Owlbear installs, keep the manifest URL. Resolve panel and background entries
+              against that URL and let each page load assets from its own document base. Offer a
+              choice when a folder contains both a native app and an Owlbear entry.
+            </li>
+            <li>
+              <strong>Review and install.</strong> For a native GitHub package, show the commit and
+              artifact digest. For a hosted Owlbear link, show the publisher’s hostname, the
+              manifest link and the warning below beside the Install button. Show requested access
+              in both cases. Recheck board ownership when saving the installation. For a live link
+              the receipt records the source URL and approved grants.
+            </li>
+            <li>
+              <strong>Play.</strong> Before the first install, the Gizmos menu opens the
+              marketplace. Installation opens the quiet white drawer already scrolled to the new
+              piece. All participants can use an installed Gizmo. Drag, tap or keyboard-place a
+              native prop from the drawer. For an HTML entry, the artifact can choose to open inside
+              the drawer itself. For popovers, the proposed owner setting offers a board object or a
+              floating window. An extension with a background entry gets one background context per
+              connected participant per board, shared across its views. The tldraw sidebar carries
+              the gallery launcher.
+            </li>
+          </ol>
+          <blockquote id="owlbear-install-warning">
+            <p>
+              <strong>This extension updates automatically.</strong> Future code from this publisher
+              will run in your players’ browsers without another prompt. If the publisher or their
+              hosting is compromised, an update could read or change board data the extension can
+              access. You can disable it at any time.
+            </p>
+          </blockquote>
+          <p>
+            For hosted Owlbear links, revalidate the live manifest when a participant opens or
+            reloads the board. Load its current background and panel entries from the publisher. An
+            ordinary code or asset update runs with the existing grants, even if the manifest
+            version stays the same. Additional permissions require separate approval before the
+            extension can use them. If the source is unavailable, show the failure on that Gizmo and
+            let the table continue playing.
+          </p>
+          <p>
+            Use browser conventions for native packages. A public GitHub folder with browser-ready
+            files needs no dedicated author manifest. An optional Web App Manifest can provide the
+            title, icons and start URL. Little Table generates an internal install receipt
+            describing entries, files, hashes and grants. Existing <code>gizmo.json</code> links
+            continue to resolve their original pinned pieces. Official successors live in top-level
+            <code>gizmos/</code> and go through the same installer as a player's fork.
+            <a href="https://www.w3.org/TR/appmanifest/">Web App Manifest</a>
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="board-objects">
+        <header><h2>Put the Gizmo on the board</h2></header>
+        <div class="prose">
+          <p class="lead">
+            Placeable tldraw shapes are the default. Draw an arrow from the Spotlight rail to a
+            note, group them, and move them across the map. The arrow follows the rail and the names
+            stay in order. Drop a second rail for a different party.
+          </p>
+          <p>
+            Tarot decks and each dealt card, both Spotlight widgets, the initiative rail and the
+            explosion button belong on the canvas. The host creates a stable shape ID, page and
+            parent, bounds and transform for each placed object. The renderer draws inside those
+            bounds. An arrow binds to the shape ID, so edits, reconnects and renderer reloads
+            preserve the connection. Selection, multiselect, move, rotate, grouping, ungrouping and
+            z-order use the ordinary tldraw tools. Group transforms apply to the prop and its hit
+            area together.
+          </p>
+          <p>
+            The select tool can operate the prop’s controls or move it by its body. With the arrow
+            tool, the same controls are part of the board target. Pointing an arrow at the red
+            button must never set it off. Copying a prop creates a new instance with independent
+            state under its package’s duplication policy. A duplicate deck must never acquire the
+            source deck’s private draw pile. A disabled renderer leaves a selectable placeholder
+            with the same geometry and attachments.
+          </p>
+          <h3 id="registry-review">Submitting a Gizmo by link</h3>
+          <p>
+            Choose <strong>This board</strong> to install the source as its owner or request it as a
+            participant. Choose <strong>Public marketplace</strong> to propose the source for
+            everyone. For GitHub packages, the public submission resolves the folder or manifest
+            link to a commit, then proposes a JSON listing in a pull request. A maintainer can
+            review the pinned source, compare an update to its listed revision and merge or close
+            the proposal. Resubmitting the same revision returns to its review.
+          </p>
+          <h3 id="html-frames">HTML inside the drawer</h3>
+          <p>
+            An HTML artifact can choose the drawer as its presentation. Opening a character sheet
+            this way renders its page inside the Gizmos drawer. Players type, scroll and use the
+            sheet there. Back returns to the installed Gizmos. Opening the sheet leaves the canvas
+            free. The page uses the state API for values that should survive closing it or be shared
+            with the table.
+          </p>
+          <p>
+            <strong>Owner choice for popovers, proposed.</strong> A board owner could choose
+            <strong>On the board</strong> or <strong>Floating</strong> for an installed popover such
+            as Owlbear’s Initiative Tracker. On the board, it has a saved position and size, can
+            join a group and accepts arrow bindings. Floating opens over the canvas for the
+            participant using it and follows their screen when they pan. The owner’s choice sets how
+            the popover opens for that board. Every presentation uses the same installation,
+            permissions and shared extension data.
+          </p>
+          <p>
+            <strong>Acceptance test.</strong> Place a widget, bind an arrow using the arrow tool
+            over a control, and group the widget with another shape. Move the group and ungroup it.
+            Check that the endpoint still follows the same shape and the widget still works. Repeat
+            after another participant joins and after reloading the shared board.
+          </p>
+          <p>
+            <strong>Presentation test.</strong> Edit a character sheet inside the drawer, return to
+            the listings and reopen the sheet. Check its saved field and the board’s original shape
+            count. Try the Owlbear tracker under both owner settings. Pan the board to verify which
+            view moves with it. Reopening a view must preserve initiative order and keep one
+            background service per participant.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="runtime">
+        <header><h2>A native Gizmo owns its page</h2></header>
+        <div class="prose">
+          <p class="lead">
+            TypeGPU and TypeGPU Kit run in the participant's browser. A mod author owns the shaders,
+            artwork, sound and pointer response. Little Table supplies placement, coordinates, focus
+            and the connection to the room.
+          </p>
+          <pre><code>gizmos/tarot/
+  index.html            browser entry
+  dist/table.js         built TypeScript and TypeGPU shaders
+  art/                  card faces and backs
+  rules/                optional PsychoScript actions</code></pre>
+          <p>
+            Plain HTML and JavaScript can run as committed. TypeScript authors can commit a ready
+            build or publish a versioned artifact tied to the source commit. A Workshop build is a
+            third way to produce those same bytes. Resolve dependencies and apply the TypeGPU
+            transform at build time. Install a fixed output digest. Keep repository build scripts in
+            a disposable build environment, with no board access or publishing credentials.
+          </p>
+          <p>
+            Mount each visible instance in an isolated HTTPS frame on a dedicated mod origin with a
+            page-owned DOM or canvas and an instance-scoped SDK connection. Scope asset URLs and
+            storage so another installation cannot use them. During a drag the host supplies
+            zoom-correct board coordinates, pointer capture beyond the frame, cancellation and
+            screen-to-board transforms. The renderer owns the animation loop. Commit the semantic
+            drop and final pose once. Other clients can interpolate from the same flight inputs.
+            Suspend offscreen renderers, release GPU and sound resources on teardown, and restore
+            from room state.
+          </p>
+          <h3 id="spotlight">Two Spotlight widgets</h3>
+          <p>
+            <strong>Rail.</strong> A vertical rail holds editable name strips. Drag any strip to
+            another position, or focus its grip and use the up and down arrows. The brass marker
+            stays with the selected name when the order changes.
+            <a href="/dev/gizmos/?gizmo=spotlight-rail">Try the rail</a>
+          </p>
+          <p>
+            <strong>Sliders.</strong> Stack one horizontal slider per name. Each metallic thumb
+            clicks into visible stops. Moving one changes just that person’s level. The prototype
+            uses eleven positions from 0 to 100. All participants share the order and levels.
+            <a href="/dev/gizmos/?gizmo=spotlight-sliders">Try the sliders</a>
+          </p>
+          <p>
+            The proposed renderer SDK lets a pointer or keyboard gesture save the same slider value
+            and subscribe to changes from other players.
+          </p>
+          <pre><code>// Renderer-side SDK sketch
+const stop = table.state.subscribe(drawSpotlight);
+await table.actions.run("setLevel", { seatId, level }, { revision, requestId });
+stop(); // on unmount</code></pre>
+          <p>
+            A TypeGPU adapter or device can be unavailable or lost mid-gesture. The package supplies
+            its own DOM/Canvas fallback, keyboard gestures, reduced-motion rendering and an
+            accessible name. Official Tarot and the Spotlight rail and sliders must preserve their
+            interactions on that path. Start sound after a user gesture, respect local mute and
+            reduced motion, and make screen shake a bounded host effect. A token moving on a silent
+            phone and a rumbling desktop still ends at the same position.
+            <a href="https://docs.swmansion.com/TypeGPU/">TypeGPU</a> ·
+            <a href="https://reczkok.github.io/typegpu-kit/">TypeGPU Kit</a>
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="rules">
+        <header><h2>PsychoScript owns the house rule</h2></header>
+        <div class="prose">
+          <p class="lead">
+            An author can ship a standalone rule or pair rules with a visual Gizmo. For instance, a
+            separate round counter can run a rule when someone advances it.
+          </p>
+          <p>
+            The filename <code>rules/advance.js</code> declares an action called
+            <code>advance</code>. A rules-only install gets a labeled action in the drawer. A web
+            Gizmo can invoke that action on its own instance through the SDK. Each action runs plain
+            JavaScript in a fresh PsychoScript VM in an isolated runner. The room supplies an
+            actor-filtered snapshot via a host function and validates the returned JSON as a
+            proposed next state. A rule can compute with ordinary JavaScript. Add named typed tools
+            as needed for private state and post-commit effects. Keep graphics objects in the
+            browser renderer.
+          </p>
+          <pre><code>// rules/advance.js
+const { speaker, turns } = await read();
+return { speaker, turns: turns + 1 };</code></pre>
+          <p>
+            <strong>Measured.</strong> With published <code>psychoscript@0.3.0</code> on Node
+            26.13.1, this exact rule, given Mira and two turns through <code>Host.fn</code>,
+            returned Mira and three turns. That checks rule syntax and host calls. Before choosing a
+            production runner, verify the package on Cloudflare or deploy a separate process on a
+            supported runtime. The upstream package lists Node and Bun.
+            <a href="https://registry.npmjs.org/psychoscript/0.3.0">Published package</a> ·
+            <a
+              href="https://github.com/anomalyco/psychoscript/blob/ffeb35556040f0019f337eedc2b1fc3c458407fb/README.md"
+              >VM contract and execution limits</a
+            >
+          </p>
+          <p>
+            Expose only the tools granted for this installation and actor. Limit active time, wall
+            time including tool waits, calls, output and state size. The interpreter's timeout
+            operates between VM steps and its output limit covers returned text and logs. Enforce
+            memory and termination outside the VM. A failed or cancelled run discards its proposal
+            and staged effects. In the first release rules run to completion per action. Persisting
+            suspended VMs across upgrades would require interpreter-version pinning and deduplicated
+            host calls.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="owlbear">
+        <header><h2>Bring an Owlbear extension</h2></header>
+        <div class="prose">
+          <p class="lead">
+            The migration test starts with Owlbear's own Initiative Tracker and its bundled SDK. A
+            player should be able to paste the install link, open the tracker and advance a turn
+            with another player watching.
+          </p>
+          <p>
+            <strong>Recognized.</strong> Parse v1 <code>name</code>, <code>version</code>,
+            <code>manifest_version</code>, icons, <code>action.popover</code> and dimensions,
+            <code>background_url</code> and iframe <code>permissions</code>. Keep the background and
+            popover lifecycle separate. Permissions such as microphone or clipboard remain subject
+            to owner approval, browser policy and each participant's browser consent. They confer no
+            scene-edit rights. The tracker declares a 250 × 129 panel at <code>/</code>.
+            <a href="https://docs.owlbear.rodeo/extensions/reference/manifest/"
+              >Manifest reference</a
+            >
+            ·
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/blob/9cb103fd7874d808501251f9aee5c0349ff65c9e/public/manifest.json"
+              >Actual tracker manifest</a
+            >
+          </p>
+          <p>
+            <strong>Runnable.</strong> Preserve the extension JS, including its bundled
+            <code>@owlbear-rodeo/sdk</code>. Implement its parent-frame wire protocol. The fixture
+            locks SDK 2.1.0, which reads <code>obrref</code> for parent origin and room ID and
+            receives <code>OBR_READY</code>. Match request, response, error and subscription
+            semantics. Validate sender window and origin and bind messages to the live edition,
+            instance or board background, participant and role. Reopening a panel releases old
+            subscriptions. Injecting a global named <code>OBR</code> would miss calls inside the
+            existing bundle.
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/blob/9cb103fd7874d808501251f9aee5c0349ff65c9e/yarn.lock"
+              >Fixture lockfile</a
+            >
+            ·
+            <a href="https://github.com/owlbear-rodeo/sdk/blob/v2.1.0/src/messages/MessageBus.ts"
+              >SDK message bus</a
+            >
+          </p>
+          <p>
+            <strong>Verified playable.</strong> Record the tested extension digest, SDK and browser
+            versions plus the interactions exercised. For Initiative Tracker, implement readiness,
+            player roles and selection, theme and scene subscriptions, action resizing, context-menu
+            filters and update permissions, image-token bounds and viewport transforms, scale and
+            camera animation. Map eligible board tokens to stable Owlbear item IDs and layers.
+            Persist namespaced initiative metadata on those items. Translate SDK patches into
+            checked room mutations and return role-filtered item snapshots. Ordinary art must remain
+            ordinary art.
+            <a
+              href="https://github.com/owlbear-rodeo/initiative-tracker/tree/9cb103fd7874d808501251f9aee5c0349ff65c9e/src"
+              >Tracker, row and panel source</a
+            >
+          </p>
+          <p>
+            For hosted links, show the last tested build and date as historical evidence. A live URL
+            or an unchanged version string cannot establish which bytes a participant received. A
+            manifest cannot enumerate every SDK call in arbitrary JS. On an unsupported call, return
+            a named error, show the missing method and affected feature, and let the owner disable
+            the edition. Use Owlbear Dice as a second fixture for a visible panel and a background
+            page. Fog, lighting, external services and other SDK versions each earn coverage from
+            their own fixtures. Extension portability and importing an existing Owlbear campaign's
+            maps, player identities and saved extension data are separate deliverables.
+            <a href="https://github.com/owlbear-rodeo/dice/blob/main/public/manifest.json"
+              >Dice manifest</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="state">
+        <header><h2>Who can change the board?</h2></header>
+        <div class="prose">
+          <p>
+            The owner authorizes arbitrary mod code to run in participants' browsers. A participant
+            using it retains their own role. Shared writes go through Little Table's authenticated
+            host. The room checks the active installation, actor, grants, board and instance on
+            every command. Never hand frames session cookies, board passes, provider tokens or the
+            secret-layer document. Give privileged browser features and external data access
+            explicit, reviewable grants. Native packages bundle their executable dependencies.
+            Hosted Owlbear extensions load the publisher’s current code. Network access for data can
+            disclose whatever the mod can read, which belongs in the owner's review.
+          </p>
+          <p>
+            Give native packages instance-local read and write access by default. Package authors
+            can record additional requested board grants at publication, or ask through the SDK at
+            runtime. A direct-link edition starts with the same defaults. A new grant opens a
+            host-owned owner review before use. A refusal returns a typed error to the author. The
+            room enforces filters when reading as well as writing. Isolate framed content on a
+            separate site from board authentication, validate message schemas, restrict network and
+            navigation in host policy, and keep a host-controlled disable action available if a mod
+            stalls. The browser owns GPU scheduling. Owner approval cannot guarantee frame time,
+            prevent device loss or recall data a participant has already received.
+          </p>
+          <p>
+            A proposed SDK v1 exposes placement and instance lifecycle, filtered
+            <code>read</code>/<code>subscribe</code>, instance commands and transient effects. A
+            native web app can publish its own state changes with instance-write access, even
+            without a rule. Trusted shared decisions such as hidden draws use room-private state and
+            an authorized rule or host service. The Owlbear adapter may also request role-filtered
+            scene items and namespaced metadata writes. Browser code can observe everything
+            delivered to it, including preloaded art. Batch-warm public faces when hidden identity
+            matters. Keep the chosen identity and order private until the authorized reveal.
+          </p>
+          <p>
+            Each durable command carries an instance, expected state revision and request ID. The
+            room validates the result and atomically commits state, effect receipt and next
+            revision. Identical retries get the recorded result. Stale edits get a conflict and
+            fresh view. Concurrent draws cannot consume the same card twice. Send springs and sound
+            as local presentation or deduplicated events. A rejoining client reconstructs the
+            current pose and face without replaying yesterday's explosion. On uninstall revoke
+            channels, stop contexts and subscriptions, and offer the owner a snapshot for recovery.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="parity">
+        <header><h2>Three gates for this PR</h2></header>
+        <div class="prose">
+          <ol>
+            <li>
+              <strong>Port the tarot with its feel intact.</strong> Record the current deck as the
+              reference. A slow drop near the deck leaves a loose face-down card. A fast toss from
+              the deck reveals the real face in flight, rotates within −3° to +3° in the table plane
+              and coasts to rest. Tapping a loose card flips either way. Moving it preserves its
+              face. Rapid taps deal to the three-column grid. Warm and decode art in time for the
+              turn. Compare touch, mouse, keyboard, reduced motion and GPU loss. Re-run the existing
+              browser and room tests against the installed package. Open a saved board and confirm
+              its card IDs, order, face, poses and remaining pile survive migration. Keep the
+              installed legacy edition available until the owner approves upgrading.
+              <a
+                href="https://github.com/hasparus/littletable.top/blob/242ebd0ddb8927cedfa96cc386b504dc82d327af/e2e/tests/tarot.spec.ts"
+                >Current browser fixtures</a
+              >
+            </li>
+            <li>
+              <strong>Fork a behavior mid-campaign.</strong> Install a player-authored round counter
+              from another GitHub repository. Fork its PsychoScript action to advance by two rounds.
+              Have a player request the revised edition, an owner approve it, and two clients use it
+              on an existing deployment. Verify one advance under a retry, independent
+              second-instance state, a failed rule leaving the previous count intact, and rejection
+              of a stale grant after uninstall.
+            </li>
+            <li>
+              <strong>Play through the original Owlbear tracker.</strong> Use its original release
+              code with no extension-source edits. From a GM and a player browser, add a token via
+              its context menu, set initiative, advance, select and focus a row, close and reopen,
+              reconnect and verify the same order and role visibility. Inspect the network trace for
+              zero extension-code requests on marketplace browse. Change the hosted panel and
+              background code at the same URL with the same manifest version. Reopen the board on
+              both clients and verify the update arrives without another install prompt. Request a
+              new permission and verify it remains unavailable until approved. Disable the link and
+              verify existing frames lose board access. Publish the result per fixture. Merely
+              opening its panel passes only the loading test.
+            </li>
+          </ol>
+          <p>
+            <strong>A renderer decision worth a trial.</strong> For heavy native props, compare an
+            isolated frame per visible prop with one shared renderer per installed edition. The
+            former is simpler to isolate and dispose. The latter could share a GPU device and art
+            across a spread. Measure pointer-to-frame latency, frame time and memory on the same
+            phone and desktop using the current tarot as baseline before choosing the renderer
+            granularity.
+          </p>
+        </div>
+      </section>
+      <section class="chapter" id="authoring">
+        <header><h2>Choose where to build</h2></header>
+        <div class="prose">
+          <p class="lead">
+            One active authoring path per Little Table user. Both paths produce the same immutable
+            release and can suggest it to a table owner. Receiving, installing and playing a Gizmo
+            are available independently of that choice.
+          </p>
+          <h3>Publish from your own agent with MCP</h3>
+          <p>
+            Mira asks her agent to fork the round counter and change the increment. She authorizes
+            Little Table to let that client work on her draft. The agent can rehearse a sample turn,
+            show her the proposed release, publish it to the audience she selects and return a link.
+            This path needs no Workshop account connection or provider token at Little Table.
+          </p>
+          <ul>
+            <li>
+              <code>fork_release(parentDigest)</code> creates a private draft tied to the
+              authenticated author. A repeated request with the same key returns the same draft.
+            </li>
+            <li>
+              <code>read_draft</code>, <code>edit_draft</code> and
+              <code>rehearse_draft</code> operate on an authorized draft ID. Edits supply the
+              expected revision. A stale edit returns a conflict and the current revision. Rehearsal
+              uses a fixture and returns a bounded result.
+            </li>
+            <li>
+              <code>prepare_release</code> validates the package and returns its digest, parent,
+              asset credits, permission diff and proposed audience.
+              <code>publish_release</code> needs scoped publish access and the author’s confirmation
+              bound to that digest and audience. Use a Little Table consent page when the client
+              cannot reliably collect that confirmation. Retrying returns the same release.
+            </li>
+            <li>
+              <code>propose_install</code> sends one known board a review link if the caller can
+              propose there. For an owner using an agent, approval in the board can complete the
+              install. For a player, it goes to the owner. A package description, tool annotation or
+              model-generated “approved” field carries no authority.
+            </li>
+          </ul>
+          <p>
+            The remote MCP service exposes protected-resource metadata. On each call it checks the
+            access token’s issuer, audience, expiry, authoring mode, granted scope and access to the
+            requested object. A token for a provider, another resource or another draft cannot
+            authorize the call. Publish consent is separate from connecting a client.
+            <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+              >MCP authorization</a
+            >
+            ·
+            <a
+              href="https://modelcontextprotocol.io/specification/2026-07-28/basic/security_best_practices"
+              >MCP security guidance</a
+            >
+          </p>
+          <h3>Build and publish inside the Workshop</h3>
+          <p>
+            Mira forks the tracker in her browser, edits it herself or asks a coding agent to revise
+            it, and tries the player and owner seats. The Workshop shows the same proposed release
+            and publishes it on her confirmation. Its backend uses the same validation and release
+            operations directly. There is no MCP client setup in this path.
+          </p>
+          <p>
+            Give each build job an expiring lease for one draft revision and a disposable workspace.
+            Mount the package, catalog and synthetic fixtures. Keep live board passes, cloud
+            credentials and provider tokens outside the build environment. Broker model calls from
+            the trusted host. Limit build time, output size and spend. Discard temporary files and
+            cancel outstanding work on disconnect. Treat imported descriptions, source and build
+            output as untrusted content, including when an agent reads them.
+          </p>
+          <h3>If an author switches paths</h3>
+          <p>
+            Offer “Switch authoring method” outside the build flow. Confirm the change, increment
+            the author’s mode generation, revoke prior write and publish grants, cancel builds and
+            invalidate outstanding release confirmations. Preserve the saved draft and published
+            editions. Check the generation again when a queued job writes back or publishes, so a
+            late completion cannot overwrite edits made through the new path. Fresh consent enables
+            the other path. No switch is needed to open someone else’s install link.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="credentials">
+        <header><h2>Who pays for the build?</h2></header>
+        <div class="prose">
+          <p class="lead">
+            MCP authors pay through the agent they already use. The Workshop has a separate product
+            choice about model access.
+          </p>
+          <p>
+            <strong>Author-funded Workshop.</strong> OpenAI documents identity sign-in and
+            separately authorized ChatGPT plan usage for eligible inference. The open-source/local
+            flow has its own client requirements. A remotely hosted or paid Workshop must establish
+            eligibility with OpenAI. Anthropic requires prior approval to offer Claude account login
+            or subscription limits in a third-party product. Little Table’s eligibility is
+            unverified for both hosted integrations.
+            <a href="https://developers.openai.com/siwc/quickstart">OpenAI sign-in and scopes</a> ·
+            <a href="https://developers.openai.com/siwc/token-sharing-open-source"
+              >Hosted availability</a
+            >
+            ·
+            <a href="https://platform.claude.com/docs/en/agent-sdk/overview"
+              >Anthropic Agent SDK authentication</a
+            >
+          </p>
+          <p>
+            <strong>Little Table-funded Workshop.</strong> Little Table could use its own provider
+            API account. Show who pays before the build, reserve a per-job budget, count retries
+            against it and stop on exhaustion. A denied grant or exhausted personal allowance
+            returns the draft for manual editing. Charging the product account requires a separate,
+            explicit choice.
+          </p>
+          <p>
+            For approved user-funded access, establish the Little Table session from verified
+            identity and link it to the correct local account. Store the separate inference grant
+            encrypted on the trusted host, keyed by author, provider and workspace. Check scope and
+            expiry before each model call. Revoke or delete the connection on disconnect, stop new
+            calls and drop pending work. Logs retain usage totals and opaque job IDs. Prompts,
+            access tokens and secret board data stay out of logs, packages and runtime bindings.
+            Installed editions use ordinary table actions after the author disconnects.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="release">
+        <header><h2>What travels with a fork?</h2></header>
+        <div class="prose">
+          <p class="lead">
+            For a native release, the installer records an internal receipt with the host API
+            version, executable entries, state schema, requested capabilities, locked dependencies,
+            asset credits and hashes. The registry records the authenticated publisher, parent
+            release digest, license and visibility. It assigns the official badge only to the Little
+            Table publisher.
+          </p>
+          <p>
+            Compute a digest over the canonical receipt fields and its content-addressed code and
+            assets. Verify every blob before preview or execution. Refuse missing assets,
+            unsupported APIs and oversized packages. Serve assets from immutable storage. A fork
+            copies the redistributable definition with attribution and starts with fresh instance
+            state. Private draws, live seat names, room identifiers and agent conversations stay
+            with their original table or author.
+          </p>
+          <p>
+            <strong>Link sharing</strong> lets a friend try an unlisted edition. Anyone holding the
+            link can forward it. <strong>A curated shelf</strong> adds discovery and a review queue.
+            <strong>Open publishing</strong> needs reporting, moderation and an identifiable
+            publisher for every revision. A listing can show a static preview without running
+            package code. Delisting removes discovery. Quarantining a dangerous digest also blocks
+            installs and pauses affected instances at their next action, including installs reached
+            by link. Allow an owner to recover their state.
+          </p>
+          <p>
+            For native release updates, bind owner consent to the board, expected installed
+            revision, proposed digest, visibility and capability diff. Recheck ownership, revocation
+            and digest in the commit path. An update needs fresh review. Stage any state migration
+            against a snapshot and atomically commit the new edition and migrated state together. On
+            failure keep the current instance playable. A later rollback restores a compatible
+            snapshot and tells the GM which intervening actions would be lost.
+          </p>
+        </div>
+      </section>
+
+      <section class="chapter" id="verification">
+        <header><h2>What would prove it?</h2></header>
+        <div class="prose">
+          <p>
+            <strong>My preference for the first trial is MCP publishing</strong> if the people at
+            the table already use coding agents. One player can publish the counter fork and another
+            GM can install it without Little Table holding a model credential. If the intended
+            author only uses their phone during prep, I’d test the Workshop with the same brief
+            instead. Measure whether they can get a second table playing the fork unaided and
+            explain who can change it.
+          </p>
+          <p>
+            Run the local contract experiment with
+            <code>node scripts/gizmos-research/release-contract.mjs</code>. It models the two points
+            at which stale authority matters: publishing after an author changes paths and
+            installing after an owner’s review becomes stale. It uses synthetic records. It
+            exercises neither OAuth nor a deployed sandbox.
+          </p>
+          <ul>
+            <li>
+              <strong>Two independent authors.</strong> Give one MCP access and the other Workshop
+              access. Each can finish a release in their own path. A grant for one author cannot
+              read or modify the other’s draft. After switching paths, late jobs and old publish
+              confirmations fail.
+            </li>
+            <li>
+              <strong>One player and one owner.</strong> A player proposes; only the current owner
+              can install. Change the release or the installed base between review and apply. The
+              owner must see a new diff. Publishing a new native edition leaves existing native
+              installations pinned.
+            </li>
+            <li>
+              <strong>Two clients and one room.</strong> Retry a draw after a simulated connection
+              loss. Verify one card, one state advance and the same result for the retry. A guest
+              observes only the revealed card. Exercise the GM’s separate room and a reconnect.
+            </li>
+            <li>
+              <strong>One broken release.</strong> Try an incompatible migration, a failed build, a
+              revoked inference grant and a quarantined edition. Verify no partial install, no
+              unapproved billing fallback and an owner recovery path. Run deployment-level isolation
+              and resource checks before admitting arbitrary code.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+    <footer>Little Table · Gizmo research <a href="./">Back to the notebook</a></footer>
+  </body>
+</html>

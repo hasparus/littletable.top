@@ -82,8 +82,11 @@ export default defineConfig({
       command: tabletop(
         "standalone",
         PORTS.standalone,
-        `--assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS} --var MCP_RESOURCE:https://mcp.example.test/mcp`,
-        ["wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone"],
+        `e2e/gizmo-worker.mjs --assets dist-e2e/standalone --env-file e2e/standalone.env --var WORKOS_API_BASE:${WORKOS} --var MCP_RESOURCE:https://mcp.example.test/mcp`,
+        [
+          "wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e-standalone",
+          "wrangler d1 execute DB --local --persist-to .wrangler/e2e-standalone --file e2e/fixtures/assistant-client.sql",
+        ],
       ),
       cwd: root,
       env: { ...env, TABLETOP_MODE: "standalone" },

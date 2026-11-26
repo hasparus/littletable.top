@@ -1,0 +1,42 @@
+[
+  {
+    "name": {
+      "en": "Tarot deck",
+      "pl": "Talia tarota"
+    },
+    "thumbnail": "/gizmos/thumbnails/tarot.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/835c5f9290a7288d69a5c9f95d8709ee0876d2b7/gizmos/tarot/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Explosion button",
+      "pl": "Przycisk wybuchu"
+    },
+    "thumbnail": "/gizmos/thumbnails/explosion.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/886e9d9f391f17b8d2fee21502c8fdbd465b049c/gizmos/explosion/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Spotlight rail",
+      "pl": "Szyna reflektora"
+    },
+    "thumbnail": "/gizmos/spotlight-rail/thumbnail.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/b2dced8589617f2d52d7bdfbb6ae0e2e3a6d34cf/gizmos/spotlight-rail/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Spotlight sliders",
+      "pl": "Suwaki reflektora"
+    },
+    "thumbnail": "/gizmos/spotlight-sliders/thumbnail.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/d725add84a4a0e9481410d0a4ed3c907ca3e59ec/gizmos/spotlight-sliders/gizmo.json"
+  },
+  {
+    "name": {
+      "en": "Initiative tracker",
+      "pl": "Szyna inicjatywy"
+    },
+    "thumbnail": "/gizmos/initiative/thumbnail.webp",
+    "url": "https://github.com/hasparus/littletable.top/blob/b2dced8589617f2d52d7bdfbb6ae0e2e3a6d34cf/gizmos/initiative/gizmo.json"
+  }
+]
