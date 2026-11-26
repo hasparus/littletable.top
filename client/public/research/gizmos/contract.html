@@ -41,8 +41,8 @@
         <header><h2>What the owner installs</h2></header>
         <div class="prose">
           <p class="lead">
-            The owner approves an edition for one board. Each placed prop gets its own saved state.
-            Two decks from the same edition can have different cards on top.
+            The owner installs a Gizmo for one board. Each placed prop gets its own saved state. Two
+            decks from the same edition can have different cards on top.
           </p>
           <ol>
             <li>
@@ -55,20 +55,17 @@
               <strong>Resolve for installation.</strong> Once the owner starts installation, resolve
               a GitHub ref to its full commit. Accept a folder containing <code>index.html</code>,
               <code>rules/</code>, or an Owlbear v1 <code>manifest.json</code>. Also accept the
-              Owlbear manifest URL copied from its store, including HTTPS URLs outside GitHub.
-              Resolve relative URLs against the original manifest and document base. Preserve
-              root-relative assets and chunk paths when serving the copy. Offer a choice when a
-              folder contains both a native app and an Owlbear entry.
+              Owlbear manifest URL copied from its store, including HTTPS URLs outside GitHub. For
+              hosted Owlbear installs, keep the manifest URL. Resolve panel and background entries
+              against that URL and let each page load assets from its own document base. Offer a
+              choice when a folder contains both a native app and an Owlbear entry.
             </li>
             <li>
-              <strong>Approve the edition.</strong> Stage the executable, CSS, art, fonts and
-              dependencies without running package code on the board. Show source, commit when
-              available, artifact digest, execution mode, requested access and compatibility
-              evidence. Bind the owner's confirmation to that exact board, revision and permissions.
-              Recheck ownership at commit. For a hosted extension without verifiable Git history,
-              show its source URL and snapshot digest. Dynamically loaded files must resolve within
-              the frozen bundle. If a site cannot be captured, report the dependency and offer a
-              publisher-supplied bundle.
+              <strong>Review and install.</strong> For a native GitHub package, show the commit and
+              artifact digest. For a hosted Owlbear link, show the publisher’s hostname, the
+              manifest link and the warning below beside the Install button. Show requested access
+              in both cases. Recheck board ownership when saving the installation. For a live link
+              the receipt records the source URL and approved grants.
             </li>
             <li>
               <strong>Play.</strong> Before the first install, the Gizmos menu opens the
@@ -79,6 +76,22 @@
               board, independent of panel opens. The tldraw sidebar carries the gallery launcher.
             </li>
           </ol>
+          <blockquote id="owlbear-install-warning">
+            <p>
+              <strong>This extension updates automatically.</strong> Future code from this publisher
+              will run in your players’ browsers without another prompt. If the publisher or their
+              hosting is compromised, an update could read or change board data the extension can
+              access. You can disable it at any time.
+            </p>
+          </blockquote>
+          <p>
+            For hosted Owlbear links, revalidate the live manifest when a participant opens or
+            reloads the board. Load its current background and panel entries from the publisher. An
+            ordinary code or asset update runs with the existing grants, even if the manifest
+            version stays the same. Additional permissions require separate approval before the
+            extension can use them. If the source is unavailable, show the failure on that Gizmo and
+            let the table continue playing.
+          </p>
           <p>
             Use browser conventions for native packages. A public GitHub folder with browser-ready
             files needs no dedicated author manifest. An optional Web App Manifest can provide the
@@ -244,13 +257,14 @@ return { speaker, turns: turns + 1 };</code></pre>
             >
           </p>
           <p>
-            Install review shows the tested scenarios for that digest, or “Unverified.” A manifest
-            cannot enumerate every SDK call in arbitrary JS. On an unsupported call, return a named
-            error, show the missing method and affected feature, and let the owner disable the
-            edition. Use Owlbear Dice as a second fixture for a visible panel and a background page.
-            Fog, lighting, external services and other SDK versions each earn coverage from their
-            own fixtures. Extension portability and importing an existing Owlbear campaign's maps,
-            player identities and saved extension data are separate deliverables.
+            For hosted links, show the last tested build and date as historical evidence. A live URL
+            or an unchanged version string cannot establish which bytes a participant received. A
+            manifest cannot enumerate every SDK call in arbitrary JS. On an unsupported call, return
+            a named error, show the missing method and affected feature, and let the owner disable
+            the edition. Use Owlbear Dice as a second fixture for a visible panel and a background
+            page. Fog, lighting, external services and other SDK versions each earn coverage from
+            their own fixtures. Extension portability and importing an existing Owlbear campaign's
+            maps, player identities and saved extension data are separate deliverables.
             <a href="https://github.com/owlbear-rodeo/dice/blob/main/public/manifest.json"
               >Dice manifest</a
             >
@@ -264,12 +278,12 @@ return { speaker, turns: turns + 1 };</code></pre>
           <p>
             The owner authorizes arbitrary mod code to run in participants' browsers. A participant
             using it retains their own role. Shared writes go through Little Table's authenticated
-            host. The room checks the install digest, actor, grants, board and instance on every
-            command. Never hand frames session cookies, board passes, provider tokens or the
+            host. The room checks the active installation, actor, grants, board and instance on
+            every command. Never hand frames session cookies, board passes, provider tokens or the
             secret-layer document. Give privileged browser features and external data access
-            explicit, reviewable grants. Bundle executable dependencies with the release. Network
-            access for data can disclose whatever the mod can read, which belongs in the owner's
-            review.
+            explicit, reviewable grants. Native packages bundle their executable dependencies.
+            Hosted Owlbear extensions load the publisher’s current code. Network access for data can
+            disclose whatever the mod can read, which belongs in the owner's review.
           </p>
           <p>
             Give native packages instance-local read and write access by default. Package authors
@@ -336,20 +350,21 @@ return { speaker, turns: turns + 1 };</code></pre>
               code with no extension-source edits. From a GM and a player browser, add a token via
               its context menu, set initiative, advance, select and focus a row, close and reopen,
               reconnect and verify the same order and role visibility. Inspect the network trace for
-              zero extension-code requests on marketplace browse. Approve a newer edition and
-              exercise snapshot rollback. Publish the result per fixture. Merely opening its panel
-              passes only the loading test.
+              zero extension-code requests on marketplace browse. Change the hosted panel and
+              background code at the same URL with the same manifest version. Reopen the board on
+              both clients and verify the update arrives without another install prompt. Request a
+              new permission and verify it remains unavailable until approved. Disable the link and
+              verify existing frames lose board access. Publish the result per fixture. Merely
+              opening its panel passes only the loading test.
             </li>
           </ol>
           <p>
-            <strong>Two decisions worth a trial.</strong> I would start with frozen snapshots for
-            hosted Owlbear links, so the owner can identify what players ran. A separately labeled
-            live-hosted mode would accommodate extensions that stream their own code, at the cost of
-            trusting future changes on that host. For heavy native props, compare an isolated frame
-            per visible prop with one shared renderer per installed edition. The former is simpler
-            to isolate and dispose. The latter could share a GPU device and art across a spread.
-            Measure pointer-to-frame latency, frame time and memory on the same phone and desktop
-            using the current tarot as baseline before choosing the renderer granularity.
+            <strong>A renderer decision worth a trial.</strong> For heavy native props, compare an
+            isolated frame per visible prop with one shared renderer per installed edition. The
+            former is simpler to isolate and dispose. The latter could share a GPU device and art
+            across a spread. Measure pointer-to-frame latency, frame time and memory on the same
+            phone and desktop using the current tarot as baseline before choosing the renderer
+            granularity.
           </p>
         </div>
       </section>
@@ -481,10 +496,11 @@ return { speaker, turns: turns + 1 };</code></pre>
         <header><h2>What travels with a fork?</h2></header>
         <div class="prose">
           <p class="lead">
-            The installer records an internal receipt with the host API version, executable entries,
-            state schema, requested capabilities, locked dependencies, asset credits and hashes. The
-            registry records the authenticated publisher, parent release digest, license and
-            visibility. It assigns the official badge only to the Little Table publisher.
+            For a native release, the installer records an internal receipt with the host API
+            version, executable entries, state schema, requested capabilities, locked dependencies,
+            asset credits and hashes. The registry records the authenticated publisher, parent
+            release digest, license and visibility. It assigns the official badge only to the Little
+            Table publisher.
           </p>
           <p>
             Compute a digest over the canonical receipt fields and its content-addressed code and
@@ -504,12 +520,12 @@ return { speaker, turns: turns + 1 };</code></pre>
             by link. Allow an owner to recover their state.
           </p>
           <p>
-            Installation belongs to the current table owner. Bind consent to the board, expected
-            installed revision, proposed digest, visibility and capability diff. Recheck ownership,
-            revocation and digest in the commit path. An update needs fresh review. Stage any state
-            migration against a snapshot and atomically commit the new edition and migrated state
-            together. On failure keep the current instance playable. A later rollback restores a
-            compatible snapshot and tells the GM which intervening actions would be lost.
+            For native release updates, bind owner consent to the board, expected installed
+            revision, proposed digest, visibility and capability diff. Recheck ownership, revocation
+            and digest in the commit path. An update needs fresh review. Stage any state migration
+            against a snapshot and atomically commit the new edition and migrated state together. On
+            failure keep the current instance playable. A later rollback restores a compatible
+            snapshot and tells the GM which intervening actions would be lost.
           </p>
         </div>
       </section>
@@ -542,7 +558,8 @@ return { speaker, turns: turns + 1 };</code></pre>
             <li>
               <strong>One player and one owner.</strong> A player proposes; only the current owner
               can install. Change the release or the installed base between review and apply. The
-              owner must see a new diff. Publishing a new edition leaves existing tables pinned.
+              owner must see a new diff. Publishing a new native edition leaves existing native
+              installations pinned.
             </li>
             <li>
               <strong>Two clients and one room.</strong> Retry a draw after a simulated connection
