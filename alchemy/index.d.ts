@@ -80,6 +80,8 @@ export type StandaloneProps = Shared & {
     surveyId: string;
   };
   mode: "standalone";
+  /** Public project token for the US PostHog browser SDK. */
+  posthogWebProjectToken?: string;
   /** WorkOS user ID that owns the public landing board. */
   publicBoardOwnerId?: string;
   /**

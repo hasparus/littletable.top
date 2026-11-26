@@ -115,6 +115,7 @@ function configure(props) {
             POSTHOG_PROJECT_TOKEN: secret(feedback.projectToken),
             POSTHOG_REGION: feedback.region,
           }),
+      POSTHOG_WEB_PROJECT_TOKEN: props.posthogWebProjectToken ?? "",
       SIGNING_KEY: signingKey,
       TABLETOP_MODE: "standalone",
       WORKOS_API_KEY: secret(props.workOs.apiKey),

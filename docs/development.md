@@ -42,6 +42,25 @@ TABLETOP_MODE=standalone bun run build
 `e2e/standalone.env` configures the local Worker for the test identity provider.
 The public board is at `/` and the account board list is at `/boards`.
 
+## PostHog in production
+
+In the `production` GitHub Actions environment, set the Actions variable
+`POSTHOG_WEB_PROJECT_TOKEN` to the public project token from
+[PostHog project 768580](https://us.posthog.com/project/768580/settings/project).
+In that project, enable Session Replay. Under Support → Settings, enable
+Support and the in-app widget, then add `littletable.top` to Allowed domains.
+
+After deploying, visit the homepage and the dice docs. In PostHog, confirm a
+pageview in Web Analytics, a recording in Session Replay, and a test ticket
+in Support. Error Tracking receives uncaught browser errors and unhandled
+promise rejections from those pages. Source maps are not uploaded by this setup.
+
+The SDK runs on the standalone homepage and dice docs. Replay masks the live
+tabletop and Support widget, and disables network and console recording.
+The board list, private board URLs, and preview deployments stay outside
+browser capture. The existing Worker feedback form uses the separate
+`POSTHOG_PROJECT_TOKEN`, `POSTHOG_REGION` and survey IDs.
+
 ## Tests
 
 - `bun run test` runs Vitest against the Worker runtime.

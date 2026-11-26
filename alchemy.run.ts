@@ -48,6 +48,10 @@ export default Alchemy.Stack(
       feedback,
       licenseKey: yield* Config.String("TLDRAW_LICENSE_KEY").pipe(Config.withDefault("")),
       mode: "standalone",
+      posthogWebProjectToken:
+        stage === "prod"
+          ? yield* Config.String("POSTHOG_WEB_PROJECT_TOKEN").pipe(Config.withDefault(""))
+          : undefined,
       mcp:
         mcpIssuer === null
           ? undefined
