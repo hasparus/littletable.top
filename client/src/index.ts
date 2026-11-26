@@ -52,8 +52,27 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) {
 }
 
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
+function warmBoardLinks() {
+  const hints = document.querySelector<HTMLTemplateElement>("template[data-board-preloads]");
+  if (!hints) return;
+  const listeners = new AbortController();
+  const warm = (event: Event) => {
+    if (!(event.target instanceof Element) || !event.target.closest('a[href^="/b/"]')) return;
+    listeners.abort();
+    for (const asset of hints.content.querySelectorAll<HTMLLinkElement>("link")) {
+      if (asset.as === "font") continue;
+      asset.fetchPriority = "low";
+      document.head.append(asset);
+    }
+    hints.remove();
+  };
+  root.addEventListener("pointerover", warm, { signal: listeners.signal });
+  root.addEventListener("focusin", warm, { signal: listeners.signal });
+}
+
 async function mount(): Promise<void> {
   if (settings.hosted === null && location.pathname === "/boards") {
+    warmBoardLinks();
     const { mountFront } = await import("./mount-front");
     mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
     return;
