@@ -1,10 +1,13 @@
 import type { Identity } from "./provider";
 
+import { MAX_BOARDS_PER_ACCOUNT, MAX_BOARDS_PER_HOUR } from "../limits";
+
 /** Stores the copied avatar’s SHA-256 alongside its original provider URL. */
 export type Account = { avatar: string | null; avatarUrl: string | null; id: string; name: string };
 
 export type Board = {
   createdAt: number;
+  firstPageName: string | null;
   hasThumbnail: boolean;
   id: string;
   linkVersion: number;
@@ -33,6 +36,7 @@ export type Visited = {
 
 type BoardRow = {
   created_at: number;
+  first_page_name: string | null;
   has_thumbnail: number;
   id: string;
   link_version: number;
@@ -43,6 +47,7 @@ type BoardRow = {
 
 const board = (row: BoardRow): Board => ({
   createdAt: row.created_at,
+  firstPageName: row.first_page_name,
   hasThumbnail: row.has_thumbnail === 1,
   id: row.id,
   linkVersion: row.link_version,
@@ -142,28 +147,36 @@ export class Store {
     await this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
   }
 
-  async createBoard(input: Omit<Board, "hasThumbnail" | "linkVersion">): Promise<Board> {
-    await this.db
-      .prepare(
-        "INSERT INTO boards (id, owner_id, title, share_code, link_version, created_at, deployment) VALUES (?, ?, ?, ?, 0, ?, ?)",
-      )
-      .bind(input.id, input.ownerId, input.title, input.shareCode, input.createdAt, this.deployment)
-      .run();
-    return { ...input, hasThumbnail: false, linkVersion: 0 };
-  }
-
-  async boardsCreatedSince(ownerId: string, since: number): Promise<number> {
-    const row = await this.db
-      .prepare(
-        "SELECT count(*) AS n FROM boards WHERE owner_id = ? AND created_at > ? AND deployment = ?",
-      )
-      .bind(ownerId, since, this.deployment)
-      .first<{ n: number }>();
-    return row?.n ?? 0;
-  }
-
-  async countBoards(ownerId: string): Promise<number> {
-    return this.boardsCreatedSince(ownerId, -1);
+  async createBoard(input: Omit<Board, "hasThumbnail" | "linkVersion">) {
+    // WARNING: The count and insert have to share a transaction with the creation-history trigger.
+    const eligibility = `CASE
+      WHEN (SELECT count(*) FROM boards WHERE owner_id = ?1 AND deployment = ?2) >= ?4
+        THEN 'too-many-boards'
+      WHEN (SELECT count(*) FROM board_creations
+        WHERE owner_id = ?1 AND deployment = ?2 AND created_at > ?3 - 3600) >= ?5
+        THEN 'too-many-requests'
+    END`;
+    const scope = [
+      input.ownerId,
+      this.deployment,
+      input.createdAt,
+      MAX_BOARDS_PER_ACCOUNT,
+      MAX_BOARDS_PER_HOUR,
+    ] as const;
+    const [created, reason] = await this.db.batch<{
+      error?: "too-many-boards" | "too-many-requests";
+    }>([
+      this.db
+        .prepare(
+          `INSERT INTO boards (owner_id, deployment, created_at, id, title, share_code, first_page_name)
+         SELECT ?1, ?2, ?3, ?6, ?7, ?8, ?9 WHERE (${eligibility}) IS NULL`,
+        )
+        .bind(...scope, input.id, input.title, input.shareCode, input.firstPageName),
+      this.db.prepare(`SELECT ${eligibility} AS error`).bind(...scope),
+    ]);
+    if (created!.meta.changes > 0)
+      return { board: { ...input, hasThumbnail: false, linkVersion: 0 } };
+    return { error: reason!.results[0]!.error! };
   }
 
   async byShareCode(shareCode: string): Promise<Board | null> {
