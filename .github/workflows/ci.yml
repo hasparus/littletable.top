@@ -53,6 +53,7 @@ jobs:
           node-version-file: package.json
           package-manager-cache: false
       - run: bun install --frozen-lockfile
+      - run: node --test .github/scripts/gizmo-submission.test.mjs
       - run: bun run test
 
   e2e:

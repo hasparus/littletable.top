@@ -122,6 +122,7 @@ jobs:
           # CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN. --yes also lets it
           # create (or upgrade) the account's state store on the first deploy.
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GIZMO_SUBMISSIONS_TOKEN: ${{ secrets.GIZMO_SUBMISSIONS_TOKEN }}
           POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
           POSTHOG_REGION: ${{ vars.POSTHOG_REGION }}
           POSTHOG_FEEDBACK_SURVEY_ID: ${{ vars.POSTHOG_FEEDBACK_SURVEY_ID }}

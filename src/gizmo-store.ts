@@ -48,7 +48,7 @@ async function fetchLimited(fetchFile: FetchFile, url: string, max: number) {
   }
 }
 
-async function pinSource(fetchFile: FetchFile, input: string) {
+export async function pinGizmoSource(fetchFile: FetchFile, input: string) {
   const link = normalizeGizmoLink(input);
   if (!link) return problem(400, "Use a GitHub folder or gizmo.json link");
   const pinned = gizmoSource(link);
@@ -133,7 +133,7 @@ export class GizmoStore {
     onInstalled?: (url: string) => void,
   ) {
     if (!authorized()) return problem(403, "Forbidden");
-    const source = await pinSource(this.fetchFile, input).catch(() =>
+    const source = await pinGizmoSource(this.fetchFile, input).catch(() =>
       problem(502, "GitHub revision lookup failed"),
     );
     if (!authorized()) return problem(403, "Forbidden");

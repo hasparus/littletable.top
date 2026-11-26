@@ -24,6 +24,7 @@ const hostAsset = T.string.check((url) => {
   if (!path || !isPackageAssetPath(path) || /\s/u.test(url)) throw new Error("Invalid Gizmo asset");
 });
 export const isGizmoAssetUrl = hostAsset.isValid.bind(hostAsset);
+export type GizmoSubmission = { status: "listed" } | { status: "confirm" | "queued"; url: string };
 export const gizmoInstallRequest = T.object({ url: T.string });
 
 export const gizmoDecision = T.object({

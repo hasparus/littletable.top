@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { GizmoRequest } from "../../src/gizmo-packages";
 
-import registry from "../../gizmos/registry.json";
 import { normalizeGizmoLink } from "../../src/gizmo-packages";
+import { registry } from "./gizmo-registry";
 import { useGizmoUi } from "./gizmo-ui";
 import { Icon } from "./icons";
 import "./gizmo-drawer.css";

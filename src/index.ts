@@ -18,6 +18,7 @@ import { type FeedbackEnv, feedbackRoute } from "./feedback";
 import { readCapped } from "./file-store";
 import { serveFiles } from "./files";
 import { gizmoDecision, gizmoInstallRequest } from "./gizmo-packages";
+import { submitGizmo } from "./gizmo-submissions";
 import { addressKey } from "./limiter";
 import {
   type Pass,
@@ -37,11 +38,12 @@ import { canSummon, MAX_SUMMON_BYTES, type SummonRequest, summonRequest } from "
 export { BoardRoom } from "./board-room";
 export { Limiter } from "./limiter";
 
-/** The standalone deployment alone binds D1 and the address limiter. */
+/** Only standalone deployments bind the accounts database. */
 export type Env = ConfigEnv &
   FeedbackEnv &
   Partial<Pick<StandaloneEnv, "BOARD_DATA_SCOPE" | "DB" | "Limiter">> & {
     ASSETS: Fetcher;
+    GIZMO_SUBMISSIONS_TOKEN?: string;
     BoardRoom: DurableObjectNamespace<BoardRoom>;
     Files: R2Bucket;
   };
@@ -331,6 +333,10 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
   if (moved !== null) return moved;
   const { pathname } = new URL(request.url);
   if (ROOMS.test(pathname)) return rooms(request, env, config, verifiers);
+  if (pathname === "/api/gizmo-submissions") {
+    if (!env.Limiter) return new Response(null, { status: 503 });
+    return submitGizmo(request, env.GIZMO_SUBMISSIONS_TOKEN, env.Limiter);
+  }
   if (config.mode === "standalone") {
     if (env.DB === undefined || env.Limiter === undefined) {
       console.error(

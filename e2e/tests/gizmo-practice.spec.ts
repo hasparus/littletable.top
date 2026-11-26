@@ -126,44 +126,87 @@ test("a workshop button without a shake capability keeps the table still", async
   expect(await page.locator(".tl-canvas").evaluate((el) => el.getAnimations().length)).toBe(0);
 });
 
-test("a marketplace drag installs only on a board drop and places at the pointer", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1190, height: 760 });
-  const manifestRequests: string[] = [];
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname.endsWith("/spotlight-rail/gizmo.json"))
-      manifestRequests.push(request.url());
+for (const input of ["mouse", "touch"] as const) {
+  test(`a ${input} drag carries a drawer piece to the release point`, async ({ page }) => {
+    const phone = input === "touch";
+    await page.setViewportSize(phone ? { width: 390, height: 700 } : { width: 1190, height: 760 });
+    await page.goto(STANDALONE + "/dev/gizmos/?empty&lang=en");
+    const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
+    const listing = market.getByRole("article", { name: "Spotlight rail" });
+    await expect(listing.getByRole("button")).toHaveCount(1);
+    await listing.getByRole("button", { name: "Install Spotlight rail" }).click();
+    const drawer = page.getByRole("dialog", { name: "Gizmo gallery" });
+    const piece = drawer.getByRole("button", { name: "Spotlight rail" });
+    await expect(piece).toBeFocused();
+    const tile = (await piece.boundingBox())!;
+    const start = { x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 };
+    const end = phone ? { x: 222, y: 188 } : { x: 870, y: 295 };
+    const carried = page.locator("[data-gizmo-carry]");
+    const rail = page.locator("[data-spotlight-rail]");
+    if (phone) {
+      const finger = await page.context().newCDPSession(page);
+      try {
+        await finger.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+        await finger.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [end] });
+        await expect(carried).toBeVisible();
+        await expect(drawer).toHaveCSS("opacity", "1");
+        await finger.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+        await expect(carried).toHaveCount(0);
+        await expect(rail).toHaveCount(0);
+        await finger.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+        await finger.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [end] });
+        await finger.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      } finally {
+        await finger.detach();
+      }
+    } else {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(start.x + 24, start.y, { steps: 3 });
+      await expect(carried).toBeVisible();
+      await expect(drawer).toHaveCSS("opacity", "1");
+      await page.mouse.up();
+      await expect(carried).toHaveCount(0);
+      await expect(rail).toHaveCount(0);
+      await page.mouse.move(start.x, start.y);
+      const nextPress = await page.evaluateHandle(() => ({
+        id: new Promise<number>((resolve) =>
+          globalThis.addEventListener("pointerdown", (event) => resolve(event.pointerId), {
+            once: true,
+          }),
+        ),
+      }));
+      await page.mouse.down();
+      const id = await nextPress.evaluate((press) => press.id);
+      await nextPress.dispose();
+      // WARNING: WebKit sends some captured touch moves to the element under the finger.
+      await page.getByTestId("canvas").dispatchEvent("pointermove", {
+        pointerId: id,
+        clientX: end.x,
+        clientY: end.y,
+        buttons: 1,
+      });
+      await expect(carried).toHaveCSS("left", end.x + "px");
+      const mouse = await page.context().newCDPSession(page);
+      try {
+        await mouse.send("Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          button: "left",
+          x: end.x,
+          y: end.y,
+          clickCount: 1,
+        });
+      } finally {
+        await mouse.detach();
+      }
+    }
+    await expect(drawer).toBeHidden();
+    await expect(rail).toHaveCount(1);
+    const bounds = (await rail.boundingBox())!;
+    expect(Math.abs(bounds.x + bounds.width / 2 - end.x)).toBeLessThan(3);
+    expect(Math.abs(bounds.y + bounds.height / 2 - end.y)).toBeLessThan(3);
   });
-  await page.goto(STANDALONE + "/dev/gizmos/?empty&lang=en");
-  const market = page.getByRole("dialog", { name: "Gizmo marketplace" });
-  const pickup = market.getByRole("button", { name: "Install and place Spotlight rail" });
-  async function lift() {
-    const bounds = (await pickup.boundingBox())!;
-    await page.mouse.move(bounds.x + 20, bounds.y + 20);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x + 38, bounds.y + 23, { steps: 3 });
-    await expect(page.locator("[data-gizmo-carry]")).toBeVisible();
-  }
-  await lift();
-  await page.mouse.up();
-  await expect(page.locator("[data-gizmo-carry]")).toHaveCount(0);
-  expect(manifestRequests).toHaveLength(0);
-  await lift();
-  await page.mouse.move(820, 420, { steps: 8 });
-  expect(manifestRequests).toHaveLength(0);
-  await page.mouse.up();
-  const rail = page.locator("[data-spotlight-rail]");
-  await expect(rail).toHaveCount(1);
-  const bounds = (await rail.boundingBox())!;
-  expect(Math.abs(bounds.x + bounds.width / 2 - 820)).toBeLessThan(3);
-  expect(Math.abs(bounds.y + bounds.height / 2 - 420)).toBeLessThan(3);
-  await page.getByRole("button", { name: "Gizmos", exact: true }).click();
-  await page.getByRole("button", { name: "Browse marketplace" }).click();
-  await market.getByRole("button", { name: "Place Spotlight rail", exact: true }).press("Enter");
-  await expect(rail).toHaveCount(2);
-  expect(manifestRequests).toHaveLength(1);
-});
+}
 
 test("practice installs a marketplace piece and brings its drawer button into view", async ({
   page,
@@ -426,20 +469,7 @@ test("requests survive the owner's absence, merge across players, and install on
       await joinAs(tab, name);
       const market = await openGallery(tab, "Gizmo marketplace");
       const listing = market.getByRole("article", { name: "Explosion button" });
-      if (tab === player) {
-        const canvas = tab.getByTestId("canvas").first();
-        const bounds = (await canvas.boundingBox())!;
-        await listing
-          .getByRole("button", { name: "Drop to request Explosion button" })
-          .dragTo(canvas, {
-            targetPosition: { x: bounds.width * 0.8, y: bounds.height * 0.45 },
-          });
-        await expect(tab.locator("[data-gizmo-actuator]")).toHaveCount(0);
-      } else {
-        await listing
-          .getByRole("button", { name: "Request Explosion button", exact: true })
-          .click();
-      }
+      await listing.getByRole("button", { name: "Request Explosion button" }).click();
       await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
     }
     await friend
@@ -450,9 +480,7 @@ test("requests survive the owner's absence, merge across players, and install on
     const market = await openGallery(player, "Gizmo marketplace");
     const listing = market.getByRole("article", { name: "Explosion button" });
     await expect(listing.getByText("Requested", { exact: true })).toBeVisible();
-    await expect(
-      listing.getByRole("button", { name: "Request Explosion button", exact: true }),
-    ).toHaveCount(0);
+    await expect(listing.getByRole("button", { name: "Request Explosion button" })).toHaveCount(0);
     await page.goto(board);
     const inbox = page.getByRole("dialog", { name: "Review Gizmo request" });
     await expect(inbox.getByRole("heading", { name: "Explosion button" })).toBeVisible();
@@ -468,7 +496,11 @@ test("requests survive the owner's absence, merge across players, and install on
     const explosion = drawer.getByRole("button", { name: "Explosion button" });
     await expect(explosion).toBeVisible();
     await expect(friend.getByRole("dialog", { name: "Gizmo gallery" })).toBeHidden();
-    await explosion.press("Enter");
+    const canvas = player.getByTestId("canvas").first();
+    const bounds = (await canvas.boundingBox())!;
+    await explosion.dragTo(canvas, {
+      targetPosition: { x: bounds.width * 0.72, y: bounds.height * 0.45 },
+    });
     await expect(drawer).toBeHidden();
     await expect(page.getByRole("button", { name: "Explosion button" })).toHaveCount(1);
     await page.reload();

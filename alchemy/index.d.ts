@@ -9,6 +9,8 @@ export type { Brand, Language } from "../client/settings.ts";
 
 type Shared = {
   brand?: Partial<Brand>;
+  /** Optional GitHub Actions dispatch key for the official Gizmo registry. */
+  gizmoSubmissionsToken?: Redacted.Redacted<string> | string;
   /** The name and description on the page, the home screen and the manifest. */
   description?: string;
   displayName?: string;

@@ -6,9 +6,9 @@ import type { GizmoDecision, GizmoRequest, InstalledGizmo } from "../../src/gizm
 import type { PassKeeper } from "./bootstrap";
 import type { DeckActions } from "./deck";
 
-import registry from "../../gizmos/registry.json";
 import { GizmoDrawer } from "./gizmo-drawer";
 import { changeGizmoRequest, installGizmo, roomGizmoRequests, roomGizmos } from "./gizmo-library";
+import { registry } from "./gizmo-registry";
 import { GizmoRequestDialog } from "./gizmo-request-dialog";
 import { useBoardUi } from "./ui";
 

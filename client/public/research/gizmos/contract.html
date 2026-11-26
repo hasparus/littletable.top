@@ -72,14 +72,11 @@
               <strong>Play.</strong> Before the first install, the Gizmos menu opens the
               marketplace. Installation opens the quiet white drawer already scrolled to the new
               piece. All participants can use an installed Gizmo. Drag, tap or keyboard-place a
-              native prop. Dropping a marketplace listing onto the board places an installed Gizmo
-              at the drop point. For a new listing, an owner starts installation and a participant
-              sends an install request. Any required source or live-update review happens before
-              activation. For an HTML entry, the artifact can choose to open inside the drawer
-              itself. For popovers, the proposed owner setting offers a board object or a floating
-              window. An extension with a background entry gets one background context per connected
-              participant per board, shared across its views. The tldraw sidebar carries the gallery
-              launcher.
+              native prop from the drawer. For an HTML entry, the artifact can choose to open inside
+              the drawer itself. For popovers, the proposed owner setting offers a board object or a
+              floating window. An extension with a background entry gets one background context per
+              connected participant per board, shared across its views. The tldraw sidebar carries
+              the gallery launcher.
             </li>
           </ol>
           <blockquote id="owlbear-install-warning">
@@ -134,6 +131,15 @@
             state under its package’s duplication policy. A duplicate deck must never acquire the
             source deck’s private draw pile. A disabled renderer leaves a selectable placeholder
             with the same geometry and attachments.
+          </p>
+          <h3 id="registry-review">Submitting a Gizmo by link</h3>
+          <p>
+            Choose <strong>This board</strong> to install the source as its owner or request it as a
+            participant. Choose <strong>Public marketplace</strong> to propose the source for
+            everyone. For GitHub packages, the public submission resolves the folder or manifest
+            link to a commit, then proposes a JSON listing in a pull request. A maintainer can
+            review the pinned source, compare an update to its listed revision and merge or close
+            the proposal. Resubmitting the same revision returns to its review.
           </p>
           <h3 id="html-frames">HTML inside the drawer</h3>
           <p>
