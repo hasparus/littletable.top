@@ -472,18 +472,19 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   roll(pass: Pass, request: RollRequest) {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
     const result = this.rollWithChat(pass, request);
     if ("refusal" in result) return result.refusal;
     return "error" in result ? result : result.roll;
   }
 
+  // WARNING: Callers admit the pass first; this does not check it again.
   private rollWithChat: (pass: Pass, request: RollRequest, inChat?: boolean) => RollCompletion = (
     pass,
     request,
     inChat = false,
   ) => {
-    const refusal = this.admit(pass);
-    if (refusal !== null) return { refusal };
     const expression = "expression" in request ? request.expression : undefined;
     const formula = expression === undefined ? null : parseExpression(expression);
     if (formula !== null && "error" in formula) return formula;
