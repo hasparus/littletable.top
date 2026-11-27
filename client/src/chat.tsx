@@ -20,7 +20,8 @@ const isChatMessage = (event: unknown): event is { message: ChatMessage; type: "
   (event as { type?: unknown }).type === "chat" &&
   typeof (event as { message?: { id?: unknown } }).message?.id === "number";
 
-export function useChat(keeper: PassKeeper, enabled: boolean) {
+export function useChat(keeper: PassKeeper) {
+  const enabled = !keeper.secret;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [load, setLoad] = useState<"failed" | "loading" | "ready">("loading");
   const [latestIncoming, setLatestIncoming] = useState(0);

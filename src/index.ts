@@ -149,6 +149,28 @@ async function summon(request: Request, room: DurableObjectStub<BoardRoom>, pass
   return refusal === null ? new Response(null, { status: 204 }) : answer(refusal);
 }
 
+async function chat(
+  request: Request,
+  room: DurableObjectStub<BoardRoom>,
+  pass: Pass,
+  limiter: Env["Limiter"],
+) {
+  if (request.method === "GET") return answer(await room.chatHistory(pass));
+  if (request.method !== "POST") return new Response(null, { status: 404 });
+  const address = limiter?.get(limiter.idFromName(await addressKey(request)));
+  if (address && !(await address.take("chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
+    return answer("too-fast");
+  }
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length")),
+    max: 4 * MAX_CHAT_LENGTH,
+  });
+  if (body === "too-large") return new Response(null, { status: 413 });
+  const text = new TextDecoder().decode(body).trim();
+  if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
+  return answerRoll(await room.sendChat(pass, text));
+}
+
 async function rooms(
   request: Request,
   env: Env,
@@ -212,24 +234,7 @@ async function rooms(
   if (pass === null) return new Response("Forbidden", { status: 403 });
   if (action === "summon") return summon(request, room, pass);
 
-  if (action === "chat") {
-    if (request.method === "GET") return answer(await room.chatHistory(pass));
-    if (request.method !== "POST") return new Response(null, { status: 404 });
-    if (env.Limiter !== undefined) {
-      const limiter = env.Limiter.get(env.Limiter.idFromName(await addressKey(request)));
-      if (!(await limiter.take("chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
-        return answer("too-fast");
-      }
-    }
-    const body = await readCapped(request.body, {
-      declared: Number(request.headers.get("Content-Length")),
-      max: 4 * MAX_CHAT_LENGTH,
-    });
-    if (body === "too-large") return new Response(null, { status: 413 });
-    const text = new TextDecoder().decode(body).trim();
-    if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
-    return answerRoll(await room.sendChat(pass, text));
-  }
+  if (action === "chat") return chat(request, room, pass, env.Limiter);
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
     const sessionId = url.searchParams.get("sessionId");

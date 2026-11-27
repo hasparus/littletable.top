@@ -108,7 +108,7 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
-  const chat = useChat(keeper, !keeper.secret);
+  const chat = useChat(keeper);
   const [editor, setEditor] = useState<Editor | null>(null);
   const { receiveSummon, summon } = useSummon(editor, active, keeper);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
