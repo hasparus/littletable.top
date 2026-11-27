@@ -9,6 +9,7 @@ import {
   open,
   pass,
   restartRoom,
+  roll,
   seat,
   until,
 } from "./support";
@@ -28,6 +29,12 @@ describe("resetting a hosted link", () => {
     expect(await call(`/rooms/${board}/rolls`, oldPass).then((client) => client.text())).toBe(
       "link-reset",
     );
+    expect(await roll(board, oldPass, [6]).then((client) => client.text())).toBe("link-reset");
+    const chatRoll = await call(`/rooms/${board}/chat`, oldPass, {
+      body: "/roll 1d6",
+      method: "POST",
+    });
+    expect(await chatRoll.text()).toBe("link-reset");
     expect((await call(`/rooms/${board}/rolls`, await pass({ board, link: 2 }))).status).toBe(200);
   });
 

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import type { Roll } from "./bootstrap";
@@ -16,11 +24,12 @@ import { DieShape } from "./die-shape";
 // WARNING: A throw that never reports back must still reveal its result.
 const GIVE_UP_MS = 12_000;
 const GAP = 8;
-const ROW_MIN_WIDTH = 120;
+const ROW_MIN_WIDTH = 160;
 const WIDE_BOARD_WIDTH = 1024;
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 const RESTING_AFTER_MS = 4000;
+const SHOWN_FOR_MS = 60_000;
 const ANIMATED_SIDES = new Set<number>(DIE_SIDES);
 
 export type DiceStageProps = {
@@ -71,7 +80,7 @@ function placeToast(height: number): Place {
   const zone = boxOf(".tlui-menu-zone") ?? new DOMRect();
   const button = boxOf("[data-testid='main-menu.button']") ?? zone;
   const publicControls = boxOf("[data-public-board-controls]");
-  const secretToggle = boxOf("[data-secret-layer-toggle]");
+  const sharing = boxOf("[data-board-sharing]");
   const viewportWidth = document.documentElement.clientWidth;
   const sideRight = Math.min(
     viewportWidth,
@@ -80,17 +89,13 @@ function placeToast(height: number): Place {
       .filter((box) => box.width > 0)
       .map((box) => box.left),
   );
-  const right = Math.min(
-    sideRight,
-    publicControls?.left ?? sideRight,
-    secretToggle?.left ?? sideRight,
-  );
+  const right = Math.min(sideRight, publicControls?.left ?? sideRight, sharing?.left ?? sideRight);
   const center = viewportWidth / 2;
   const centeredWidth = 2 * (Math.min(center - zone.right, right - center) - GAP);
   const centered = viewportWidth >= WIDE_BOARD_WIDTH && centeredWidth >= ROW_MIN_WIDTH;
   const besideWidth = right - zone.right - 2 * GAP;
   const beside = besideWidth >= ROW_MIN_WIDTH;
-  const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0, secretToggle?.bottom ?? 0);
+  const rowBottom = Math.max(zone.bottom, publicControls?.bottom ?? 0, sharing?.bottom ?? 0);
   const top = beside ? button.top + (button.height - height) / 2 : rowBottom + GAP;
   return {
     alignment: centered ? "center" : beside ? "beside" : "below",
@@ -199,7 +204,7 @@ function ResultToast({
     const resized = new ResizeObserver(measure);
     resized.observe(dice);
     for (const zone of document.querySelectorAll(
-      ".tlui-menu-zone, .tlui-layout__top__right, [data-public-board-controls], [data-secret-layer-toggle]",
+      ".tlui-menu-zone, .tlui-layout__top__right, [data-public-board-controls], [data-board-sharing]",
     )) {
       resized.observe(zone);
     }
@@ -227,6 +232,13 @@ function ResultToast({
       () => null,
     );
   };
+
+  const expire = useEffectEvent(close);
+  useEffect(() => {
+    if (!shown) return;
+    const timer = setTimeout(expire, SHOWN_FOR_MS);
+    return () => clearTimeout(timer);
+  }, [roll, shown]);
 
   return (
     <button
@@ -283,7 +295,7 @@ function ResultToast({
   );
 }
 
-/** Plays the received roll and calls onSettled when its result toast is dismissed. */
+/** Plays the received roll and calls onSettled when its result toast is dismissed or expires. */
 export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);

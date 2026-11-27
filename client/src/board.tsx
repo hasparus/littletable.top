@@ -48,6 +48,18 @@ type Mount = {
   licenseKey: string;
 };
 
+function useSharingWidth(row: HTMLElement | null) {
+  useLayoutEffect(() => {
+    const layout = row?.parentElement;
+    if (row === null || !layout) return;
+    const measure = new ResizeObserver(() =>
+      layout.style.setProperty("--board-sharing-width", `${row.offsetWidth}px`),
+    );
+    measure.observe(row);
+    return () => measure.disconnect();
+  }, [row]);
+}
+
 function ReadyBoard({
   copy,
   exit,
@@ -64,6 +76,9 @@ function ReadyBoard({
   const [secret, setSecret] = useState<PassKeeper>();
   const [privateEditor, setPrivateEditor] = useState<Editor | null>(null);
   const [layer, setLayer] = useState<Layer>("shared");
+  const [sharing, setSharing] = useState<HTMLDivElement | null>(null);
+  const [chatSlot, setChatSlot] = useState<HTMLDivElement | null>(null);
+  useSharingWidth(sharing);
   const editingSecret = layer === "overlay" || layer === "manage";
   const visibleSharedEditor = useValue(
     "visible shared page",
@@ -97,6 +112,7 @@ function ReadyBoard({
       <BoardCanvas
         active={!editingSecret}
         backdrop={layer === "overlay"}
+        chatSlot={chatSlot}
         waiting={editingSecret && privateEditor === null}
         copy={copy}
         exit={exit}
@@ -122,8 +138,7 @@ function ReadyBoard({
         />
       )}
       {landing === undefined && (
-        <div data-board-sharing>
-          <BoardShare copy={copy} editor={visibleSharedEditor} keeper={keeper} />
+        <div data-board-sharing ref={setSharing}>
           {canEnterSecret && (
             <button
               aria-busy={editingSecret && privateEditor === null}
@@ -149,6 +164,8 @@ function ReadyBoard({
               <Icon name="Incognito" />
             </button>
           )}
+          <div className="contents" ref={setChatSlot} />
+          <BoardShare copy={copy} editor={visibleSharedEditor} keeper={keeper} />
         </div>
       )}
       {layer === "full" && (

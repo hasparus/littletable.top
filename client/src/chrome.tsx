@@ -7,6 +7,7 @@ import {
   DefaultMainMenu,
   DefaultMainMenuContent,
   DefaultQuickActions,
+  DefaultStylePanel,
   DefaultToolbar,
   DrawToolbarItem,
   EllipseToolbarItem,
@@ -16,6 +17,7 @@ import {
   HighlightToolbarItem,
   LaserToolbarItem,
   LineToolbarItem,
+  MobileStylePanel,
   NoteToolbarItem,
   PORTRAIT_BREAKPOINT,
   RectangleToolbarItem,
@@ -28,6 +30,7 @@ import {
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
   type TLUiContextMenuProps,
+  type TLUiStylePanelProps,
   TriangleToolbarItem,
   UndoRedoGroup,
   useBreakpoint,
@@ -120,6 +123,16 @@ function BoardQuickActions() {
       <UndoRedoGroup />
       {selected && <TldrawUiMenuActionItem actionId="delete" />}
     </DefaultQuickActions>
+  );
+}
+
+// WARNING: tldraw's phone button renders this again with isMobile; without that branch it nests itself.
+function BoardStylePanel(props: TLUiStylePanelProps) {
+  if (props.isMobile) return <DefaultStylePanel {...props} />;
+  return (
+    <div data-board-style-toggle>
+      <MobileStylePanel />
+    </div>
   );
 }
 
@@ -241,6 +254,7 @@ export const components: TLComponents = {
   MainMenu: () => <BoardMainMenu />,
   QuickActions: BoardQuickActions,
   SharePanel: null,
+  StylePanel: BoardStylePanel,
   Toolbar: BoardToolbar,
   TopPanel: null,
 };

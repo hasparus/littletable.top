@@ -374,15 +374,24 @@ async function expectInMenuRow(page: Page): Promise<Box> {
   return box;
 }
 
-async function expectBesideMenu(page: Page): Promise<Box> {
-  const box = await expectInMenuRow(page);
-  const zone = await boxOf(menuZone(page));
-  expect(box.x).toBeGreaterThanOrEqual(zone.x + zone.width);
+async function expectClearOfTopRow(page: Page): Promise<Box> {
+  const controls = [menuZone(page), page.locator("[data-board-sharing]")];
+  await expect
+    .poll(async () => {
+      const box = await boxOf(toast(page));
+      for (const control of controls) {
+        if (overlap(box, await boxOf(control))) return false;
+      }
+      return true;
+    })
+    .toBe(true);
+  const box = await boxOf(toast(page));
+  expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   return box;
 }
 
-test("the toast sits beside tldraw's menu on a phone, which stays put, on one line", async ({
+test("the toast keeps clear of the top row on a phone, whose menu stays put, on one line", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 740, width: 360 });
@@ -393,7 +402,7 @@ test("the toast sits beside tldraw's menu on a phone, which stays put, on one li
   await roll(page, [20, 20, 20, 20, 6, 6, 6, 6, 8, 8, 8, 8, 10, 10, 12, 12, 4, 4, 100, 100]);
   await expect(toast(page)).toBeVisible();
 
-  const box = await expectBesideMenu(page);
+  const box = await expectClearOfTopRow(page);
   expect(box.height).toBeLessThan(40);
   expect([await boxOf(menu), await boxOf(pageMenu)]).toEqual(atRest);
   const rows = await toast(page)
@@ -461,6 +470,22 @@ test("a new roll takes the tray over from the one before", async ({ browser, pag
   await expect(diceCanvas(page)).toHaveCount(1);
   await expectNoCspViolations(page);
   await guest.context().close();
+});
+
+test("a toast and its dice leave on their own a minute after the result shows", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await startBoard(page);
+  await roll(page, [6, 6]);
+  await expect(toast(page)).toBeVisible();
+  await expect(diceCanvas(page)).toBeVisible();
+
+  await page.clock.fastForward(55_000);
+  await expect(toast(page)).toBeVisible();
+  await page.clock.fastForward(6000);
+  await expect(toast(page)).toHaveCount(0);
+  await expect(tray(page)).toHaveCount(0);
 });
 
 test("with reduced motion the toast shows at once and no 3D code is fetched", async ({
@@ -590,7 +615,7 @@ test("the tray comes back after a lost context and follows a resize", async ({ p
   await expectNoCspViolations(page);
 });
 
-test("the toast centres on desktop and fits beside the page menu on phones", async ({
+test("the toast centres on desktop and keeps clear of the top row on phones", async ({
   browser,
   page,
 }) => {
@@ -612,7 +637,7 @@ test("the toast centres on desktop and fits beside the page menu on phones", asy
     const atRest = await boxOf(menuZone(screen));
     await roll(screen, [20, 6]);
     await expect(toast(screen)).toBeVisible();
-    const box = await (name === "desktop" ? expectInMenuRow(screen) : expectBesideMenu(screen));
+    const box = await (name === "desktop" ? expectInMenuRow(screen) : expectClearOfTopRow(screen));
     if (name === "desktop") {
       expect(box.x + box.width / 2).toBeCloseTo(screen.viewportSize()!.width / 2, 0);
     }
@@ -651,7 +676,7 @@ test("the toast gives its row to the dice before the roller's name", async ({ br
       await closeSheet(screen, "Dice");
       await roll(screen, pool);
       await expect(toast(screen).getByRole("img")).toHaveCount(pool.length);
-      const box = await expectBesideMenu(screen);
+      const box = await expectClearOfTopRow(screen);
       const dies = await toast(screen)
         .getByRole("img")
         .evaluateAll((all) =>
