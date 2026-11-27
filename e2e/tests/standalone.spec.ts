@@ -240,8 +240,7 @@ test("the board menu and right-hand controls share guides on public and private 
     longName,
   );
   const pageMenu = (await page.getByRole("button", { name: longName }).boundingBox())!;
-  const share = (await page.getByRole("button", { exact: true, name: "Share" }).boundingBox())!;
-  expect(pageMenu.x + pageMenu.width).toBeLessThanOrEqual(share.x);
+  expect(pageMenu.x + pageMenu.width).toBeLessThanOrEqual((await toggle.boundingBox())!.x);
 
   const guest = await phone(browser, page.url());
   await joinAs(guest, "Layout guest");
@@ -260,12 +259,16 @@ test("the board menu and right-hand controls share guides on public and private 
   const desktopChat = (await page
     .getByRole("button", { exact: true, name: "Chat" })
     .boundingBox())!;
+  const desktopShare = (await page
+    .getByRole("button", { exact: true, name: "Share" })
+    .boundingBox())!;
   const desktopStyles = (await styles.boundingBox())!;
   expect(desktopMenu.y).toBe(desktopToggle.y);
-  expect(desktopChat.y).toBe(desktopToggle.y);
+  for (const control of [desktopChat, desktopShare]) expect(control.y).toBe(desktopToggle.y);
   expect(desktopChat.x).toBeGreaterThan(desktopToggle.x + desktopToggle.width);
+  expect(desktopShare.x).toBeGreaterThan(desktopChat.x + desktopChat.width);
   expect(desktopStyles.y).toBeGreaterThan(desktopToggle.y + desktopToggle.height);
-  expect(desktopStyles.x + desktopStyles.width).toBeCloseTo(desktopChat.x + desktopChat.width, 0);
+  expect(desktopStyles.x + desktopStyles.width).toBeCloseTo(desktopShare.x + desktopShare.width, 0);
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");

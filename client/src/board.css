@@ -297,7 +297,8 @@
 }
 
 [data-public-board-controls] > :is(a, button),
-[data-board-sharing] > button {
+[data-board-sharing] > button,
+[data-board-chat] {
   display: grid;
   min-height: var(--board-top-control-size);
   align-items: center;
@@ -351,12 +352,14 @@
 
 [data-public-board-controls] > :is(a, button):hover,
 [data-board-sharing] > button:hover,
+[data-board-chat]:hover,
 [data-board-chat][aria-expanded="true"] {
   background: var(--color-bg-tertiary);
 }
 
 [data-public-board-controls] > :is(a, button):focus-visible,
-[data-board-sharing] > button:focus-visible {
+[data-board-sharing] > button:focus-visible,
+[data-board-chat]:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
@@ -369,7 +372,8 @@
   inset: var(--board-top) var(--board-right) auto auto;
 }
 
-[data-board-sharing] > button {
+[data-board-sharing] > button,
+[data-board-chat] {
   place-items: center;
   cursor: pointer;
 }

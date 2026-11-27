@@ -79,7 +79,7 @@ function warmUpDice(): () => void {
 export function BoardCanvas({
   active,
   backdrop = false,
-  controls = null,
+  chatSlot = null,
   overlay = false,
   waiting = false,
   copy,
@@ -92,8 +92,8 @@ export function BoardCanvas({
 }: {
   active: boolean;
   backdrop?: boolean;
-  /** The board's own top-right row, which takes the chat button. */
-  controls?: HTMLElement | null;
+  /** Where the board's top-right row takes the chat button. */
+  chatSlot?: HTMLElement | null;
   overlay?: boolean;
   waiting?: boolean;
   copy: Copy;
@@ -300,7 +300,7 @@ export function BoardCanvas({
           </div>
         )}
         {active && <BoardStatus offline={offline} />}
-        {active && controls !== null && createPortal(chatButton, controls)}
+        {active && chatSlot !== null && createPortal(chatButton, chatSlot)}
         {active && !keeper.secret && <ChatSheet chat={chat} shown={panel === "chat"} />}
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
