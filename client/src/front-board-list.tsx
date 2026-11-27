@@ -1,14 +1,13 @@
-import { type ReactNode, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
 
-import { thumbnailUrl } from "../../src/board-thumbnail";
 import { BoardPeople, type BoardRoleChange } from "./board-people";
 import { fill } from "./copy";
+import { BoardCollection, BoardRow, EmptyList, LIST } from "./front-list";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 export type Owned = {
   createdAt: number;
@@ -45,34 +44,12 @@ export type Editing = { id: string; kind: (typeof ACTIONS)[number] } | null;
 
 type Post = (path: string, body: BoardRoleChange) => Promise<Response>;
 
-const ROW =
-  "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
-const BOARD_TITLE = "col-start-2 row-start-1 min-w-0 self-end font-semibold @3xl:self-center";
-const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 after:absolute after:inset-0 after:rounded-sm hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-border-focus`;
-const BOARD_DATE =
-  "col-start-2 row-start-2 self-start text-sm text-foreground-muted tabular-nums @3xl:col-start-3 @3xl:row-start-1 @3xl:self-center";
-
-function BoardThumbnail({ board }: { board: Owned | Visited }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="col-start-1 row-span-2 row-start-1 aspect-video w-18 overflow-hidden rounded-md border border-border bg-bg-secondary sm:w-24 @3xl:row-span-1 @3xl:w-28"
-    >
-      {board.hasThumbnail === true && board.shareCode !== null && (
-        <img
-          alt=""
-          className="size-full bg-(--light-board-background) object-cover"
-          decoding="async"
-          loading="lazy"
-          onError={(event) => {
-            event.currentTarget.hidden = true;
-          }}
-          src={thumbnailUrl(board.id)}
-        />
-      )}
-    </span>
-  );
-}
+const BOARD_LINK =
+  "rounded-sm underline-offset-4 after:absolute after:inset-0 after:rounded-sm hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-border-focus";
+const thumbnailOf = (board: { hasThumbnail?: boolean; id: string; shareCode: string | null }) => ({
+  id: board.id,
+  thumbnail: board.hasThumbnail === true && board.shareCode !== null,
+});
 
 function BoardDate({
   date,
@@ -85,7 +62,7 @@ function BoardDate({
 }) {
   const timestamp = new Date(date * 1000);
   return (
-    <time className={BOARD_DATE} dateTime={timestamp.toISOString()}>
+    <time dateTime={timestamp.toISOString()}>
       {fill(label, { date: format.format(timestamp) })}
     </time>
   );
@@ -127,39 +104,9 @@ function OwnedRow({
 
   return (
     <li>
-      <div className={`${ROW} min-h-15 py-2`}>
-        <BoardThumbnail board={board} />
-        {mode === "rename" ? (
-          <form
-            className={BOARD_TITLE}
-            id={`rename-${board.id}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onAction(board, "rename", title);
-            }}
-          >
-            <input
-              aria-label={copy.boardName}
-              autoFocus
-              className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
-              maxLength={80}
-              onChange={(event) => setTitle(event.target.value)}
-              onFocus={(event) => event.currentTarget.select()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setEditing(null);
-              }}
-              required
-              value={title}
-            />
-          </form>
-        ) : (
-          <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-            {board.title}
-          </a>
-        )}
-        <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
-        <div className="relative col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
-          {mode === "rename" ? (
+      <BoardRow
+        action={
+          mode === "rename" ? (
             <>
               <button
                 className="min-h-11 px-2 text-sm font-semibold"
@@ -205,9 +152,40 @@ function OwnedRow({
                 ))}
               </FrontMenu>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+        board={thumbnailOf(board)}
+        detail={<BoardDate date={board.createdAt} format={format} label={copy.createdOn} />}
+        title={
+          mode === "rename" ? (
+            <form
+              id={`rename-${board.id}`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onAction(board, "rename", title);
+              }}
+            >
+              <input
+                aria-label={copy.boardName}
+                autoFocus
+                className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
+                maxLength={80}
+                onChange={(event) => setTitle(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setEditing(null);
+                }}
+                required
+                value={title}
+              />
+            </form>
+          ) : (
+            <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+              {board.title}
+            </a>
+          )
+        }
+      />
       <span className="sr-only" role="status">
         {copiedCode === board.shareCode && copy.linkCopied}
       </span>
@@ -264,52 +242,6 @@ function subscribeToPhone(listener: () => void) {
   return () => phoneViewport.removeEventListener("change", listener);
 }
 
-function BoardCollection({
-  children,
-  className = "",
-  collapsible,
-  label,
-  showHeading = true,
-}: {
-  children: ReactNode;
-  className?: string;
-  collapsible: boolean;
-  label: string;
-  showHeading?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const open = !collapsible || expanded;
-  return (
-    <Collapsible asChild onOpenChange={setExpanded} open={open}>
-      <section className={`@container min-w-0 ${className}`}>
-        {collapsible ? (
-          <h2 className="font-semibold">
-            <CollapsibleTrigger className="group flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-border-focus">
-              {label}
-              <Icon
-                className="size-4 shrink-0 motion-safe:transition-transform group-data-[state=open]:rotate-180"
-                name="ChevronDown"
-              />
-            </CollapsibleTrigger>
-          </h2>
-        ) : (
-          <h2 className={showHeading ? "mb-2 font-semibold" : "sr-only"}>{label}</h2>
-        )}
-        <CollapsibleContent
-          className={
-            collapsible
-              ? "motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down"
-              : undefined
-          }
-          inert={!open}
-        >
-          {children}
-        </CollapsibleContent>
-      </section>
-    </Collapsible>
-  );
-}
-
 export function BoardList({
   copy,
   editing,
@@ -338,24 +270,25 @@ export function BoardList({
   const collapsible = phone && lists.owned.length > 2 && lists.visited.length > 2;
   const joined = hasVisited ? (
     <BoardCollection collapsible={collapsible} key="joined" label={copy.visited}>
-      <ul className="divide-y divide-border border-t border-border">
+      <ul className={LIST}>
         {lists.visited.map((board) => (
-          <li className={`${ROW} min-h-15 py-2`} key={board.id}>
-            <BoardThumbnail board={board} />
+          <li key={board.id}>
             {board.shareCode === null ? (
-              <>
-                <span className="col-start-2 row-start-1 self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
-                  {board.title}
-                </span>
-                <span className={BOARD_DATE}>{copy.linkWasReset}</span>
-              </>
+              <BoardRow
+                board={thumbnailOf(board)}
+                detail={copy.linkWasReset}
+                title={<span className="font-normal text-foreground-secondary">{board.title}</span>}
+              />
             ) : (
-              <>
-                <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-                  {board.title}
-                </a>
-                <BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />
-              </>
+              <BoardRow
+                board={thumbnailOf(board)}
+                detail={<BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />}
+                title={
+                  <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+                    {board.title}
+                  </a>
+                }
+              />
             )}
           </li>
         ))}
@@ -375,9 +308,9 @@ export function BoardList({
       showHeading={phone || hasVisited}
     >
       {lists.owned.length === 0 && pendingDeletions.length === 0 ? (
-        <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
+        <EmptyList>{copy.noBoardsYet}</EmptyList>
       ) : (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul className={LIST}>
           {pendingDeletions.map((board) => (
             <li className="flex flex-wrap items-center justify-between gap-x-3 py-2" key={board.id}>
               <div className="min-w-0 wrap-anywhere">

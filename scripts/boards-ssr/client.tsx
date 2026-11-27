@@ -1,9 +1,10 @@
 import { createRoot, hydrateRoot } from "react-dom/client";
 
 import "../../client/src/app.css";
+import { loadBoards } from "../../client/src/front-page";
 import { App } from "./app";
 
 const root = document.querySelector<HTMLElement>("[data-board-root]")!;
 const state = document.querySelector("#initial-page");
 if (state) hydrateRoot(root, <App page={JSON.parse(state.textContent!)} />);
-else createRoot(root).render(<App />);
+else createRoot(root).render(<App page={await loadBoards()} />);

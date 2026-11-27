@@ -150,7 +150,11 @@ test("a board thumbnail warms the shared editor and opens its board", async ({ p
   await page.goto(`${STANDALONE}/boards`);
 
   const firstBoard = page.getByRole("link", { name: "Created 0", exact: true });
-  const thumbnail = firstBoard.locator("..").locator("span[aria-hidden=true]").first();
+  const thumbnail = page
+    .getByRole("listitem")
+    .filter({ has: firstBoard })
+    .locator("span[aria-hidden=true]")
+    .first();
   const box = await thumbnail.boundingBox();
   expect(box).not.toBeNull();
   const x = box!.x + box!.width / 2;
@@ -732,12 +736,16 @@ test("an owner can rename a board from its secret layer", async ({ browser, page
   }
 });
 
-test("a signed-in owner saves and revokes an assistant grant in the browser", async ({ page }) => {
+test("a signed-in owner grants and revokes an assistant's access by choosing a level", async ({
+  page,
+}) => {
+  await collectCspViolations(page);
   await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
-  await page.getByLabel("Name").fill("Assistant Test Owner");
+  const owner = `Assistant owner ${crypto.randomUUID().slice(0, 8)}`;
+  await page.getByLabel("Name").fill(owner);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByLabel("Signed in as Assistant Test Owner", { exact: true })).toBeVisible();
+  await expect(page.getByLabel(`Signed in as ${owner}`, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_BOARD);
 
@@ -755,21 +763,95 @@ test("a signed-in owner saves and revokes an assistant grant in the browser", as
     `INSERT OR IGNORE INTO assistant_clients (account_id, client_id) VALUES ('${accountId}', 'e2e-assistant')`,
   ]);
 
-  const settings = `${STANDALONE}/assistants`;
-  await page.goto(settings);
-  const access = page.getByRole("combobox", { name: /^Board /u });
-  const save = page.getByRole("button", { name: "Save" });
-  await expect(access).toHaveValue("off");
-  for (const value of ["write", "off"]) {
-    await access.selectOption(value);
-    const posted = page.waitForResponse(
-      (response) => response.url() === settings && response.request().method() === "POST",
-    );
-    await save.click();
-    const response = await posted;
-    expect(response.status()).toBe(303);
-    await page.reload();
-    await expect(access).toHaveValue(value);
-    if (value === "write") await reviewShot(page, "assistant-grant-edit");
-  }
+  await page.goto(`${STANDALONE}/assistants?lang=en`);
+  await expect(page).toHaveTitle(/^Assistants · /u);
+  await expect(page.getByRole("heading", { level: 1, name: "Assistants" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Client 1" })).toBeVisible();
+  const access = page.getByRole("radiogroup", { name: /^Access for Board /u });
+  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+
+  const api = `${STANDALONE}/api/assistants`;
+  const held = Promise.withResolvers<boolean>();
+  await page.route(api, async (route) => {
+    await held.promise;
+    await route.continue();
+  });
+  const posted = page.waitForResponse(
+    (response) => response.url() === api && response.request().method() === "POST",
+  );
+  await access.getByRole("radio", { name: "Edit" }).check();
+  await expect(access).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByRole("status")).toHaveText("Saving…");
+  held.resolve(true);
+  const saved = await posted;
+  expect(saved.status()).toBe(204);
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await expect(access).toHaveAttribute("aria-busy", "false");
+  await page.unroute(api);
+  await reviewShot(page, "assistant-grant-edit");
+  await page.reload();
+  await expect(access.getByRole("radio", { name: "Edit" })).toBeChecked();
+
+  const sent: string[] = [];
+  const arrived = Promise.withResolvers<boolean>();
+  const first = Promise.withResolvers<boolean>();
+  await page.route(api, async (route) => {
+    sent.push(route.request().postData() ?? "");
+    if (sent.length === 1) {
+      arrived.resolve(true);
+      await first.promise;
+    }
+    await route.continue();
+  });
+  await access.getByRole("radio", { name: "Read" }).check();
+  await arrived.promise;
+  await access.getByRole("radio", { name: "Off" }).check();
+  first.resolve(true);
+  const row = page.getByRole("listitem").filter({ has: access });
+  await expect(row.getByText(/Saved\./u)).toHaveCount(1);
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  expect(sent).toEqual([
+    expect.stringContaining('"access":"read"'),
+    expect.stringContaining('"access":"off"'),
+  ]);
+  await page.unroute(api);
+  await page.reload();
+  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+
+  await page.route(api, (route) => route.fulfill({ json: { error: "csrf" }, status: 403 }));
+  await access.getByRole("radio", { name: "Read" }).check();
+  await expect(page.getByRole("alert")).toHaveText("That did not work. Try again.");
+  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+  await page.unroute(api);
+  await page.reload();
+  const off = access.getByRole("radio", { name: "Off" });
+  await expect(off).toBeChecked();
+
+  await expect(off).toBeEnabled();
+  await off.focus();
+  const leaving = page.waitForRequest(
+    (request) => request.url() === api && request.method() === "POST",
+  );
+  await page.keyboard.press("ArrowRight");
+  await expect(access.getByRole("radio", { name: "Read" })).toBeChecked();
+  await page.getByRole("link", { name: "Your boards" }).click();
+  const kept = await leaving;
+  expect(kept.postData()).toContain('"access":"read"');
+  await kept.response();
+  await expect(page).toHaveURL(`${STANDALONE}/boards`);
+  await page.goto(`${STANDALONE}/assistants?lang=en`);
+  await expect(access.getByRole("radio", { name: "Read" })).toBeChecked();
+
+  await page.setViewportSize({ height: 740, width: 360 });
+  await page.goto(`${STANDALONE}/assistants?lang=pl`);
+  await expect(page.getByRole("heading", { level: 1, name: "Asystenci" })).toBeVisible();
+  const polish = page.getByRole("radiogroup", { name: /^Dostęp do tablicy „/u });
+  await expect(polish.getByRole("radio", { name: "Odczyt" })).toBeChecked();
+  await expect(polish.getByRole("radio", { name: "Brak" })).toBeEnabled();
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width).toBeLessThanOrEqual(360);
+  await reviewShot(page, "assistant-grants-phone");
+  await expectNoCspViolations(page);
+  await page.getByRole("link", { name: "Twoje tablice" }).click();
+  await expect(page).toHaveURL(`${STANDALONE}/boards`);
 });

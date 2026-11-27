@@ -1,6 +1,5 @@
+import type { AssistantAccess, AssistantBoard } from "../../client/src/front-page";
 import type { BoardGrant } from "../room-contract";
-
-export type AssistantAccess = "off" | "read" | "write";
 
 type AccessRow = {
   access: AssistantAccess;
@@ -39,14 +38,34 @@ export class AssistantGrants {
 
   async boards(account: string, client: string) {
     const { results } = await this.db
-      .prepare(`SELECT b.id AS board, b.title,
-      COALESCE(g.access, 'off') AS access, COALESCE(g.revision, 0) AS revision,
+      .prepare(`SELECT b.id, b.title, b.has_thumbnail,
+      COALESCE(g.access, 'off') AS access,
       CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'manager' END AS role
       FROM boards b ${VISIT} LEFT JOIN assistant_grants g ON ${GRANT}
       WHERE b.deployment = ?3 AND ${ELIGIBLE} ORDER BY b.title, b.id`)
       .bind(account, client, this.deployment)
-      .all<AccessRow>();
-    return results;
+      .all<{
+        access: AssistantAccess;
+        has_thumbnail: number;
+        id: string;
+        role: AccessRow["role"];
+        title: string;
+      }>();
+    return results.map(
+      (row) =>
+        ({
+          access: row.access,
+          hasThumbnail: row.has_thumbnail === 1,
+          id: row.id,
+          role: row.role,
+          title: row.title,
+        }) satisfies AssistantBoard,
+    );
+  }
+
+  async overview(account: string) {
+    const clients = await this.clients(account);
+    return Promise.all(clients.map(async (id) => ({ boards: await this.boards(account, id), id })));
   }
 
   async grants(account: string, client: string) {

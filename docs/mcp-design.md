@@ -890,7 +890,9 @@ Assistant client        MCP Worker (mcp.<domain>)          WorkOS AuthKit       
    Person, in a browser, signed in to the tabletop:             |                      |
    |   GET /assistants  -> the clients that hold a token for this account (seen by the MCP
    |   Worker, recorded in D1), and for each the boards where the account is owner or manager,
-   |   each off / read / edit.  POST with CSRF, as the other owner actions.            |
+   |   each off / read / edit. Choosing a level saves it at once: POST /api/assistants  |
+   |   {client, board, access}, same-origin JSON with the CSRF header, as the other     |
+   |   owner actions; one request at a time, and only the latest waiting choice is sent.|
    |                           |                                |                      |
    | POST /mcp tools/call      |                                |                      |
    |-------------------------->| grants for (sub, client) -> board grant {board, access,

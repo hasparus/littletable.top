@@ -5,6 +5,7 @@ import type { ClientSettings, Language } from "../settings";
 import { type Door, knock } from "./bootstrap";
 import { COPY, fill } from "./copy";
 import { FRONT_COPY, LANDING_COPY } from "./front-copy";
+import { frontView } from "./front-page";
 import { landingPreview } from "./landing-preview";
 
 declare const __TABLETOP__: ClientSettings;
@@ -71,10 +72,16 @@ function warmBoardLinks() {
 }
 
 async function mount(): Promise<void> {
-  if (settings.hosted === null && location.pathname === "/boards") {
-    warmBoardLinks();
+  const view = frontView(location.pathname);
+  if (settings.hosted === null && view !== null) {
+    if (view === "boards") warmBoardLinks();
     const { mountFront } = await import("./mount-front");
-    mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
+    await mountFront(root, {
+      copy: FRONT_COPY[language],
+      locale: language,
+      name: settings.name,
+      view,
+    });
     return;
   }
   const landing = isPublic ? { copy: LANDING_COPY } : undefined;
