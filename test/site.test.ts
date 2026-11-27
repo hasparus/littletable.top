@@ -161,6 +161,10 @@ describe("standalone board list HTML", () => {
     const guest = await (await new Browser().fetch("/boards")).text();
     expect(guest).toContain('href="/auth/sign-in?return=/boards"');
     expect(guest).not.toContain(board.shareCode);
+    const english = (browser: Browser) =>
+      browser.fetch("/boards?lang=en").then((page) => page.text());
+    expect(await english(owner)).toContain("<title>Your boards · ");
+    expect(await english(new Browser())).not.toContain("Your boards ·");
   });
 });
 

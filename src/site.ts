@@ -154,10 +154,12 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
 
 const FRONT_PAGES = {
   assistants: {
-    load: async (own, request) => ({
-      initialPage: await own.assistantsPage(request),
-      view: "assistants",
-    }),
+    load: async (own, request) => {
+      const initialPage = await own.assistantsPage(request);
+      if (initialPage === "signed-out") return initialPage;
+      const page: FrontPage = { initialPage, view: "assistants" };
+      return page;
+    },
     signIn: ASSISTANTS_SIGN_IN,
   },
   boards: {
@@ -171,7 +173,7 @@ const FRONT_PAGES = {
 } satisfies Record<
   FrontView,
   {
-    load: (own: Standalone, request: Request) => Promise<FrontPage>;
+    load: (own: Standalone, request: Request) => Promise<FrontPage | "signed-out">;
     signIn: string | null;
   }
 >;
@@ -185,13 +187,15 @@ export async function serveFront(
   view: FrontView,
 ) {
   const { load, signIn } = FRONT_PAGES[view];
-  if (signIn !== null && !(await own.signedIn(request))) {
+  const data = request.method === "HEAD" ? null : await load(own, request);
+  const signedOut =
+    data === null ? signIn !== null && !(await own.signedIn(request)) : data === "signed-out";
+  if (signedOut && signIn !== null) {
     return harden(Response.redirect(new URL(signIn, request.url), 302), request, config);
   }
   const page = await shell(request, assets, config);
   page.headers.set("Cache-Control", "private, no-store");
-  if (!page.ok || page.body === null || request.method === "HEAD") return page;
-  const data = await load(own, request);
+  if (!page.ok || page.body === null || data === null || data === "signed-out") return page;
   const url = new URL(request.url);
   const requested = [
     url.searchParams.get("lang"),
@@ -215,6 +219,7 @@ export async function serveFront(
     })
     .on("head title", {
       element(title) {
+        if (data.initialPage === "signed-out") return;
         const copy = FRONT_COPY[locale ?? "en"];
         title.setInnerContent(`${copy[FRONT_TITLES[view]]} · ${name}`);
       },

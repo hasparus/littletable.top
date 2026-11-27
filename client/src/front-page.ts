@@ -5,9 +5,12 @@ import type { AssistantsPage } from "./front-assistants";
 export const FRONT_VIEWS = { "/assistants": "assistants", "/boards": "boards" } as const;
 export type FrontView = (typeof FRONT_VIEWS)[keyof typeof FRONT_VIEWS];
 
+const isFrontPath = (pathname: string): pathname is keyof typeof FRONT_VIEWS =>
+  Object.hasOwn(FRONT_VIEWS, pathname);
+
 /** Which front page serves `pathname`, if any. */
 export function frontView(pathname: string) {
-  return pathname === "/assistants" || pathname === "/boards" ? FRONT_VIEWS[pathname] : null;
+  return isFrontPath(pathname) ? FRONT_VIEWS[pathname] : null;
 }
 
 /** A front page as the client knows it: its data, or why there is none. */
@@ -16,7 +19,7 @@ export type Loaded<Page> = "failed" | "signed-out" | Page;
 /** What the Worker renders and serializes for hydration, per view. */
 export type FrontPage =
   | { failed: boolean; initialPage: Loaded<BoardPage>; view: "boards" }
-  | { initialPage: Loaded<AssistantsPage>; view: "assistants" };
+  | { initialPage: "failed" | AssistantsPage; view: "assistants" };
 
 export const ASSISTANTS_SIGN_IN = "/auth/sign-in?return=/assistants";
 
@@ -46,14 +49,17 @@ async function load<Page>(path: string) {
 
 /** Loads a front page's data when the Worker did not render it, as under the Vite dev server. */
 export async function loadFront(view: FrontView) {
-  const page: FrontPage =
-    view === "assistants"
-      ? { initialPage: await load<AssistantsPage>("/api/assistants"), view }
-      : {
-          failed: new URL(location.href).searchParams.get("sign-in") === "failed",
-          initialPage: await load<BoardPage>("/api/boards"),
-          view,
-        };
+  if (view === "assistants") {
+    const initialPage = await load<AssistantsPage>("/api/assistants");
+    if (initialPage === "signed-out") return initialPage;
+    const page: FrontPage = { initialPage, view };
+    return page;
+  }
+  const page: FrontPage = {
+    failed: new URL(location.href).searchParams.get("sign-in") === "failed",
+    initialPage: await load<BoardPage>("/api/boards"),
+    view,
+  };
   return page;
 }
 

@@ -16,7 +16,7 @@ export async function mountFront(
   const parsed = state ? (JSON.parse(state.textContent!) as FrontState) : undefined;
   const initial = parsed?.page.view === view ? parsed : undefined;
   const page = initial?.page ?? (await loadFront(view));
-  if (page.view === "assistants" && page.initialPage === "signed-out") {
+  if (page === "signed-out") {
     location.assign(ASSISTANTS_SIGN_IN);
     return;
   }

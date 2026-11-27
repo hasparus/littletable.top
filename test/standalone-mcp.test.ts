@@ -350,6 +350,9 @@ describe("the assistants page", () => {
     expect(html).toContain("Klient 2");
     expect(html).toContain("&lt;map&gt;");
     expect(html).not.toContain("<map>");
+    const radios = html.match(/<input[^>]*type="radio"[^>]*>/gu) ?? [];
+    expect(radios).toHaveLength(6);
+    for (const radio of radios) expect(radio).toContain('disabled=""');
     const page = await (await owner.fetch("/api/assistants", {}, boardEnv)).json();
     expect(page).toMatchObject({
       clients: [

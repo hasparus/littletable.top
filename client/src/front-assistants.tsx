@@ -1,4 +1,4 @@
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { FrontCopy } from "./front-copy";
 
@@ -13,12 +13,7 @@ import {
   useApi,
 } from "./front-layout";
 import { BoardCollection, BoardRow, EmptyList, LIST } from "./front-list";
-import {
-  ASSISTANTS_SIGN_IN,
-  type AssistantAccess,
-  type AssistantBoard,
-  type Loaded,
-} from "./front-page";
+import { ASSISTANTS_SIGN_IN, type AssistantAccess, type AssistantBoard } from "./front-page";
 import { latestWins } from "./latest-wins";
 
 export type AssistantsPage = {
@@ -42,23 +37,27 @@ const useHydrated = () =>
     () => false,
   );
 
+type Queue = ReturnType<typeof latestWins<AssistantAccess>>;
+
 function useSavedAccess({
   announce,
   board,
   client,
   copy,
   post,
+  queues,
 }: {
   announce: (message: string) => void;
   board: AssistantBoard;
   client: string;
   copy: FrontCopy;
   post: Post;
+  queues: Set<Queue>;
 }) {
   const [chosen, setChosen] = useState(board.access);
   const [saving, setSaving] = useState<Saving>("idle");
-  const pause = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const queue = useRef<Queue | null>(null);
 
   const show = (state: Saving) => {
     setSaving(state);
@@ -72,32 +71,45 @@ function useSavedAccess({
     if (response?.status === 401) location.assign(ASSISTANTS_SIGN_IN);
     return response?.ok === true;
   };
-  const queue = useRef<ReturnType<typeof latestWins<AssistantAccess>> | null>(null);
-  const commit = (access: AssistantAccess) => {
-    if (queue.current === null) queue.current = latestWins(board.access, save);
-    void queue.current.choose(access)?.then(({ ok, saved }) => {
-      if (pause.current !== undefined) return;
-      setChosen(saved);
-      show(ok ? "saved" : "failed");
-      if (ok) hide.current = setTimeout(() => setSaving("idle"), SAVED_SHOWN_MS);
-    });
+  const settle = ({ ok, saved }: { ok: boolean; saved: AssistantAccess }) => {
+    setChosen(saved);
+    show(ok ? "saved" : "failed");
+    if (ok) hide.current = setTimeout(() => setSaving("idle"), SAVED_SHOWN_MS);
   };
   const choose = (access: AssistantAccess, byKeyboard: boolean) => {
-    clearTimeout(pause.current);
     clearTimeout(hide.current);
-    pause.current = undefined;
+    if (queue.current === null) {
+      queue.current = latestWins({ initial: board.access, save, settle });
+      queues.add(queue.current);
+    }
     setChosen(access);
     show("saving");
-    if (!byKeyboard) {
-      commit(access);
-      return;
-    }
-    pause.current = setTimeout(() => {
-      pause.current = undefined;
-      commit(access);
-    }, KEYBOARD_PAUSE_MS);
+    queue.current.choose(access, byKeyboard ? KEYBOARD_PAUSE_MS : 0);
   };
   return { choose, chosen, saving };
+}
+
+function useSaveOnLeave(queues: Set<Queue>) {
+  useEffect(() => {
+    const flush = () => {
+      for (const queue of queues) queue.flush();
+    };
+    const hidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const leaving = (event: BeforeUnloadEvent) => {
+      flush();
+      if ([...queues].some((queue) => queue.waiting())) event.preventDefault();
+    };
+    addEventListener("pagehide", flush);
+    addEventListener("beforeunload", leaving);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      removeEventListener("pagehide", flush);
+      removeEventListener("beforeunload", leaving);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [queues]);
 }
 
 function AccessRow({
@@ -106,17 +118,26 @@ function AccessRow({
   client,
   copy,
   post,
+  queues,
 }: {
   announce: (message: string) => void;
   board: AssistantBoard;
   client: string;
   copy: FrontCopy;
   post: Post;
+  queues: Set<Queue>;
 }) {
   const name = useId();
   const hydrated = useHydrated();
   const byKeyboard = useRef(false);
-  const { choose, chosen, saving } = useSavedAccess({ announce, board, client, copy, post });
+  const { choose, chosen, saving } = useSavedAccess({
+    announce,
+    board,
+    client,
+    copy,
+    post,
+    queues,
+  });
   const levels = [
     ["off", copy.accessOff],
     ["read", copy.accessRead],
@@ -182,6 +203,8 @@ function AccessRow({
 function SignedIn({ copy, name, page }: { copy: FrontCopy; name: string; page: AssistantsPage }) {
   const post = useApi(page.csrf);
   const [announcement, setAnnouncement] = useState("");
+  const queues = useMemo(() => new Set<Queue>(), []);
+  useSaveOnLeave(queues);
   return (
     <>
       <FrontHeader
@@ -222,6 +245,7 @@ function SignedIn({ copy, name, page }: { copy: FrontCopy; name: string; page: A
                         copy={copy}
                         key={board.id}
                         post={post}
+                        queues={queues}
                       />
                     ))}
                   </ul>
@@ -241,10 +265,10 @@ export function Assistants({
   name,
 }: {
   copy: FrontCopy;
-  initialPage: Loaded<AssistantsPage>;
+  initialPage: "failed" | AssistantsPage;
   name: string;
 }) {
-  return initialPage === "failed" || initialPage === "signed-out" ? (
+  return initialPage === "failed" ? (
     <FrontFailed copy={copy} />
   ) : (
     <SignedIn copy={copy} name={name} page={initialPage} />

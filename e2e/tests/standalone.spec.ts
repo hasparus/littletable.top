@@ -742,9 +742,10 @@ test("a signed-in owner grants and revokes an assistant's access by choosing a l
   await collectCspViolations(page);
   await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
-  await page.getByLabel("Name").fill("Assistant Test Owner");
+  const owner = `Assistant owner ${crypto.randomUUID().slice(0, 8)}`;
+  await page.getByLabel("Name").fill(owner);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByLabel("Signed in as Assistant Test Owner", { exact: true })).toBeVisible();
+  await expect(page.getByLabel(`Signed in as ${owner}`, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "New board" }).click();
   await expect(page).toHaveURL(ON_BOARD);
 
@@ -823,14 +824,30 @@ test("a signed-in owner grants and revokes an assistant's access by choosing a l
   await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
   await page.unroute(api);
   await page.reload();
-  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+  const off = access.getByRole("radio", { name: "Off" });
+  await expect(off).toBeChecked();
+
+  await expect(off).toBeEnabled();
+  await off.focus();
+  const leaving = page.waitForRequest(
+    (request) => request.url() === api && request.method() === "POST",
+  );
+  await page.keyboard.press("ArrowRight");
+  await expect(access.getByRole("radio", { name: "Read" })).toBeChecked();
+  await page.getByRole("link", { name: "Your boards" }).click();
+  const kept = await leaving;
+  expect(kept.postData()).toContain('"access":"read"');
+  await kept.response();
+  await expect(page).toHaveURL(`${STANDALONE}/boards`);
+  await page.goto(`${STANDALONE}/assistants?lang=en`);
+  await expect(access.getByRole("radio", { name: "Read" })).toBeChecked();
 
   await page.setViewportSize({ height: 740, width: 360 });
   await page.goto(`${STANDALONE}/assistants?lang=pl`);
   await expect(page.getByRole("heading", { level: 1, name: "Asystenci" })).toBeVisible();
   const polish = page.getByRole("radiogroup", { name: /^Dostęp do tablicy „/u });
-  await expect(polish.getByRole("radio", { name: "Brak" })).toBeChecked();
-  await expect(polish.getByRole("radio", { name: "Edycja" })).toBeEnabled();
+  await expect(polish.getByRole("radio", { name: "Odczyt" })).toBeChecked();
+  await expect(polish.getByRole("radio", { name: "Brak" })).toBeEnabled();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(360);
   await reviewShot(page, "assistant-grants-phone");
