@@ -281,12 +281,13 @@ jobs:
             echo '::error::Alchemy did not return the expected workers.dev preview URL.'
             exit 1
           fi
-          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 "$url/" --output /dev/null
+          # WARNING: A new PR hostname waits for its DNS record and its own edge certificate, often for minutes.
+          await_preview=(curl --fail --silent --show-error --retry 60 --retry-all-errors --retry-delay 10 --retry-max-time 600 --max-time 15)
+          "${await_preview[@]}" "$url/" --output /dev/null
           echo "url=$url" >> "$GITHUB_OUTPUT"
           if [[ -f "$PREVIEW_BUNDLE_DIR/mcp/index.js" && -n "$MCP_DOMAIN" && -n "$MCP_AUTHKIT_ORIGIN" ]]; then
             mcp_origin="https://$STAGE.$MCP_DOMAIN"
-            curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --max-time 15 \
-              "$mcp_origin/.well-known/oauth-protected-resource/mcp" |
+            "${await_preview[@]}" "$mcp_origin/.well-known/oauth-protected-resource/mcp" |
               jq -e --arg resource "$mcp_origin/mcp" --arg issuer "${MCP_AUTHKIT_ORIGIN%/}" \
                 '.resource == $resource and .authorization_servers == [$issuer]' >/dev/null
           fi
