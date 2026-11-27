@@ -29,13 +29,20 @@ import type { EngineKey, Reading, TextListing } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
+import { boardSeat } from "./board-seat";
 import { type ChatMessage, rollCommand } from "./chat";
 import { appendChat, openChat, recentChat } from "./chat-store";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { evaluateExpression } from "./dice-evaluation";
 import { InvalidRoll, parseExpression } from "./dice-expression";
-import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
-import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import {
+  FileLedger,
+  type FileRefusal,
+  publicationKey,
+  sha256Hex,
+  type StoredFile,
+} from "./file-store";
+import { AVATAR_RETRY_MS, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import { PrivateBoardSockets } from "./private-board-sockets";
 import {
@@ -83,9 +90,10 @@ type Env = {
 export type Refusal = "full" | "link-reset" | "too-fast";
 
 // WARNING: tldraw retries ordinary closes. Code 4099 passes the final reason to useSync.
-const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
+const SOCKET_REFUSAL = {
   full: TLSyncErrorCloseEventReason.ROOM_FULL,
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
+  "session-conflict": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
 /** Account board IDs are alphanumeric, so they cannot collide with this room name. */
@@ -332,21 +340,23 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  private connectRoom(request: Request, pass: Pass, sessionHash?: string): Response {
+  private async connectRoom(request: Request, pass: Pass, sessionHash?: string): Promise<Response> {
+    const tabId = new URL(request.url).searchParams.get("sessionId")!;
+    const key = new TextEncoder().encode(JSON.stringify([tabId, pass.sub]));
+    const scopedId = await sha256Hex(key.buffer);
     const avatar = request.headers.get(AVATAR_HEADER) || null;
-    const sessionId = new URL(request.url).searchParams.get("sessionId")!;
-    const refusal =
-      this.admit(pass) ?? (this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null);
+    const seat = this.admit(pass) ?? boardSeat(this.room.getSessions(), tabId, scopedId, pass.sub);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
-    if (refusal !== null) {
-      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: refusal });
+    if (typeof seat === "string") {
+      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: seat });
       server.close(
         TLSyncErrorCloseEventCode,
-        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[refusal],
+        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[seat],
       );
       return new Response(null, { status: 101, webSocket: client });
     }
+    const { sessionId } = seat;
     const person: Person = {
       avatar,
       link: pass.link,
