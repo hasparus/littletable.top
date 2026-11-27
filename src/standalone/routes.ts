@@ -13,8 +13,6 @@ import { serveStored } from "../files";
 import { imageDimensions } from "../image-size";
 import { addressKey } from "../limiter";
 import {
-  MAX_BOARDS_PER_ACCOUNT,
-  MAX_BOARDS_PER_HOUR,
   MAX_FILE_BYTES,
   MAX_NAME_LENGTH,
   MAX_PASSES_PER_MINUTE,
@@ -372,13 +370,20 @@ export class Standalone {
     const found = await this.member(request);
     if ("refusal" in found) return found.refusal;
     await this.store.closeSession(found.hash);
-    const { owned } = await this.store.list(found.session.account.id);
-    await Promise.all(
-      owned.map(({ id }) => {
-        const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
-        return this.env.BoardRoom.get(secret).disconnectSession(found.hash);
-      }),
-    );
+    try {
+      const { owned } = await this.store.list(found.session.account.id);
+      const deliveries = await Promise.allSettled(
+        owned.map(async ({ id }) => {
+          const secret = this.env.BoardRoom.idFromName(secretLayerOf(id));
+          await this.env.BoardRoom.get(secret).disconnectSession(found.hash);
+        }),
+      );
+      if (deliveries.some(({ status }) => status === "rejected")) {
+        log("auth.socket_disconnect_incomplete");
+      }
+    } catch {
+      log("auth.socket_disconnect_incomplete");
+    }
     log("auth.signed_out", { account: found.session.account.id });
     const { origin } = new URL(request.url);
     const redirect =
@@ -498,25 +503,18 @@ export class Standalone {
     } | null;
     const title = cleanTitle(body?.title);
     if (title === null) return refuse(400, "title-invalid");
-    if ((await this.store.countBoards(owner)) >= MAX_BOARDS_PER_ACCOUNT) {
-      return refuse(409, "too-many-boards");
-    }
-    if ((await this.store.boardsCreatedSince(owner, now() - 3600)) >= MAX_BOARDS_PER_HOUR) {
-      return refuse(429, "too-many-requests");
-    }
-    const id = randomCode(12);
-    if (body?.language === "pl") {
-      // WARNING: A room opened before seeding gets the default page name instead of the localized one.
-      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(id));
-      await room.initializeDrawing("Strona 1");
-    }
-    const board = await this.store.createBoard({
+    const result = await this.store.createBoard({
       createdAt: now(),
-      id,
+      firstPageName: body?.language === "pl" ? "Strona 1" : null,
+      id: randomCode(12),
       ownerId: owner,
       shareCode: randomCode(22),
       title,
     });
+    if (result.board === undefined) {
+      return refuse(result.error === "too-many-boards" ? 409 : 429, result.error);
+    }
+    const { board } = result;
     log("board.created", { account: owner, board: board.id });
     return json(201, { id: board.id, shareCode: board.shareCode, title: board.title });
   }
@@ -662,6 +660,11 @@ export class Standalone {
       role: person.role,
       sub: person.id,
     };
+    // WARNING: Seed the localized page before any client can open the drawing.
+    if (saved?.firstPageName != null) {
+      const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(saved.id));
+      await room.initializeDrawing(saved.firstPageName);
+    }
     const [pass, secretPass, published] = await Promise.all([
       signPass(this.keys, claims),
       person.role === "owner" && saved !== null && found !== null

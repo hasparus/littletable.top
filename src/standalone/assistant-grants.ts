@@ -84,11 +84,11 @@ export class AssistantGrants {
     return result.meta.changes > 0;
   }
 
-  async admits(grant: BoardGrant) {
+  async admittedBoard(grant: BoardGrant) {
     const { standalone } = grant;
-    if (!standalone) return false;
-    const row = await this.db
-      .prepare(`SELECT 1 FROM boards b ${VISIT}
+    if (!standalone) return null;
+    return this.db
+      .prepare(`SELECT b.first_page_name FROM boards b ${VISIT}
       JOIN assistant_grants g ON ${GRANT}
       WHERE b.id = ?3 AND b.deployment = ?6 AND ${ELIGIBLE} AND g.access = ?4 AND g.revision = ?5`)
       .bind(
@@ -99,7 +99,6 @@ export class AssistantGrants {
         standalone.revision,
         this.deployment,
       )
-      .first();
-    return row !== null;
+      .first<{ first_page_name: string | null }>();
   }
 }

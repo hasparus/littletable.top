@@ -8,8 +8,10 @@ import type { EngineOutcome } from "./text-reader";
 import {
   type EngineKey,
   type EngineName,
+  type Reading,
   TEXT_ENGINES,
   TEXT_FORMAT,
+  type TextListing,
   type TextResult,
   type TextSource,
 } from "../../src/text-result";
@@ -26,6 +28,7 @@ const IDLE_MS = 4000;
 const RENEW_MS = 10_000;
 const TAKEOVER_MS = 32_000;
 const FALLBACK_MS = 5 * 60_000;
+const RECOVERY_POLL_MS = 5000;
 const SETTLE_MS = 500;
 const BACKOFF_MS = { first: 30_000, most: 10 * 60_000 };
 
@@ -33,7 +36,6 @@ type Pair = string;
 const pair = (hash: string, engine: EngineKey): Pair => `${hash} ${engine}`;
 
 type Listing = { failed: Set<Pair>; reading: Set<Pair>; stored: Set<Pair> };
-type Reading = { engine: EngineKey; hash: string };
 type Notice = { readings: Reading[]; state: "idle" | "reading" | "stored"; type: "image-text" };
 type Claim = { engines: EngineKey[]; hash: string; lease: string };
 
@@ -67,6 +69,8 @@ export class ImageText {
   #failures = 0;
   #notBefore = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
+  #recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  #recoveryDelay: number | undefined;
   #settle: ReturnType<typeof setTimeout> | null = null;
   #disposed = false;
   readonly #stops: (() => void)[] = [];
@@ -117,6 +121,7 @@ export class ImageText {
     this.#disposed = true;
     for (const stop of this.#stops) stop();
     if (this.#timer !== null) clearTimeout(this.#timer);
+    if (this.#recoveryTimer !== null) clearTimeout(this.#recoveryTimer);
     if (this.#settle !== null) clearTimeout(this.#settle);
     this.#files.onUploaded = null;
     this.#files.onTextNotice = null;
@@ -160,12 +165,23 @@ export class ImageText {
     try {
       const response = await this.#request("/text");
       if (!response.ok) throw new Error(`status ${response.status}`);
-      const listing = (await response.json()) as Record<keyof Listing, Reading[]>;
+      const listing = (await response.json()) as TextListing;
+      this.#recoveryDelay = listing.recoveryDelay;
       for (const key of ["failed", "reading", "stored"] as const) {
         this.#listing[key] = new Set(listing[key].map(({ engine, hash }) => pair(hash, engine)));
       }
     } catch (error) {
       console.warn("board: could not list the images' text", error);
+    }
+    if (this.#disposed) return;
+    if (this.#recoveryDelay !== undefined && this.#recoveryTimer === null) {
+      this.#recoveryTimer = setTimeout(
+        () => {
+          this.#recoveryTimer = null;
+          if (this.#recoveryDelay !== undefined) void this.#refresh();
+        },
+        Math.max(RECOVERY_POLL_MS, this.#recoveryDelay),
+      );
     }
     for (const hash of this.#images) this.#fetchStored(hash);
     this.#count();

@@ -142,36 +142,50 @@ export class FileLedger {
     const hash = await sha256Hex(body);
     const bytes = body.byteLength;
     await this.removing.get(hash);
-    const known = this.sql.exec("SELECT 1 FROM files WHERE hash = ?", hash).toArray();
-    if (known.length > 0) {
-      // WARNING: The ledger row can exist before the first upload reaches R2.
+    const duplicate =
+      this.sql.exec("SELECT 1 FROM files WHERE hash = ?", hash).toArray().length > 0;
+    if (duplicate) {
       this.sql.exec("UPDATE files SET unused_at = NULL WHERE hash = ?", hash);
-      await this.writing.get(hash);
-      return { bytes, duplicate: true, hash, type };
+    } else {
+      if (this.storedBytes() + bytes > MAX_BOARD_FILE_BYTES) return "over-quota";
+      // WARNING: Awaiting before reservation would let concurrent uploads bypass the board quota.
+      this.sql.exec(
+        "INSERT INTO files (hash, bytes, type, at) VALUES (?, ?, ?, ?)",
+        hash,
+        bytes,
+        type,
+        at,
+      );
     }
-    if (this.storedBytes() + bytes > MAX_BOARD_FILE_BYTES) return "over-quota";
-    // WARNING: Awaiting before reservation would let concurrent uploads bypass the board quota.
-    this.sql.exec(
-      "INSERT INTO files (hash, bytes, type, at) VALUES (?, ?, ?, ?)",
-      hash,
-      bytes,
-      type,
-      at,
-    );
-    const write = this.bucket.put(fileKey(board, hash), body, {
-      httpMetadata: { contentType: type },
-      sha256: hash,
-    });
-    this.writing.set(hash, write);
-    try {
-      await write;
-    } catch (error) {
-      this.sql.exec("DELETE FROM files WHERE hash = ?", hash);
-      throw error;
-    } finally {
-      this.writing.delete(hash);
+
+    const active = this.writing.get(hash);
+    if (active === undefined) {
+      const key = fileKey(board, hash);
+      const write = this.ensureObject(key, body, type, hash, duplicate);
+      this.writing.set(hash, write);
+      try {
+        await write;
+      } catch (error) {
+        if (!duplicate) this.sql.exec("DELETE FROM files WHERE hash = ?", hash);
+        throw error;
+      } finally {
+        this.writing.delete(hash);
+      }
+    } else {
+      await active;
     }
-    return { bytes, duplicate: false, hash, type };
+    return { bytes, duplicate, hash, type };
+  }
+
+  private async ensureObject(
+    key: string,
+    body: ArrayBuffer,
+    type: ImageType,
+    hash: string,
+    duplicate: boolean,
+  ) {
+    if (duplicate && (await this.bucket.head(key)) !== null) return;
+    await this.bucket.put(key, body, { httpMetadata: { contentType: type }, sha256: hash });
   }
 
   // WARNING: Sweep only public boards after a grace interval because uploads and canvas updates can arrive separately.

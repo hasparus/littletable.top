@@ -1,16 +1,18 @@
 import { env, evictDurableObject, runInDurableObject } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import type { FileLedger } from "../src/file-store";
 import type { Env } from "../src/index";
+import type { Pass } from "../src/pass";
 
-import { boardPrefix } from "../src/file-store";
+import { boardPrefix, textKey } from "../src/file-store";
 import {
   MAX_BOARD_FILE_BYTES,
   MAX_TEXT_FAILURES,
   MAX_TEXT_WRITES_PER_MINUTE,
   TEXT_LEASE_MS,
 } from "../src/limits";
-import { type EngineKey, TEXT_ENGINES } from "../src/text-result";
+import { type EngineKey, TEXT_ENGINES, type TextListing } from "../src/text-result";
 import { TextLedger } from "../src/text-store";
 import { IMAGES_37_BY_21 } from "./image-samples";
 import { call, deletion, destroy, pass, seat, until } from "./support";
@@ -68,10 +70,10 @@ const post = (board: string, token: string, action: string, body: unknown) =>
     method: "POST",
   });
 
-async function listing(board: string, token: string) {
+async function listing(board: string, token: string): Promise<TextListing> {
   const response = await call(`/rooms/${board}/files/text`, token);
   expect(response.status).toBe(200);
-  return response.json();
+  return (await response.json()) as TextListing;
 }
 
 describe("storing what was read off an image", () => {
@@ -99,6 +101,221 @@ describe("storing what was read off an image", () => {
       failed: [],
       reading: [],
       stored: [{ engine: TESSERACT, hash }],
+    });
+  });
+
+  it.each(["before", "after"] as const)(
+    "recovers the first result when a room restarts %s the R2 write",
+    async (restart) => {
+      const board = `recover-reading-${restart}`;
+      const token = await pass({ board });
+      const hash = await upload(board, token, PNG);
+      const createdAt = new Date(1000).toISOString();
+      const reserved = { ...result(hash, TESSERACT), createdAt };
+      const body = JSON.stringify(reserved);
+      const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+      await runInDurableObject(room, (_instance, state) => {
+        state.storage.sql.exec(
+          "INSERT INTO texts (hash, engine, bytes, words, at, pending_body) VALUES (?, ?, ?, ?, ?, ?)",
+          hash,
+          TESSERACT,
+          new TextEncoder().encode(body).byteLength,
+          2,
+          1000,
+          body,
+        );
+      });
+      const key = textKey(board, hash, TESSERACT);
+      if (restart === "after") await hostedEnv.Files.put(key, body);
+      await evictDurableObject(room);
+
+      const [retried, listed] = await Promise.all([
+        put(board, token, hash, TESSERACT, result(hash, TESSERACT, ["Inny"])),
+        listing(board, token),
+      ]);
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toEqual(reserved);
+      if (listed.recoveryDelay !== undefined) {
+        await expect
+          .poll(() => listing(board, token))
+          .toMatchObject({
+            stored: [{ engine: TESSERACT, hash }],
+          });
+      } else {
+        expect(listed.stored).toEqual([{ engine: TESSERACT, hash }]);
+      }
+      expect(await (await hostedEnv.Files.get(key))!.text()).toEqual(body);
+      await runInDurableObject(room, (_instance, state) => {
+        expect(state.storage.sql.exec("SELECT ready, pending_body FROM texts").toArray()).toEqual([
+          { pending_body: null, ready: 1 },
+        ]);
+      });
+    },
+  );
+
+  it("keeps completed legacy readings and lets a reader reclaim a missing legacy result", async () => {
+    const board = "legacy-reading";
+    const token = await pass({ board });
+    const hash = await upload(board, token, PNG);
+    const done = await put(board, token, hash, TESSERACT, result(hash, TESSERACT));
+    const first = await done.json();
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      state.storage.sql.exec("UPDATE texts SET ready = 0");
+      state.storage.sql.exec(
+        "INSERT INTO texts (hash, engine, bytes, words, at) VALUES (?, ?, ?, ?, ?)",
+        hash,
+        PPOCR,
+        MAX_BOARD_FILE_BYTES,
+        1,
+        1,
+      );
+    });
+    await evictDurableObject(room);
+
+    await expect
+      .poll(() => listing(board, token))
+      .toEqual({
+        failed: [],
+        reading: [],
+        stored: [{ engine: TESSERACT, hash }],
+      });
+    const claimed = await post(board, token, "claim", {
+      candidates: [hash],
+      engines: [PPOCR, TESSERACT],
+    });
+    expect(claimed.status).toBe(200);
+    expect(await claimed.json()).toMatchObject({ engines: [PPOCR], hash });
+    expect((await put(board, token, hash, PPOCR, result(hash, PPOCR))).status).toBe(201);
+    expect(
+      await (await put(board, token, hash, TESSERACT, result(hash, TESSERACT, ["New"]))).json(),
+    ).toEqual(first);
+  });
+
+  it("lists verified readings while failed repairs wait and later rows recover", async () => {
+    const board = "partial-reading-recovery";
+    const token = await pass({ board });
+    const hash = await upload(board, token, PNG);
+    expect((await put(board, token, hash, TESSERACT, result(hash, TESSERACT))).status).toBe(201);
+
+    const legacy = await upload(board, token, JPEG);
+    const legacyBody = JSON.stringify(result(legacy, TESSERACT));
+    await hostedEnv.Files.put(textKey(board, legacy, TESSERACT), legacyBody);
+    const interrupted = Array.from({ length: 6 }, (_, at) => String(at).repeat(64));
+    await Promise.all(
+      interrupted.map((missing) => hostedEnv.Files.put(textKey(board, missing, TESSERACT), "null")),
+    );
+
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      const { sql } = state.storage;
+      for (const missing of interrupted) {
+        sql.exec(
+          "INSERT INTO texts (hash, engine, bytes, words, at, pending_body) VALUES (?, ?, ?, 2, 1, ?)",
+          missing,
+          TESSERACT,
+          legacyBody.length,
+          legacyBody,
+        );
+      }
+      sql.exec(
+        "INSERT INTO texts (hash, engine, bytes, words, at) VALUES (?, ?, ?, 2, 1)",
+        legacy,
+        TESSERACT,
+        legacyBody.length,
+      );
+    });
+
+    expect(await listing(board, token)).toEqual({
+      failed: [],
+      reading: [],
+      recoveryDelay: 0,
+      stored: [{ engine: TESSERACT, hash }],
+    });
+    await expect
+      .poll(() => listing(board, token))
+      .toMatchObject({
+        recoveryDelay: expect.any(Number),
+        stored: expect.arrayContaining([
+          { engine: TESSERACT, hash },
+          { engine: TESSERACT, hash: legacy },
+        ]),
+      });
+    await runInDurableObject(room, (_instance, { storage: { sql } }) => {
+      expect(
+        sql.exec("SELECT count(*) AS count FROM texts WHERE ready = 0 AND retry_after > 0").one(),
+      ).toEqual({ count: interrupted.length });
+    });
+    expect((await call(`/rooms/${board}/files/${hash}/text/${TESSERACT}`, token)).status).toBe(200);
+  });
+
+  it("drains an active OCR recovery before clearing and reopening a hosted room", async () => {
+    const board = "destroy-during-recovery";
+    const token = await pass({ board });
+    const hash = await upload(board, token, PNG);
+    const key = textKey(board, hash, TESSERACT);
+    const body = JSON.stringify(result(hash, TESSERACT));
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+
+    await runInDurableObject(room, async (instance) => {
+      const admitted: Pass = {
+        avatar: null,
+        board,
+        link: 0,
+        name: "Ania",
+        owner: false,
+        role: "write",
+        sub: "u:1",
+      };
+      const texts = Reflect.get(instance, "texts") as TextLedger;
+      const files = Reflect.get(instance, "files") as FileLedger;
+      const wipe = files.wipe.bind(files);
+      let recovered = false;
+      let release = () => {};
+      const paused = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(texts, "recover").mockImplementationOnce(async () => {
+        await paused;
+        await hostedEnv.Files.put(key, body);
+        recovered = true;
+      });
+      vi.spyOn(files, "wipe").mockImplementationOnce((name) => {
+        expect(recovered).toBe(true);
+        return wipe(name);
+      });
+
+      const recovery = instance.recoverTexts(admitted);
+      const deletion = instance.destroy(board);
+      const duringDeletion = instance.textListing(admitted);
+      release();
+      await Promise.all([recovery, deletion]);
+      expect(duringDeletion).toBe("link-reset");
+    });
+
+    expect(await hostedEnv.Files.head(key)).toBeNull();
+    expect((await listing(board, token)).stored).toEqual([]);
+    expect(await upload(board, token, PNG)).toBe(hash);
+  });
+
+  it("adopts a legacy R2 reading whose ledger reservation was lost", async () => {
+    const board = "legacy-r2-reading";
+    const token = await pass({ board });
+    const hash = await upload(board, token, PNG);
+    const first = { ...result(hash, TESSERACT), createdAt: new Date(1000).toISOString() };
+    const key = textKey(board, hash, TESSERACT);
+    const body = JSON.stringify(first);
+    await hostedEnv.Files.put(key, body, { httpMetadata: { contentType: "application/json" } });
+
+    const retried = await put(board, token, hash, TESSERACT, result(hash, TESSERACT, ["New"]));
+    expect(retried.status).toBe(200);
+    expect(await retried.json()).toEqual(first);
+    expect(await (await hostedEnv.Files.get(key))!.text()).toEqual(body);
+    const room = hostedEnv.BoardRoom.get(hostedEnv.BoardRoom.idFromName(board));
+    await runInDurableObject(room, (_instance, state) => {
+      expect(state.storage.sql.exec("SELECT bytes, words FROM texts").toArray()).toEqual([
+        { bytes: new TextEncoder().encode(body).byteLength, words: 2 },
+      ]);
     });
   });
 
