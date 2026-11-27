@@ -1,3 +1,6 @@
+import { createTLSchema } from "@tldraw/tlschema";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { decodeJwt } from "jose";
 import { describe, expect, it } from "vitest";
 
 import { fileKey, textKey } from "../src/file-store";
@@ -5,6 +8,7 @@ import { FILE_COOKIE } from "../src/files";
 import { handle } from "../src/index";
 import { secretLayerOf } from "../src/secret-layer";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
+import { TLSYNC_PROTOCOL_VERSION, until } from "./support";
 
 type Bootstrap = { board: string; pass: string; secretPass?: string };
 
@@ -23,6 +27,38 @@ async function accountBoard() {
     secretPass: passes.secretPass!,
     sharedPass: passes.pass,
   };
+}
+
+async function readSecretLayer(board: string, pass: string) {
+  const open = await openSocket(board, pass);
+  expect(open.response.status).toBe(101);
+  const received: string[] = [];
+  open.socket!.addEventListener("message", ({ data }) => {
+    received.push(String(data));
+  });
+  open.socket!.send(
+    JSON.stringify({
+      connectRequestId: crypto.randomUUID(),
+      lastServerClock: 0,
+      protocolVersion: TLSYNC_PROTOCOL_VERSION,
+      schema: createTLSchema().serialize(),
+      type: "connect",
+    }),
+  );
+  await until(() => received.some((message) => message.includes('"type":"connect"')));
+  return {
+    ...open,
+    received,
+    send: (message: object) => open.socket!.send(JSON.stringify(message)),
+  };
+}
+
+async function rollSecretLayer(board: string, token: string) {
+  const response = await roomCall(`/rooms/${board}/roll`, token, {
+    body: JSON.stringify({ dice: [6] }),
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
 }
 
 const picture = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
@@ -124,5 +160,114 @@ describe("the secret layer", () => {
     expect((await roomCall(`/rooms/${secret}/rolls`, second.secretPass!)).status).toBe(403);
     expect((await roomCall(`/rooms/${secret}/rolls`, secretPass)).status).toBe(200);
     open.socket?.close();
+  });
+
+  it("disconnects a receive-only reader of an expired account session", async () => {
+    const { owner, board, secret, secretPass } = await accountBoard();
+    const hash = String(decodeJwt(secretPass).sessionHash);
+    const expiry = Math.floor(Date.now() / 1000) + 2;
+    await standaloneEnv
+      .DB!.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
+      .bind(expiry, hash)
+      .run();
+    const { BoardRoom } = standaloneEnv;
+    const room = BoardRoom.get(BoardRoom.idFromName(secret));
+
+    const reader = await readSecretLayer(secret, secretPass);
+    expect(await runInDurableObject(room, (_room, { storage }) => storage.getAlarm())).toBe(
+      expiry * 1000,
+    );
+
+    await owner.signIn("Game master");
+    const current = (await (await owner.bootstrap(board.shareCode)).json()) as Bootstrap;
+    const peer = await readSecretLayer(secret, current.secretPass!);
+    await expect.poll(() => Date.now(), { timeout: 4000 }).toBeGreaterThanOrEqual(expiry * 1000);
+
+    await rollSecretLayer(secret, current.secretPass!);
+    await until(() => peer.received.some((message) => message.includes('"type":"roll"')));
+    expect(await reader.closure).toEqual({ code: 4099, reason: "FORBIDDEN" });
+    expect(reader.received.some((message) => message.includes('"type":"roll"'))).toBe(false);
+    peer.socket?.close();
+  });
+
+  it("lets valid private readers reconnect after a session lookup fails on wake", async () => {
+    const { secret, secretPass } = await accountBoard();
+    const reader = await readSecretLayer(secret, secretPass);
+    const { BoardRoom, DB } = standaloneEnv;
+    const room = BoardRoom.get(BoardRoom.idFromName(secret));
+
+    await evictDurableObject(room, { webSockets: "hibernate" });
+    await DB!.exec("ALTER TABLE sessions RENAME TO unavailable_sessions");
+    try {
+      // A protocol event wakes the room even when hibernation handles pings automatically.
+      reader.send({ type: "push", clientClock: 1, diff: {} });
+      expect(await reader.closure).toEqual({
+        code: 1012,
+        reason: "Session verification unavailable",
+      });
+    } finally {
+      await DB!.exec("ALTER TABLE unavailable_sessions RENAME TO sessions");
+    }
+
+    const recovered = await readSecretLayer(secret, secretPass);
+    recovered.socket?.close();
+  });
+
+  it("rechecks private readers after hibernation and recovers from failed sign-out fanout", async () => {
+    const { owner, board, secret, secretPass } = await accountBoard();
+    const retained = await readSecretLayer(secret, secretPass);
+    await owner.signIn("Game master");
+    const current = (await (await owner.bootstrap(board.shareCode)).json()) as Bootstrap;
+    const revoked = await readSecretLayer(secret, current.secretPass!);
+    const { BoardRoom } = standaloneEnv;
+    const room = BoardRoom.get(BoardRoom.idFromName(secret));
+
+    await evictDurableObject(room, { webSockets: "hibernate" });
+    const page = {
+      id: "page:private-after-hibernation",
+      index: "a2",
+      meta: {},
+      name: "After hibernation",
+      typeName: "page",
+    };
+    retained.send({ clientClock: 1, diff: { [page.id]: ["put", page] }, type: "push" });
+    await until(() => revoked.received.some((message) => message.includes(page.id)));
+
+    let deliveryAttempts = 0;
+    const unavailableRooms = {
+      get() {
+        return {
+          disconnectSession() {
+            deliveryAttempts++;
+            return Promise.reject(new Error("Unavailable room"));
+          },
+        };
+      },
+      idFromName: (name: string) => BoardRoom.idFromName(name),
+    } as unknown as typeof BoardRoom;
+    const signedOut = await owner.fetch(
+      "/auth/sign-out",
+      {
+        body: "{}",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: ORIGIN,
+          "X-CSRF-Token": owner.csrf!,
+        },
+        method: "POST",
+      },
+      { ...standaloneEnv, BoardRoom: unavailableRooms },
+    );
+    expect(signedOut.status).toBe(200);
+    expect(signedOut.headers.get("Set-Cookie")).toContain("Max-Age=0");
+    expect(deliveryAttempts).toBe(1);
+    expect(await runDurableObjectAlarm(room)).toBe(true);
+    expect(await revoked.closure).toEqual({ code: 4099, reason: "FORBIDDEN" });
+    expect((await openSocket(secret, current.secretPass!)).response.status).toBe(403);
+
+    await rollSecretLayer(secret, secretPass);
+    await until(() => retained.received.some((message) => message.includes('"type":"roll"')));
+    expect(revoked.received.some((message) => message.includes('"type":"roll"'))).toBe(false);
+    retained.socket?.close();
   });
 });

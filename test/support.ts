@@ -7,7 +7,7 @@ import { expect } from "vitest";
 import type { BoardRoom } from "../src/board-room";
 
 // WARNING: Keep this version in sync with sync-core’s internal protocol. A mismatch fails every seat() with an incompatibility error.
-const TLSYNC_PROTOCOL_VERSION = 8;
+export const TLSYNC_PROTOCOL_VERSION = 8;
 
 const testEnv = env as unknown as { TEST_SIGNING_KEY: string };
 
