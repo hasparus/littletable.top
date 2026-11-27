@@ -30,7 +30,7 @@ import type { EngineKey, Reading, TextListing } from "./text-result";
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
 import { boardSeat } from "./board-seat";
-import { type ChatMessage, rollCommand } from "./chat";
+import { type ChatMessage, MAX_CHAT_MESSAGES_PER_MINUTE, rollCommand } from "./chat";
 import { appendChat, openChat, recentChat } from "./chat-store";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { evaluateExpression } from "./dice-evaluation";
@@ -42,6 +42,7 @@ import {
   sha256Hex,
   type StoredFile,
 } from "./file-store";
+import { FixedWindows } from "./limiter";
 import { AVATAR_RETRY_MS, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import { PrivateBoardSockets } from "./private-board-sockets";
@@ -144,6 +145,7 @@ export class BoardRoom extends DurableObject<Env> {
   private retired = false;
   private destruction?: Promise<void>;
   private lastRollAt = new Map<string, number>();
+  private chatWindows = new FixedWindows();
   private files!: FileLedger;
   private texts!: TextLedger;
   private readonly textUploads = new Map<string, number>();
@@ -195,6 +197,7 @@ export class BoardRoom extends DurableObject<Env> {
     this.retired = this.ctx.storage.kv.get(RETIRED) === true;
     this.drawingRoom = undefined;
     this.lastRollAt = new Map();
+    this.chatWindows = new FixedWindows();
     // WARNING: The image ledger queries the texts table for its quota, so initialize that table first.
     this.texts = new TextLedger(sql, this.env.Files);
     this.files = new FileLedger(sql, this.env.Files);
@@ -476,18 +479,19 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   roll(pass: Pass, request: RollRequest) {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
     const result = this.rollWithChat(pass, request);
     if ("refusal" in result) return result.refusal;
     return "error" in result ? result : result.roll;
   }
 
+  // WARNING: Callers admit the pass first; this does not check it again.
   private rollWithChat: (pass: Pass, request: RollRequest, inChat?: boolean) => RollCompletion = (
     pass,
     request,
     inChat = false,
   ) => {
-    const refusal = this.admit(pass);
-    if (refusal !== null) return { refusal };
     const expression = "expression" in request ? request.expression : undefined;
     const formula = expression === undefined ? null : parseExpression(expression);
     if (formula !== null && "error" in formula) return formula;
@@ -593,6 +597,9 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   sendChat(pass: Pass, text: string) {
+    const refusal = this.admit(pass);
+    if (refusal !== null) return refusal;
+    if (!this.chatWindows.take(pass.sub, MAX_CHAT_MESSAGES_PER_MINUTE, 60_000)) return "too-fast";
     const expression = rollCommand(text);
     if (expression !== null) {
       const result = this.rollWithChat(pass, { expression }, true);
@@ -600,8 +607,6 @@ export class BoardRoom extends DurableObject<Env> {
       return "error" in result ? result : result.message!;
     }
 
-    const refusal = this.admit(pass);
-    if (refusal !== null) return refusal;
     const { storage } = this.ctx;
     const { name, sub } = pass;
     const message = storage.transactionSync(() =>

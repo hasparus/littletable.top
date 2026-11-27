@@ -233,6 +233,15 @@ test("the board menu and right-hand controls share guides on public and private 
   expect(ownerMenu.height).toBe(ownerToggle.height);
   expect(ownerToggle.width).toBe(ownerToggle.height);
 
+  const longName = "The Sunken Cathedral of Ys, lower floor";
+  await reachEditor(page);
+  await page.evaluate(
+    (name) => globalThis.__editor.renamePage(globalThis.__editor.getCurrentPageId(), name),
+    longName,
+  );
+  const pageMenu = (await page.getByRole("button", { name: longName }).boundingBox())!;
+  expect(pageMenu.x + pageMenu.width).toBeLessThanOrEqual((await toggle.boundingBox())!.x);
+
   const guest = await phone(browser, page.url());
   await joinAs(guest, "Layout guest");
   const guestMenu = (await guest.locator(".tlui-menu-zone").boundingBox())!;
@@ -243,17 +252,23 @@ test("the board menu and right-hand controls share guides on public and private 
   });
 
   await page.setViewportSize({ height: 900, width: 1200 });
-  const styles = page.locator(".tlui-style-panel__wrapper:visible");
+  const styles = page.getByRole("button", { exact: true, name: "Styles" });
   await expect(styles).toBeVisible();
   const desktopMenu = (await menu.boundingBox())!;
   const desktopToggle = (await toggle.boundingBox())!;
+  const desktopChat = (await page
+    .getByRole("button", { exact: true, name: "Chat" })
+    .boundingBox())!;
+  const desktopShare = (await page
+    .getByRole("button", { exact: true, name: "Share" })
+    .boundingBox())!;
   const desktopStyles = (await styles.boundingBox())!;
   expect(desktopMenu.y).toBe(desktopToggle.y);
+  for (const control of [desktopChat, desktopShare]) expect(control.y).toBe(desktopToggle.y);
+  expect(desktopChat.x).toBeGreaterThan(desktopToggle.x + desktopToggle.width);
+  expect(desktopShare.x).toBeGreaterThan(desktopChat.x + desktopChat.width);
   expect(desktopStyles.y).toBeGreaterThan(desktopToggle.y + desktopToggle.height);
-  expect(desktopStyles.x + desktopStyles.width).toBeCloseTo(
-    desktopToggle.x + desktopToggle.width,
-    0,
-  );
+  expect(desktopStyles.x + desktopStyles.width).toBeCloseTo(desktopShare.x + desktopShare.width, 0);
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -262,6 +277,22 @@ test("the board menu and right-hand controls share guides on public and private 
 
   await guest.context().close();
   await landing.context().close();
+});
+
+test("a desktop shows and hides the styles from one button, as a phone does", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1200 });
+  await page.goto(`${STANDALONE}/`);
+  const styles = page.getByRole("button", { exact: true, name: "Styles" });
+  const red = page.getByRole("radio", { name: /Red/u });
+  await expect(styles).toBeVisible();
+  await expect(red).toBeHidden();
+
+  await styles.click();
+  await red.click();
+  await expect(red).toBeChecked();
+  await reviewShot(page, "styles-desktop-open");
+  await styles.click();
+  await expect(red).toBeHidden();
 });
 
 test("the landing introduction keeps its typography and position when the board opens", async ({

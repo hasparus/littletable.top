@@ -1,7 +1,7 @@
 import { type RefObject, useEffect } from "react";
 
 export const BOARD_DIALOG =
-  "fixed right-(--board-toolbar-right) left-(--board-left) bottom-(--sheet-keyboard-bottom,var(--board-sheet-bottom)) max-h-[min(70dvh,36rem)] rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-(--sheet-keyboard-bottom,5rem) sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2";
+  "fixed right-(--board-toolbar-right) [&_button:enabled]:cursor-pointer left-(--board-left) bottom-(--sheet-keyboard-bottom,var(--board-sheet-bottom)) max-h-[min(70dvh,36rem)] rounded-2xl bg-bg-secondary text-foreground shadow-sheet ring-1 ring-border outline-none sm:right-auto sm:bottom-(--sheet-keyboard-bottom,5rem) sm:left-1/2 sm:max-h-[calc(100dvh-7rem)] sm:-translate-x-1/2";
 export const BOARD_DIALOG_HEADER = "flex items-center gap-2";
 export const BOARD_DIALOG_TITLE = "flex-1 text-lg font-semibold outline-none";
 export const BOARD_DIALOG_CLOSE =

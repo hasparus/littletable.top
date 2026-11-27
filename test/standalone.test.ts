@@ -32,6 +32,7 @@ import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { PUBLIC_SIGNATURE_GROUP } from "../src/public-signature";
+import { secretLayerOf } from "../src/secret-layer";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass, seat, until } from "./support";
 
@@ -121,7 +122,7 @@ describe("the public board", () => {
     }
   });
 
-  it("restricts chat to valid public-board passes and bounded text", async () => {
+  it("restricts chat to the pass's own board, outside the secret layer, and bounded text", async () => {
     const guest = new Browser();
     const { board, pass } = (await (
       await guest.post("/api/public-board/bootstrap")
@@ -133,9 +134,13 @@ describe("the public board", () => {
     const member = new Browser();
     await member.signIn("Ania");
     const { shareCode } = await member.createBoard();
-    const own = (await (await member.bootstrap(shareCode)).json()) as Answer;
+    const own = (await (await member.bootstrap(shareCode)).json()) as Answer & {
+      secretPass: string;
+    };
     expect((await roomCall(chat, own.pass)).status).toBe(403);
-    expect((await roomCall(`/rooms/${own.board}/chat`, own.pass)).status).toBe(404);
+    expect(await (await roomCall(`/rooms/${own.board}/chat`, own.pass)).json()).toEqual([]);
+    const secretChat = `/rooms/${secretLayerOf(own.board)}/chat`;
+    expect((await roomCall(secretChat, own.secretPass)).status).toBe(404);
 
     for (const [body, status] of [
       ["   ", 400],
@@ -863,6 +868,27 @@ describe("the two modes' passes", () => {
     const response = await guest.fetch("/", {}, { ...standaloneEnv, ...overrides });
     expect(response.status).toBe(500);
   });
+});
+
+it("limits a private board's chat per person, not per network", async () => {
+  const owner = new Browser();
+  await owner.signIn("Table host");
+  const board = await owner.createBoard();
+  const own = await (await owner.bootstrap(board.shareCode)).json<Answer>();
+  const guest = await (
+    await new Browser().bootstrap(board.shareCode, { name: "Bea" })
+  ).json<Answer>();
+  const send = (pass: string, body: string) =>
+    roomCall("/rooms/" + own.board + "/chat", pass, {
+      body,
+      headers: { "CF-Connecting-IP": "198.51.100.7" },
+      method: "POST",
+    });
+  for (let index = 0; index < MAX_CHAT_MESSAGES_PER_MINUTE; index++) {
+    expect((await send(own.pass, "Message " + index)).status).toBe(200);
+  }
+  expect((await send(own.pass, "One more")).status).toBe(429);
+  expect((await send(guest.pass, "My turn")).status).toBe(200);
 });
 
 it("shares the posting allowance between chat rolls and text", async () => {

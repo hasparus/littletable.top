@@ -150,6 +150,28 @@ async function summon(request: Request, room: DurableObjectStub<BoardRoom>, pass
   return refusal === null ? new Response(null, { status: 204 }) : answer(refusal);
 }
 
+async function chat(
+  request: Request,
+  room: DurableObjectStub<BoardRoom>,
+  pass: Pass,
+  limiter: Env["Limiter"],
+) {
+  if (request.method === "GET") return answer(await room.chatHistory(pass));
+  if (request.method !== "POST") return new Response(null, { status: 404 });
+  const address = limiter?.get(limiter.idFromName(await addressKey(request)));
+  if (address && !(await address.take("chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
+    return answer("too-fast");
+  }
+  const body = await readCapped(request.body, {
+    declared: Number(request.headers.get("Content-Length")),
+    max: 4 * MAX_CHAT_LENGTH,
+  });
+  if (body === "too-large") return new Response(null, { status: 413 });
+  const text = new TextDecoder().decode(body).trim();
+  if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
+  return answerRoll(await room.sendChat(pass, text));
+}
+
 async function rooms(
   request: Request,
   env: Env,
@@ -161,10 +183,8 @@ async function rooms(
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
   const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
-  if (action === "chat" && (config.mode !== "standalone" || board !== PUBLIC_BOARD)) {
-    return new Response("Not found", { status: 404 });
-  }
   const secret = isSecretLayer(board);
+  if (action === "chat" && secret) return new Response("Not found", { status: 404 });
   if (secret && (config.mode !== "standalone" || board === secretLayerOf(PUBLIC_BOARD))) {
     return new Response("Not found", { status: 404 });
   }
@@ -216,22 +236,8 @@ async function rooms(
   if (action === "summon") return summon(request, room, pass);
 
   if (action === "chat") {
-    if (request.method === "GET") return answer(await room.chatHistory(pass));
-    if (request.method !== "POST" || env.Limiter === undefined)
-      return new Response(null, { status: 404 });
-    const key = await addressKey(request);
-    const limiter = env.Limiter.get(env.Limiter.idFromName(key));
-    if (!(await limiter.take("public-chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
-      return answer("too-fast");
-    }
-    const body = await readCapped(request.body, {
-      declared: Number(request.headers.get("Content-Length")),
-      max: 4 * MAX_CHAT_LENGTH,
-    });
-    if (body === "too-large") return new Response(null, { status: 413 });
-    const text = new TextDecoder().decode(body).trim();
-    if (text === "" || text.length > MAX_CHAT_LENGTH) return new Response(null, { status: 400 });
-    return answerRoll(await room.sendChat(pass, text));
+    // WARNING: Only the public board's guests are free to make, so only it limits each address; elsewhere a table on one network would share one limit.
+    return chat(request, room, pass, board === PUBLIC_BOARD ? env.Limiter : undefined);
   }
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {

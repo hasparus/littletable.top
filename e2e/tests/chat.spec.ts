@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import type { ChatMessage } from "../../src/chat";
 
-import { STANDALONE } from "../ports";
-import { installKeyboard, openSheet, PHONE, withKeyboard } from "./helpers";
+import { HOST, STANDALONE } from "../ports";
+import { installKeyboard, joinAs, openSheet, PHONE, withKeyboard } from "./helpers";
 
 test("phone chat follows the latest message across keyboard resizes while at the bottom", async ({
   browser,
@@ -80,6 +80,37 @@ for (const command of ["/r", "/roll"]) {
     ).toBeVisible();
   });
 }
+
+test("a private board's chat reaches a guest and stays after a reload", async ({
+  browser,
+  page,
+}) => {
+  await page.goto(`${HOST}/sign-in?name=Ada`);
+  await page.getByRole("button", { name: "New board" }).click();
+  const context = await browser.newContext();
+  try {
+    const guest = await context.newPage();
+    await guest.goto(page.url());
+    await joinAs(guest, "Bea");
+    const watching = await openSheet(guest, "Chat");
+
+    const chat = await openSheet(page, "Chat");
+    const input = chat.getByRole("textbox", { name: "Message" });
+    await input.fill("Roll for initiative");
+    await input.press("Enter");
+    await expect(
+      watching.getByRole("log").getByText("Roll for initiative", { exact: true }),
+    ).toBeVisible();
+
+    await page.reload();
+    const reopened = await openSheet(page, "Chat");
+    await expect(
+      reopened.getByRole("log").getByText("Roll for initiative", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
 
 test("the static dice reference includes commands and their origins", async ({ page }) => {
   const response = await page.goto(STANDALONE + "/docs");

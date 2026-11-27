@@ -126,7 +126,7 @@ function computeLocalBounds(doc: Doc, shape: TLShape): Box {
     case "draw":
     case "highlight": {
       const points = (shape as TLDrawShape).props.segments.flatMap((segment) =>
-        b64Vecs.decodePoints(segment.path),
+        b64Vecs.decodePoints(segment.path, segment.dim),
       );
       const { scaleX = 1, scaleY = 1 } = (shape as TLDrawShape).props;
       return boxOf(points.map(({ x, y }) => ({ x: x * scale * scaleX, y: y * scale * scaleY })));

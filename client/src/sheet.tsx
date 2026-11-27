@@ -98,7 +98,7 @@ export function Sheet({
     const surface = sheet.current;
     if (!surface) return;
     const trigger = surface
-      .closest("[data-board-shell]")
+      .closest("[data-board-layout]")
       ?.querySelector(`[aria-controls="${PANEL_ID[panel]}"]`);
     enterSurface(surface, trigger ?? null);
   }, [panel]);
