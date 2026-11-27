@@ -234,7 +234,10 @@ async function rooms(
   if (pass === null) return new Response("Forbidden", { status: 403 });
   if (action === "summon") return summon(request, room, pass);
 
-  if (action === "chat") return chat(request, room, pass, env.Limiter);
+  if (action === "chat") {
+    // WARNING: Only the public board's guests are free to make, so only it limits each address; elsewhere a table on one network would share one limit.
+    return chat(request, room, pass, board === PUBLIC_BOARD ? env.Limiter : undefined);
+  }
 
   if (action === "connect" && request.headers.get("Upgrade") === "websocket") {
     const sessionId = url.searchParams.get("sessionId");

@@ -893,6 +893,27 @@ describe("the two modes' passes", () => {
   });
 });
 
+it("limits a private board's chat per person, not per network", async () => {
+  const owner = new Browser();
+  await owner.signIn("Table host");
+  const board = await owner.createBoard();
+  const own = await (await owner.bootstrap(board.shareCode)).json<Answer>();
+  const guest = await (
+    await new Browser().bootstrap(board.shareCode, { name: "Bea" })
+  ).json<Answer>();
+  const send = (pass: string, body: string) =>
+    roomCall("/rooms/" + own.board + "/chat", pass, {
+      body,
+      headers: { "CF-Connecting-IP": "198.51.100.7" },
+      method: "POST",
+    });
+  for (let index = 0; index < MAX_CHAT_MESSAGES_PER_MINUTE; index++) {
+    expect((await send(own.pass, "Message " + index)).status).toBe(200);
+  }
+  expect((await send(own.pass, "One more")).status).toBe(429);
+  expect((await send(guest.pass, "My turn")).status).toBe(200);
+});
+
 it("shares the posting allowance between chat rolls and text", async () => {
   const guest = new Browser();
   const { board, pass } = await (await guest.post("/api/public-board/bootstrap")).json<Answer>();
