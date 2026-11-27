@@ -33,9 +33,8 @@ jobs:
       - run: bun run build
       - name: Check for new React Doctor findings
         if: github.event_name == 'pull_request'
-        env:
-          BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
-        run: bun run doctor --scope changed --base "$BASE_COMMIT" --blocking warning
+        # WARNING: Diff against the merge ref's first parent; the event's base.sha can predate it and fall outside the shallow clone.
+        run: bun run doctor --scope changed --base "$(git rev-parse HEAD^1)" --blocking warning
 
   test:
     name: CI / test
