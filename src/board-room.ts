@@ -29,14 +29,21 @@ import type { EngineKey, Reading, TextListing } from "./text-result";
 
 import { AVATAR, copyAvatar, hostRule, logAvatar } from "./avatars";
 import { type BoardColor, isBoardColor } from "./board-palette";
+import { boardSeat } from "./board-seat";
 import { type ChatMessage, MAX_CHAT_MESSAGES_PER_MINUTE, rollCommand } from "./chat";
 import { appendChat, openChat, recentChat } from "./chat-store";
 import { addRollColumns, drawSeed, rollDie } from "./dice";
 import { evaluateExpression } from "./dice-evaluation";
 import { InvalidRoll, parseExpression } from "./dice-expression";
-import { FileLedger, type FileRefusal, publicationKey, type StoredFile } from "./file-store";
+import {
+  FileLedger,
+  type FileRefusal,
+  publicationKey,
+  sha256Hex,
+  type StoredFile,
+} from "./file-store";
 import { FixedWindows } from "./limiter";
-import { AVATAR_RETRY_MS, MAX_PEOPLE, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
+import { AVATAR_RETRY_MS, MIN_ROLL_INTERVAL_MS, ROLL_LOG_LENGTH } from "./limits";
 import { stampPresence } from "./presence";
 import { PrivateBoardSockets } from "./private-board-sockets";
 import {
@@ -56,6 +63,7 @@ import {
 } from "./public-signature";
 import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
+import { closeRoomSessions } from "./room-sessions";
 import { isSecretLayer } from "./secret-layer";
 import {
   readSocketAttachment,
@@ -84,9 +92,10 @@ type Env = {
 export type Refusal = "full" | "link-reset" | "too-fast";
 
 // WARNING: tldraw retries ordinary closes. Code 4099 passes the final reason to useSync.
-const SOCKET_REFUSAL: Record<"full" | "link-reset", string> = {
+const SOCKET_REFUSAL = {
   full: TLSyncErrorCloseEventReason.ROOM_FULL,
   "link-reset": TLSyncErrorCloseEventReason.FORBIDDEN,
+  "session-conflict": TLSyncErrorCloseEventReason.FORBIDDEN,
 };
 
 /** Account board IDs are alphanumeric, so they cannot collide with this room name. */
@@ -299,13 +308,11 @@ export class BoardRoom extends DurableObject<Env> {
       link,
     );
     log("board.link_reset", { board, link });
-    const room = this.drawingRoom?.room;
-    if (room === undefined) return;
-    for (const session of room.getSessions()) {
-      if (session.meta.link < link) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.drawingRoom?.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.link < link,
+    );
   }
 
   // WARNING: WebSockets cannot cross Durable Object RPC. Forward the upgrade request with the verified pass.
@@ -326,30 +333,30 @@ export class BoardRoom extends DurableObject<Env> {
 
   disconnectSession(hash: string): void {
     this.privateSockets.revoke(hash);
-    const room = this.drawingRoom?.room;
-    if (room === undefined) return;
-    for (const session of room.getSessions()) {
-      if (session.meta.sessionHash === hash) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.drawingRoom?.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.sessionHash === hash,
+    );
   }
 
-  private connectRoom(request: Request, pass: Pass, sessionHash?: string): Response {
+  private async connectRoom(request: Request, pass: Pass, sessionHash?: string): Promise<Response> {
+    const tabId = new URL(request.url).searchParams.get("sessionId")!;
+    const key = new TextEncoder().encode(JSON.stringify([tabId, pass.sub]));
+    const scopedId = await sha256Hex(key.buffer);
     const avatar = request.headers.get(AVATAR_HEADER) || null;
-    const sessionId = new URL(request.url).searchParams.get("sessionId")!;
-    const refusal =
-      this.admit(pass) ?? (this.room.getNumActiveSessions() >= MAX_PEOPLE ? "full" : null);
+    const seat = this.admit(pass) ?? boardSeat(this.room.getSessions(), tabId, scopedId, pass.sub);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server);
-    if (refusal !== null) {
-      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: refusal });
+    if (typeof seat === "string") {
+      log("board.refused", { board: pass.board, person: kind(pass.sub), reason: seat });
       server.close(
         TLSyncErrorCloseEventCode,
-        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[refusal],
+        this.retired ? TLSyncErrorCloseEventReason.NOT_FOUND : SOCKET_REFUSAL[seat],
       );
       return new Response(null, { status: 101, webSocket: client });
     }
+    const { sessionId } = seat;
     const person: Person = {
       avatar,
       link: pass.link,
@@ -867,11 +874,18 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  async retire(board: string): Promise<void> {
-    // WARNING: Without the retired marker, a still-valid pass could reopen the deleted private room.
+  async markRetired() {
+    // WARNING: Persist the marker before acknowledging retirement so old passes cannot reopen an evicted room.
     this.retired = true;
     this.ctx.storage.kv.put(RETIRED, true);
-    await this.destroy(board);
+    this.disconnectAll();
+    this.drawingRoom = undefined;
+    await this.ctx.storage.sync();
+  }
+
+  async wipeRetired(board: string): Promise<void> {
+    if (!this.retired) throw new Error("Board must be retired before wiping");
+    return this.destroy(board);
   }
 
   private grantVersion() {
@@ -952,6 +966,17 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
+  private disconnectAll() {
+    this.assistantGrantsChanged();
+    const room = this.drawingRoom?.room;
+    if (room !== undefined) {
+      closeRoomSessions(room, TLSyncErrorCloseEventReason.NOT_FOUND);
+      room.close();
+    }
+    for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
+    this.sockets.clear();
+  }
+
   async destroy(board: string): Promise<void> {
     this.destruction ??= this.clearBoard(board).finally(() => {
       this.destruction = undefined;
@@ -960,13 +985,7 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   private async clearBoard(board: string) {
-    this.assistantGrantsChanged();
-    for (const session of this.room.getSessions()) {
-      this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
-    }
-    this.room.close();
-    for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
-    this.sockets.clear();
+    this.disconnectAll();
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {

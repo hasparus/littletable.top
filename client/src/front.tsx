@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { Language } from "../settings";
-import type { Action, Editing, Lists, Owned } from "./front-board-list";
+import type { Action, Editing, Lists, Owned, PendingDeletion } from "./front-board-list";
 
 import { Avatar } from "./avatar";
 import { colorFor } from "./colors";
@@ -81,7 +81,7 @@ function SignedIn({
     else setError(copy.actionFailed);
   };
 
-  const act = async (board: Owned, action: Action, title?: string) => {
+  const act = async (board: PendingDeletion, action: Action, title?: string) => {
     setError(null);
     const response = await post(
       `/api/boards/${board.id}/${action}`,

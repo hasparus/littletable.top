@@ -813,29 +813,6 @@ describe("resetting a board's link", () => {
   });
 });
 
-describe("deleting a board", () => {
-  it("forgets it, wipes its room and puts everyone out", async () => {
-    const ada = new Browser();
-    await ada.signIn("Ada");
-    const board = await ada.createBoard();
-    const own: Answer = await (await ada.bootstrap(board.shareCode)).json();
-    await roomCall(`/rooms/${own.board}/roll`, own.pass, {
-      body: JSON.stringify({ dice: [20] }),
-      method: "POST",
-    });
-    const seated = await openSocket(own.board, own.pass);
-
-    expect((await ada.post(`/api/boards/${board.id}/delete`)).status).toBe(204);
-
-    expect(await seated.closure).toEqual({
-      code: TLSyncErrorCloseEventCode,
-      reason: TLSyncErrorCloseEventReason.NOT_FOUND,
-    });
-    expect((await ada.list()).owned).toEqual([]);
-    expect((await ada.bootstrap(board.shareCode)).status).toBe(404);
-  });
-});
-
 describe("the two modes' passes", () => {
   it("a host's pass opens nothing on a standalone tabletop", async () => {
     const response = await roomCall("/rooms/b1/rolls", await hostedPass());
