@@ -264,8 +264,17 @@
 
 /* Use the same guides on both sides of the canvas. Leave the first row
    available for the account or layer controls when they are present. */
-[data-board-editor] .tlui-style-panel__wrapper {
+[data-board-style-toggle] {
   margin: var(--board-style-panel-top, var(--board-top)) var(--board-right) 0 0;
+  border-radius: var(--board-control-radius);
+  background: var(--tl-color-panel);
+  box-shadow: var(--tl-shadow-2);
+  pointer-events: all;
+}
+
+[data-board-style-toggle] .tlui-button {
+  width: var(--board-top-control-size);
+  height: var(--board-top-control-size);
 }
 
 [data-board-layout]:has(> [data-board-sharing]),
@@ -308,10 +317,21 @@
   place-items: center;
 }
 
-[data-public-board-chat],
+[data-board-chat],
 [data-public-board-github],
 [data-secret-layer-toggle] {
   width: var(--board-top-control-size);
+}
+
+[data-board-layout]:has(> [data-board-sharing]) .tlui-page-menu__trigger {
+  /* Leave room for the main menu and the row of sharing controls. */
+  max-inline-size: max(
+    var(--board-top-control-size),
+    calc(
+      100dvw - var(--board-left) - var(--board-right) - var(--board-top-control-size) -
+        var(--board-sharing-width, 0px) - 16px
+    )
+  );
 }
 
 [data-board-shell]:has(> [data-public-board-controls]) .tlui-page-menu__trigger {
@@ -331,7 +351,7 @@
 
 [data-public-board-controls] > :is(a, button):hover,
 [data-board-sharing] > button:hover,
-[data-public-board-chat][aria-expanded="true"] {
+[data-board-chat][aria-expanded="true"] {
   background: var(--color-bg-tertiary);
 }
 

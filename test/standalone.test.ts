@@ -32,6 +32,7 @@ import { fileKey, textKey } from "../src/file-store";
 import { saveArrowEndpoints } from "../src/public-arrow-endpoints";
 import { PUBLIC_SWEEP_MS, stampPublicShape } from "../src/public-board-expiry";
 import { PUBLIC_SIGNATURE_GROUP } from "../src/public-signature";
+import { secretLayerOf } from "../src/secret-layer";
 import { Browser, openSocket, ORIGIN, roomCall, standaloneEnv } from "./standalone-support";
 import { pass as hostedPass, seat, until } from "./support";
 
@@ -121,7 +122,7 @@ describe("the public board", () => {
     }
   });
 
-  it("restricts chat to valid public-board passes and bounded text", async () => {
+  it("restricts chat to the pass's own board, outside the secret layer, and bounded text", async () => {
     const guest = new Browser();
     const { board, pass } = (await (
       await guest.post("/api/public-board/bootstrap")
@@ -133,9 +134,13 @@ describe("the public board", () => {
     const member = new Browser();
     await member.signIn("Ania");
     const { shareCode } = await member.createBoard();
-    const own = (await (await member.bootstrap(shareCode)).json()) as Answer;
+    const own = (await (await member.bootstrap(shareCode)).json()) as Answer & {
+      secretPass: string;
+    };
     expect((await roomCall(chat, own.pass)).status).toBe(403);
-    expect((await roomCall(`/rooms/${own.board}/chat`, own.pass)).status).toBe(404);
+    expect(await (await roomCall(`/rooms/${own.board}/chat`, own.pass)).json()).toEqual([]);
+    const secretChat = `/rooms/${secretLayerOf(own.board)}/chat`;
+    expect((await roomCall(secretChat, own.secretPass)).status).toBe(404);
 
     for (const [body, status] of [
       ["   ", 400],

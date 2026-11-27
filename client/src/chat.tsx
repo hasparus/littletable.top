@@ -10,7 +10,7 @@ import { colorFor } from "./colors";
 import { notationMessage } from "./dice-labels";
 import { Icon } from "./icons";
 import { Sheet } from "./sheet";
-import { useBoardUi } from "./ui";
+import { PANEL_ID, useBoardUi } from "./ui";
 
 type Refusal = "failed" | "too-fast" | ExpressionError;
 
@@ -98,6 +98,31 @@ export function useChat(keeper: PassKeeper, enabled: boolean) {
   );
 
   return { latestIncoming, load, messages, receive, refresh, send };
+}
+
+export function ChatButton({ unread }: { unread: boolean }) {
+  const { copy, open, panel } = useBoardUi();
+  const shown = panel === "chat";
+  return (
+    <button
+      aria-controls={shown ? PANEL_ID.chat : undefined}
+      aria-expanded={shown}
+      aria-label={copy.chat}
+      className="relative place-items-center"
+      data-board-chat
+      onClick={() => open(shown ? null : "chat")}
+      title={copy.chat}
+      type="button"
+    >
+      <Icon name="Chat" />
+      {!shown && unread && (
+        <span
+          aria-hidden="true"
+          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary"
+        />
+      )}
+    </button>
+  );
 }
 
 const MESSAGE_GROUP_GAP = 5 * 60 * 1000;

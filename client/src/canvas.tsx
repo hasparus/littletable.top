@@ -2,6 +2,7 @@ import type { Editor } from "tldraw";
 
 import { unlock } from "cuelume";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import "./board.css";
 
@@ -16,7 +17,7 @@ import { BoardEditors } from "./board-editors";
 import { BoardStatus } from "./board-files";
 import { BoardLoading } from "./board-loading";
 import { keepThumbnail } from "./board-thumbnail";
-import { ChatSheet, useChat } from "./chat";
+import { ChatButton, ChatSheet, useChat } from "./chat";
 import { colorFor } from "./colors";
 import { DiceSheet } from "./dice";
 import { rollSentence } from "./dice-labels";
@@ -32,7 +33,7 @@ import { SEARCH_FIELD_ID, SearchSheet } from "./search-sheet";
 import { useSummon } from "./summon";
 import { useBoardStore } from "./sync";
 import { textEngines } from "./text-support";
-import { type BoardUi, BoardUiContext, type Panel, PANEL_ID } from "./ui";
+import { type BoardUi, BoardUiContext, type Panel } from "./ui";
 
 const DiceStage = lazy(async () => {
   const { DiceStage: Stage } = await import("./dice-stage");
@@ -78,6 +79,7 @@ function warmUpDice(): () => void {
 export function BoardCanvas({
   active,
   backdrop = false,
+  controls = null,
   overlay = false,
   waiting = false,
   copy,
@@ -90,6 +92,8 @@ export function BoardCanvas({
 }: {
   active: boolean;
   backdrop?: boolean;
+  /** The board's own top-right row, which takes the chat button. */
+  controls?: HTMLElement | null;
   overlay?: boolean;
   waiting?: boolean;
   copy: Copy;
@@ -104,7 +108,7 @@ export function BoardCanvas({
   const board = keeper.secret ? secretLayerOf(keeper.bootstrap.board) : keeper.bootstrap.board;
   const color = colorFor(person.id);
   const rolls = useRolls(keeper);
-  const chat = useChat(keeper, landing !== undefined);
+  const chat = useChat(keeper, !keeper.secret);
   const [editor, setEditor] = useState<Editor | null>(null);
   const { receiveSummon, summon } = useSummon(editor, active, keeper);
   const files = useMemo(() => new BoardFiles(keeper, landing !== undefined), [keeper, landing]);
@@ -250,6 +254,7 @@ export function BoardCanvas({
       />
     ) : null;
   }
+  const chatButton = <ChatButton unread={chat.latestIncoming > readChat} />;
   const offline =
     (store.status === "synced-remote" && store.connectionStatus === "offline") ||
     (connecting && connection.stalled);
@@ -280,24 +285,7 @@ export function BoardCanvas({
         {landing && editor === null && <LandingPlaceholder copy={landing.copy} />}
         {landing !== undefined && (
           <div className="absolute z-10 flex gap-1" data-public-board-controls>
-            <button
-              aria-controls={panel === "chat" ? PANEL_ID.chat : undefined}
-              aria-expanded={panel === "chat"}
-              aria-label={copy.chat}
-              className="relative place-items-center"
-              data-public-board-chat
-              onClick={() => open(panel === "chat" ? null : "chat")}
-              title={copy.chat}
-              type="button"
-            >
-              <Icon name="Chat" />
-              {panel !== "chat" && chat.latestIncoming > readChat && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary"
-                />
-              )}
-            </button>
+            {chatButton}
             <a
               aria-label="Source code on GitHub"
               data-public-board-github
@@ -312,7 +300,8 @@ export function BoardCanvas({
           </div>
         )}
         {active && <BoardStatus offline={offline} />}
-        {active && landing !== undefined && <ChatSheet chat={chat} shown={panel === "chat"} />}
+        {active && controls !== null && createPortal(chatButton, controls)}
+        {active && !keeper.secret && <ChatSheet chat={chat} shown={panel === "chat"} />}
         {active && panel === "dice" && <DiceSheet />}
         {active && panel === "search" && <SearchSheet />}
         {active && panel === "people" && <PeopleSheet />}

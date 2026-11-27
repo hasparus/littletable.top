@@ -160,10 +160,8 @@ async function rooms(
   const [, filesOf, file] = FILES.exec(url.pathname) ?? [];
   const [, board = filesOf, action] = ACTION.exec(url.pathname) ?? [];
   if (board === undefined) return new Response("Not found", { status: 404 });
-  if (action === "chat" && (config.mode !== "standalone" || board !== PUBLIC_BOARD)) {
-    return new Response("Not found", { status: 404 });
-  }
   const secret = isSecretLayer(board);
+  if (action === "chat" && secret) return new Response("Not found", { status: 404 });
   if (secret && (config.mode !== "standalone" || board === secretLayerOf(PUBLIC_BOARD))) {
     return new Response("Not found", { status: 404 });
   }
@@ -216,12 +214,12 @@ async function rooms(
 
   if (action === "chat") {
     if (request.method === "GET") return answer(await room.chatHistory(pass));
-    if (request.method !== "POST" || env.Limiter === undefined)
-      return new Response(null, { status: 404 });
-    const key = await addressKey(request);
-    const limiter = env.Limiter.get(env.Limiter.idFromName(key));
-    if (!(await limiter.take("public-chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
-      return answer("too-fast");
+    if (request.method !== "POST") return new Response(null, { status: 404 });
+    if (env.Limiter !== undefined) {
+      const limiter = env.Limiter.get(env.Limiter.idFromName(await addressKey(request)));
+      if (!(await limiter.take("chat", MAX_CHAT_MESSAGES_PER_MINUTE, 60_000))) {
+        return answer("too-fast");
+      }
     }
     const body = await readCapped(request.body, {
       declared: Number(request.headers.get("Content-Length")),

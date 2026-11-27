@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import type { Roll } from "./bootstrap";
@@ -21,6 +29,7 @@ const WIDE_BOARD_WIDTH = 1024;
 const NAME_MIN_WIDTH = 56;
 const NAME_CLASS = "min-w-0 shrink truncate text-xs font-medium text-foreground-secondary";
 const RESTING_AFTER_MS = 4000;
+const SHOWN_FOR_MS = 60_000;
 const ANIMATED_SIDES = new Set<number>(DIE_SIDES);
 
 export type DiceStageProps = {
@@ -228,6 +237,13 @@ function ResultToast({
     );
   };
 
+  const expire = useEffectEvent(close);
+  useEffect(() => {
+    if (!shown) return;
+    const timer = setTimeout(expire, SHOWN_FOR_MS);
+    return () => clearTimeout(timer);
+  }, [roll, shown]);
+
   return (
     <button
       aria-label={copy.close}
@@ -283,7 +299,7 @@ function ResultToast({
   );
 }
 
-/** Plays the received roll and calls onSettled when its result toast is dismissed. */
+/** Plays the received roll and calls onSettled when its result toast is dismissed or expires. */
 export function DiceStage({ copy, editorLayer, onRoll, onSettled, roll }: DiceStageProps) {
   const host = useRef<HTMLDivElement>(null);
   const thrown = useRef<Promise<DiceThrow> | null>(null);

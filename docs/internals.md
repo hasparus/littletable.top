@@ -213,8 +213,12 @@ A roll has 1–20 dice and up to 256 characters, with a modifier from −1,000 t
 +1,000. Each rule applies to one group and may keep or drop between one die
 and the entire group. When a rule splits tied results, it keeps the earlier
 dice in the group. `adv`, `dis`, exploding dice, rerolls and success counting
-are outside the grammar. Chat commands `/roll` and `/rzut` can use the same
-parser when chat is added ([#1](https://github.com/hasparus/littletable.top/issues/1)).
+are outside the grammar. The chat commands `/roll` and `/r` use the same
+parser.
+
+Every board has a chat; the secret layer has none. The room accepts 20
+messages a minute from each person. Where the address limiter is bound, it
+also accepts 20 a minute from each address.
 
 The Worker validates the expression and stores it alongside the raw dice.
 `src/dice-notation.ts` derives the kept dice and total from those two inputs.

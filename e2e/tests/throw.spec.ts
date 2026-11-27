@@ -463,6 +463,22 @@ test("a new roll takes the tray over from the one before", async ({ browser, pag
   await guest.context().close();
 });
 
+test("a toast and its dice leave on their own a minute after the result shows", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await startBoard(page);
+  await roll(page, [6, 6]);
+  await expect(toast(page)).toBeVisible();
+  await expect(diceCanvas(page)).toBeVisible();
+
+  await page.clock.fastForward(55_000);
+  await expect(toast(page)).toBeVisible();
+  await page.clock.fastForward(6000);
+  await expect(toast(page)).toHaveCount(0);
+  await expect(tray(page)).toHaveCount(0);
+});
+
 test("with reduced motion the toast shows at once and no 3D code is fetched", async ({
   browser,
   page,
