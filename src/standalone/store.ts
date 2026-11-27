@@ -25,6 +25,8 @@ export type Listed = {
   shareCode: string;
   title: string;
 };
+export type PendingDeletion = Pick<Listed, "id" | "title">;
+
 /** A visit’s share code is null after the owner resets the link that was used. */
 export type Visited = {
   hasThumbnail?: true;
@@ -33,6 +35,8 @@ export type Visited = {
   title: string;
   visitedAt: number;
 };
+
+type BoardLists = { owned: Listed[]; pendingDeletions?: PendingDeletion[]; visited: Visited[] };
 
 type BoardRow = {
   created_at: number;
@@ -227,12 +231,40 @@ export class Store {
     return row === null ? null : board(row);
   }
 
-  async delete(id: string, ownerId: string): Promise<boolean> {
-    const result = await this.db
+  async beginDeletion(id: string, ownerId: string): Promise<boolean> {
+    const ownerKey = [id, ownerId, this.deployment] as const;
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO pending_board_deletions (id, owner_id, deployment, title, created_at)
+           SELECT id, owner_id, deployment, title, created_at FROM boards
+           WHERE id = ? AND owner_id = ? AND deployment = ?
+           ON CONFLICT (id) DO NOTHING`,
+        )
+        .bind(...ownerKey),
+      this.db
+        .prepare(
+          "SELECT 1 FROM pending_board_deletions WHERE id = ? AND owner_id = ? AND deployment = ?",
+        )
+        .bind(...ownerKey),
+    ]);
+    return results[1]!.results.length > 0;
+  }
+
+  async removeBoardForDeletion(id: string, ownerId: string) {
+    await this.db
       .prepare("DELETE FROM boards WHERE id = ? AND owner_id = ? AND deployment = ?")
       .bind(id, ownerId, this.deployment)
       .run();
-    return result.meta.changes > 0;
+  }
+
+  async finishDeletion(id: string, ownerId: string): Promise<void> {
+    await this.db
+      .prepare(
+        "DELETE FROM pending_board_deletions WHERE id = ? AND owner_id = ? AND deployment = ?",
+      )
+      .bind(id, ownerId, this.deployment)
+      .run();
   }
 
   async visit(accountId: string, visited: Board, now: number): Promise<void> {
@@ -315,8 +347,8 @@ export class Store {
     return result.meta.changes > 0;
   }
 
-  async list(accountId: string): Promise<{ owned: Listed[]; visited: Visited[] }> {
-    const [owned, visited] = await this.db.batch([
+  async list(accountId: string) {
+    const [owned, visited, pending] = await this.db.batch<PendingDeletion>([
       this.db
         .prepare(
           "SELECT id, title, share_code, created_at, has_thumbnail FROM boards WHERE owner_id = ? AND deployment = ? ORDER BY created_at DESC",
@@ -329,8 +361,16 @@ export class Store {
            WHERE v.account_id = ? AND b.deployment = ? AND b.owner_id != v.account_id ORDER BY v.visited_at DESC LIMIT 100`,
         )
         .bind(accountId, this.deployment),
+      this.db
+        .prepare(
+          `SELECT p.id, p.title FROM pending_board_deletions p
+           WHERE p.owner_id = ? AND p.deployment = ?
+             AND NOT EXISTS (SELECT 1 FROM boards WHERE id = p.id)
+           ORDER BY p.created_at DESC`,
+        )
+        .bind(accountId, this.deployment),
     ]);
-    return {
+    const list: BoardLists = {
       owned: (owned!.results as Record<string, unknown>[]).map((row) => ({
         createdAt: row.created_at as number,
         ...(row.has_thumbnail === 1 ? { hasThumbnail: true as const } : {}),
@@ -348,5 +388,7 @@ export class Store {
         visitedAt: row.visited_at as number,
       })),
     };
+    if (pending!.results.length > 0) list.pendingDeletions = pending!.results;
+    return list;
   }
 }

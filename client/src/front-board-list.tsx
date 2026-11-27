@@ -24,7 +24,9 @@ type Visited = {
   title: string;
   visitedAt: number;
 };
-export type Lists = { owned: Owned[]; visited: Visited[] };
+export type PendingDeletion = Pick<Owned, "id" | "title">;
+export type Lists = { owned: Owned[]; pendingDeletions?: PendingDeletion[]; visited: Visited[] };
+type BoardAction = (board: PendingDeletion, action: Action, title?: string) => Promise<void>;
 
 const DATE_FORMATS = {
   en: new Intl.DateTimeFormat("en", { dateStyle: "medium" }),
@@ -102,7 +104,7 @@ function OwnedRow({
   copy: FrontCopy;
   editing: Editing;
   format: Intl.DateTimeFormat;
-  onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  onAction: BoardAction;
   post: Post;
   setEditing: (editing: Editing) => void;
 }) {
@@ -321,7 +323,7 @@ export function BoardList({
   editing: Editing;
   lists: Lists;
   locale: Language;
-  onAction: (board: Owned, action: Action, title?: string) => Promise<void>;
+  onAction: BoardAction;
   post: Post;
   setEditing: (editing: Editing) => void;
 }) {
@@ -332,6 +334,7 @@ export function BoardList({
   )[locale];
   const phone = useSyncExternalStore(subscribeToPhone, isPhone, () => false);
   const hasVisited = lists.visited.length > 0;
+  const pendingDeletions = lists.pendingDeletions ?? [];
   const collapsible = phone && lists.owned.length > 2 && lists.visited.length > 2;
   const joined = hasVisited ? (
     <BoardCollection collapsible={collapsible} key="joined" label={copy.visited}>
@@ -371,10 +374,26 @@ export function BoardList({
       label={copy.created}
       showHeading={phone || hasVisited}
     >
-      {lists.owned.length === 0 ? (
+      {lists.owned.length === 0 && pendingDeletions.length === 0 ? (
         <p className="border-t border-border py-4 text-foreground-muted">{copy.noBoardsYet}</p>
       ) : (
         <ul className="divide-y divide-border border-t border-border">
+          {pendingDeletions.map((board) => (
+            <li className="flex flex-wrap items-center justify-between gap-x-3 py-2" key={board.id}>
+              <div className="min-w-0 wrap-anywhere">
+                <p className="font-semibold">{board.title}</p>
+                <p className="text-sm text-foreground-muted">{copy.deletionPending}</p>
+              </div>
+              <button
+                aria-label={fill(copy.finishDeletingBoard, { title: board.title })}
+                className="btn btn-secondary min-h-11"
+                onClick={() => void onAction(board, "delete")}
+                type="button"
+              >
+                {copy.finishDeleting}
+              </button>
+            </li>
+          ))}
           {lists.owned.map((board) => (
             <OwnedRow
               board={board}

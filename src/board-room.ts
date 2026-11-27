@@ -62,6 +62,7 @@ import {
 } from "./public-signature";
 import { openRoomAllowances } from "./room-allowance";
 import { RoomDocument } from "./room-document";
+import { closeRoomSessions } from "./room-sessions";
 import { isSecretLayer } from "./secret-layer";
 import {
   readSocketAttachment,
@@ -304,13 +305,11 @@ export class BoardRoom extends DurableObject<Env> {
       link,
     );
     log("board.link_reset", { board, link });
-    const room = this.drawingRoom?.room;
-    if (room === undefined) return;
-    for (const session of room.getSessions()) {
-      if (session.meta.link < link) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.drawingRoom?.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.link < link,
+    );
   }
 
   // WARNING: WebSockets cannot cross Durable Object RPC. Forward the upgrade request with the verified pass.
@@ -331,13 +330,11 @@ export class BoardRoom extends DurableObject<Env> {
 
   disconnectSession(hash: string): void {
     this.privateSockets.revoke(hash);
-    const room = this.drawingRoom?.room;
-    if (room === undefined) return;
-    for (const session of room.getSessions()) {
-      if (session.meta.sessionHash === hash) {
-        room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.FORBIDDEN);
-      }
-    }
+    closeRoomSessions(
+      this.drawingRoom?.room,
+      TLSyncErrorCloseEventReason.FORBIDDEN,
+      (person) => person.sessionHash === hash,
+    );
   }
 
   private async connectRoom(request: Request, pass: Pass, sessionHash?: string): Promise<Response> {
@@ -872,11 +869,18 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
-  async retire(board: string): Promise<void> {
-    // WARNING: Without the retired marker, a still-valid pass could reopen the deleted private room.
+  async markRetired() {
+    // WARNING: Persist the marker before acknowledging retirement so old passes cannot reopen an evicted room.
     this.retired = true;
     this.ctx.storage.kv.put(RETIRED, true);
-    await this.destroy(board);
+    this.disconnectAll();
+    this.drawingRoom = undefined;
+    await this.ctx.storage.sync();
+  }
+
+  async wipeRetired(board: string): Promise<void> {
+    if (!this.retired) throw new Error("Board must be retired before wiping");
+    return this.destroy(board);
   }
 
   private grantVersion() {
@@ -957,6 +961,17 @@ export class BoardRoom extends DurableObject<Env> {
     });
   }
 
+  private disconnectAll() {
+    this.assistantGrantsChanged();
+    const room = this.drawingRoom?.room;
+    if (room !== undefined) {
+      closeRoomSessions(room, TLSyncErrorCloseEventReason.NOT_FOUND);
+      room.close();
+    }
+    for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
+    this.sockets.clear();
+  }
+
   async destroy(board: string): Promise<void> {
     this.destruction ??= this.clearBoard(board).finally(() => {
       this.destruction = undefined;
@@ -965,13 +980,7 @@ export class BoardRoom extends DurableObject<Env> {
   }
 
   private async clearBoard(board: string) {
-    this.assistantGrantsChanged();
-    for (const session of this.room.getSessions()) {
-      this.room.closeSession(session.sessionId, TLSyncErrorCloseEventReason.NOT_FOUND);
-    }
-    this.room.close();
-    for (const connection of this.sockets.values()) clearTimeout(connection.connectTimer);
-    this.sockets.clear();
+    this.disconnectAll();
     // WARNING: Keep the document intact so deletion can be retried after a file storage error.
     let files: number;
     try {

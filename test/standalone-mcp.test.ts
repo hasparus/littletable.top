@@ -268,7 +268,8 @@ it.each([
           break;
         }
         case "board deletion":
-          expect(await store.delete(board.id, ownerId)).toBe(true);
+          expect(await store.beginDeletion(board.id, ownerId)).toBe(true);
+          await store.removeBoardForDeletion(board.id, ownerId);
           await instance.destroy(board.id);
           break;
       }
