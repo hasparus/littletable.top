@@ -1,15 +1,5 @@
+import type { AssistantAccess, AssistantBoard } from "../../client/src/front-page";
 import type { BoardGrant } from "../room-contract";
-
-export type AssistantAccess = "off" | "read" | "write";
-
-type AssistantBoard = {
-  access: AssistantAccess;
-  hasThumbnail: boolean;
-  id: string;
-  role: "owner" | "manager";
-  shareCode: string;
-  title: string;
-};
 
 type AccessRow = {
   access: AssistantAccess;
@@ -48,7 +38,7 @@ export class AssistantGrants {
 
   async boards(account: string, client: string) {
     const { results } = await this.db
-      .prepare(`SELECT b.id, b.title, b.share_code, b.has_thumbnail,
+      .prepare(`SELECT b.id, b.title, b.has_thumbnail,
       COALESCE(g.access, 'off') AS access,
       CASE WHEN b.owner_id = ?1 THEN 'owner' ELSE 'manager' END AS role
       FROM boards b ${VISIT} LEFT JOIN assistant_grants g ON ${GRANT}
@@ -59,7 +49,6 @@ export class AssistantGrants {
         has_thumbnail: number;
         id: string;
         role: AccessRow["role"];
-        share_code: string;
         title: string;
       }>();
     return results.map(
@@ -69,7 +58,6 @@ export class AssistantGrants {
           hasThumbnail: row.has_thumbnail === 1,
           id: row.id,
           role: row.role,
-          shareCode: row.share_code,
           title: row.title,
         }) satisfies AssistantBoard,
     );

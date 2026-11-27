@@ -1,4 +1,5 @@
 import type { Language } from "../settings";
+import type { FrontView } from "./front-page";
 
 const EN = {
   accessEdit: "Edit",
@@ -120,6 +121,12 @@ const PL: FrontCopy = {
 };
 
 export const FRONT_COPY: Record<Language, FrontCopy> = { en: EN, pl: PL };
+
+/** The copy that names each front page in its document title. */
+export const FRONT_TITLES = {
+  assistants: "assistants",
+  boards: "yourBoards",
+} as const satisfies Record<FrontView, keyof FrontCopy>;
 
 export const LANDING_COPY = {
   publicBoard: EN.publicBoard,

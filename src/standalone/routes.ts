@@ -213,6 +213,10 @@ export class Standalone {
     return found;
   }
 
+  async signedIn(request: Request) {
+    return (await this.session(request)) !== null;
+  }
+
   async assistantsPage(request: Request) {
     const found = await this.session(request);
     if (found === null) return "signed-out" as const;
@@ -248,7 +252,7 @@ export class Standalone {
     }
     const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board));
     await room.assistantGrantsChanged();
-    return json(200, { access, board, client });
+    return new Response(null, { headers: { "Cache-Control": "no-store" }, status: 204 });
   }
 
   private async signIn(request: Request): Promise<Response> {

@@ -1,92 +1,122 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 
 import type { FrontCopy } from "./front-copy";
 
 import { fill } from "./copy";
 import {
   type Account,
+  FrontFailed,
   FrontHeader,
   FrontMain,
-  FrontPending,
   NAV_LINK,
   type Post,
   useApi,
-  useFrontPage,
 } from "./front-layout";
+import { BoardCollection, BoardRow, EmptyList, LIST } from "./front-list";
 import {
-  BOARD_DETAIL,
-  BOARD_TITLE,
-  BoardCollection,
-  BoardThumbnail,
-  EmptyList,
-  LIST,
-} from "./front-list";
-import { assistantsShell } from "./front-skeleton";
+  ASSISTANTS_SIGN_IN,
+  type AssistantAccess,
+  type AssistantBoard,
+  type Loaded,
+} from "./front-page";
+import { latestWins } from "./latest-wins";
 
-export type AssistantAccess = "off" | "read" | "write";
-type AssistantBoard = {
-  access: AssistantAccess;
-  hasThumbnail: boolean;
-  id: string;
-  role: "owner" | "manager";
-  shareCode: string;
-  title: string;
-};
 export type AssistantsPage = {
   account: Account;
   clients: { boards: AssistantBoard[]; id: string }[];
   csrf: string;
 };
 
-const SIGN_IN = "/auth/sign-in?return=/assistants";
-
-const ROW =
-  "relative grid min-h-15 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 py-2 @md:grid-cols-[auto_minmax(0,1fr)_auto] @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_auto] @3xl:gap-x-4";
-const CHOICE =
-  "col-start-2 row-start-3 mt-2 justify-self-start @md:col-start-3 @md:row-span-2 @md:row-start-1 @md:mt-0 @md:justify-self-end @3xl:col-start-4 @3xl:row-span-1";
 const LEVEL =
-  "relative flex min-h-11 min-w-14 cursor-pointer items-center justify-center rounded-[0.625rem] px-3 text-sm font-medium text-foreground-secondary select-none hover:text-foreground has-checked:bg-bg-secondary has-checked:shadow-board-control has-checked:ring-1 has-checked:ring-border has-focus-visible:outline-2 has-focus-visible:outline-border-focus";
+  "relative flex min-h-11 min-w-14 items-center justify-center rounded-[0.625rem] px-3 text-sm font-medium text-foreground-secondary select-none not-has-disabled:cursor-pointer not-has-disabled:hover:text-foreground has-checked:bg-bg-secondary has-checked:shadow-board-control has-checked:ring-1 has-checked:ring-border has-focus-visible:outline-2 has-focus-visible:outline-border-focus";
+const KEYBOARD_PAUSE_MS = 500;
+const SAVED_SHOWN_MS = 3000;
 
 type Saving = "idle" | "saving" | "saved" | "failed";
 
-function useSavedAccess(post: Post, client: string, board: AssistantBoard) {
-  const [chosen, setChosen] = useState(board.access);
-  const [saving, setSaving] = useState<Saving>("idle");
-  const saved = useRef(board.access);
-  const queue = useRef(Promise.resolve());
-  const latest = useRef(0);
-  const send = async (access: AssistantAccess, ticket: number) => {
-    const response = await post("/api/assistants", { access, board: board.id, client }).catch(
-      () => null,
-    );
-    const ok = response?.ok === true;
-    if (ok) saved.current = access;
-    if (ticket !== latest.current) return;
-    if (!ok) setChosen(saved.current);
-    setSaving(ok ? "saved" : "failed");
-  };
-  const choose = (access: AssistantAccess) => {
-    const ticket = ++latest.current;
-    setChosen(access);
-    setSaving("saving");
-    queue.current = queue.current.then(() => send(access, ticket));
-  };
-  return { choose, chosen, saving };
-}
+const subscribeToNothing = () => () => null;
+const useHydrated = () =>
+  useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
 
-function AccessRow({
+function useSavedAccess({
+  announce,
   board,
   client,
   copy,
   post,
 }: {
+  announce: (message: string) => void;
+  board: AssistantBoard;
+  client: string;
+  copy: FrontCopy;
+  post: Post;
+}) {
+  const [chosen, setChosen] = useState(board.access);
+  const [saving, setSaving] = useState<Saving>("idle");
+  const pause = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const show = (state: Saving) => {
+    setSaving(state);
+    if (state === "saving") announce(copy.saving);
+    else if (state === "saved") announce(copy.saved);
+  };
+  const save = async (access: AssistantAccess) => {
+    const response = await post("/api/assistants", { access, board: board.id, client }).catch(
+      () => null,
+    );
+    if (response?.status === 401) location.assign(ASSISTANTS_SIGN_IN);
+    return response?.ok === true;
+  };
+  const queue = useRef<ReturnType<typeof latestWins<AssistantAccess>> | null>(null);
+  const commit = (access: AssistantAccess) => {
+    if (queue.current === null) queue.current = latestWins(board.access, save);
+    void queue.current.choose(access)?.then(({ ok, saved }) => {
+      if (pause.current !== undefined) return;
+      setChosen(saved);
+      show(ok ? "saved" : "failed");
+      if (ok) hide.current = setTimeout(() => setSaving("idle"), SAVED_SHOWN_MS);
+    });
+  };
+  const choose = (access: AssistantAccess, byKeyboard: boolean) => {
+    clearTimeout(pause.current);
+    clearTimeout(hide.current);
+    pause.current = undefined;
+    setChosen(access);
+    show("saving");
+    if (!byKeyboard) {
+      commit(access);
+      return;
+    }
+    pause.current = setTimeout(() => {
+      pause.current = undefined;
+      commit(access);
+    }, KEYBOARD_PAUSE_MS);
+  };
+  return { choose, chosen, saving };
+}
+
+function AccessRow({
+  announce,
+  board,
+  client,
+  copy,
+  post,
+}: {
+  announce: (message: string) => void;
   board: AssistantBoard;
   client: string;
   copy: FrontCopy;
   post: Post;
 }) {
   const name = useId();
-  const { choose, chosen, saving } = useSavedAccess(post, client, board);
+  const hydrated = useHydrated();
+  const byKeyboard = useRef(false);
+  const { choose, chosen, saving } = useSavedAccess({ announce, board, client, copy, post });
   const levels = [
     ["off", copy.accessOff],
     ["read", copy.accessRead],
@@ -97,38 +127,49 @@ function AccessRow({
   else if (saving === "saved") progress = copy.saved;
   return (
     <li>
-      <div className={ROW}>
-        <BoardThumbnail board={board} />
-        <span className={`${BOARD_TITLE} wrap-anywhere`}>{board.title}</span>
-        <span className={BOARD_DETAIL}>
-          {board.role === "owner" ? copy.ownBoard : copy.managedBoard}
-          {progress !== "" && <span aria-hidden="true"> · </span>}
-          <span role="status">{progress}</span>
-        </span>
-        <div
-          aria-busy={saving === "saving"}
-          aria-label={fill(copy.accessFor, { title: board.title })}
-          className={`${CHOICE} inline-flex rounded-xl border border-border bg-bg-tertiary p-0.5`}
-          role="radiogroup"
-        >
-          {levels.map(([level, label]) => (
-            <label
-              className={`${LEVEL} ${level === "off" ? "has-checked:text-foreground" : "has-checked:text-primary-strong"}`}
-              key={level}
-            >
-              <input
-                checked={chosen === level}
-                className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-[inherit] opacity-0"
-                name={name}
-                onChange={() => choose(level)}
-                type="radio"
-                value={level}
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-      </div>
+      <BoardRow
+        action={
+          <div
+            aria-busy={saving === "saving"}
+            aria-label={fill(copy.accessFor, { title: board.title })}
+            className="inline-flex rounded-xl border border-border bg-bg-tertiary p-0.5"
+            role="radiogroup"
+          >
+            {levels.map(([level, label]) => (
+              <label
+                className={`${LEVEL} ${level === "off" ? "has-checked:text-foreground" : "has-checked:text-primary-strong"}`}
+                key={level}
+              >
+                <input
+                  checked={chosen === level}
+                  className="absolute inset-0 m-0 cursor-[inherit] appearance-none rounded-[inherit] opacity-0"
+                  disabled={!hydrated}
+                  name={name}
+                  onChange={() => choose(level, byKeyboard.current)}
+                  onKeyDown={(event) => {
+                    byKeyboard.current = event.key.startsWith("Arrow");
+                  }}
+                  onPointerDown={() => {
+                    byKeyboard.current = false;
+                  }}
+                  type="radio"
+                  value={level}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        }
+        actionPlacement="below"
+        board={{ id: board.id, thumbnail: board.hasThumbnail }}
+        detail={
+          <>
+            {board.role === "owner" ? copy.ownBoard : copy.managedBoard}
+            {progress !== "" && ` · ${progress}`}
+          </>
+        }
+        title={board.title}
+      />
       {saving === "failed" && (
         <p className="pb-2 text-sm text-danger-text" role="alert">
           {copy.actionFailed}
@@ -140,6 +181,7 @@ function AccessRow({
 
 function SignedIn({ copy, name, page }: { copy: FrontCopy; name: string; page: AssistantsPage }) {
   const post = useApi(page.csrf);
+  const [announcement, setAnnouncement] = useState("");
   return (
     <>
       <FrontHeader
@@ -154,6 +196,9 @@ function SignedIn({ copy, name, page }: { copy: FrontCopy; name: string; page: A
         post={post}
       />
       <FrontMain intro={copy.assistantsHelp} title={copy.assistants}>
+        <p className="sr-only" role="status">
+          {announcement}
+        </p>
         <div className="mt-6 grid gap-8">
           {page.clients.length === 0 ? (
             <EmptyList>{fill(copy.noClients, { name })}</EmptyList>
@@ -161,18 +206,17 @@ function SignedIn({ copy, name, page }: { copy: FrontCopy; name: string; page: A
             page.clients.map((client, index) => (
               <BoardCollection
                 collapsible={false}
+                description={client.id}
                 key={client.id}
                 label={fill(copy.client, { number: index + 1 })}
               >
-                <p className="-mt-1 mb-2 text-sm wrap-anywhere text-foreground-muted">
-                  {client.id}
-                </p>
                 {client.boards.length === 0 ? (
                   <EmptyList>{copy.noEligibleBoards}</EmptyList>
                 ) : (
                   <ul className={LIST}>
                     {client.boards.map((board) => (
                       <AccessRow
+                        announce={setAnnouncement}
                         board={board}
                         client={client.id}
                         copy={copy}
@@ -197,15 +241,12 @@ export function Assistants({
   name,
 }: {
   copy: FrontCopy;
-  initialPage?: AssistantsPage;
+  initialPage: Loaded<AssistantsPage>;
   name: string;
 }) {
-  const [page] = useFrontPage<AssistantsPage>("/api/assistants", initialPage);
-  useEffect(() => {
-    if (page === "signed-out") location.assign(SIGN_IN);
-  }, [page]);
-  if (page === null || page === "failed" || page === "signed-out") {
-    return <FrontPending copy={copy} failed={page === "failed"} shell={assistantsShell} />;
-  }
-  return <SignedIn copy={copy} name={name} page={page} />;
+  return initialPage === "failed" || initialPage === "signed-out" ? (
+    <FrontFailed copy={copy} />
+  ) : (
+    <SignedIn copy={copy} name={name} page={initialPage} />
+  );
 }

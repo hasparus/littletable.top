@@ -1,30 +1,27 @@
 import type { Language } from "../settings";
 import type { FrontCopy } from "./front-copy";
+import type { FrontPage } from "./front-page";
 
 import { FeedbackProvider } from "./feedback";
-import { type BoardPage, Front } from "./front";
-import { Assistants, type AssistantsPage } from "./front-assistants";
+import { Front } from "./front";
+import { Assistants } from "./front-assistants";
 
 /** What the Worker renders and serializes for hydration on `/boards` and `/assistants`. */
-export type FrontState = { locale: Language; name: string } & (
-  | { failed?: boolean; initialPage?: "signed-out" | BoardPage; view: "boards" }
-  | { initialPage?: AssistantsPage; view: "assistants" }
-);
-export type FrontView = FrontState["view"];
+export type FrontState = { locale: Language; name: string; page: FrontPage };
 
-export function FrontApp(props: FrontState & { copy: FrontCopy }) {
+export function FrontApp({ copy, locale, name, page }: FrontState & { copy: FrontCopy }) {
   return (
-    <FeedbackProvider enabled language={props.locale}>
-      {props.view === "boards" ? (
+    <FeedbackProvider enabled language={locale}>
+      {page.view === "boards" ? (
         <Front
-          copy={props.copy}
-          failed={props.failed}
-          initialPage={props.initialPage}
-          locale={props.locale}
-          name={props.name}
+          copy={copy}
+          failed={page.failed}
+          initialPage={page.initialPage}
+          locale={locale}
+          name={name}
         />
       ) : (
-        <Assistants copy={props.copy} initialPage={props.initialPage} name={props.name} />
+        <Assistants copy={copy} initialPage={page.initialPage} name={name} />
       )}
     </FeedbackProvider>
   );

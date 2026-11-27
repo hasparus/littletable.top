@@ -5,14 +5,7 @@ import type { FrontCopy } from "./front-copy";
 
 import { BoardPeople, type BoardRoleChange } from "./board-people";
 import { fill } from "./copy";
-import {
-  BOARD_DETAIL,
-  BOARD_TITLE,
-  BoardCollection,
-  BoardThumbnail,
-  EmptyList,
-  LIST,
-} from "./front-list";
+import { BoardCollection, BoardRow, EmptyList, LIST } from "./front-list";
 import { FrontMenu, MENU_BUTTON } from "./front-menu";
 import { Icon } from "./icons";
 
@@ -51,9 +44,12 @@ export type Editing = { id: string; kind: (typeof ACTIONS)[number] } | null;
 
 type Post = (path: string, body: BoardRoleChange) => Promise<Response>;
 
-const ROW =
-  "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,22%)_9rem] @3xl:gap-x-4";
-const BOARD_LINK = `${BOARD_TITLE} rounded-sm wrap-anywhere underline-offset-4 after:absolute after:inset-0 after:rounded-sm hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-border-focus`;
+const BOARD_LINK =
+  "rounded-sm underline-offset-4 after:absolute after:inset-0 after:rounded-sm hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-border-focus";
+const thumbnailOf = (board: { hasThumbnail?: boolean; id: string; shareCode: string | null }) => ({
+  id: board.id,
+  thumbnail: board.hasThumbnail === true && board.shareCode !== null,
+});
 
 function BoardDate({
   date,
@@ -66,7 +62,7 @@ function BoardDate({
 }) {
   const timestamp = new Date(date * 1000);
   return (
-    <time className={BOARD_DETAIL} dateTime={timestamp.toISOString()}>
+    <time dateTime={timestamp.toISOString()}>
       {fill(label, { date: format.format(timestamp) })}
     </time>
   );
@@ -108,39 +104,9 @@ function OwnedRow({
 
   return (
     <li>
-      <div className={`${ROW} min-h-15 py-2`}>
-        <BoardThumbnail board={board} />
-        {mode === "rename" ? (
-          <form
-            className={BOARD_TITLE}
-            id={`rename-${board.id}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onAction(board, "rename", title);
-            }}
-          >
-            <input
-              aria-label={copy.boardName}
-              autoFocus
-              className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
-              maxLength={80}
-              onChange={(event) => setTitle(event.target.value)}
-              onFocus={(event) => event.currentTarget.select()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setEditing(null);
-              }}
-              required
-              value={title}
-            />
-          </form>
-        ) : (
-          <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-            {board.title}
-          </a>
-        )}
-        <BoardDate date={board.createdAt} format={format} label={copy.createdOn} />
-        <div className="relative col-start-3 row-span-2 row-start-1 flex items-center justify-self-end @3xl:col-start-4 @3xl:row-span-1">
-          {mode === "rename" ? (
+      <BoardRow
+        action={
+          mode === "rename" ? (
             <>
               <button
                 className="min-h-11 px-2 text-sm font-semibold"
@@ -186,9 +152,40 @@ function OwnedRow({
                 ))}
               </FrontMenu>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+        board={thumbnailOf(board)}
+        detail={<BoardDate date={board.createdAt} format={format} label={copy.createdOn} />}
+        title={
+          mode === "rename" ? (
+            <form
+              id={`rename-${board.id}`}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onAction(board, "rename", title);
+              }}
+            >
+              <input
+                aria-label={copy.boardName}
+                autoFocus
+                className="block w-full rounded-sm border border-dashed border-foreground-muted bg-transparent p-0 focus:border-border-focus focus:outline-none"
+                maxLength={80}
+                onChange={(event) => setTitle(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setEditing(null);
+                }}
+                required
+                value={title}
+              />
+            </form>
+          ) : (
+            <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+              {board.title}
+            </a>
+          )
+        }
+      />
       <span className="sr-only" role="status">
         {copiedCode === board.shareCode && copy.linkCopied}
       </span>
@@ -275,22 +272,23 @@ export function BoardList({
     <BoardCollection collapsible={collapsible} key="joined" label={copy.visited}>
       <ul className={LIST}>
         {lists.visited.map((board) => (
-          <li className={`${ROW} min-h-15 py-2`} key={board.id}>
-            <BoardThumbnail board={board} />
+          <li key={board.id}>
             {board.shareCode === null ? (
-              <>
-                <span className="col-start-2 row-start-1 self-end wrap-anywhere text-foreground-secondary @3xl:self-center">
-                  {board.title}
-                </span>
-                <span className={BOARD_DETAIL}>{copy.linkWasReset}</span>
-              </>
+              <BoardRow
+                board={thumbnailOf(board)}
+                detail={copy.linkWasReset}
+                title={<span className="font-normal text-foreground-secondary">{board.title}</span>}
+              />
             ) : (
-              <>
-                <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
-                  {board.title}
-                </a>
-                <BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />
-              </>
+              <BoardRow
+                board={thumbnailOf(board)}
+                detail={<BoardDate date={board.visitedAt} format={format} label={copy.joinedOn} />}
+                title={
+                  <a className={BOARD_LINK} href={`/b/${board.shareCode}`}>
+                    {board.title}
+                  </a>
+                }
+              />
             )}
           </li>
         ))}

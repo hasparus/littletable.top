@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback } from "react";
 
 import type { FrontCopy } from "./front-copy";
 
@@ -21,55 +21,18 @@ export function useApi(csrf: string | null) {
       fetch(path, {
         body: JSON.stringify(body),
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf ?? "" },
+        keepalive: true,
         method: "POST",
       }),
     [csrf],
   );
 }
 
-type Loaded<Page> = "failed" | "signed-out" | Page;
-
-async function load<Page>(path: string) {
-  try {
-    const response = await fetch(path);
-    if (response.status === 401) return "signed-out" as const;
-    if (!response.ok) return "failed" as const;
-    // WARNING: SAFETY: The Worker answers this path with the page it renders for hydration.
-    const page = (await response.json()) as Page;
-    return page;
-  } catch {
-    return "failed" as const;
-  }
-}
-
-/** Uses the page the Worker rendered, or loads it from `path` when there is none. */
-export function useFrontPage<Page>(path: string, initial: "signed-out" | Page | undefined) {
-  const [page, setPage] = useState<Loaded<Page> | null>(initial ?? null);
-  const reload = useCallback(async () => setPage(await load<Page>(path)), [path]);
-  useEffect(() => {
-    if (initial === undefined) void load<Page>(path).then(setPage);
-  }, [initial, path]);
-  return [page, reload] as const;
-}
-
-export function FrontPending({
-  copy,
-  failed,
-  shell,
-}: {
-  copy: FrontCopy;
-  failed: boolean;
-  shell: string;
-}) {
-  return failed ? (
+export function FrontFailed({ copy }: { copy: FrontCopy }) {
+  return (
     <p className="p-6 text-danger-text" role="alert">
       {copy.actionFailed}
     </p>
-  ) : (
-    <div role="status">
-      <span className="sr-only">{copy.loading}</span>
-      <div dangerouslySetInnerHTML={{ __html: shell }} />
-    </div>
   );
 }
 

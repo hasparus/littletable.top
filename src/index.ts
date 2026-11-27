@@ -1,8 +1,8 @@
-import type { FrontView } from "../client/src/front-app";
 import type { ChatMessage } from "./chat";
 import type { ExpressionError } from "./dice-expression";
 import type { Roll } from "./dice-notation";
 
+import { frontView } from "../client/src/front-page";
 import {
   AVATAR_HEADER,
   type AvatarSource,
@@ -304,10 +304,12 @@ async function routeRequest(request: Request, env: Env, ctx?: ExecutionContext):
       config,
       verifiers.keys!,
     );
-    let view: FrontView | null = null;
-    if (pathname === "/boards") view = "boards";
-    else if (pathname === "/assistants" && config.assistants === true) view = "assistants";
-    if (view !== null && (request.method === "GET" || request.method === "HEAD")) {
+    const view = frontView(pathname);
+    if (
+      view !== null &&
+      (view !== "assistants" || config.assistants === true) &&
+      (request.method === "GET" || request.method === "HEAD")
+    ) {
       return serveFront(request, env.ASSETS, config, own, view);
     }
     const route = own.route(request);

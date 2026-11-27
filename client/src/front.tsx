@@ -9,14 +9,13 @@ import { BoardList } from "./front-board-list";
 import { type FrontCopy } from "./front-copy";
 import {
   type Account,
+  FrontFailed,
   FrontHeader,
   FrontMain,
-  FrontPending,
   NAV_LINK,
   useApi,
-  useFrontPage,
 } from "./front-layout";
-import { boardShell } from "./front-skeleton";
+import { type Loaded, loadBoards } from "./front-page";
 import { Icon } from "./icons";
 
 export type BoardPage = Lists & { account: Account; csrf: string };
@@ -152,14 +151,13 @@ export function Front({
 }: {
   copy: FrontCopy;
   failed?: boolean;
-  initialPage?: "signed-out" | BoardPage;
+  initialPage: Loaded<BoardPage>;
   locale: Language;
   name: string;
 }) {
-  const [page, reload] = useFrontPage<BoardPage>("/api/boards", initialPage);
-  if (page === null || page === "failed") {
-    return <FrontPending copy={copy} failed={page === "failed"} shell={boardShell} />;
-  }
+  const [page, setPage] = useState(initialPage);
+  const reload = async () => setPage(await loadBoards());
+  if (page === "failed") return <FrontFailed copy={copy} />;
   return page === "signed-out" ? (
     <SignedOut copy={copy} failed={failed === true} name={name} />
   ) : (
