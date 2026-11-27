@@ -204,6 +204,45 @@ describe("standalone link previews", () => {
   });
 });
 
+describe("PostHog browser configuration", () => {
+  const production = { ...standaloneEnv, POSTHOG_WEB_PROJECT_TOKEN: "phc_test" };
+
+  it("exposes the public token and allows PostHog on the homepage when configured", async () => {
+    const response = await new Browser().fetch("/", {}, production);
+    const policy = directives(response);
+    expect(policy.get("connect-src")).toContain("https://us.i.posthog.com");
+    expect(policy.get("script-src")).toContain("https://us-assets.i.posthog.com");
+    expect(policy.get("worker-src")).toContain("blob:");
+    expect(await response.text()).toContain(
+      '<meta name="posthog-project-token" content="phc_test">',
+    );
+  });
+
+  it.each(["/boards", "/b/AbC123xyz789"])("keeps PostHog off %s", async (path) => {
+    const response = await new Browser().fetch(path, {}, production);
+    expect(response.headers.get("Content-Security-Policy")).not.toContain("posthog.com");
+    expect(await response.text()).not.toContain("posthog-project-token");
+  });
+
+  it("offers Support on signed-in boards without injecting the token", async () => {
+    const owner = new Browser();
+    await owner.signIn("Support tester");
+    const board = await owner.createBoard("A private table");
+    const list = await (await owner.fetch("/boards", {}, production)).text();
+    expect(list).toContain('href="/docs/?support"');
+    expect(list).toContain('rel="noreferrer"');
+    const shell = await (await owner.fetch(`/b/${board.shareCode}`, {}, production)).text();
+    expect(shell).toContain('<meta name="little-table-support">');
+    expect(shell).not.toContain('name="posthog-project-token"');
+  });
+
+  it("keeps PostHog off unconfigured deployments", async () => {
+    const response = await new Browser().fetch("/");
+    expect(response.headers.get("Content-Security-Policy")).not.toContain("posthog.com");
+    expect(await response.text()).not.toContain("posthog-project-token");
+  });
+});
+
 describe("the board's other names", () => {
   const withRoot = (rootDomain: string, url: string) =>
     handle(new Request(url, { redirect: "manual" }), {

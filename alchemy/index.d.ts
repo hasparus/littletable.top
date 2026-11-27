@@ -73,13 +73,9 @@ export type StandaloneProps = Shared & {
   boardDataScope?: string;
   /** Bind an existing D1 resource. Its owning stack provisions and migrates it. */
   database?: Cloudflare.D1.Database;
-  feedback?: {
-    projectToken: Redacted.Redacted<string> | string;
-    questionId: string;
-    region: string;
-    surveyId: string;
-  };
   mode: "standalone";
+  /** Public project token for the US PostHog browser SDK. */
+  posthogWebProjectToken?: string;
   /** WorkOS user ID that owns the public landing board. */
   publicBoardOwnerId?: string;
   /**

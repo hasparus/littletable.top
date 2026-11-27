@@ -30,6 +30,7 @@ export type ConfigEnv = {
   WORKOS_API_KEY?: string;
   WORKOS_CLIENT_ID?: string;
   PUBLIC_BOARD_OWNER_ID?: string;
+  POSTHOG_WEB_PROJECT_TOKEN?: string;
   /**
    * The host the tabletop answers on, and the hosts that 308 to it, comma
    * separated. Without a primary host nothing redirects.
@@ -61,6 +62,7 @@ export type StandaloneConfig = {
   displayName: string;
   hosts: Hosts;
   mode: "standalone";
+  posthogWebProjectToken?: string;
   publicBoardOwnerId?: string;
   signingKey: string;
   workOs: { apiBase: string; apiKey: string; clientId: string };
@@ -172,6 +174,7 @@ function standalone(env: ConfigEnv): StandaloneConfig {
     displayName: present(env.DISPLAY_NAME) ? env.DISPLAY_NAME : "Tabletop",
     hosts: hostsOf(env),
     mode: "standalone",
+    posthogWebProjectToken: env.POSTHOG_WEB_PROJECT_TOKEN?.trim() || undefined,
     publicBoardOwnerId: env.PUBLIC_BOARD_OWNER_ID?.trim() || undefined,
     signingKey: pem(env.SIGNING_KEY!),
     workOs: {

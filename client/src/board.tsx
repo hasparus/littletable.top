@@ -19,12 +19,12 @@ import {
 } from "./bootstrap";
 import { BoardCanvas } from "./canvas";
 import { type Copy, fill } from "./copy";
-import { FeedbackProvider } from "./feedback";
 import { Icon } from "./icons";
 import { LandingPlaceholder } from "./landing-placeholder";
 import { NameForm } from "./name-form";
 import { Notice } from "./notice";
 import { alignLayers, carryTool, openOverlay } from "./secret-backdrop";
+import { SupportContext, supportLabel } from "./support";
 
 type Stage =
   | { ending: Ending; exit: Exit; kind: "ended" }
@@ -40,12 +40,12 @@ type Layer = "shared" | "overlay" | "manage" | "full" | "unavailable";
 type Mount = {
   copy: Copy;
   door: Door;
-  feedback: boolean;
   fallbackExit: Exit;
   first: Promise<Answer>;
   landing?: PublicLanding;
   language: Language;
   licenseKey: string;
+  support: boolean;
 };
 
 function ReadyBoard({
@@ -286,8 +286,8 @@ function Board({ copy, door, fallbackExit, first, landing, language, licenseKey 
 
 export function mountBoard(element: HTMLElement, mount: Mount): void {
   createRoot(element).render(
-    <FeedbackProvider enabled={mount.feedback} language={mount.language}>
+    <SupportContext.Provider value={mount.support ? supportLabel(mount.language) : null}>
       <Board {...mount} />
-    </FeedbackProvider>,
+    </SupportContext.Provider>,
   );
 }

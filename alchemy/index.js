@@ -100,21 +100,13 @@ function configure(props) {
   const signingKey = Output.isOutput(props.signingKey)
     ? props.signingKey.pipe(Output.map(signingSecret))
     : signingSecret(props.signingKey);
-  const { feedback } = props;
   return {
     client,
     env: {
       ...hosts,
       BOARD_DATA_SCOPE: props.boardDataScope ?? "",
       DISPLAY_NAME: client.name,
-      ...(feedback === undefined
-        ? {}
-        : {
-            POSTHOG_FEEDBACK_QUESTION_ID: feedback.questionId,
-            POSTHOG_FEEDBACK_SURVEY_ID: feedback.surveyId,
-            POSTHOG_PROJECT_TOKEN: secret(feedback.projectToken),
-            POSTHOG_REGION: feedback.region,
-          }),
+      POSTHOG_WEB_PROJECT_TOKEN: props.posthogWebProjectToken ?? "",
       SIGNING_KEY: signingKey,
       TABLETOP_MODE: "standalone",
       WORKOS_API_KEY: secret(props.workOs.apiKey),

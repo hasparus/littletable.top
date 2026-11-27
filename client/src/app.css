@@ -125,10 +125,6 @@ body:has([data-landing-preview]) {
   }
 }
 
-[data-feedback-dialog]::backdrop {
-  background: rgb(0 0 0 / 12%);
-}
-
 :root {
   --surface-ease: cubic-bezier(0.215, 0.61, 0.355, 1);
 }
@@ -166,12 +162,7 @@ body:has([data-landing-preview]) {
     animation: surface-enter 180ms var(--surface-ease);
   }
 
-  [data-feedback-dialog][data-entering] {
-    animation: surface-enter 200ms var(--surface-ease);
-  }
-
-  [data-sheet-scrim],
-  [data-feedback-dialog][open]::backdrop {
+  [data-sheet-scrim] {
     animation: surface-fade 150ms ease-out;
   }
 }

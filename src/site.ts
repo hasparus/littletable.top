@@ -19,21 +19,32 @@ export function aliasRedirect(request: Request, hosts: Hosts): Response | null {
 // WARNING: The OCR workers need `wasm-unsafe-eval`, which allows WebAssembly without allowing JavaScript eval.
 const SCRIPT_SRC = ["'self'", "'wasm-unsafe-eval'"];
 const WORKER_SRC = ["'self'"];
+const POSTHOG_ASSETS = "https://us-assets.i.posthog.com";
+
+function posthogToken(config: Config, pathname: string): string | undefined {
+  return config.mode === "standalone" &&
+    (pathname === "/" ||
+      pathname === "/docs" ||
+      pathname === "/docs/" ||
+      pathname === "/docs/index.html")
+    ? config.posthogWebProjectToken
+    : undefined;
+}
 
 export function contentSecurityPolicy(request: Request, config: Config): string {
-  const { host, protocol } = new URL(request.url);
+  const { host, pathname, protocol } = new URL(request.url);
   const socket = `${protocol === "https:" ? "wss" : "ws"}://${host}`;
   const connect = ["'self'", socket];
   if (config.mode === "hosted") connect.push(config.hostOrigin);
+  const posthog = posthogToken(config, pathname) !== undefined;
+  if (posthog) connect.push("https://us.i.posthog.com", POSTHOG_ASSETS);
   const directives: Record<string, string[]> = {
     "base-uri": ["'none'"],
     "connect-src": connect,
     "default-src": ["'none'"],
     "font-src": ["'self'"],
     "form-action": [
-      new URL(request.url).pathname === "/assistants" &&
-      config.mode === "standalone" &&
-      config.assistants
+      pathname === "/assistants" && config.mode === "standalone" && config.assistants
         ? "'self'"
         : "'none'",
     ],
@@ -42,10 +53,10 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "img-src": ["'self'", "data:", "blob:"],
     "manifest-src": ["'self'"],
     "object-src": ["'none'"],
-    "script-src": SCRIPT_SRC,
+    "script-src": posthog ? [...SCRIPT_SRC, POSTHOG_ASSETS] : SCRIPT_SRC,
     // WARNING: Blocking inline style attributes breaks positioning of tldraw shapes.
     "style-src": ["'self'", "'unsafe-inline'"],
-    "worker-src": WORKER_SRC,
+    "worker-src": posthog ? [...WORKER_SRC, "blob:"] : WORKER_SRC,
   };
   return Object.entries(directives)
     .map(([name, sources]) => `${name} ${sources.join(" ")}`)
@@ -97,6 +108,20 @@ const htmlAttribute = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 
+function withPostHog(page: Response, config: Config, path: string) {
+  const token = posthogToken(config, path);
+  if (token === undefined || !page.ok || page.body === null) return page;
+  return new HTMLRewriter()
+    .on("head", {
+      element: (head) => {
+        head.append(`<meta name="posthog-project-token" content="${htmlAttribute(token)}">`, {
+          html: true,
+        });
+      },
+    })
+    .transform(page);
+}
+
 // WARNING: Link preview crawlers need metadata in the HTML before client JavaScript runs.
 function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board?: Board) {
   const boardTitle = board?.title;
@@ -137,6 +162,9 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     })
     .on("head", {
       element: (head) => {
+        if (config.posthogWebProjectToken) {
+          head.append('<meta name="little-table-support">', { html: true });
+        }
         const tags = Object.entries(graph).map(
           ([name, value]) => `<meta property="og:${name}" content="${htmlAttribute(value)}">`,
         );
@@ -191,6 +219,7 @@ export async function serveBoards(
           initialPage: data,
           locale: locale ?? "en",
           name: config.displayName,
+          support: config.posthogWebProjectToken !== undefined,
         } as const;
         root.setAttribute("class", "fixed inset-0 overflow-y-auto bg-background");
         root.setInnerContent(renderBoards(state), { html: true });
@@ -205,11 +234,7 @@ export async function serveBoards(
 
 type SiteBindings = PreviewBindings & { BOARD_DATA_SCOPE?: string; DB?: D1Database };
 
-export async function serveSite(
-  request: Request,
-  env: SiteBindings,
-  config: Config,
-): Promise<Response> {
+export async function serveSite(request: Request, env: SiteBindings, config: Config) {
   const { ASSETS: assets, DB: database } = env;
   const url = new URL(request.url);
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -219,7 +244,8 @@ export async function serveSite(
     if (config.mode === "hosted") {
       return harden(Response.redirect(config.homeUrl, 302), request, config);
     }
-    return withOpenGraph(await shell(request, assets, config), url, config);
+    const page = withOpenGraph(await shell(request, assets, config), url, config);
+    return withPostHog(page, config, url.pathname);
   }
   const imageCode = BOARD_PREVIEW.exec(url.pathname)?.[1];
   if (imageCode !== undefined && config.mode === "standalone") {
@@ -259,5 +285,5 @@ export async function serveSite(
   if (file.ok && HASHED.test(url.pathname)) {
     file.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   }
-  return file;
+  return withPostHog(file, config, url.pathname);
 }

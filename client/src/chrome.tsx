@@ -38,11 +38,11 @@ import {
 import { BoardBackgroundMenu } from "./board-background";
 import { BoardFileMenuItems } from "./board-files";
 import { RenameBoardItem } from "./board-name";
-import { useFeedback } from "./feedback";
 import { FoundHighlight } from "./highlight";
 import { Icon, type IconName } from "./icons";
 import { usePresent } from "./people";
 import { placeName, removePlace } from "./places";
+import { SUPPORT_URL, useSupport } from "./support";
 import { type Panel, PANEL_ID, useBoardUi } from "./ui";
 
 function BoardTools() {
@@ -186,9 +186,8 @@ function PlaceMenuItems() {
 }
 
 export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
-  const { exit, person } = useBoardUi();
-  const feedback = useFeedback();
-  const editor = useEditor();
+  const { exit } = useBoardUi();
+  const support = useSupport();
   return (
     <DefaultMainMenu>
       {!hideExit && (
@@ -204,20 +203,14 @@ export function BoardMainMenu({ hideExit = false }: { hideExit?: boolean }) {
       <BoardFileMenuItems />
       <BoardBackgroundMenu />
       <DefaultMainMenuContent />
-      {feedback !== null && (
-        <TldrawUiMenuGroup id="board-feedback">
+      {support !== null && (
+        <TldrawUiMenuGroup id="board-support">
           <TldrawUiMenuItem
-            id="send-feedback"
-            label={feedback.label}
-            onSelect={() =>
-              feedback.open(
-                { role: person.id.startsWith("g:") ? "guest" : "member", screen: "board" },
-                // WARNING: Return focus to the trigger because tldraw unmounts the selected item when the menu closes.
-                editor
-                  .getContainer()
-                  .querySelector<HTMLElement>('[data-testid="main-menu.button"]'),
-              )
-            }
+            id="open-support"
+            label={support}
+            onSelect={() => {
+              window.open(SUPPORT_URL, "_blank", "noopener,noreferrer");
+            }}
           />
         </TldrawUiMenuGroup>
       )}
