@@ -1,7 +1,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BoardRoom as BoardRoomObject } from "../src/board-room";
 import type { RoomDocumentCalls } from "../src/room-contract";
@@ -27,6 +27,24 @@ const workerEnv = {
 };
 
 afterEach(() => vi.unstubAllGlobals());
+
+function setAccess(
+  browser: Browser,
+  body: Record<string, string>,
+  csrf: string,
+  workerEnv: typeof standaloneEnv = boardEnv,
+  origin = ORIGIN,
+) {
+  return browser.fetch(
+    "/api/assistants",
+    {
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Origin: origin, "X-CSRF-Token": csrf },
+      method: "POST",
+    },
+    workerEnv,
+  );
+}
 
 it.each([issuer, `${issuer}/`])("advertises the canonical issuer for %s", async (configured) => {
   const metadata = await handle(
@@ -107,22 +125,12 @@ it("only grants the signed-in owner's chosen client and enforces revocation at t
   expect(await before.text()).toContain("manageAccess");
   const page = await owner.fetch("/assistants", {}, boardEnv);
   expect(await page.text()).toContain("Own &amp; &lt;board&gt;");
-  expect(page.headers.get("Referrer-Policy")).toBe("same-origin");
-  expect(page.headers.get("Content-Security-Policy")).toContain("form-action 'self'");
   const update = (board: string, access: string, csrf = owner.csrf ?? "", browser = owner) =>
-    browser.fetch(
-      "/assistants",
-      {
-        method: "POST",
-        body: new URLSearchParams({ access, board, client: "assistant-one", csrf }),
-        headers: { Origin: ORIGIN },
-      },
-      boardEnv,
-    );
+    setAccess(browser, { access, board, client: "assistant-one" }, csrf);
   expect((await update(own.id, "write", "invalid")).status).toBe(403);
   expect((await update(foreign.id, "write")).status).toBe(404);
   expect((await update(own.id, "write", other.csrf ?? "", other)).status).toBe(404);
-  expect((await update(own.id, "read")).status).toBe(303);
+  expect((await update(own.id, "read")).status).toBe(200);
   const granted = await (await call(token)).text();
   expect(granted).toContain(own.id);
   expect(granted).not.toContain(foreign.id);
@@ -134,9 +142,9 @@ it("only grants the signed-in owner's chosen client and enforces revocation at t
   expect(await room.readDocument(grant!, { scope: "document" })).toMatchObject({
     records: expect.any(Array),
   });
-  expect((await update(own.id, "off")).status).toBe(303);
+  expect((await update(own.id, "off")).status).toBe(200);
   expect(await room.readDocument(grant!, { scope: "document" })).toBe("revoked");
-  expect((await update(own.id, "write")).status).toBe(303);
+  expect((await update(own.id, "write")).status).toBe(200);
   expect(await room.readDocument(grant!, { scope: "document" })).toBe("revoked");
   expect(fetch).toHaveBeenCalledTimes(1);
 });
@@ -172,18 +180,10 @@ it("keeps assistant grants within a board's preview deployment", async () => {
   expect(html).not.toContain(production.title);
 
   const update = (board: string, access: "off" | "write") =>
-    owner.fetch(
-      "/assistants",
-      {
-        body: new URLSearchParams({ access, board, client, csrf: owner.csrf ?? "" }),
-        headers: { Origin: ORIGIN },
-        method: "POST",
-      },
-      previewEnv,
-    );
+    setAccess(owner, { access, board, client }, owner.csrf ?? "", previewEnv);
   expect((await update(boardB.id, "write")).status).toBe(404);
   expect((await update(production.id, "off")).status).toBe(404);
-  expect((await update(boardA.id, "write")).status).toBe(303);
+  expect((await update(boardA.id, "write")).status).toBe(200);
   expect(await grantsB.set(account.id, client, boardB.id, "read")).toBe(true);
 
   const fromA = await grantsA.grants(account.id, client);
@@ -300,4 +300,74 @@ it("keeps a manager's assistant grants off after demotion and promotion", async 
   expect((await owner.post(role, { role: "write" })).status).toBe(200);
   expect((await owner.post(role, { role: "manager" })).status).toBe(200);
   expect(await grants.grants(account.id, "assistant-one")).toEqual([]);
+});
+
+describe("the assistants page", () => {
+  const accountOf = async (browser: Browser) =>
+    (await (await browser.fetch("/api/me")).json<{ account: { id: string } }>()).account.id;
+
+  it("sends a signed-out visitor to sign in and back", async () => {
+    const visitor = new Browser();
+    const page = await visitor.fetch("/assistants", {}, boardEnv);
+    expect(page.status).toBe(302);
+    expect(page.headers.get("Location")).toBe(`${ORIGIN}/auth/sign-in?return=/assistants`);
+    expect((await visitor.fetch("/api/assistants", {}, boardEnv)).status).toBe(401);
+  });
+
+  it("asks a signed-in person with no clients to connect one", async () => {
+    const owner = new Browser();
+    await owner.signIn("Ada");
+    await owner.createBoard("Unshared map");
+    const html = await (await owner.fetch("/assistants?lang=en", {}, boardEnv)).text();
+    expect(html).toContain("Connect a client to");
+    expect(html).not.toContain("Unshared map");
+  });
+
+  it("renders each client's boards and the access it holds, in the visitor's language", async () => {
+    const owner = new Browser();
+    await owner.signIn("Ada");
+    const board = await owner.createBoard("Ada's <map>");
+    const account = await accountOf(owner);
+    const grants = new AssistantGrants(DB);
+    await grants.register(account, "assistant-one");
+    await grants.register(account, "assistant-two");
+    await grants.set(account, "assistant-one", board.id, "write");
+
+    const response = await owner.fetch("/assistants?lang=pl", {}, boardEnv);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const html = await response.text();
+    expect(html).toContain("<title>Asystenci · ");
+    expect(html).toContain("Klient 2");
+    expect(html).toContain("&lt;map&gt;");
+    expect(html).not.toContain("<map>");
+    const page = await (await owner.fetch("/api/assistants", {}, boardEnv)).json();
+    expect(page).toMatchObject({
+      clients: [
+        { boards: [{ access: "write", id: board.id, role: "owner" }], id: "assistant-one" },
+        { boards: [{ access: "off", id: board.id, role: "owner" }], id: "assistant-two" },
+      ],
+    });
+  });
+
+  it("saves a level only with the session's token, from this origin", async () => {
+    const owner = new Browser();
+    await owner.signIn("Ada");
+    const board = await owner.createBoard();
+    await new AssistantGrants(DB).register(await accountOf(owner), "assistant-one");
+    const body = { access: "read", board: board.id, client: "assistant-one" };
+    const csrf = owner.csrf ?? "";
+
+    expect((await setAccess(owner, body, "")).status).toBe(403);
+    expect((await setAccess(owner, body, csrf, boardEnv, "https://elsewhere.test")).status).toBe(
+      403,
+    );
+    expect((await setAccess(owner, { ...body, access: "admin" }, csrf)).status).toBe(400);
+    expect((await setAccess(owner, { ...body, client: "assistant-two" }, csrf)).status).toBe(404);
+    expect((await setAccess(owner, body, csrf, standaloneEnv)).status).toBe(404);
+    const saved = await setAccess(owner, body, csrf);
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual(body);
+    const page = await (await owner.fetch("/api/assistants", {}, boardEnv)).json();
+    expect(page).toMatchObject({ clients: [{ boards: [{ access: "read" }] }] });
+  });
 });

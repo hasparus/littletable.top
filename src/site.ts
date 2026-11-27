@@ -1,9 +1,12 @@
+import type { Language } from "../client/settings";
+import type { FrontState, FrontView } from "../client/src/front-app";
 import type { Config, Hosts, StandaloneConfig } from "./config";
 import type { PreviewBindings } from "./share-preview";
 import type { Standalone } from "./standalone/routes";
 import type { Board } from "./standalone/store";
 
-import { renderBoards } from "./render-boards";
+import { FRONT_COPY } from "../client/src/front-copy";
+import { renderFront } from "./render-front";
 import { composeBoardPreview } from "./share-preview";
 import { Store } from "./standalone/store";
 
@@ -30,13 +33,7 @@ export function contentSecurityPolicy(request: Request, config: Config): string 
     "connect-src": connect,
     "default-src": ["'none'"],
     "font-src": ["'self'"],
-    "form-action": [
-      new URL(request.url).pathname === "/assistants" &&
-      config.mode === "standalone" &&
-      config.assistants
-        ? "'self'"
-        : "'none'",
-    ],
+    "form-action": ["'none'"],
     "frame-ancestors": ["'none'"],
     // WARNING: Blocking blob: images breaks tldraw's preview while the upload is in flight.
     "img-src": ["'self'", "data:", "blob:"],
@@ -154,17 +151,37 @@ function withOpenGraph(page: Response, url: URL, config: StandaloneConfig, board
     .transform(page);
 }
 
-export async function serveBoards(
+/** Serves `/boards` and `/assistants`: the shell with the page rendered for hydration. */
+export async function serveFront(
   request: Request,
   assets: Fetcher,
   config: StandaloneConfig,
   own: Standalone,
+  view: FrontView,
 ) {
   const page = await shell(request, assets, config);
   page.headers.set("Cache-Control", "private, no-store");
-  if (!page.ok || page.body === null || request.method === "HEAD") return page;
-  const data = await own.boardPage(request);
+  if (!page.ok || page.body === null) return page;
   const url = new URL(request.url);
+  const name = config.displayName;
+  let state: (locale: Language) => FrontState;
+  if (view === "assistants") {
+    const data = await own.assistantsPage(request);
+    if (data === "signed-out") {
+      return harden(
+        Response.redirect(new URL("/auth/sign-in?return=/assistants", url), 302),
+        request,
+        config,
+      );
+    }
+    if (request.method === "HEAD") return page;
+    state = (locale) => ({ initialPage: data, locale, name, view });
+  } else {
+    if (request.method === "HEAD") return page;
+    const data = await own.boardPage(request);
+    const failed = url.searchParams.get("sign-in") === "failed";
+    state = (locale) => ({ failed, initialPage: data, locale, name, view });
+  }
   const requested = [
     url.searchParams.get("lang"),
     ...(request.headers.get("Accept-Language") ?? "")
@@ -184,18 +201,20 @@ export async function serveBoards(
         html.setAttribute("lang", locale);
       },
     })
+    .on("head title", {
+      element(title) {
+        if (view === "assistants") {
+          title.setInnerContent(`${FRONT_COPY[locale ?? "en"].assistants} · ${name}`);
+        }
+      },
+    })
     .on("[data-board-root]", {
       element(root) {
-        const state = {
-          failed: url.searchParams.get("sign-in") === "failed",
-          initialPage: data,
-          locale: locale ?? "en",
-          name: config.displayName,
-        } as const;
+        const full = state(locale ?? "en");
         root.setAttribute("class", "fixed inset-0 overflow-y-auto bg-background");
-        root.setInnerContent(renderBoards(state), { html: true });
+        root.setInnerContent(renderFront(full), { html: true });
         root.after(
-          `<script type="application/json" id="boards-state">${JSON.stringify(state).replaceAll("<", String.raw`\u003c`)}</script>`,
+          `<script type="application/json" id="front-state">${JSON.stringify(full).replaceAll("<", String.raw`\u003c`)}</script>`,
           { html: true },
         );
       },

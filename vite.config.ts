@@ -15,7 +15,7 @@ import {
   THEME_COLOR,
 } from "./client/settings";
 import { LANDING_COPY } from "./client/src/front-copy";
-import { boardShell } from "./client/src/front-skeleton";
+import { assistantsShell, boardShell } from "./client/src/front-skeleton";
 
 // The tabletop's client in client/, built into dist/, which the Worker
 // serves (wrangler.json "assets"). `bun run dev` serves it here with hot
@@ -136,8 +136,10 @@ function tabletop(): Plugin {
       return id === BRAND_MODULE ? `\0${BRAND_MODULE}` : null;
     },
     transformIndexHtml(html, { bundle, originalUrl, path }) {
-      if (!bundle && settings.mode === "standalone" && originalUrl?.split("?")[0] === "/boards") {
-        html = html.replace("<!-- boards-shell -->", boardShell);
+      const front = originalUrl?.split("?")[0];
+      if (!bundle && settings.mode === "standalone") {
+        if (front === "/boards") html = html.replace("<!-- boards-shell -->", boardShell);
+        if (front === "/assistants") html = html.replace("<!-- boards-shell -->", assistantsShell);
       }
       if (settings.mode === "standalone" && !bundle && originalUrl?.split("?")[0] === "/") {
         html = html.replace("<!-- landing-preview -->", LANDING_PREVIEW);

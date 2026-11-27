@@ -71,10 +71,12 @@ function warmBoardLinks() {
 }
 
 async function mount(): Promise<void> {
-  if (settings.hosted === null && location.pathname === "/boards") {
-    warmBoardLinks();
+  const { pathname } = location;
+  const view = pathname === "/boards" || pathname === "/assistants" ? pathname.slice(1) : null;
+  if (settings.hosted === null && (view === "boards" || view === "assistants")) {
+    if (view === "boards") warmBoardLinks();
     const { mountFront } = await import("./mount-front");
-    mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name });
+    mountFront(root, { copy: FRONT_COPY[language], locale: language, name: settings.name, view });
     return;
   }
   const landing = isPublic ? { copy: LANDING_COPY } : undefined;

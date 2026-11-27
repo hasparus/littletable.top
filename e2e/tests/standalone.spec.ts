@@ -701,7 +701,10 @@ test("an owner can rename a board from its secret layer", async ({ browser, page
   }
 });
 
-test("a signed-in owner saves and revokes an assistant grant in the browser", async ({ page }) => {
+test("a signed-in owner grants and revokes an assistant's access by choosing a level", async ({
+  page,
+}) => {
+  await collectCspViolations(page);
   await page.goto(`${STANDALONE}/boards?lang=en`);
   await page.getByRole("link", { name: "Sign in" }).click();
   await page.getByLabel("Name").fill("Assistant Test Owner");
@@ -724,21 +727,51 @@ test("a signed-in owner saves and revokes an assistant grant in the browser", as
     `INSERT OR IGNORE INTO assistant_clients (account_id, client_id) VALUES ('${accountId}', 'e2e-assistant')`,
   ]);
 
-  const settings = `${STANDALONE}/assistants`;
-  await page.goto(settings);
-  const access = page.getByRole("combobox", { name: /^Board /u });
-  const save = page.getByRole("button", { name: "Save" });
-  await expect(access).toHaveValue("off");
-  for (const value of ["write", "off"]) {
-    await access.selectOption(value);
-    const posted = page.waitForResponse(
-      (response) => response.url() === settings && response.request().method() === "POST",
-    );
-    await save.click();
-    const response = await posted;
-    expect(response.status()).toBe(303);
-    await page.reload();
-    await expect(access).toHaveValue(value);
-    if (value === "write") await reviewShot(page, "assistant-grant-edit");
-  }
+  await page.goto(`${STANDALONE}/assistants?lang=en`);
+  await expect(page).toHaveTitle(/^Assistants · /u);
+  await expect(page.getByRole("heading", { level: 1, name: "Assistants" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Client 1" })).toBeVisible();
+  const access = page.getByRole("radiogroup", { name: /^Access for Board /u });
+  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+
+  const api = `${STANDALONE}/api/assistants`;
+  const held = Promise.withResolvers<boolean>();
+  await page.route(api, async (route) => {
+    await held.promise;
+    await route.continue();
+  });
+  const posted = page.waitForResponse(
+    (response) => response.url() === api && response.request().method() === "POST",
+  );
+  await access.getByRole("radio", { name: "Edit" }).check();
+  await expect(access).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByRole("status").filter({ hasText: "Saving…" })).toBeVisible();
+  held.resolve(true);
+  const saved = await posted;
+  expect(saved.status()).toBe(200);
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await expect(access).toHaveAttribute("aria-busy", "false");
+  await page.unroute(api);
+  await reviewShot(page, "assistant-grant-edit");
+  await page.reload();
+  await expect(access.getByRole("radio", { name: "Edit" })).toBeChecked();
+
+  await page.route(api, (route) => route.fulfill({ json: { error: "csrf" }, status: 403 }));
+  await access.getByRole("radio", { name: "Read" }).check();
+  await expect(page.getByRole("alert")).toHaveText("That did not work. Try again.");
+  await expect(access.getByRole("radio", { name: "Edit" })).toBeChecked();
+  await page.unroute(api);
+
+  await access.getByRole("radio", { name: "Off" }).check();
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await page.reload();
+  await expect(access.getByRole("radio", { name: "Off" })).toBeChecked();
+
+  await page.setViewportSize({ height: 740, width: 360 });
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width).toBeLessThanOrEqual(360);
+  await reviewShot(page, "assistant-grants-phone");
+  await expectNoCspViolations(page);
+  await page.getByRole("link", { name: "Your boards" }).click();
+  await expect(page).toHaveURL(`${STANDALONE}/boards`);
 });

@@ -20,10 +20,8 @@ import {
 } from "../limits";
 import { cleanName, cleanTitle } from "../names";
 import { secretLayerOf } from "../secret-layer";
-import { harden } from "../site";
 import { isThumbnail, thumbnailKey } from "../thumbnail-store";
 import { AssistantGrants } from "./assistant-grants";
-import { assistantsPage } from "./assistants-page";
 import { type Keys, seal, signPass, unseal } from "./keys";
 import { ProviderError } from "./provider";
 import { type Session, Store } from "./store";
@@ -147,17 +145,9 @@ export class Standalone {
     if (pathname === "/auth/sign-in" && method === "GET") return this.signIn(request);
     if (pathname === "/auth/callback" && method === "GET") return this.callback(request);
     if (pathname === "/auth/sign-out" && method === "POST") return this.signOut(request);
-    if (
-      this.config.assistants &&
-      pathname === "/assistants" &&
-      (method === "GET" || method === "POST")
-    ) {
-      return this.assistants(request).then((response) => {
-        const page = harden(response, request, this.config);
-        // WARNING: no-referrer makes native POST navigations send Origin: null.
-        if (method === "GET" && page.ok) page.headers.set("Referrer-Policy", "same-origin");
-        return page;
-      });
+    if (this.config.assistants && pathname === "/api/assistants") {
+      if (method === "GET") return this.assistantList(request);
+      if (method === "POST") return this.grantAssistant(request);
     }
     if (pathname === "/api/me" && method === "GET") return this.me(request);
     const picture = /^\/api\/avatars\/([0-9a-f]{64})$/u.exec(pathname);
@@ -223,35 +213,42 @@ export class Standalone {
     return found;
   }
 
-  private async assistants(request: Request): Promise<Response> {
-    const url = new URL(request.url);
+  async assistantsPage(request: Request) {
     const found = await this.session(request);
-    if (found === null)
-      return Response.redirect(new URL("/auth/sign-in?return=/assistants", url), 302);
-    const { account, csrf } = found.session;
-    const grants = new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE);
-    if (request.method === "GET") return assistantsPage(grants, account.id, csrf);
+    if (found === null) return "signed-out" as const;
+    const clients = await this.grants().overview(found.session.account.id);
+    return { ...accountSummary(found.session), clients };
+  }
+
+  private grants() {
+    return new AssistantGrants(this.env.DB, this.env.BOARD_DATA_SCOPE);
+  }
+
+  private async assistantList(request: Request) {
+    const page = await this.assistantsPage(request);
+    return page === "signed-out" ? refuse(401, "signed-out") : json(200, page);
+  }
+
+  private async grantAssistant(request: Request) {
+    const found = await this.member(request);
+    if ("refusal" in found) return found.refusal;
+    const body = await request
+      .json<{ access?: unknown; board?: unknown; client?: unknown }>()
+      .catch(() => null);
+    const access = body?.access;
     if (
-      request.headers.get("Origin") !== url.origin ||
-      request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded"
-    ) {
-      return refuse(403, "forbidden-origin");
-    }
-    const form = await request.formData().catch(() => null);
-    if (form?.get("csrf") !== csrf) return refuse(403, "csrf");
-    const client = form.get("client");
-    const board = form.get("board");
-    const access = form.get("access");
-    if (
-      typeof client !== "string" ||
-      typeof board !== "string" ||
+      typeof body?.client !== "string" ||
+      typeof body.board !== "string" ||
       (access !== "off" && access !== "read" && access !== "write")
     )
       return refuse(400, "invalid-request");
-    if (!(await grants.set(account.id, client, board, access))) return refuse(404, "not-found");
+    const { board, client } = body;
+    if (!(await this.grants().set(found.session.account.id, client, board, access))) {
+      return refuse(404, "not-found");
+    }
     const room = this.env.BoardRoom.get(this.env.BoardRoom.idFromName(board));
     await room.assistantGrantsChanged();
-    return Response.redirect(new URL("/assistants", url), 303);
+    return json(200, { access, board, client });
   }
 
   private async signIn(request: Request): Promise<Response> {

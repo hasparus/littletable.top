@@ -1,3 +1,4 @@
+import type { FrontView } from "../client/src/front-app";
 import type { ChatMessage } from "./chat";
 import type { ExpressionError } from "./dice-expression";
 import type { Roll } from "./dice-notation";
@@ -26,7 +27,7 @@ import {
   verifyPass,
 } from "./pass";
 import { isSecretLayer, secretLayerOf } from "./secret-layer";
-import { aliasRedirect, serveBoards, serveSite } from "./site";
+import { aliasRedirect, serveFront, serveSite } from "./site";
 import { type Keys, keysFrom, passVerifier } from "./standalone/keys";
 import { Standalone, type StandaloneEnv } from "./standalone/routes";
 import { hasActiveSession } from "./standalone/store";
@@ -297,8 +298,11 @@ async function routeRequest(request: Request, env: Env, ctx?: ExecutionContext):
       config,
       verifiers.keys!,
     );
-    if (pathname === "/boards" && (request.method === "GET" || request.method === "HEAD")) {
-      return serveBoards(request, env.ASSETS, config, own);
+    let view: FrontView | null = null;
+    if (pathname === "/boards") view = "boards";
+    else if (pathname === "/assistants" && config.assistants === true) view = "assistants";
+    if (view !== null && (request.method === "GET" || request.method === "HEAD")) {
+      return serveFront(request, env.ASSETS, config, own, view);
     }
     const route = own.route(request);
     if (route !== null) return route;
